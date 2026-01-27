@@ -5,7 +5,18 @@
   "src/test"]
 
  :dependencies
- []
+ [[datascript "1.7.3"]
+  [reagent "1.2.0"]]
 
  :builds
- {}}
+ {:app
+  {:target :browser
+   :output-dir "resources/public/js"
+   :asset-path "/js"
+   :modules {:main {:init-fn fizzle.core/init}}}
+
+  :test
+  {:target :node-test
+   :output-to "out/test.js"
+   :ns-regexp "-test$"
+   :autorun true}}}
