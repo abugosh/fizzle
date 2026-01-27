@@ -1,4 +1,4 @@
-.PHONY: repl dev test clean help
+.PHONY: repl dev test clean help lint fmt-check fmt validate
 
 # Detect Java - try common locations
 JAVA_HOME ?= $(shell \
@@ -14,13 +14,14 @@ endif
 help:
 	@echo "Fizzle Development Commands"
 	@echo ""
-	@echo "  make repl     - Start ClojureScript REPL (node)"
-	@echo "  make dev      - Start browser dev server"
-	@echo "  make test     - Run all tests"
-	@echo "  make clean    - Remove build artifacts"
-	@echo ""
-	@echo "Validation (after linting added):"
-	@echo "  make validate - Run all checks (lint + fmt + test)"
+	@echo "  make repl      - Start ClojureScript REPL (node)"
+	@echo "  make dev       - Start browser dev server"
+	@echo "  make test      - Run all tests"
+	@echo "  make lint      - Run clj-kondo linter"
+	@echo "  make fmt-check - Check code formatting"
+	@echo "  make fmt       - Auto-fix code formatting"
+	@echo "  make validate  - Run lint + fmt-check + test"
+	@echo "  make clean     - Remove build artifacts"
 
 repl:
 	npx shadow-cljs node-repl
@@ -33,3 +34,15 @@ test:
 
 clean:
 	rm -rf out/ .shadow-cljs/ resources/public/js/
+
+lint:
+	npx clj-kondo --lint src/
+
+fmt-check:
+	cljstyle check src/
+
+fmt:
+	cljstyle fix src/
+
+validate:
+	@$(MAKE) lint && $(MAKE) fmt-check && $(MAKE) test

@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "devDependencies": {
+    "clj-kondo": "^2025.10.23",
     "shadow-cljs": "3.3.5"
   }
 }
