@@ -24,6 +24,23 @@ npx shadow-cljs release app
 npx shadow-cljs cljs-repl app
 ```
 
+## Development Commands
+
+Use these make commands instead of hand-rolling shadow-cljs calls:
+
+```bash
+# Development
+make repl      # Start node REPL - ready to eval immediately
+make dev       # Start browser dev server with hot reload
+make test      # Run all tests
+make clean     # Remove build artifacts (out/, .shadow-cljs/)
+
+# Validation (after Phase 2)
+make validate  # Run lint + format-check + tests
+```
+
+**IMPORTANT**: Always use `make test` instead of raw shadow-cljs commands.
+
 ## Tech Stack
 
 | Layer | Technology |
