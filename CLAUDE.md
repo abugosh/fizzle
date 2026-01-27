@@ -35,7 +35,10 @@ make dev       # Start browser dev server with hot reload
 make test      # Run all tests
 make clean     # Remove build artifacts (out/, .shadow-cljs/)
 
-# Validation (after Phase 2)
+# Validation
+make lint      # Run clj-kondo linter
+make fmt-check # Check code formatting (cljstyle)
+make fmt       # Auto-fix code formatting
 make validate  # Run lint + format-check + tests
 ```
 
