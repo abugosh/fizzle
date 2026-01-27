@@ -7,6 +7,7 @@
    - Players: Player state including mana pool and storm count
    - Game: Global game state (turn, phase, active player)")
 
+
 (def schema
   {;; === Card Definitions (templates) ===
    ;; Cards are the immutable definitions of what a card does.

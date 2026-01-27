@@ -4,8 +4,10 @@
    All functions are pure: (db, args) -> db
 
    Valid zones: :hand, :library, :graveyard, :stack, :battlefield, :exile"
-  (:require [datascript.core :as d]
-            [fizzle.db.queries :as q]))
+  (:require
+    [datascript.core :as d]
+    [fizzle.db.queries :as q]))
+
 
 (defn move-to-zone
   "Move a game object to a new zone. Pure function: (db, args) -> db

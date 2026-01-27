@@ -6,9 +6,11 @@
    - Player(s) initialized
    - Game objects (cards in zones) created
    - Game state set up"
-  (:require [datascript.core :as d]
-            [fizzle.db.schema :refer [schema]]
-            [fizzle.cards.iggy-pop :refer [dark-ritual]]))
+  (:require
+    [datascript.core :as d]
+    [fizzle.cards.iggy-pop :refer [dark-ritual]]
+    [fizzle.db.schema :refer [schema]]))
+
 
 (def empty-mana-pool
   "A mana pool with zero of each color."
@@ -18,6 +20,7 @@
    :red 0
    :green 0
    :colorless 0})
+
 
 (defn init-game-state
   "Create a fresh game state with Dark Ritual in hand.

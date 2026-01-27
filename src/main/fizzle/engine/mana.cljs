@@ -3,8 +3,10 @@
 
    All functions are pure: (db, args) -> db
    Caller must check can-pay? before calling pay-mana."
-  (:require [datascript.core :as d]
-            [fizzle.db.queries :as q]))
+  (:require
+    [datascript.core :as d]
+    [fizzle.db.queries :as q]))
+
 
 (defn add-mana
   "Add mana to a player's pool. Pure function: (db, args) -> db
@@ -19,6 +21,7 @@
           new-pool (merge-with + current-pool mana-to-add)]
       (d/db-with db [[:db/add player-eid :player/mana-pool new-pool]]))))
 
+
 (defn can-pay?
   "Check if player can pay a mana cost.
 
@@ -31,6 +34,7 @@
       (every? (fn [[color amount]]
                 (>= (get pool color 0) amount))
               cost))))
+
 
 (defn pay-mana
   "Remove mana from player's pool to pay a cost.
