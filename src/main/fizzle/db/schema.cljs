@@ -38,6 +38,7 @@
    :object/position   {}  ; Position in zone (for library ordering)
    :object/targets    {:db/cardinality :db.cardinality/many
                        :db/valueType :db.type/ref}  ; Targets chosen on cast
+   :object/is-copy    {}  ; Boolean, marks spell copies (for storm, etc.)
 
    ;; === Players ===
    :player/id              {:db/unique :db.unique/identity}

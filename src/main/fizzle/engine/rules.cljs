@@ -8,6 +8,7 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.mana :as mana]
+    [fizzle.engine.triggers :as triggers]
     [fizzle.engine.zones :as zones]))
 
 
@@ -35,12 +36,38 @@
     (d/db-with db [[:db/add player-eid :player/storm-count (inc current)]])))
 
 
+(defn- maybe-create-storm-trigger
+  "Create storm trigger if spell has :storm keyword and is not a copy.
+
+   Storm count for copies = current storm count - 1 (spells BEFORE this one).
+   Copies (:object/is-copy true) do not trigger storm."
+  [db player-id object-id]
+  (let [obj (q/get-object db object-id)]
+    (if-let [card (:object/card obj)]
+      (let [keywords (:card/keywords card)
+            is-copy (:object/is-copy obj)
+            ;; Check if :storm is in keywords (handle both sets and vectors)
+            has-storm (cond
+                        (set? keywords) (contains? keywords :storm)
+                        (sequential? keywords) (some #{:storm} keywords)
+                        :else false)]
+        (if (and has-storm (not is-copy))
+          ;; Create storm trigger - count = spells cast before this one
+          (let [storm-count (q/get-storm-count db player-id)
+                copy-count (dec storm-count)  ; Already incremented, so dec for "before"
+                trigger (triggers/create-trigger :storm object-id player-id {:count copy-count})]
+            (triggers/add-trigger-to-stack db trigger))
+          db))
+      db)))
+
+
 (defn cast-spell
   "Cast a spell from hand.
 
    - Pays mana cost
    - Moves card to stack
    - Increments storm count
+   - Creates storm trigger if spell has :storm keyword
 
    Caller should verify can-cast? first."
   [db player-id object-id]
@@ -50,7 +77,8 @@
     (-> db
         (mana/pay-mana player-id cost)
         (zones/move-to-zone object-id :stack)
-        (increment-storm player-id))))
+        (increment-storm player-id)
+        (maybe-create-storm-trigger player-id object-id))))
 
 
 (defn resolve-spell

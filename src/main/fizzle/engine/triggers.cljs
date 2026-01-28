@@ -45,8 +45,9 @@
   [db trigger]
   (if (nil? (:trigger/source trigger))
     db  ; Invalid trigger, return unchanged
-    (let [next-order (q/get-next-stack-order db)]
-      (d/db-with db [(assoc trigger :trigger/stack-order next-order)]))))
+    (let [next-order (q/get-next-stack-order db)
+          trigger-with-order (assoc trigger :trigger/stack-order next-order)]
+      (d/db-with db [trigger-with-order]))))
 
 
 (defmulti resolve-trigger
@@ -67,6 +68,59 @@
 (defmethod resolve-trigger :default
   [db _trigger]
   db)
+
+
+(defn create-spell-copy
+  "Create a copy of a spell on the stack.
+
+   The copy inherits the card reference from the source object but has
+   :object/is-copy set to true. Copies are not cast (don't trigger storm).
+
+   Arguments:
+     db               - Datascript database value
+     source-object-id - ID of the object to copy
+     controller-id    - Player ID who controls this copy
+
+   Returns:
+     New db with copy on stack, or unchanged db if source not found."
+  [db source-object-id controller-id]
+  (if-let [source-obj (q/get-object db source-object-id)]
+    (let [;; Get owner/controller entity IDs
+          owner-eid (:db/id (:object/owner source-obj))
+          controller-eid (q/get-player-eid db controller-id)
+          card-eid (:db/id (:object/card source-obj))]
+      (d/db-with db [{:object/id (random-uuid)
+                      :object/card card-eid
+                      :object/zone :stack
+                      :object/owner owner-eid
+                      :object/controller controller-eid
+                      :object/tapped false
+                      :object/is-copy true}]))
+    db))
+
+
+(defmethod resolve-trigger :storm
+  [db trigger]
+  "Resolve a storm trigger.
+
+   Creates N copies of the source spell on the stack, where N is stored
+   in (:trigger/data trigger) as :count.
+
+   If source object no longer exists, returns db unchanged (defensive)."
+  (let [source-id (:trigger/source trigger)
+        controller-id (:trigger/controller trigger)
+        copy-count (get-in trigger [:trigger/data :count] 0)]
+    ;; Check if source still exists
+    (if (q/get-object db source-id)
+      ;; Create copies one at a time
+      (loop [db' db
+             remaining copy-count]
+        (if (pos? remaining)
+          (recur (create-spell-copy db' source-id controller-id)
+                 (dec remaining))
+          db'))
+      ;; Source missing, return unchanged
+      db)))
 
 
 (defn remove-trigger
