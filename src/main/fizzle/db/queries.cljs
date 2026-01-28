@@ -132,3 +132,38 @@
             db)
        (sort-by :trigger/stack-order >)
        (vec)))
+
+
+;; === Library Queries ===
+
+(defn get-top-n-library
+  "Get the top N cards from a player's library by position.
+   Returns vector of object-ids (lowest position = top).
+   Returns [] if library has fewer than N cards (returns all available).
+   Returns nil if player doesn't exist."
+  [db player-id n]
+  (let [player-eid (get-player-eid db player-id)]
+    (when player-eid
+      (->> (d/q '[:find ?oid ?pos
+                  :in $ ?owner
+                  :where [?obj :object/owner ?owner]
+                  [?obj :object/zone :library]
+                  [?obj :object/id ?oid]
+                  [?obj :object/position ?pos]]
+                db player-eid)
+           (sort-by second)  ; sort by position ascending (0 = top)
+           (take n)
+           (mapv first)))))  ; extract just object-ids
+
+
+(defn get-opponent-id
+  "Get the opponent player's ID for a given player.
+   Returns the player-id of the player marked as opponent.
+   Returns nil if no opponent exists."
+  [db player-id]
+  (d/q '[:find ?pid .
+         :in $ ?my-pid
+         :where [?p :player/id ?pid]
+         [?p :player/is-opponent true]
+         [(not= ?pid ?my-pid)]]
+       db player-id))

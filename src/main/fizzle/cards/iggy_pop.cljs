@@ -19,6 +19,22 @@
                    :effect/mana {:black 3}}]})
 
 
+;; Brain Freeze - The storm finisher
+;; 1U -> Target player mills 3. Storm.
+(def brain-freeze
+  {:card/id :brain-freeze
+   :card/name "Brain Freeze"
+   :card/cmc 2
+   :card/mana-cost {:colorless 1 :blue 1}
+   :card/colors #{:blue}
+   :card/types #{:instant}
+   :card/keywords #{:storm}
+   :card/text "Target player mills 3. Storm."
+   :card/effects [{:effect/type :mill
+                   :effect/amount 3
+                   :effect/target :opponent}]})
+
+
 ;; All cards in this namespace for easy import
 (def all-cards
-  [dark-ritual])
+  [dark-ritual brain-freeze])
