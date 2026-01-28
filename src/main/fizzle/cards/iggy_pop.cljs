@@ -35,6 +35,22 @@
                    :effect/target :opponent}]})
 
 
+;; Cabal Ritual - Threshold-enabled mana ritual
+;; 1B -> BBB normally, BBBBB with threshold
+(def cabal-ritual
+  {:card/id :cabal-ritual
+   :card/name "Cabal Ritual"
+   :card/cmc 2
+   :card/mana-cost {:colorless 1 :black 1}
+   :card/colors #{:black}
+   :card/types #{:instant}
+   :card/text "Add {B}{B}{B}. Threshold - Add {B}{B}{B}{B}{B} instead."
+   :card/effects [{:effect/type :add-mana
+                   :effect/mana {:black 3}}]
+   :card/conditional-effects {:threshold [{:effect/type :add-mana
+                                           :effect/mana {:black 5}}]}})
+
+
 ;; All cards in this namespace for easy import
 (def all-cards
-  [dark-ritual brain-freeze])
+  [dark-ritual brain-freeze cabal-ritual])

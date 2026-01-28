@@ -6,6 +6,7 @@
   (:require
     [datascript.core :as d]
     [fizzle.db.queries :as q]
+    [fizzle.engine.conditions :as conditions]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.triggers :as triggers]
@@ -81,15 +82,39 @@
         (maybe-create-storm-trigger player-id object-id))))
 
 
+(defn- get-active-effects
+  "Select which effects to use based on card conditions.
+
+   Cards may have:
+   - :card/effects - Default effects (always used if no condition matches)
+   - :card/conditional-effects - Map of condition keyword to effects list
+     e.g., {:threshold [{:effect/type :add-mana :effect/mana {:black 5}}]}
+
+   Condition checking is done at resolution time (not cast time)."
+  [db player-id card]
+  (let [default-effects (:card/effects card)
+        conditional-effects (:card/conditional-effects card)]
+    (cond
+      ;; Check threshold condition if card has it
+      (and (:threshold conditional-effects)
+           (conditions/threshold? db player-id))
+      (:threshold conditional-effects)
+
+      ;; Fall back to default effects
+      :else
+      default-effects)))
+
+
 (defn resolve-spell
   "Resolve a spell on the stack.
 
-   - Executes all effects
+   - Checks conditions and selects appropriate effects
+   - Executes all selected effects
    - Moves card to graveyard"
   [db player-id object-id]
   (let [obj (q/get-object db object-id)
         card (:object/card obj)
-        effects-list (:card/effects card)]
+        effects-list (get-active-effects db player-id card)]
     (as-> db db'
           (reduce (fn [d effect] (effects/execute-effect d player-id effect))
                   db'

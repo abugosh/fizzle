@@ -1,6 +1,8 @@
 (ns fizzle.engine.rules-test
   (:require
     [cljs.test :refer-macros [deftest testing is]]
+    [datascript.core :as d]
+    [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
@@ -125,3 +127,100 @@
       (is (= 3 (:black (q/get-mana-pool db-resolved :player-1))))
       (is (= 0 (count (q/get-objects-in-zone db-resolved :player-1 :stack))))
       (is (= 1 (count (q/get-objects-in-zone db-resolved :player-1 :graveyard)))))))
+
+
+;; === Conditional effects tests (Cabal Ritual + threshold) ===
+
+(defn add-cards-to-graveyard
+  "Add n cards to a player's graveyard."
+  [db player-id n]
+  (let [conn (d/conn-from-db db)
+        player-eid (q/get-player-eid db player-id)
+        card-eid (d/q '[:find ?e .
+                        :where [?e :card/id :dark-ritual]]
+                      db)]
+    (doseq [_ (range n)]
+      (d/transact! conn [{:object/id (random-uuid)
+                          :object/card card-eid
+                          :object/zone :graveyard
+                          :object/owner player-eid
+                          :object/controller player-eid
+                          :object/tapped false}]))
+    @conn))
+
+
+(defn add-cabal-ritual-to-hand
+  "Add Cabal Ritual card definition and create an object in hand."
+  [db player-id]
+  (let [conn (d/conn-from-db db)
+        player-eid (q/get-player-eid db player-id)]
+    ;; Add card definition
+    (d/transact! conn [cards/cabal-ritual])
+    ;; Create object in hand
+    (let [card-eid (d/q '[:find ?e .
+                          :where [?e :card/id :cabal-ritual]]
+                        @conn)
+          obj-id (random-uuid)]
+      (d/transact! conn [{:object/id obj-id
+                          :object/card card-eid
+                          :object/zone :hand
+                          :object/owner player-eid
+                          :object/controller player-eid
+                          :object/tapped false}])
+      [obj-id @conn])))
+
+
+(deftest test-cabal-ritual-without-threshold
+  (testing "Cabal Ritual adds BBB without threshold (< 7 cards in graveyard)"
+    (let [db (init-game-state)
+          ;; Add 5 cards to graveyard (below threshold)
+          db (add-cards-to-graveyard db :player-1 5)
+          ;; Add Cabal Ritual to hand and get object-id
+          [obj-id db] (add-cabal-ritual-to-hand db :player-1)
+          ;; Add mana to cast (1B cost)
+          db (mana/add-mana db :player-1 {:black 1 :colorless 1})
+          ;; Cast and resolve
+          db (rules/cast-spell db :player-1 obj-id)
+          db (rules/resolve-spell db :player-1 obj-id)]
+      ;; Should have 3 black mana (BBB from effect)
+      (is (= 3 (:black (q/get-mana-pool db :player-1)))))))
+
+
+(deftest test-cabal-ritual-with-threshold
+  (testing "Cabal Ritual adds BBBBB with threshold (7+ cards in graveyard)"
+    (let [db (init-game-state)
+          ;; Add 7 cards to graveyard (at threshold)
+          db (add-cards-to-graveyard db :player-1 7)
+          ;; Add Cabal Ritual to hand
+          [obj-id db] (add-cabal-ritual-to-hand db :player-1)
+          ;; Add mana to cast (1B cost)
+          db (mana/add-mana db :player-1 {:black 1 :colorless 1})
+          ;; Cast and resolve
+          db (rules/cast-spell db :player-1 obj-id)
+          db (rules/resolve-spell db :player-1 obj-id)]
+      ;; Should have 5 black mana (BBBBB from threshold effect)
+      (is (= 5 (:black (q/get-mana-pool db :player-1)))))))
+
+
+(deftest test-threshold-checked-at-resolution
+  (testing "Threshold is checked at resolution time, not cast time"
+    ;; This tests that if graveyard changes between cast and resolve,
+    ;; the resolution-time graveyard count matters.
+    ;; We'll simulate by having exactly 6 cards, then after cast
+    ;; we manually add another (simulating another effect filling gy).
+    (let [db (init-game-state)
+          ;; Add 6 cards to graveyard (below threshold at cast)
+          db (add-cards-to-graveyard db :player-1 6)
+          ;; Add Cabal Ritual to hand
+          [obj-id db] (add-cabal-ritual-to-hand db :player-1)
+          ;; Add mana to cast
+          db (mana/add-mana db :player-1 {:black 1 :colorless 1})
+          ;; Cast (threshold NOT active at this moment)
+          db (rules/cast-spell db :player-1 obj-id)
+          ;; Before resolution, add 1 more card to graveyard (now 7 = threshold)
+          db (add-cards-to-graveyard db :player-1 1)
+          ;; Resolve - should check threshold NOW
+          db (rules/resolve-spell db :player-1 obj-id)]
+      ;; Should have 5 black mana (BBBBB) because threshold was
+      ;; active at resolution, even though it wasn't at cast
+      (is (= 5 (:black (q/get-mana-pool db :player-1)))))))
