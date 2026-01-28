@@ -256,3 +256,187 @@
           stack-objects (q/get-objects-in-zone db'' :player-1 :stack)
           copies (filter :object/is-copy stack-objects)]
       (is (= 0 (count copies)) "Should have 0 copies when source missing"))))
+
+
+;; === Integration tests: Full storm combo scenarios ===
+
+(def brain-freeze-spell
+  "Brain Freeze for integration testing - storm spell that mills 3."
+  {:card/id :brain-freeze
+   :card/name "Brain Freeze"
+   :card/cmc 2
+   :card/mana-cost {:colorless 1 :blue 1}
+   :card/colors #{:blue}
+   :card/types #{:instant}
+   :card/keywords #{:storm}
+   :card/text "Target player mills 3. Storm."
+   :card/effects [{:effect/type :mill
+                   :effect/amount 3
+                   :effect/target :opponent}]})
+
+
+(def ritual-spell
+  "Dark Ritual analog for integration testing."
+  {:card/id :ritual
+   :card/name "Ritual"
+   :card/cmc 1
+   :card/mana-cost {:black 1}
+   :card/colors #{:black}
+   :card/types #{:instant}
+   :card/text "Add BBB."
+   :card/effects [{:effect/type :add-mana
+                   :effect/mana {:black 3}}]})
+
+
+(defn init-storm-combo-state
+  "Create game state for integration testing storm combos.
+
+   Sets up:
+   - Player 1 with mana to cast rituals + Brain Freeze
+   - Player 2 (opponent) with 12 cards in library
+   - 2 ritual spells and 1 Brain Freeze in player 1's hand"
+  []
+  (let [conn (d/create-conn schema)]
+    ;; Transact cards
+    (d/transact! conn [brain-freeze-spell ritual-spell])
+
+    ;; Transact player 1 (caster)
+    (d/transact! conn [{:player/id :player-1
+                        :player/name "Player"
+                        :player/life 20
+                        :player/mana-pool {:white 0 :blue 10 :black 10
+                                           :red 0 :green 0 :colorless 10}
+                        :player/storm-count 0
+                        :player/land-plays-left 1}])
+
+    ;; Transact player 2 (opponent)
+    (d/transact! conn [{:player/id :player-2
+                        :player/name "Opponent"
+                        :player/life 20
+                        :player/mana-pool {:white 0 :blue 0 :black 0
+                                           :red 0 :green 0 :colorless 0}
+                        :player/storm-count 0
+                        :player/land-plays-left 1
+                        :player/is-opponent true}])
+
+    ;; Get entity IDs
+    (let [player1-eid (d/q '[:find ?e .
+                             :where [?e :player/id :player-1]]
+                           @conn)
+          player2-eid (d/q '[:find ?e .
+                             :where [?e :player/id :player-2]]
+                           @conn)
+          brain-freeze-eid (d/q '[:find ?e .
+                                  :where [?e :card/id :brain-freeze]]
+                                @conn)
+          ritual-eid (d/q '[:find ?e .
+                            :where [?e :card/id :ritual]]
+                          @conn)]
+
+      ;; Create objects in player 1's hand
+      (d/transact! conn [{:object/id :ritual-1
+                          :object/card ritual-eid
+                          :object/zone :hand
+                          :object/owner player1-eid
+                          :object/controller player1-eid
+                          :object/tapped false}
+                         {:object/id :ritual-2
+                          :object/card ritual-eid
+                          :object/zone :hand
+                          :object/owner player1-eid
+                          :object/controller player1-eid
+                          :object/tapped false}
+                         {:object/id :brain-freeze-1
+                          :object/card brain-freeze-eid
+                          :object/zone :hand
+                          :object/owner player1-eid
+                          :object/controller player1-eid
+                          :object/tapped false}])
+
+      ;; Create 12 cards in opponent's library (need buffer above 9)
+      (doseq [i (range 12)]
+        (d/transact! conn [{:object/id (keyword (str "library-card-" i))
+                            :object/card ritual-eid  ; Use ritual as placeholder card
+                            :object/zone :library
+                            :object/owner player2-eid
+                            :object/controller player2-eid
+                            :object/position i
+                            :object/tapped false}]))
+
+      ;; Transact game state
+      (d/transact! conn [{:game/id :game-1
+                          :game/turn 1
+                          :game/phase :main1
+                          :game/active-player player1-eid
+                          :game/priority player1-eid}]))
+
+    @conn))
+
+
+(defn count-zone
+  "Count objects in a zone for a player."
+  [db player-id zone]
+  (count (q/get-objects-in-zone db player-id zone)))
+
+
+(defn resolve-all-spells-on-stack
+  "Resolve all spell objects on the stack (not triggers).
+   Returns updated db after all resolutions."
+  [db player-id]
+  (loop [db' db]
+    (let [stack-objects (q/get-objects-in-zone db' player-id :stack)]
+      (if (empty? stack-objects)
+        db'
+        ;; Resolve first spell on stack
+        (let [spell (first stack-objects)
+              obj-id (:object/id spell)]
+          (recur (rules/resolve-spell db' player-id obj-id)))))))
+
+
+(deftest test-storm-combo-two-rituals-brain-freeze
+  (testing "Integration: 2 rituals + Brain Freeze = 3 mill resolutions (9 cards milled)"
+    (let [db (init-storm-combo-state)
+          ;; Verify initial state
+          _ (is (= 0 (q/get-storm-count db :player-1)) "Storm count starts at 0")
+          _ (is (= 12 (count-zone db :player-2 :library)) "Opponent has 12 cards in library")
+          _ (is (= 0 (count-zone db :player-2 :graveyard)) "Opponent graveyard is empty")
+
+          ;; Cast first ritual (storm count = 1)
+          db (rules/cast-spell db :player-1 :ritual-1)
+          _ (is (= 1 (q/get-storm-count db :player-1)) "Storm count = 1 after first ritual")
+
+          ;; Cast second ritual (storm count = 2)
+          db (rules/cast-spell db :player-1 :ritual-2)
+          _ (is (= 2 (q/get-storm-count db :player-1)) "Storm count = 2 after second ritual")
+
+          ;; Cast Brain Freeze (storm count = 3, creates storm trigger)
+          db (rules/cast-spell db :player-1 :brain-freeze-1)
+          _ (is (= 3 (q/get-storm-count db :player-1)) "Storm count = 3 after Brain Freeze")
+
+          ;; Get storm trigger from stack
+          stack-items (q/get-stack-items db)
+          storm-trigger (first (filter #(= :storm (:trigger/type %)) stack-items))
+          _ (is (some? storm-trigger) "Storm trigger exists on stack")
+
+          ;; Resolve storm trigger (creates 2 copies - spells before = 2)
+          db (triggers/resolve-trigger db storm-trigger)
+
+          ;; Verify copies created
+          stack-objects (q/get-objects-in-zone db :player-1 :stack)
+          copies (filter :object/is-copy stack-objects)
+          _ (is (= 2 (count copies)) "2 copies created by storm trigger")
+
+          ;; Remove resolved trigger from db
+          db (triggers/remove-trigger db (:trigger/id storm-trigger))
+
+          ;; Resolve all 3 Brain Freeze spells (original + 2 copies)
+          ;; Each mills 3 cards from opponent = 9 total
+          db (resolve-all-spells-on-stack db :player-1)]
+
+      ;; Final assertions
+      (is (= 9 (count-zone db :player-2 :graveyard))
+          "Opponent should have 9 cards in graveyard (3 Brain Freeze resolutions x 3 cards each)")
+      (is (= 3 (count-zone db :player-2 :library))
+          "Opponent should have 3 cards left in library (12 - 9)")
+      (is (= 0 (count-zone db :player-1 :stack))
+          "Stack should be empty after all resolutions"))))

@@ -6,7 +6,10 @@
 
  :dependencies
  [[datascript "1.7.3"]
-  [reagent "1.2.0"]]
+  [reagent "1.2.0"]
+  [re-frame "1.4.3"]]
+
+ :dev-http {8080 "resources/public"}
 
  :builds
  {:app
