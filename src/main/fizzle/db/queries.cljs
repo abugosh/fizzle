@@ -96,3 +96,39 @@
   (d/q '[:find (pull ?g [* {:game/active-player [:player/id :player/name]}]) .
          :where [?g :game/id _]]
        db))
+
+
+;; === Trigger Queries ===
+
+(defn get-trigger
+  "Get a trigger by its :trigger/id.
+   Returns trigger map or nil if not found."
+  [db trigger-id]
+  (d/q '[:find (pull ?t [*]) .
+         :in $ ?tid
+         :where [?t :trigger/id ?tid]]
+       db trigger-id))
+
+
+(defn get-next-stack-order
+  "Get the next stack order value.
+   Returns current max + 1, or 0 if stack is empty."
+  [db]
+  (let [max-order (d/q '[:find (max ?order) .
+                         :where [?t :trigger/stack-order ?order]]
+                       db)]
+    (if max-order
+      (inc max-order)
+      0)))
+
+
+(defn get-stack-items
+  "Get all items on the stack in LIFO order (most recent first).
+   Returns vector of trigger maps ordered by stack position.
+   Returns empty vector if stack is empty."
+  [db]
+  (->> (d/q '[:find [(pull ?t [*]) ...]
+              :where [?t :trigger/stack-order _]]
+            db)
+       (sort-by :trigger/stack-order >)
+       (vec)))

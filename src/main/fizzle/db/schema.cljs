@@ -55,4 +55,14 @@
    :game/step          {}  ; :untap :upkeep :draw (within phases)
    :game/active-player {:db/valueType :db.type/ref}  ; Whose turn it is
    :game/priority      {:db/valueType :db.type/ref}  ; Who can act right now
-   :game/winner        {:db/valueType :db.type/ref}})  ; nil until game ends
+   :game/winner        {:db/valueType :db.type/ref}  ; nil until game ends
+
+   ;; === Triggers (triggered abilities on stack) ===
+   ;; Triggers are objects on the stack that represent triggered abilities.
+   ;; They resolve before the spell that created them (LIFO stack order).
+   :trigger/id         {:db/unique :db.unique/identity}  ; UUID, unique identifier
+   :trigger/type       {}  ; Keyword, e.g. :storm, :etb
+   :trigger/source     {}  ; ID of source object (not ref, may be in graveyard)
+   :trigger/controller {}  ; Player ID who controls this trigger
+   :trigger/data       {}  ; Map of trigger-specific data
+   :trigger/stack-order {}})
