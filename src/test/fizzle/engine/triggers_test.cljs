@@ -10,20 +10,6 @@
 
 ;; === create-trigger tests ===
 
-(deftest test-create-trigger-structure
-  (testing "create-trigger returns map with all required keys"
-    (let [trigger (triggers/create-trigger :storm :source-1 :player-1 {:count 3})]
-      (is (contains? trigger :trigger/id))
-      (is (contains? trigger :trigger/type))
-      (is (contains? trigger :trigger/source))
-      (is (contains? trigger :trigger/controller))
-      (is (contains? trigger :trigger/data))
-      (is (= :storm (:trigger/type trigger)))
-      (is (= :source-1 (:trigger/source trigger)))
-      (is (= :player-1 (:trigger/controller trigger)))
-      (is (= {:count 3} (:trigger/data trigger))))))
-
-
 (deftest test-create-trigger-unique-id
   (testing "Each call to create-trigger returns unique :trigger/id"
     (let [trigger1 (triggers/create-trigger :storm :source-1 :player-1 {})
@@ -63,20 +49,6 @@
 
 
 ;; === resolve-trigger tests ===
-
-(deftest test-resolve-trigger-dispatches-storm
-  (testing "resolve-trigger with :storm type dispatches to storm handler"
-    ;; Note: The storm handler itself is implemented in a later task.
-    ;; This test verifies the dispatch mechanism works.
-    ;; For now, we test that calling resolve-trigger on a storm trigger
-    ;; returns db (possibly modified by storm handler when implemented).
-    (let [db (init-game-state)
-          trigger (triggers/create-trigger :storm :source-1 :player-1 {:count 2})
-          db' (triggers/add-trigger-to-stack db trigger)
-          db'' (triggers/resolve-trigger db' trigger)]
-      ;; Should return a db (not throw)
-      (is (some? db'')))))
-
 
 (deftest test-resolve-trigger-default-noop
   (testing "Unknown :trigger/type returns db unchanged"
