@@ -62,11 +62,22 @@
       db)))
 
 
+(defn- set-stack-order
+  "Set stack position on an object so stack resolves LIFO."
+  [db object-id]
+  (let [stack-order (q/get-next-stack-order db)
+        obj-eid (d/q '[:find ?e .
+                       :in $ ?oid
+                       :where [?e :object/id ?oid]]
+                     db object-id)]
+    (d/db-with db [[:db/add obj-eid :object/position stack-order]])))
+
+
 (defn cast-spell
   "Cast a spell from hand.
 
    - Pays mana cost
-   - Moves card to stack
+   - Moves card to stack (with stack order for LIFO resolution)
    - Increments storm count
    - Creates storm trigger if spell has :storm keyword
 
@@ -78,6 +89,7 @@
     (-> db
         (mana/pay-mana player-id cost)
         (zones/move-to-zone object-id :stack)
+        (set-stack-order object-id)
         (increment-storm player-id)
         (maybe-create-storm-trigger player-id object-id))))
 

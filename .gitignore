@@ -1,5 +1,5 @@
 node_modules/
-public/js
+resources/public/js/
 
 /target
 /checkouts
@@ -11,6 +11,7 @@ pom.xml.asc
 *.jar
 *.log
 .shadow-cljs
+out/
 .idea
 .lein-*
 .nrepl-*

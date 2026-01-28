@@ -440,3 +440,63 @@
           "Opponent should have 3 cards left in library (12 - 9)")
       (is (= 0 (count-zone db :player-1 :stack))
           "Stack should be empty after all resolutions"))))
+
+
+;; === Storm copy stack positioning tests ===
+
+(deftest test-storm-copies-have-stack-position
+  (testing "Storm copies get :object/position for correct stack ordering"
+    (let [db (init-storm-test-state)
+          ;; Cast non-storm spell first
+          db (rules/cast-spell db :player-1 :non-storm-obj-1)
+          ;; Cast storm spell (creates trigger)
+          db (rules/cast-spell db :player-1 :storm-obj-1)
+          ;; Resolve storm trigger (creates 1 copy)
+          stack-items (q/get-stack-items db)
+          storm-trigger (first (filter #(= :storm (:trigger/type %)) stack-items))
+          db (triggers/resolve-trigger db storm-trigger)
+          ;; Find copy
+          stack-objects (q/get-objects-in-zone db :player-1 :stack)
+          copy (first (filter :object/is-copy stack-objects))]
+      (is (some? (:object/position copy))
+          "Storm copy should have :object/position set"))))
+
+
+(deftest test-storm-copies-above-original-spell
+  (testing "Storm copies have higher stack position than original spell"
+    (let [db (init-storm-test-state)
+          ;; Cast non-storm spell first
+          db (rules/cast-spell db :player-1 :non-storm-obj-1)
+          ;; Cast storm spell
+          db (rules/cast-spell db :player-1 :storm-obj-1)
+          ;; Get original spell's position
+          original (q/get-object db :storm-obj-1)
+          original-pos (:object/position original)
+          ;; Resolve storm trigger
+          stack-items (q/get-stack-items db)
+          storm-trigger (first (filter #(= :storm (:trigger/type %)) stack-items))
+          db (triggers/resolve-trigger db storm-trigger)
+          ;; Find copy
+          stack-objects (q/get-objects-in-zone db :player-1 :stack)
+          copy (first (filter :object/is-copy stack-objects))]
+      (is (> (:object/position copy) original-pos)
+          "Storm copy should be above original spell on stack"))))
+
+
+(deftest test-unified-stack-order-spells-and-triggers
+  (testing "Spells and triggers share a unified stack order counter"
+    (let [db (init-storm-test-state)
+          ;; Cast non-storm spell (gets position 0)
+          db (rules/cast-spell db :player-1 :non-storm-obj-1)
+          spell-pos (:object/position (q/get-object db :non-storm-obj-1))
+          ;; Cast storm spell (gets position 1, trigger gets order 2)
+          db (rules/cast-spell db :player-1 :storm-obj-1)
+          storm-pos (:object/position (q/get-object db :storm-obj-1))
+          stack-items (q/get-stack-items db)
+          storm-trigger (first (filter #(= :storm (:trigger/type %)) stack-items))
+          trigger-order (:trigger/stack-order storm-trigger)]
+      ;; Each item should have a distinct, increasing order
+      (is (< spell-pos storm-pos)
+          "Storm spell should be above non-storm spell")
+      (is (< storm-pos trigger-order)
+          "Storm trigger should be above storm spell"))))

@@ -15,11 +15,11 @@
     (let [conn (d/create-conn schema)]
       ;; Transact card definitions
       (d/transact! conn cards/all-cards)
-      ;; Transact player with 2 black starting mana
+      ;; Transact player with starting mana (2 black + 2 blue for storm combo)
       (d/transact! conn [{:player/id :player-1
                           :player/name "Player"
                           :player/life 20
-                          :player/mana-pool {:white 0 :blue 0 :black 2
+                          :player/mana-pool {:white 0 :blue 2 :black 2
                                              :red 0 :green 0 :colorless 0}
                           :player/storm-count 0
                           :player/land-plays-left 1}])
@@ -107,8 +107,9 @@
                            (triggers/resolve-trigger top-trigger)
                            (triggers/remove-trigger (:trigger/id top-trigger)))]
           (assoc db :game/db game-db'))
-        ;; No triggers - resolve top spell object on stack
-        (let [stack-objects (queries/get-objects-in-zone game-db :player-1 :stack)]
+        ;; No triggers - resolve top spell object on stack (LIFO by position)
+        (let [stack-objects (->> (queries/get-objects-in-zone game-db :player-1 :stack)
+                                 (sort-by :object/position >))]
           (if (seq stack-objects)
             (let [top-spell (first stack-objects)
                   game-db' (rules/resolve-spell game-db :player-1 (:object/id top-spell))]

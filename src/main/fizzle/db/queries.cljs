@@ -112,14 +112,19 @@
 
 (defn get-next-stack-order
   "Get the next stack order value.
+   Checks both trigger stack-orders and object positions on the stack
+   so they share a unified counter space.
    Returns current max + 1, or 0 if stack is empty."
   [db]
-  (let [max-order (d/q '[:find (max ?order) .
-                         :where [?t :trigger/stack-order ?order]]
-                       db)]
-    (if max-order
-      (inc max-order)
-      0)))
+  (let [trigger-max (d/q '[:find (max ?order) .
+                           :where [?t :trigger/stack-order ?order]]
+                         db)
+        object-max (d/q '[:find (max ?pos) .
+                          :where [?o :object/zone :stack]
+                          [?o :object/position ?pos]]
+                        db)
+        current-max (max (or trigger-max -1) (or object-max -1))]
+    (inc current-max)))
 
 
 (defn get-stack-items

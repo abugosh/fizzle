@@ -38,8 +38,14 @@
   (fn [game-db _]
     (when game-db
       (let [triggers (queries/get-stack-items game-db)
-            spells (queries/get-objects-in-zone game-db :player-1 :stack)]
-        (concat triggers spells)))))
+            spells (queries/get-objects-in-zone game-db :player-1 :stack)
+            order-key (fn [item]
+                        (or (:trigger/stack-order item)
+                            (:object/position item)
+                            0))]
+        (->> (concat triggers spells)
+             (sort-by order-key >)
+             vec)))))
 
 
 (rf/reg-sub

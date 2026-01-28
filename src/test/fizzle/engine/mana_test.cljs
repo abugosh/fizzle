@@ -82,6 +82,43 @@
       (is (true? (mana/can-pay? db :player-1 {:black 0}))))))
 
 
+;; === can-pay? generic mana tests ===
+
+(deftest can-pay-generic-with-colored-mana-test
+  (testing "can-pay? with colorless cost payable by colored mana"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 3}))]
+      (is (true? (mana/can-pay? db :player-1 {:colorless 2}))))))
+
+
+(deftest can-pay-generic-plus-colored-test
+  (testing "can-pay? with mixed generic and colored cost"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 3}))]
+      (is (true? (mana/can-pay? db :player-1 {:colorless 1 :black 1}))))))
+
+
+(deftest can-pay-generic-insufficient-total-test
+  (testing "can-pay? returns false when total mana < colored + generic"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1}))]
+      (is (false? (mana/can-pay? db :player-1 {:colorless 1 :black 1}))))))
+
+
+(deftest can-pay-generic-enough-total-but-wrong-color-test
+  (testing "can-pay? returns false when colored requirement not met even with generic surplus"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:blue 5}))]
+      (is (false? (mana/can-pay? db :player-1 {:colorless 1 :black 1}))))))
+
+
+(deftest can-pay-generic-multicolor-pool-test
+  (testing "can-pay? generic cost uses total across all colors"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1 :blue 1}))]
+      (is (true? (mana/can-pay? db :player-1 {:colorless 1 :black 1}))))))
+
+
 ;; === pay-mana tests ===
 
 (deftest pay-mana-removes-mana-test
@@ -106,3 +143,43 @@
                  (mana/add-mana :player-1 {:black 3}))
           db' (mana/pay-mana db :player-1 {})]
       (is (= 3 (:black (q/get-mana-pool db' :player-1)))))))
+
+
+;; === pay-mana generic mana tests ===
+
+(deftest pay-mana-generic-from-single-color-test
+  (testing "pay-mana deducts generic cost from available colored mana"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 3}))
+          db' (mana/pay-mana db :player-1 {:colorless 2})]
+      (is (= 1 (:black (q/get-mana-pool db' :player-1)))))))
+
+
+(deftest pay-mana-generic-from-largest-pool-test
+  (testing "pay-mana deducts generic cost from largest pool first"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 4 :blue 1}))
+          db' (mana/pay-mana db :player-1 {:colorless 1})]
+      ;; Should take from black (larger pool)
+      (is (= 3 (:black (q/get-mana-pool db' :player-1))))
+      (is (= 1 (:blue (q/get-mana-pool db' :player-1)))))))
+
+
+(deftest pay-mana-mixed-generic-and-colored-test
+  (testing "pay-mana handles colored + generic correctly"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 4 :blue 2}))
+          ;; Cabal Ritual cost: {1}{B}
+          db' (mana/pay-mana db :player-1 {:colorless 1 :black 1})]
+      ;; 1B from colored, 1 generic from black (largest remaining)
+      (is (= 2 (:black (q/get-mana-pool db' :player-1))))
+      (is (= 2 (:blue (q/get-mana-pool db' :player-1)))))))
+
+
+(deftest pay-mana-generic-spans-multiple-colors-test
+  (testing "pay-mana generic cost can span multiple color pools"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1 :blue 1}))
+          db' (mana/pay-mana db :player-1 {:colorless 2})]
+      (is (= 0 (:black (q/get-mana-pool db' :player-1))))
+      (is (= 0 (:blue (q/get-mana-pool db' :player-1)))))))

@@ -129,6 +129,73 @@
       (is (= 1 (count (q/get-objects-in-zone db-resolved :player-1 :graveyard)))))))
 
 
+;; === Stack ordering tests ===
+
+(defn init-two-spell-state
+  "Create game state with two Dark Rituals in hand for stack ordering tests."
+  []
+  (let [conn (d/conn-from-db (init-game-state))
+        db @conn
+        player-eid (q/get-player-eid db :player-1)
+        card-eid (d/q '[:find ?e .
+                        :where [?e :card/id :dark-ritual]]
+                      db)]
+    ;; Add a second Dark Ritual object in hand
+    (d/transact! conn [{:object/id :dr-2
+                        :object/card card-eid
+                        :object/zone :hand
+                        :object/owner player-eid
+                        :object/controller player-eid
+                        :object/tapped false}])
+    @conn))
+
+
+(deftest cast-spell-sets-stack-position-test
+  (testing "cast-spell assigns :object/position for stack ordering"
+    (let [db (-> (init-two-spell-state)
+                 (mana/add-mana :player-1 {:black 2}))
+          hand (q/get-hand db :player-1)
+          obj-id (:object/id (first hand))
+          db' (rules/cast-spell db :player-1 obj-id)
+          obj' (q/get-object db' obj-id)]
+      (is (some? (:object/position obj'))
+          "Cast spell should have :object/position set"))))
+
+
+(deftest cast-two-spells-lifo-order-test
+  (testing "Second spell cast gets higher position than first (LIFO)"
+    (let [db (-> (init-two-spell-state)
+                 (mana/add-mana :player-1 {:black 2}))
+          hand (q/get-hand db :player-1)
+          first-id (:object/id (first hand))
+          second-id (:object/id (second hand))
+          db' (-> db
+                  (rules/cast-spell :player-1 first-id)
+                  (rules/cast-spell :player-1 second-id))
+          first-obj (q/get-object db' first-id)
+          second-obj (q/get-object db' second-id)]
+      (is (> (:object/position second-obj)
+             (:object/position first-obj))
+          "Second cast should have higher stack position"))))
+
+
+(deftest stack-objects-resolve-lifo-test
+  (testing "Stack objects sorted by position descending resolve most recent first"
+    (let [db (-> (init-two-spell-state)
+                 (mana/add-mana :player-1 {:black 2}))
+          hand (q/get-hand db :player-1)
+          first-id (:object/id (first hand))
+          second-id (:object/id (second hand))
+          db' (-> db
+                  (rules/cast-spell :player-1 first-id)
+                  (rules/cast-spell :player-1 second-id))
+          stack (->> (q/get-objects-in-zone db' :player-1 :stack)
+                     (sort-by :object/position >))
+          top-spell (first stack)]
+      (is (= second-id (:object/id top-spell))
+          "Most recently cast spell should be on top of stack"))))
+
+
 ;; === Conditional effects tests (Cabal Ritual + threshold) ===
 
 (defn add-cards-to-graveyard

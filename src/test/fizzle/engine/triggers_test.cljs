@@ -1,9 +1,11 @@
 (ns fizzle.engine.triggers-test
   (:require
     [cljs.test :refer-macros [deftest testing is]]
+    [datascript.core :as d]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
-    [fizzle.engine.triggers :as triggers]))
+    [fizzle.engine.triggers :as triggers]
+    [fizzle.engine.zones :as zones]))
 
 
 ;; === create-trigger tests ===
@@ -125,6 +127,46 @@
       ;; Verify order: trigger3 first, then trigger2, then trigger1
       (is (= {:order 3} (:trigger/data (first stack-items))))
       (is (= {:order 1} (:trigger/data (last stack-items)))))))
+
+
+;; === get-next-stack-order tests (unified counter) ===
+
+(deftest test-next-stack-order-considers-objects-on-stack
+  (testing "get-next-stack-order accounts for objects on the stack, not just triggers"
+    (let [db (init-game-state)
+          ;; Move the Dark Ritual to stack with a position
+          hand (q/get-hand db :player-1)
+          obj-id (:object/id (first hand))
+          db (zones/move-to-zone db obj-id :stack)
+          ;; Set position on the object
+          obj-eid (d/q '[:find ?e .
+                         :in $ ?oid
+                         :where [?e :object/id ?oid]]
+                       db obj-id)
+          db (d/db-with db [[:db/add obj-eid :object/position 5]])
+          ;; Next stack order should be 6 (one above object's position)
+          next-order (q/get-next-stack-order db)]
+      (is (= 6 next-order)
+          "Should return max object position + 1"))))
+
+
+(deftest test-next-stack-order-max-of-triggers-and-objects
+  (testing "get-next-stack-order returns max across both triggers and objects"
+    (let [db (init-game-state)
+          ;; Add a trigger with stack-order 3
+          trigger (triggers/create-trigger :storm :source-1 :player-1 {:count 1})
+          db (triggers/add-trigger-to-stack db trigger)
+          ;; Move object to stack with position 5 (higher than trigger)
+          hand (q/get-hand db :player-1)
+          obj-id (:object/id (first hand))
+          db (zones/move-to-zone db obj-id :stack)
+          obj-eid (d/q '[:find ?e .
+                         :in $ ?oid
+                         :where [?e :object/id ?oid]]
+                       db obj-id)
+          db (d/db-with db [[:db/add obj-eid :object/position 5]])]
+      (is (= 6 (q/get-next-stack-order db))
+          "Should return max of trigger order and object position + 1"))))
 
 
 ;; === get-trigger tests ===

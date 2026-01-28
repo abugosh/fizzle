@@ -88,14 +88,16 @@
     (let [;; Get owner/controller entity IDs
           owner-eid (:db/id (:object/owner source-obj))
           controller-eid (q/get-player-eid db controller-id)
-          card-eid (:db/id (:object/card source-obj))]
+          card-eid (:db/id (:object/card source-obj))
+          stack-order (q/get-next-stack-order db)]
       (d/db-with db [{:object/id (random-uuid)
                       :object/card card-eid
                       :object/zone :stack
                       :object/owner owner-eid
                       :object/controller controller-eid
                       :object/tapped false
-                      :object/is-copy true}]))
+                      :object/is-copy true
+                      :object/position stack-order}]))
     db))
 
 
