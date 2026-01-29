@@ -187,8 +187,26 @@
         (d/db-with [[:db/add game-eid :game/phase new-phase]]))))
 
 
+(defn untap-all-permanents
+  "Untap all permanents controlled by a player on the battlefield.
+   Pure function: (db, player-id) -> db"
+  [db player-id]
+  (let [player-eid (queries/get-player-eid db player-id)
+        ;; Find all tapped permanents controlled by player on battlefield
+        tapped-permanents (d/q '[:find ?e
+                                 :in $ ?controller
+                                 :where [?e :object/controller ?controller]
+                                 [?e :object/zone :battlefield]
+                                 [?e :object/tapped true]]
+                               db player-eid)]
+    (if (seq tapped-permanents)
+      (d/db-with db (mapv (fn [[eid]] [:db/add eid :object/tapped false])
+                          tapped-permanents))
+      db)))
+
+
 (defn start-turn
-  "Start a new turn: increment turn counter, set phase to untap,
+  "Start a new turn: untap all permanents, increment turn counter, set phase to untap,
    reset storm count and land plays to 1, clear mana pool.
    Pure function: (db, player-id) -> db"
   [db player-id]
@@ -197,6 +215,7 @@
         player-eid (queries/get-player-eid db player-id)
         current-turn (or (:game/turn game-state) 0)]
     (-> db
+        (untap-all-permanents player-id)
         (mana/empty-pool player-id)
         (d/db-with [[:db/add game-eid :game/turn (inc current-turn)]
                     [:db/add game-eid :game/phase :untap]
@@ -274,3 +293,68 @@
   (fn [db [_ object-id]]
     (let [game-db (:game/db db)]
       (assoc db :game/db (play-land game-db :player-1 object-id)))))
+
+
+;; === Tap Permanent ===
+
+(defn tap-permanent
+  "Tap a permanent on the battlefield.
+   Pure function: (db, object-id) -> db
+
+   Sets :object/tapped to true for the given object.
+   Returns unchanged db if object doesn't exist."
+  [db object-id]
+  (let [obj (queries/get-object db object-id)]
+    (if obj
+      (let [obj-eid (d/q '[:find ?e .
+                           :in $ ?oid
+                           :where [?e :object/id ?oid]]
+                         db object-id)]
+        (d/db-with db [[:db/add obj-eid :object/tapped true]]))
+      db)))
+
+
+(rf/reg-event-db
+  ::tap-permanent
+  (fn [db [_ object-id]]
+    (let [game-db (:game/db db)]
+      (assoc db :game/db (tap-permanent game-db object-id)))))
+
+
+;; === Activate Mana Ability ===
+
+(defn activate-mana-ability
+  "Activate a mana ability on a land: tap it and add mana to pool.
+   Pure function: (db, player-id, object-id, mana-color) -> db
+
+   Arguments:
+     db - Datascript database value
+     player-id - The player activating the ability
+     object-id - The land to tap
+     mana-color - The color of mana to produce (:white :blue :black :red :green)
+
+   Validation:
+     - Object must exist and be on battlefield
+     - Object must be controlled by the player
+     - Object must be untapped
+
+   Returns unchanged db if any validation fails."
+  [db player-id object-id mana-color]
+  (let [obj (queries/get-object db object-id)
+        player-eid (queries/get-player-eid db player-id)]
+    (if (and obj
+             player-eid
+             (= (:object/zone obj) :battlefield)
+             (= (:db/id (:object/controller obj)) player-eid)
+             (not (:object/tapped obj)))
+      (-> db
+          (tap-permanent object-id)
+          (mana/add-mana player-id {mana-color 1}))
+      db)))
+
+
+(rf/reg-event-db
+  ::activate-mana-ability
+  (fn [db [_ object-id mana-color]]
+    (let [game-db (:game/db db)]
+      (assoc db :game/db (activate-mana-ability game-db :player-1 object-id mana-color)))))
