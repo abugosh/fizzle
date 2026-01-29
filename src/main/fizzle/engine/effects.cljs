@@ -69,6 +69,56 @@
     (d/db-with db [[:db/add game-eid :game/loss-condition condition]])))
 
 
+(defmethod execute-effect :lose-life
+  ;; Reduce a player's life total.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/amount - Amount of life to lose
+  ;;   :effect/target - Target player (defaults to caster)
+  ;;
+  ;; Handles edge cases:
+  ;;   - Amount <= 0: no-op (negative amount is NOT treated as gain)
+  ;;   - Invalid player: no-op (returns db unchanged)
+  ;;   - Life can go negative (no clamping at 0)
+  [db player-id effect]
+  (let [amount (get effect :effect/amount 0)
+        target (get effect :effect/target player-id)]
+    ;; Guard: amount <= 0 is no-op
+    (if (<= amount 0)
+      db
+      ;; Guard: invalid player is no-op
+      (if-let [player-eid (q/get-player-eid db target)]
+        (let [current-life (q/get-life-total db target)
+              new-life (- current-life amount)]
+          (d/db-with db [[:db/add player-eid :player/life new-life]]))
+        db))))
+
+
+(defmethod execute-effect :gain-life
+  ;; Increase a player's life total.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/amount - Amount of life to gain
+  ;;   :effect/target - Target player (defaults to caster)
+  ;;
+  ;; Handles edge cases:
+  ;;   - Amount <= 0: no-op (negative amount is NOT treated as lose)
+  ;;   - Invalid player: no-op (returns db unchanged)
+  ;;   - No maximum life cap
+  [db player-id effect]
+  (let [amount (get effect :effect/amount 0)
+        target (get effect :effect/target player-id)]
+    ;; Guard: amount <= 0 is no-op
+    (if (<= amount 0)
+      db
+      ;; Guard: invalid player is no-op
+      (if-let [player-eid (q/get-player-eid db target)]
+        (let [current-life (q/get-life-total db target)
+              new-life (+ current-life amount)]
+          (d/db-with db [[:db/add player-eid :player/life new-life]]))
+        db))))
+
+
 (defmethod execute-effect :draw
   ;; Draw cards from a player's library to their hand.
   ;;

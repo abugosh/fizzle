@@ -172,3 +172,14 @@
          [?p :player/is-opponent true]
          [(not= ?pid ?my-pid)]]
        db player-id))
+
+
+(defn get-life-total
+  "Get the life total for a player.
+   Returns nil if player doesn't exist."
+  [db player-id]
+  (d/q '[:find ?life .
+         :in $ ?pid
+         :where [?e :player/id ?pid]
+         [?e :player/life ?life]]
+       db player-id))

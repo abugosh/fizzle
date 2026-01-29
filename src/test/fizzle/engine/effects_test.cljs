@@ -312,3 +312,105 @@
           db' (fx/execute-effect db :nonexistent-player effect)]
       ;; Should be no-op - no crash, return db unchanged
       (is (= db db')))))
+
+
+;; === execute-effect :lose-life tests ===
+
+(deftest test-lose-life-reduces-total
+  (testing "Lose 3 life from 20 results in 17 life"
+    (let [db (init-game-state)
+          effect {:effect/type :lose-life
+                  :effect/amount 3}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 17 (q/get-life-total db' :player-1))))))
+
+
+(deftest test-lose-life-zero-is-noop
+  (testing "Lose 0 life is no-op, state unchanged"
+    (let [db (init-game-state)
+          initial-life (q/get-life-total db :player-1)
+          effect {:effect/type :lose-life
+                  :effect/amount 0}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= initial-life (q/get-life-total db' :player-1))))))
+
+
+(deftest test-lose-life-can-go-negative
+  (testing "Lose 25 life from 20 results in -5 life (no clamping at 0)"
+    (let [db (init-game-state)
+          effect {:effect/type :lose-life
+                  :effect/amount 25}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= -5 (q/get-life-total db' :player-1))))))
+
+
+(deftest test-lose-life-negative-amount-is-noop
+  (testing "Lose -5 life is no-op (not treated as gain)"
+    (let [db (init-game-state)
+          initial-life (q/get-life-total db :player-1)
+          effect {:effect/type :lose-life
+                  :effect/amount -5}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= initial-life (q/get-life-total db' :player-1))))))
+
+
+(deftest test-lose-life-nonexistent-player-is-noop
+  (testing "Lose life with invalid player-id is no-op, no crash"
+    (let [db (init-game-state)
+          effect {:effect/type :lose-life
+                  :effect/amount 3}
+          db' (fx/execute-effect db :nonexistent-player effect)]
+      ;; Should be no-op - no crash, return db unchanged
+      (is (= db db')))))
+
+
+;; === execute-effect :gain-life tests ===
+
+(deftest test-gain-life-increases-total
+  (testing "Gain 5 life from 20 results in 25 life"
+    (let [db (init-game-state)
+          effect {:effect/type :gain-life
+                  :effect/amount 5}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 25 (q/get-life-total db' :player-1))))))
+
+
+(deftest test-gain-life-zero-is-noop
+  (testing "Gain 0 life is no-op, state unchanged"
+    (let [db (init-game-state)
+          initial-life (q/get-life-total db :player-1)
+          effect {:effect/type :gain-life
+                  :effect/amount 0}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= initial-life (q/get-life-total db' :player-1))))))
+
+
+(deftest test-gain-life-accumulates
+  (testing "Gain 3 life twice from 20 results in 26 life"
+    (let [db (init-game-state)
+          effect {:effect/type :gain-life
+                  :effect/amount 3}
+          db' (-> db
+                  (fx/execute-effect :player-1 effect)
+                  (fx/execute-effect :player-1 effect))]
+      (is (= 26 (q/get-life-total db' :player-1))))))
+
+
+(deftest test-gain-life-negative-amount-is-noop
+  (testing "Gain -5 life is no-op (not treated as lose)"
+    (let [db (init-game-state)
+          initial-life (q/get-life-total db :player-1)
+          effect {:effect/type :gain-life
+                  :effect/amount -5}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= initial-life (q/get-life-total db' :player-1))))))
+
+
+(deftest test-gain-life-nonexistent-player-is-noop
+  (testing "Gain life with invalid player-id is no-op, no crash"
+    (let [db (init-game-state)
+          effect {:effect/type :gain-life
+                  :effect/amount 5}
+          db' (fx/execute-effect db :nonexistent-player effect)]
+      ;; Should be no-op - no crash, return db unchanged
+      (is (= db db')))))
