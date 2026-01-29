@@ -51,6 +51,30 @@
                                            :effect/mana {:black 5}}]}})
 
 
+;; City of Brass - Rainbow land with damage
+;; T: Add one mana of any color. City of Brass deals 1 damage to you.
+(def city-of-brass
+  {:card/id :city-of-brass
+   :card/name "City of Brass"
+   :card/cmc 0
+   :card/mana-cost {}
+   :card/colors #{}
+   :card/types #{:land}
+   :card/text "Whenever City of Brass becomes tapped, it deals 1 damage to you. {T}: Add one mana of any color."})
+
+
+;; Gemstone Mine - Rainbow land with counter depletion
+;; T, Remove a mining counter: Add one mana of any color.
+(def gemstone-mine
+  {:card/id :gemstone-mine
+   :card/name "Gemstone Mine"
+   :card/cmc 0
+   :card/mana-cost {}
+   :card/colors #{}
+   :card/types #{:land}
+   :card/text "Gemstone Mine enters the battlefield with three mining counters on it. {T}, Remove a mining counter from Gemstone Mine: Add one mana of any color. If there are no mining counters on Gemstone Mine, sacrifice it."})
+
+
 ;; All cards in this namespace for easy import
 (def all-cards
-  [dark-ritual brain-freeze cabal-ritual])
+  [dark-ritual brain-freeze cabal-ritual city-of-brass gemstone-mine])

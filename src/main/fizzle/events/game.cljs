@@ -7,6 +7,7 @@
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.triggers :as triggers]
+    [fizzle.engine.zones :as zones]
     [re-frame.core :as rf]))
 
 
@@ -179,3 +180,61 @@
   (fn [db _]
     (let [game-db (:game/db db)]
       (assoc db :game/db (start-turn game-db :player-1)))))
+
+
+;; === Play Land ===
+
+(defn land-card?
+  "Check if an object's card has :land in its types.
+   Returns false if object or card not found."
+  [db object-id]
+  (let [obj (queries/get-object db object-id)]
+    (when obj
+      ;; get-object pulls card data nested under :object/card
+      (let [card (:object/card obj)
+            types (:card/types card)]
+        ;; types may be a set or vector depending on how it was stored
+        (contains? (set types) :land)))))
+
+
+(defn play-land
+  "Play a land from hand to battlefield.
+   Pure function: (db, player-id, object-id) -> db
+
+   Validation:
+   - Player must have land-plays-left > 0
+   - Object must be in player's hand
+   - Card must be a land type
+   - Phase must be :main1 or :main2
+
+   Returns unchanged db if any validation fails."
+  [db player-id object-id]
+  (let [game-state (queries/get-game-state db)
+        phase (:game/phase game-state)
+        player-eid (queries/get-player-eid db player-id)
+        land-plays (d/q '[:find ?plays .
+                          :in $ ?pid
+                          :where [?e :player/id ?pid]
+                          [?e :player/land-plays-left ?plays]]
+                        db player-id)
+        obj (queries/get-object db object-id)
+        ;; get-object pulls refs as {:db/id N} maps, extract the eid
+        owner-eid (:db/id (:object/owner obj))]
+    (if (and player-eid
+             obj
+             (pos? (or land-plays 0))
+             (= (:object/zone obj) :hand)
+             (= owner-eid player-eid)
+             (land-card? db object-id)
+             (#{:main1 :main2} phase))
+      (-> db
+          (zones/move-to-zone object-id :battlefield)
+          (d/db-with [[:db/add player-eid :player/land-plays-left (dec land-plays)]]))
+      db)))
+
+
+(rf/reg-event-db
+  ::play-land
+  (fn [db [_ object-id]]
+    (let [game-db (:game/db db)]
+      (assoc db :game/db (play-land game-db :player-1 object-id)))))
