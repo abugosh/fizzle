@@ -57,6 +57,7 @@
    :game/active-player {:db/valueType :db.type/ref}  ; Whose turn it is
    :game/priority      {:db/valueType :db.type/ref}  ; Who can act right now
    :game/winner        {:db/valueType :db.type/ref}  ; nil until game ends
+   :game/loss-condition {}  ; Keyword like :empty-library, :life-zero when player loses
 
    ;; === Triggers (triggered abilities on stack) ===
    ;; Triggers are objects on the stack that represent triggered abilities.

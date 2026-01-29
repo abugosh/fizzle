@@ -220,3 +220,95 @@
           db' (fx/execute-effect db :player-1 effect)]
       ;; Mana pool should be unchanged
       (is (= initial-pool (q/get-mana-pool db' :player-1))))))
+
+
+;; === execute-effect :draw tests ===
+
+(defn get-loss-condition
+  "Get the loss condition from game state."
+  [db]
+  (:game/loss-condition (q/get-game-state db)))
+
+
+(deftest test-draw-single-card
+  (testing "Draw 1 card moves top card from library to hand"
+    (let [db (-> (init-game-state)
+                 (add-library-cards :player-1 [:card-1 :card-2 :card-3]))
+          initial-hand-size (count-zone db :player-1 :hand)
+          effect {:effect/type :draw
+                  :effect/amount 1}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 2 (count-zone db' :player-1 :library)))
+      (is (= (+ initial-hand-size 1) (count-zone db' :player-1 :hand))))))
+
+
+(deftest test-draw-multiple-cards
+  (testing "Draw 3 cards moves top 3 cards from library to hand"
+    (let [db (-> (init-game-state)
+                 (add-library-cards :player-1 [:card-1 :card-2 :card-3 :card-4 :card-5]))
+          initial-hand-size (count-zone db :player-1 :hand)
+          effect {:effect/type :draw
+                  :effect/amount 3}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 2 (count-zone db' :player-1 :library)))
+      (is (= (+ initial-hand-size 3) (count-zone db' :player-1 :hand))))))
+
+
+(deftest test-draw-from-empty-library-sets-loss
+  (testing "Draw 1 from empty library sets :game/loss-condition"
+    (let [db (init-game-state) ; no library cards
+          effect {:effect/type :draw
+                  :effect/amount 1}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= :empty-library (get-loss-condition db'))))))
+
+
+(deftest test-draw-partial-when-library-small
+  (testing "Draw 5 from 2-card library draws all available, then sets loss"
+    (let [db (-> (init-game-state)
+                 (add-library-cards :player-1 [:card-1 :card-2]))
+          initial-hand-size (count-zone db :player-1 :hand)
+          effect {:effect/type :draw
+                  :effect/amount 5}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Should draw all 2 available cards
+      (is (= 0 (count-zone db' :player-1 :library)))
+      (is (= (+ initial-hand-size 2) (count-zone db' :player-1 :hand)))
+      ;; Then set loss condition (tried to draw from empty)
+      (is (= :empty-library (get-loss-condition db'))))))
+
+
+(deftest test-draw-zero-is-noop
+  (testing "Draw 0 is no-op, no loss condition"
+    (let [db (init-game-state) ; no library cards
+          initial-hand-size (count-zone db :player-1 :hand)
+          effect {:effect/type :draw
+                  :effect/amount 0}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Should be no-op - no state change
+      (is (= initial-hand-size (count-zone db' :player-1 :hand)))
+      (is (nil? (get-loss-condition db'))))))
+
+
+(deftest test-draw-negative-is-noop
+  (testing "Draw -1 is no-op, no loss condition"
+    (let [db (-> (init-game-state)
+                 (add-library-cards :player-1 [:card-1 :card-2 :card-3]))
+          initial-hand-size (count-zone db :player-1 :hand)
+          effect {:effect/type :draw
+                  :effect/amount -1}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Should be no-op - no cards drawn
+      (is (= 3 (count-zone db' :player-1 :library)))
+      (is (= initial-hand-size (count-zone db' :player-1 :hand)))
+      (is (nil? (get-loss-condition db'))))))
+
+
+(deftest test-draw-nonexistent-player-is-noop
+  (testing "Draw with invalid player-id is no-op, no crash"
+    (let [db (init-game-state)
+          effect {:effect/type :draw
+                  :effect/amount 1}
+          db' (fx/execute-effect db :nonexistent-player effect)]
+      ;; Should be no-op - no crash, return db unchanged
+      (is (= db db')))))

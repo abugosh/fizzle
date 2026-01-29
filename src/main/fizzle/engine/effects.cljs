@@ -4,6 +4,7 @@
    Dispatches on :effect/type to execute card effects.
    All functions are pure: (db, args) -> db"
   (:require
+    [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.zones :as zones]))
@@ -57,3 +58,46 @@
               (zones/move-to-zone db' oid :graveyard))
             db
             cards-to-mill)))
+
+
+(defn- set-loss-condition
+  "Set the game loss condition. Returns db with :game/loss-condition set."
+  [db condition]
+  (let [game-eid (d/q '[:find ?e .
+                        :where [?e :game/id _]]
+                      db)]
+    (d/db-with db [[:db/add game-eid :game/loss-condition condition]])))
+
+
+(defmethod execute-effect :draw
+  ;; Draw cards from a player's library to their hand.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/amount - Number of cards to draw (default 1)
+  ;;   :effect/target - Target player (defaults to caster)
+  ;;
+  ;; Handles edge cases:
+  ;;   - Empty library: sets :game/loss-condition to :empty-library
+  ;;   - Partial library: draws all available, then sets loss condition
+  ;;   - Draw 0 or negative: no-op, no loss condition
+  ;;   - Invalid player: no-op (returns db unchanged)
+  [db player-id effect]
+  (let [amount (get effect :effect/amount 1)
+        target (get effect :effect/target player-id)]
+    ;; Guard: draw 0 or negative is no-op
+    (if (<= amount 0)
+      db
+      ;; Guard: invalid player is no-op
+      (if-let [cards-to-draw (q/get-top-n-library db target amount)]
+        (let [actual-drawn (count cards-to-draw)
+              ;; Move cards from library to hand
+              db-after-draw (reduce (fn [db' oid]
+                                      (zones/move-to-zone db' oid :hand))
+                                    db
+                                    cards-to-draw)]
+          ;; If we couldn't draw all requested cards, set loss condition
+          (if (< actual-drawn amount)
+            (set-loss-condition db-after-draw :empty-library)
+            db-after-draw))
+        ;; get-top-n-library returns nil if player doesn't exist
+        db))))
