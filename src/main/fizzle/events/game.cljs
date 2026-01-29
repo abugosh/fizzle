@@ -4,6 +4,7 @@
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as queries]
     [fizzle.db.schema :refer [schema]]
+    [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.triggers :as triggers]
     [re-frame.core :as rf]))
@@ -115,3 +116,66 @@
                   game-db' (rules/resolve-spell game-db :player-1 (:object/id top-spell))]
               (assoc db :game/db game-db'))
             db))))))
+
+
+;; === Turn Structure ===
+
+(def phases
+  "MTG turn phases in order: untap → upkeep → draw → main1 → combat → main2 → end → cleanup"
+  [:untap :upkeep :draw :main1 :combat :main2 :end :cleanup])
+
+
+(defn next-phase
+  "Get the next phase in the turn sequence.
+   Returns the same phase if at cleanup (requires explicit start-turn for new turn)."
+  [current-phase]
+  (let [idx (.indexOf phases current-phase)]
+    (if (or (neg? idx) (= idx (dec (count phases))))
+      current-phase  ; Stay at cleanup or unknown phase
+      (nth phases (inc idx)))))
+
+
+(defn advance-phase
+  "Advance to the next phase and clear mana pool.
+   Pure function: (db, player-id) -> db
+
+   At cleanup phase, stays at cleanup (user must call start-turn for new turn)."
+  [db player-id]
+  (let [game-state (queries/get-game-state db)
+        game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+        current-phase (:game/phase game-state)
+        new-phase (next-phase current-phase)]
+    (-> db
+        (mana/empty-pool player-id)
+        (d/db-with [[:db/add game-eid :game/phase new-phase]]))))
+
+
+(defn start-turn
+  "Start a new turn: increment turn counter, set phase to untap,
+   reset storm count and land plays to 1, clear mana pool.
+   Pure function: (db, player-id) -> db"
+  [db player-id]
+  (let [game-state (queries/get-game-state db)
+        game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+        player-eid (queries/get-player-eid db player-id)
+        current-turn (or (:game/turn game-state) 0)]
+    (-> db
+        (mana/empty-pool player-id)
+        (d/db-with [[:db/add game-eid :game/turn (inc current-turn)]
+                    [:db/add game-eid :game/phase :untap]
+                    [:db/add player-eid :player/storm-count 0]
+                    [:db/add player-eid :player/land-plays-left 1]]))))
+
+
+(rf/reg-event-db
+  ::advance-phase
+  (fn [db _]
+    (let [game-db (:game/db db)]
+      (assoc db :game/db (advance-phase game-db :player-1)))))
+
+
+(rf/reg-event-db
+  ::start-turn
+  (fn [db _]
+    (let [game-db (:game/db db)]
+      (assoc db :game/db (start-turn game-db :player-1)))))

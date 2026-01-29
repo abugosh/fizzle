@@ -42,6 +42,16 @@
              (>= (- total-pool total-colored) generic))))))
 
 
+(defn empty-pool
+  "Clear a player's mana pool to all zeros. Pure function: (db, player-id) -> db"
+  [db player-id]
+  (let [player-eid (q/get-player-eid db player-id)]
+    (if player-eid
+      (d/db-with db [[:db/add player-eid :player/mana-pool
+                      {:white 0 :blue 0 :black 0 :red 0 :green 0 :colorless 0}]])
+      db)))
+
+
 (defn pay-mana
   "Remove mana from player's pool to pay a cost.
 

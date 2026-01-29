@@ -55,3 +55,17 @@
   (fn [[game-db selected] _]
     (when (and game-db selected)
       (rules/can-cast? game-db :player-1 selected))))
+
+
+(rf/reg-sub
+  ::current-phase
+  :<- [::game-db]
+  (fn [game-db _]
+    (when game-db (:game/phase (queries/get-game-state game-db)))))
+
+
+(rf/reg-sub
+  ::current-turn
+  :<- [::game-db]
+  (fn [game-db _]
+    (when game-db (:game/turn (queries/get-game-state game-db)))))
