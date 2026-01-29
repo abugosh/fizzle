@@ -338,6 +338,9 @@
      - Object must be controlled by the player
      - Object must be untapped
 
+   Card-specific effects:
+     - City of Brass deals 1 damage to controller when tapped
+
    Returns unchanged db if any validation fails."
   [db player-id object-id mana-color]
   (let [obj (queries/get-object db object-id)
@@ -347,9 +350,18 @@
              (= (:object/zone obj) :battlefield)
              (= (:db/id (:object/controller obj)) player-eid)
              (not (:object/tapped obj)))
-      (-> db
-          (tap-permanent object-id)
-          (mana/add-mana player-id {mana-color 1}))
+      (let [card (:object/card obj)
+            card-id (:card/id card)
+            db-after-tap (-> db
+                             (tap-permanent object-id)
+                             (mana/add-mana player-id {mana-color 1}))]
+        ;; City of Brass deals 1 damage to controller when tapped
+        (if (= card-id :city-of-brass)
+          (effects/execute-effect db-after-tap player-id
+                                  {:effect/type :lose-life
+                                   :effect/amount 1
+                                   :effect/target player-id})
+          db-after-tap))
       db)))
 
 

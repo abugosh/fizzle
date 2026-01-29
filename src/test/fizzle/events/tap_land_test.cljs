@@ -117,6 +117,45 @@
           "Land should still be tapped"))))
 
 
+;; === City of Brass damage tests ===
+
+(deftest test-city-of-brass-deals-damage-when-tapped
+  (testing "City of Brass deals 1 damage to controller when tapped for mana"
+    (let [db (create-test-db)
+          [db' obj-id] (add-land-to-battlefield db :city-of-brass :player-1)
+          initial-life (q/get-life-total db' :player-1)
+          _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
+          db'' (game/activate-mana-ability db' :player-1 obj-id :black)]
+      (is (= 19 (q/get-life-total db'' :player-1))
+          "Player should lose 1 life when tapping City of Brass"))))
+
+
+(deftest test-city-of-brass-cumulative-damage
+  (testing "Multiple City of Brass taps deal cumulative damage"
+    (let [db (create-test-db)
+          ;; Add two City of Brass to battlefield
+          [db' obj-id1] (add-land-to-battlefield db :city-of-brass :player-1)
+          [db'' obj-id2] (add-land-to-battlefield db' :city-of-brass :player-1)
+          initial-life (q/get-life-total db'' :player-1)
+          _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
+          ;; Tap both lands
+          db-after-first (game/activate-mana-ability db'' :player-1 obj-id1 :black)
+          db-after-second (game/activate-mana-ability db-after-first :player-1 obj-id2 :blue)]
+      (is (= 18 (q/get-life-total db-after-second :player-1))
+          "Player should lose 2 life total from tapping two City of Brass"))))
+
+
+(deftest test-gemstone-mine-no-damage
+  (testing "Gemstone Mine does NOT deal damage when tapped (only City of Brass does)"
+    (let [db (create-test-db)
+          [db' obj-id] (add-land-to-battlefield db :gemstone-mine :player-1)
+          initial-life (q/get-life-total db' :player-1)
+          _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
+          db'' (game/activate-mana-ability db' :player-1 obj-id :green)]
+      (is (= 20 (q/get-life-total db'' :player-1))
+          "Player should NOT lose life when tapping Gemstone Mine"))))
+
+
 ;; === untap step tests ===
 
 (deftest test-start-turn-untaps-all-lands
