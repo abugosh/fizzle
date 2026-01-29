@@ -158,8 +158,8 @@
           obj-id (:object/id (first hand))
           db' (rules/cast-spell db :player-1 obj-id)
           obj' (q/get-object db' obj-id)]
-      (is (some? (:object/position obj'))
-          "Cast spell should have :object/position set"))))
+      (is (= 0 (:object/position obj'))
+          "First cast spell should have position 0"))))
 
 
 (deftest cast-two-spells-lifo-order-test
@@ -291,3 +291,75 @@
       ;; Should have 5 black mana (BBBBB) because threshold was
       ;; active at resolution, even though it wasn't at cast
       (is (= 5 (:black (q/get-mana-pool db :player-1)))))))
+
+
+;; === Corner case tests ===
+
+(deftest test-resolve-spell-not-on-stack
+  (testing "resolve-spell is no-op when spell not on stack"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1}))
+          hand (q/get-hand db :player-1)
+          ritual (first hand)
+          obj-id (:object/id ritual)
+          ;; Don't cast - spell is still in hand, not on stack
+          ;; Calling resolve-spell on a spell in hand (wrong zone)
+          db' (rules/resolve-spell db :player-1 obj-id)]
+      ;; Should be no-op - spell stays in hand, no effects execute
+      (is (= 1 (count (q/get-hand db' :player-1)))
+          "Spell should remain in hand")
+      (is (= 0 (count (q/get-objects-in-zone db' :player-1 :graveyard)))
+          "Graveyard should be empty")
+      (is (= 1 (:black (q/get-mana-pool db' :player-1)))
+          "Mana pool should be unchanged"))))
+
+
+(def malformed-negative-cost-card
+  "Card with malformed negative mana cost for edge case testing."
+  {:card/id :negative-cost-card
+   :card/name "Negative Cost Card"
+   :card/cmc 0  ; CMC is 0 but cost is negative
+   :card/mana-cost {:black -1}  ; Malformed: negative cost
+   :card/colors #{:black}
+   :card/types #{:instant}
+   :card/text "This card has malformed data."
+   :card/effects []})
+
+
+(defn add-malformed-card-to-hand
+  "Add malformed card to player's hand for testing."
+  [db player-id]
+  (let [conn (d/conn-from-db db)
+        player-eid (q/get-player-eid db player-id)]
+    ;; Add card definition
+    (d/transact! conn [malformed-negative-cost-card])
+    ;; Create object in hand
+    (let [card-eid (d/q '[:find ?e .
+                          :where [?e :card/id :negative-cost-card]]
+                        @conn)
+          obj-id (random-uuid)]
+      (d/transact! conn [{:object/id obj-id
+                          :object/card card-eid
+                          :object/zone :hand
+                          :object/owner player-eid
+                          :object/controller player-eid
+                          :object/tapped false}])
+      [obj-id @conn])))
+
+
+(deftest test-cast-negative-cost
+  (testing "cast-spell handles malformed card with negative mana cost"
+    (let [db (init-game-state)
+          [obj-id db] (add-malformed-card-to-hand db :player-1)
+          initial-black (:black (q/get-mana-pool db :player-1))
+          ;; Cast the malformed card (no mana needed since cost is negative)
+          db' (rules/cast-spell db :player-1 obj-id)
+          final-black (:black (q/get-mana-pool db' :player-1))]
+      ;; Verify spell was cast (moved to stack)
+      (is (= 1 (count (q/get-objects-in-zone db' :player-1 :stack)))
+          "Card should be on stack")
+      ;; With negative cost {:black -1}, subtracting negative adds mana
+      ;; This documents the current behavior - not necessarily desired
+      ;; but the test ensures we know what happens with bad data
+      (is (= (+ initial-black 1) final-black)
+          "Negative cost subtracts negative (adds mana) - documents malformed behavior"))))

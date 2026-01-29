@@ -34,6 +34,7 @@ A ClojureScript-based Magic: The Gathering combo deck practice tool with fork/re
 10. [Future: Persistence & Sharing](#10-future-persistence--sharing)
 11. [Implementation Phases](#11-implementation-phases)
 12. [Starter Deck: Iggy Pop](#12-starter-deck-iggy-pop)
+13. [Testing Strategy](#13-testing-strategy)
 
 ---
 
@@ -1854,6 +1855,164 @@ Sideboard (15):
                    :effect/amount 3
                    :effect/target :any}]})
 ```
+
+---
+
+## 13. Testing Strategy
+
+The architecture—pure functions, immutable state, event sourcing—lends itself to straightforward testing. This section outlines the testing approach.
+
+### Testing Philosophy
+
+**Test the engine, trust the UI.** The game engine, effect interpreter, and subscriptions are pure functions that deserve thorough testing. Reagent components are thin wrappers over subscriptions; if subscriptions are correct, the UI follows.
+
+**Leverage immutability.** Deterministic replay is a feature *and* a testing tool. If the same events produce different states, something is broken.
+
+**Data-driven tests for data-driven cards.** Cards are data; card tests should be data too. Define scenarios as EDN, let a test runner interpret them.
+
+### Test Categories
+
+#### 1. Effect Interpreter Tests
+
+The effect interpreter is the core of the engine. Each effect type gets unit tests verifying the state transformation:
+
+```clojure
+(deftest add-mana-effect
+  (let [db (-> (empty-db)
+               (set-mana-pool :player-1 {:black 0}))
+        result (execute-effect db :player-1
+                 {:effect/type :add-mana
+                  :effect/mana {:black 3}})]
+    (is (= 3 (get-in result [:players :player-1 :mana-pool :black])))))
+
+(deftest threshold-condition
+  (let [db-below (set-graveyard-count (empty-db) :player-1 6)
+        db-at    (set-graveyard-count (empty-db) :player-1 7)]
+    (is (false? (check-condition db-below :player-1 {:condition/type :threshold})))
+    (is (true?  (check-condition db-at :player-1 {:condition/type :threshold})))))
+```
+
+#### 2. Property-Based Tests
+
+Use `test.check` to verify invariants hold across random game sequences:
+
+| Invariant | Description |
+|-----------|-------------|
+| Zone exclusivity | Each card exists in exactly one zone |
+| Mana non-negative | Mana pool values ≥ 0 |
+| Storm monotonic | Storm count only increases within a turn |
+| Card conservation | Total cards across all zones = starting deck size |
+| Replay determinism | Same events → same final state |
+
+```clojure
+(defspec replay-is-deterministic 100
+  (prop/for-all [events (gen-game-events)]
+    (let [state-1 (reduce apply-event (initial-db) events)
+          state-2 (reduce apply-event (initial-db) events)]
+      (= state-1 state-2))))
+```
+
+Property-based tests catch edge cases that example-based tests miss—especially around zone transitions, mana payment edge cases, and stack interactions.
+
+#### 3. Card Scenario Tests
+
+Define card tests as data. Each scenario specifies setup, action, and expected outcome:
+
+```clojure
+(def card-scenarios
+  [{:name "Dark Ritual adds BBB"
+    :setup {:mana-pool {:black 1}}
+    :action [:cast :dark-ritual]
+    :expect {:mana-pool {:black 3}}}  ; paid 1, gained 3
+
+   {:name "Cabal Ritual without threshold"
+    :setup {:mana-pool {:black 2}
+            :graveyard-count 4}
+    :action [:cast :cabal-ritual]
+    :expect {:mana-pool {:black 3}}}  ; paid 2, gained 3
+
+   {:name "Cabal Ritual with threshold"
+    :setup {:mana-pool {:black 2}
+            :graveyard-count 7}
+    :action [:cast :cabal-ritual]
+    :expect {:mana-pool {:black 5}}}])  ; paid 2, gained 5
+```
+
+A single test runner interprets all scenarios. Adding a new card means adding scenario data, not writing test code.
+
+#### 4. Subscription Tests
+
+re-frame subscriptions are pure functions from app-db to derived values. Test them directly:
+
+```clojure
+(deftest castable-cards-sub
+  (let [db (-> (empty-db)
+               (add-to-hand :player-1 :dark-ritual)
+               (add-to-hand :player-1 :cabal-ritual)
+               (set-mana-pool :player-1 {:black 1}))]
+    ;; Can cast Dark Ritual (B), cannot cast Cabal Ritual (1B)
+    (is (= #{:dark-ritual} (subs/castable-cards db :player-1)))))
+
+(deftest storm-count-sub
+  (let [db (-> (empty-db)
+               (apply-event [:cast-spell :lotus-petal])
+               (apply-event [:cast-spell :dark-ritual]))]
+    (is (= 2 (subs/storm-count db)))))
+```
+
+#### 5. Fork/Replay Tests
+
+The fork/replay system is core functionality. Test it explicitly:
+
+```clojure
+(deftest fork-preserves-history
+  (let [game (-> (new-game)
+                 (apply-events [...ten events...])
+                 (create-fork "test fork" 5))]
+    ;; Original history intact
+    (is (= 10 (count (get-main-branch-events game))))
+    ;; Fork branches at event 5
+    (is (= 5 (:fork/branch-point (current-fork game))))))
+
+(deftest rewind-and-diverge
+  (let [game-a (-> (new-game)
+                   (apply-events [e1 e2 e3 e4 e5]))
+        game-b (-> game-a
+                   (rewind-to 3)
+                   (apply-events [e4' e5']))]
+    ;; Different final states
+    (is (not= (get-state game-a) (get-state game-b)))
+    ;; But shared history up to branch point
+    (is (= (take 3 (get-events game-a))
+           (take 3 (get-events game-b))))))
+```
+
+### What We Don't Test
+
+- **UI component rendering** — Reagent components are thin; testing subscriptions covers the logic.
+- **End-to-end browser tests** — High maintenance, low signal for a single-player tool.
+- **Visual regression** — Overkill for an MVP. Consider later if UI churn becomes a problem.
+
+### Test Infrastructure
+
+| Tool | Purpose |
+|------|---------|
+| `cljs.test` | Built-in test framework |
+| `test.check` | Property-based testing |
+| `shadow-cljs` | Test runner integration (`shadow-cljs watch test`) |
+
+### Testing Phases
+
+Testing effort should match implementation phases:
+
+| Phase | Testing Focus |
+|-------|---------------|
+| Phase 1 (Core Engine) | Effect interpreter, mana system, zone transitions |
+| Phase 2 (Iggy Pop) | Card scenarios for all implemented cards |
+| Phase 3 (Fork/Replay) | Fork/replay determinism, branch operations |
+| Phase 4 (Hand Sculpting) | Setup state generation |
+| Phase 5 (Bots) | Bot decision logic |
+| Phase 6 (Tactics) | Puzzle serialization/deserialization |
 
 ---
 

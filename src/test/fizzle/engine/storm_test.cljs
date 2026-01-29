@@ -103,8 +103,8 @@
     (let [db (init-storm-test-state)
           db' (rules/cast-spell db :player-1 :storm-obj-1)
           stack-items (q/get-stack-items db')]
-      ;; Should have at least one trigger on stack
-      (is (>= (count stack-items) 1) "Should have trigger on stack")
+      ;; Should have exactly one trigger (the storm trigger) on stack
+      (is (= 1 (count stack-items)) "Should have exactly 1 storm trigger on stack")
       ;; Find the storm trigger
       (let [storm-trigger (first (filter #(= :storm (:trigger/type %)) stack-items))]
         (is (some? storm-trigger) "Should have a :storm trigger")
@@ -151,10 +151,9 @@
           db''' (triggers/resolve-trigger db'' storm-trigger)
           ;; Should have 2 copies on stack (spells cast before storm spell)
           stack-after (q/get-objects-in-zone db''' :player-1 :stack)]
-      ;; Original spell + 2 copies = 3 objects on stack
-      ;; Note: We also need to count non-storm spells still on stack
-      (is (>= (count stack-after) 3)
-          "Should have original + 2 copies on stack"))))
+      ;; 2 non-storm spells + original storm spell + 2 storm copies = 5 objects on stack
+      (is (= 5 (count stack-after))
+          "Should have 2 non-storm + 1 original + 2 copies = 5 on stack"))))
 
 
 (deftest test-storm-copies-have-is-copy-flag
@@ -458,8 +457,8 @@
           ;; Find copy
           stack-objects (q/get-objects-in-zone db :player-1 :stack)
           copy (first (filter :object/is-copy stack-objects))]
-      (is (some? (:object/position copy))
-          "Storm copy should have :object/position set"))))
+      (is (= 3 (:object/position copy))
+          "Storm copy should have position 3 (after non-storm:0, storm:1, trigger:2)"))))
 
 
 (deftest test-storm-copies-above-original-spell

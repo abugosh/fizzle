@@ -180,3 +180,43 @@
       ;; Opponent's library reduced
       (is (= 1 (count-zone db' :player-2 :library)))
       (is (= 2 (count-zone db' :player-2 :graveyard))))))
+
+
+;; === Corner case tests ===
+
+(deftest test-mill-nil-target
+  (testing "Mill with nil target (missing :effect/target key) mills caster"
+    (let [db (-> (init-game-state)
+                 (add-library-cards :player-1 [:card-1 :card-2 :card-3]))
+          effect {:effect/type :mill
+                  :effect/amount 2
+                  ;; no :effect/target key - should default to caster
+                  }
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Should mill from caster's library (default target)
+      (is (= 1 (count-zone db' :player-1 :library)))
+      (is (= 2 (count-zone db' :player-1 :graveyard))))))
+
+
+(deftest test-mill-negative-amount
+  (testing "Mill with negative amount is no-op (get-top-n-library returns [])"
+    (let [db (-> (init-game-state)
+                 (add-library-cards :player-1 [:card-1 :card-2 :card-3]))
+          effect {:effect/type :mill
+                  :effect/amount -5}  ; malformed: negative amount
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Should be no-op - no cards milled
+      (is (= 3 (count-zone db' :player-1 :library)))
+      (is (= 0 (count-zone db' :player-1 :graveyard))))))
+
+
+(deftest test-add-mana-missing-mana-key
+  (testing "add-mana effect with missing :effect/mana is no-op"
+    (let [db (init-game-state)
+          initial-pool (q/get-mana-pool db :player-1)
+          effect {:effect/type :add-mana
+                  ;; no :effect/mana key - should be graceful no-op
+                  }
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Mana pool should be unchanged
+      (is (= initial-pool (q/get-mana-pool db' :player-1))))))
