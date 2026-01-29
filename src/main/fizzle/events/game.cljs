@@ -4,6 +4,7 @@
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as queries]
     [fizzle.db.schema :refer [schema]]
+    [fizzle.engine.effects :as effects]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.triggers :as triggers]
@@ -11,70 +12,105 @@
     [re-frame.core :as rf]))
 
 
-(rf/reg-event-db
-  ::init-game
-  (fn [_ _]
-    (let [conn (d/create-conn schema)]
-      ;; Transact card definitions
-      (d/transact! conn cards/all-cards)
-      ;; Transact player with starting mana (2 black + 2 blue for storm combo)
-      (d/transact! conn [{:player/id :player-1
-                          :player/name "Player"
-                          :player/life 20
-                          :player/mana-pool {:white 0 :blue 2 :black 2
-                                             :red 0 :green 0 :colorless 0}
-                          :player/storm-count 0
-                          :player/land-plays-left 1}])
-      ;; Transact opponent (needed for Brain Freeze mill effect)
-      (d/transact! conn [{:player/id :opponent
-                          :player/name "Opponent"
-                          :player/life 20
-                          :player/mana-pool {:white 0 :blue 0 :black 0
-                                             :red 0 :green 0 :colorless 0}
-                          :player/storm-count 0
-                          :player/land-plays-left 0
-                          :player/is-opponent true}])
-      ;; Get entity IDs for references
-      (let [db @conn
-            player-eid (d/q '[:find ?e .
-                              :in $ ?pid
-                              :where [?e :player/id ?pid]]
-                            db :player-1)
-            dr-eid (d/q '[:find ?e .
-                          :in $ ?cid
-                          :where [?e :card/id ?cid]]
-                        db :dark-ritual)
-            cr-eid (d/q '[:find ?e .
-                          :in $ ?cid
-                          :where [?e :card/id ?cid]]
-                        db :cabal-ritual)
-            bf-eid (d/q '[:find ?e .
-                          :in $ ?cid
-                          :where [?e :card/id ?cid]]
-                        db :brain-freeze)
-            opp-eid (d/q '[:find ?e .
-                           :in $ ?pid
-                           :where [?e :player/id ?pid]]
-                         db :opponent)]
-        ;; Create game objects (3 cards in hand)
-        (d/transact! conn [{:object/id (random-uuid) :object/card dr-eid :object/zone :hand
-                            :object/owner player-eid :object/controller player-eid :object/tapped false}
-                           {:object/id (random-uuid) :object/card cr-eid :object/zone :hand
-                            :object/owner player-eid :object/controller player-eid :object/tapped false}
-                           {:object/id (random-uuid) :object/card bf-eid :object/zone :hand
-                            :object/owner player-eid :object/controller player-eid :object/tapped false}])
-        ;; Create opponent library (40 cards so mill has targets)
+(defn make-test-deck
+  "Create a test deck as a vector of card-ids.
+   12x each of: dark-ritual, cabal-ritual, brain-freeze, city-of-brass, gemstone-mine
+   Returns shuffled vector of 60 card-ids."
+  []
+  (shuffle
+    (into []
+          (concat
+            (repeat 12 :dark-ritual)
+            (repeat 12 :cabal-ritual)
+            (repeat 12 :brain-freeze)
+            (repeat 12 :city-of-brass)
+            (repeat 12 :gemstone-mine)))))
+
+
+(defn init-game-state
+  "Initialize a fresh game state with:
+   - Card definitions loaded
+   - Player 1 with 20 life, empty mana pool
+   - Player 1's 60-card shuffled library
+   - 7-card opening hand drawn from library
+   - Opponent with 40-card library for mill targets
+
+   Returns app-db map with :game/db key containing Datascript db."
+  []
+  (let [conn (d/create-conn schema)]
+    ;; Transact card definitions
+    (d/transact! conn cards/all-cards)
+    ;; Transact player (start with empty mana pool - lands generate mana now)
+    (d/transact! conn [{:player/id :player-1
+                        :player/name "Player"
+                        :player/life 20
+                        :player/mana-pool {:white 0 :blue 0 :black 0
+                                           :red 0 :green 0 :colorless 0}
+                        :player/storm-count 0
+                        :player/land-plays-left 1}])
+    ;; Transact opponent (needed for Brain Freeze mill effect)
+    (d/transact! conn [{:player/id :opponent
+                        :player/name "Opponent"
+                        :player/life 20
+                        :player/mana-pool {:white 0 :blue 0 :black 0
+                                           :red 0 :green 0 :colorless 0}
+                        :player/storm-count 0
+                        :player/land-plays-left 0
+                        :player/is-opponent true}])
+    ;; Get entity IDs for references
+    (let [db @conn
+          player-eid (d/q '[:find ?e .
+                            :in $ ?pid
+                            :where [?e :player/id ?pid]]
+                          db :player-1)
+          opp-eid (d/q '[:find ?e .
+                         :in $ ?pid
+                         :where [?e :player/id ?pid]]
+                       db :opponent)
+          ;; Helper to look up card entity ID
+          get-card-eid (fn [db card-id]
+                         (d/q '[:find ?e .
+                                :in $ ?cid
+                                :where [?e :card/id ?cid]]
+                              db card-id))
+          ;; Create player's 60-card shuffled library
+          deck (make-test-deck)]
+      ;; Transact player library (60 cards, shuffled, with positions)
+      (d/transact! conn
+                   (vec (map-indexed
+                          (fn [i card-id]
+                            {:object/id (random-uuid)
+                             :object/card (get-card-eid @conn card-id)
+                             :object/zone :library
+                             :object/owner player-eid
+                             :object/controller player-eid
+                             :object/tapped false
+                             :object/position i})
+                          deck)))
+      ;; Create opponent library (40 cards so mill has targets)
+      (let [dr-eid (get-card-eid @conn :dark-ritual)]
         (d/transact! conn (vec (for [i (range 40)]
                                  {:object/id (random-uuid) :object/card dr-eid :object/zone :library
                                   :object/owner opp-eid :object/controller opp-eid
-                                  :object/tapped false :object/position i})))
-        ;; Game state
-        (d/transact! conn [{:game/id :game-1
-                            :game/turn 1
-                            :game/phase :main1
-                            :game/active-player player-eid
-                            :game/priority player-eid}]))
-      {:game/db @conn})))
+                                  :object/tapped false :object/position i}))))
+      ;; Game state
+      (d/transact! conn [{:game/id :game-1
+                          :game/turn 1
+                          :game/phase :main1
+                          :game/active-player player-eid
+                          :game/priority player-eid}])
+      ;; Draw 7-card opening hand using draw effect
+      (let [db-with-lib @conn
+            db-after-draw (effects/execute-effect db-with-lib :player-1
+                                                  {:effect/type :draw
+                                                   :effect/amount 7})]
+        {:game/db db-after-draw}))))
+
+
+(rf/reg-event-db
+  ::init-game
+  (fn [_ _]
+    (init-game-state)))
 
 
 (rf/reg-event-db
