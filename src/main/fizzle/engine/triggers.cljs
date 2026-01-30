@@ -7,7 +7,8 @@
    All functions are pure: (db, args) -> db"
   (:require
     [datascript.core :as d]
-    [fizzle.db.queries :as q]))
+    [fizzle.db.queries :as q]
+    [fizzle.engine.effects :as effects]))
 
 
 (defn create-trigger
@@ -50,6 +51,34 @@
       (d/db-with db [trigger-with-order]))))
 
 
+(defmulti check-trigger
+  "Check if a trigger condition is met.
+
+   Arguments:
+     old-db  - Database state before action
+     new-db  - Database state after action
+     trigger - Trigger definition from card data
+
+   Returns:
+     Boolean - true if trigger should fire."
+  (fn [_old-db _new-db trigger] (:trigger/type trigger)))
+
+
+(defmethod check-trigger :default [_old-db _new-db _trigger] false)
+
+
+(defmethod check-trigger :becomes-tapped
+  [old-db new-db trigger]
+  (let [source-id (:trigger/source trigger)]
+    (if-let [new-obj (q/get-object new-db source-id)]
+      (let [old-obj (q/get-object old-db source-id)
+            was-tapped (get old-obj :object/tapped false)
+            now-tapped (get new-obj :object/tapped false)]
+        ;; Trigger fires only on transition: untapped -> tapped
+        (and (not was-tapped) now-tapped))
+      false)))
+
+
 (defmulti resolve-trigger
   "Resolve a trigger on the stack.
 
@@ -68,6 +97,16 @@
 (defmethod resolve-trigger :default
   [db _trigger]
   db)
+
+
+(defmethod resolve-trigger :becomes-tapped
+  [db trigger]
+  (let [controller (:trigger/controller trigger)
+        effects-list (get-in trigger [:trigger/data :effects] [])]
+    (reduce (fn [db' effect]
+              (effects/execute-effect db' controller effect))
+            db
+            effects-list)))
 
 
 (defn create-spell-copy
@@ -123,6 +162,49 @@
           db'))
       ;; Source missing, return unchanged
       db)))
+
+
+(defn- get-battlefield-objects
+  "Get all objects on the battlefield with their card and controller data."
+  [db]
+  (d/q '[:find [(pull ?obj [* {:object/card [*]} {:object/controller [:player/id]}]) ...]
+         :where [?obj :object/zone :battlefield]]
+       db))
+
+
+(defn fire-matching-triggers
+  "Check all triggers on battlefield and fire those whose conditions are met.
+
+   Arguments:
+     old-db - Database state before action
+     new-db - Database state after action
+
+   Returns:
+     New db with matching triggers added to stack."
+  [old-db new-db]
+  (let [;; Get all objects on battlefield
+        battlefield (get-battlefield-objects new-db)
+        ;; Collect matching triggers
+        matching-triggers
+        (for [obj battlefield
+              :let [card (:object/card obj)
+                    triggers (:card/triggers card)]
+              :when triggers
+              trigger triggers
+              :let [trigger-with-source (assoc trigger :trigger/source (:object/id obj))]
+              :when (check-trigger old-db new-db trigger-with-source)]
+          {:trigger trigger-with-source
+           :controller (:player/id (:object/controller obj))})]
+    ;; Add all matching triggers to stack
+    (reduce (fn [db {:keys [trigger controller]}]
+              (let [full-trigger (create-trigger
+                                   (:trigger/type trigger)
+                                   (:trigger/source trigger)
+                                   controller
+                                   {:effects (:trigger/effects trigger)})]
+                (add-trigger-to-stack db full-trigger)))
+            new-db
+            matching-triggers)))
 
 
 (defn remove-trigger
