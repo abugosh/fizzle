@@ -102,3 +102,10 @@
   :<- [::game-db]
   (fn [game-db _]
     (when game-db (queries/get-life-total game-db :opponent))))
+
+
+(rf/reg-sub
+  ::battlefield
+  :<- [::game-db]
+  (fn [game-db _]
+    (when game-db (queries/get-objects-in-zone game-db :player-1 :battlefield))))

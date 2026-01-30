@@ -72,6 +72,76 @@
      [:div {:style {:font-size "24px" :font-weight "bold" :color "#FFD700"}} storm]]))
 
 
+(def ^:private mana-color-display
+  {:white {:symbol "W" :color "#FFF" :bg "#EEE"}
+   :blue {:symbol "U" :color "#4A9BD9" :bg "#2a4a6a"}
+   :black {:symbol "B" :color "#A080C0" :bg "#3a2a4a"}
+   :red {:symbol "R" :color "#D9534F" :bg "#5a2a2a"}
+   :green {:symbol "G" :color "#5CB85C" :bg "#2a4a2a"}})
+
+
+(defn- mana-button
+  [object-id mana-color tapped?]
+  (let [{:keys [symbol color bg]} (get mana-color-display mana-color)]
+    [:button {:style {:padding "2px 6px"
+                      :margin "0 2px"
+                      :border "1px solid #555"
+                      :border-radius "3px"
+                      :cursor (if tapped? "default" "pointer")
+                      :background (if tapped? "#333" bg)
+                      :color (if tapped? "#555" color)
+                      :font-size "11px"
+                      :font-weight "bold"}
+              :disabled tapped?
+              :on-click #(rf/dispatch [::events/activate-mana-ability object-id mana-color])}
+     symbol]))
+
+
+(defn- permanent-view
+  [obj]
+  (let [card-name (get-in obj [:object/card :card/name])
+        object-id (:object/id obj)
+        tapped? (:object/tapped obj)
+        counters (:object/counters obj)]
+    [:div {:style {:border (if tapped? "2px solid #444" "2px solid #6a6")
+                   :border-radius "6px"
+                   :padding "8px"
+                   :margin "0 6px 6px 0"
+                   :background (if tapped? "#1a1a1a" "#1a2a1a")
+                   :color (if tapped? "#666" "#ccc")
+                   :min-width "100px"
+                   :text-align "center"
+                   :transform (when tapped? "rotate(6deg)")}}
+     [:div {:style {:font-size "13px" :margin-bottom "4px"}}
+      card-name
+      (when tapped? " (tapped)")]
+     ;; Show counters if any
+     (when (and counters (seq counters))
+       [:div {:style {:font-size "11px" :color "#888" :margin-bottom "4px"}}
+        (for [[counter-type count] counters]
+          ^{:key counter-type}
+          [:span {:style {:margin-right "6px"}}
+           (str (name counter-type) ": " count)])])
+     ;; Mana buttons for lands
+     [:div {:style {:display "flex" :justify-content "center" :flex-wrap "wrap"}}
+      (for [color [:white :blue :black :red :green]]
+        ^{:key color}
+        [mana-button object-id color tapped?])]]))
+
+
+(defn- battlefield-view
+  []
+  (let [battlefield @(rf/subscribe [::subs/battlefield])]
+    [:div {:style {:margin-bottom "16px"}}
+     [:div {:style {:color "#999" :margin-bottom "6px" :font-size "12px"}} "BATTLEFIELD"]
+     (if (seq battlefield)
+       [:div {:style {:display "flex" :flex-wrap "wrap"}}
+        (for [obj battlefield]
+          ^{:key (:object/id obj)}
+          [permanent-view obj])]
+       [:div {:style {:color "#555" :font-size "13px"}} "No permanents"])]))
+
+
 (defn- life-view
   []
   (let [player-life @(rf/subscribe [::subs/player-life])
@@ -169,6 +239,7 @@
                  :min-height "100vh"}}
    [:h1 {:style {:margin-bottom "20px" :color "#eee"}} "Fizzle"]
    [life-view]
+   [battlefield-view]
    [hand-view]
    [controls-view]
    [mana-pool-view]
