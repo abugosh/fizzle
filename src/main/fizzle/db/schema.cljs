@@ -69,4 +69,5 @@
    :trigger/source     {}  ; ID of source object (not ref, may be in graveyard)
    :trigger/controller {}  ; Player ID who controls this trigger
    :trigger/data       {}  ; Map of trigger-specific data
+   :trigger/description {}  ; Human-readable description for stack display
    :trigger/stack-order {}})

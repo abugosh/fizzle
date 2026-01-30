@@ -298,3 +298,45 @@
           result-db (triggers/fire-matching-triggers old-db new-db)]
       ;; Only one trigger should fire (only first permanent tapped)
       (is (= 1 (count (q/get-stack-items result-db)))))))
+
+
+;; === trigger/description tests ===
+
+(deftest test-create-trigger-with-description
+  (testing "create-trigger extracts description from data map"
+    (let [trigger (triggers/create-trigger
+                    :becomes-tapped
+                    :source-1
+                    :player-1
+                    {:effects [{:effect/type :deal-damage}]
+                     :description "deals 1 damage to you"})]
+      (is (= "deals 1 damage to you" (:trigger/description trigger)))
+      (is (= :becomes-tapped (:trigger/type trigger)))
+      (is (= :source-1 (:trigger/source trigger))))))
+
+
+(deftest test-create-trigger-without-description
+  (testing "create-trigger works without description (backwards compatible)"
+    (let [trigger (triggers/create-trigger
+                    :becomes-tapped
+                    :source-1
+                    :player-1
+                    {:effects [{:effect/type :deal-damage}]})]
+      (is (nil? (:trigger/description trigger)))
+      (is (= :becomes-tapped (:trigger/type trigger)))
+      (is (= :source-1 (:trigger/source trigger))))))
+
+
+(deftest test-fire-matching-triggers-passes-description
+  (testing "fire-matching-triggers passes description from card trigger definition"
+    (let [trigger-def [{:trigger/type :becomes-tapped
+                        :trigger/description "deals 1 damage to you"
+                        :trigger/effects [{:effect/type :deal-damage
+                                           :effect/amount 1
+                                           :effect/target :controller}]}]
+          [db object-id] (add-permanent (init-game-state) :player-1 trigger-def)
+          old-db db
+          new-db (tap-permanent db object-id true)
+          result-db (triggers/fire-matching-triggers old-db new-db)
+          stack-item (first (q/get-stack-items result-db))]
+      (is (= "deals 1 damage to you" (:trigger/description stack-item))))))

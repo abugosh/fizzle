@@ -39,12 +39,16 @@
   (fn [game-db _]
     (when game-db
       (let [triggers (queries/get-stack-items game-db)
+            enriched-triggers (mapv (fn [t]
+                                      (assoc t :trigger/card-name
+                                             (queries/get-trigger-source-card-name game-db t)))
+                                    triggers)
             spells (queries/get-objects-in-zone game-db :player-1 :stack)
             order-key (fn [item]
                         (or (:trigger/stack-order item)
                             (:object/position item)
                             0))]
-        (->> (concat triggers spells)
+        (->> (concat enriched-triggers spells)
              (sort-by order-key >)
              vec)))))
 

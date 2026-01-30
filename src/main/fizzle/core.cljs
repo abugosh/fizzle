@@ -171,8 +171,7 @@
 
 (defn- stack-item-view
   [item]
-  (let [label (or (:trigger/type item)
-                  (get-in item [:object/card :card/name])
+  (let [label (or (get-in item [:object/card :card/name])
                   "Unknown")]
     [:div {:style {:border "1px solid #444"
                    :border-radius "4px"
@@ -182,7 +181,9 @@
                    :color "#ccc"
                    :font-size "13px"}}
      (if (:trigger/type item)
-       (str "Trigger: " (name (:trigger/type item)))
+       (if-let [desc (:trigger/description item)]
+         (str "Trigger: " (:trigger/card-name item) " " desc)
+         (str "Trigger: " (name (:trigger/type item))))
        label)]))
 
 

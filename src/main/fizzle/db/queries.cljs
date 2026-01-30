@@ -183,3 +183,12 @@
          :where [?e :player/id ?pid]
          [?e :player/life ?life]]
        db player-id))
+
+
+(defn get-trigger-source-card-name
+  "Get the card name from a trigger's source object.
+   Returns nil if trigger has no source or source object not found."
+  [db trigger]
+  (when-let [source-id (:trigger/source trigger)]
+    (when-let [obj (get-object db source-id)]
+      (get-in obj [:object/card :card/name]))))

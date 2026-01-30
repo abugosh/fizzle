@@ -64,6 +64,7 @@
 
    ;; Trigger: fires when this permanent becomes tapped (ANY tap, not just mana ability)
    :card/triggers [{:trigger/type :becomes-tapped
+                    :trigger/description "deals 1 damage to you"
                     :trigger/effects [{:effect/type :deal-damage
                                        :effect/amount 1
                                        :effect/target :controller}]}]

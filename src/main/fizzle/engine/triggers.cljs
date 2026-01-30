@@ -18,17 +18,21 @@
      trigger-type  - Keyword identifying the trigger (e.g. :storm, :etb)
      source-id     - ID of the source object that created this trigger
      controller-id - Player ID who controls this trigger
-     data          - Map of trigger-specific data
+     data          - Map of trigger-specific data (may include :description)
 
    Returns:
      Map with :trigger/id, :trigger/type, :trigger/source,
-     :trigger/controller, :trigger/data"
+     :trigger/controller, :trigger/data, :trigger/description"
   [trigger-type source-id controller-id data]
-  {:trigger/id (random-uuid)
-   :trigger/type trigger-type
-   :trigger/source source-id
-   :trigger/controller controller-id
-   :trigger/data data})
+  (let [base-trigger {:trigger/id (random-uuid)
+                      :trigger/type trigger-type
+                      :trigger/source source-id
+                      :trigger/controller controller-id
+                      :trigger/data data}]
+    ;; Only include :trigger/description if present in data
+    (if (:description data)
+      (assoc base-trigger :trigger/description (:description data))
+      base-trigger)))
 
 
 (defn add-trigger-to-stack
@@ -242,7 +246,8 @@
                                    (:trigger/type trigger)
                                    (:trigger/source trigger)
                                    controller
-                                   {:effects (:trigger/effects trigger)})]
+                                   {:effects (:trigger/effects trigger)
+                                    :description (:trigger/description trigger)})]
                 (add-trigger-to-stack db full-trigger)))
             new-db
             matching-triggers)))
@@ -298,7 +303,8 @@
                                    (:trigger/type trigger)
                                    (:trigger/source trigger)
                                    controller
-                                   {:effects (:trigger/effects trigger)})]
+                                   {:effects (:trigger/effects trigger)
+                                    :description (:trigger/description trigger)})]
                 (resolve-trigger db full-trigger)))
             new-db
             matching-triggers)))
