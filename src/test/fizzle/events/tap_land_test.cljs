@@ -125,9 +125,16 @@
           [db' obj-id] (add-land-to-battlefield db :city-of-brass :player-1)
           initial-life (q/get-life-total db' :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
-          db'' (game/activate-mana-ability db' :player-1 obj-id :black)]
-      (is (= 19 (q/get-life-total db'' :player-1))
-          "Player should lose 1 life when tapping City of Brass"))))
+          ;; Tap for mana - trigger goes on stack
+          db-after-tap (game/activate-mana-ability db' :player-1 obj-id :black)
+          _ (is (= 20 (q/get-life-total db-after-tap :player-1))
+                "Life unchanged before trigger resolves (trigger on stack)")
+          _ (is (= 1 (count (q/get-stack-items db-after-tap)))
+                "One trigger should be on the stack")
+          ;; Resolve the trigger
+          db-after-resolve (game/resolve-top-trigger db-after-tap)]
+      (is (= 19 (q/get-life-total db-after-resolve :player-1))
+          "Player should lose 1 life after trigger resolves"))))
 
 
 (deftest test-city-of-brass-cumulative-damage
@@ -138,11 +145,18 @@
           [db'' obj-id2] (add-land-to-battlefield db' :city-of-brass :player-1)
           initial-life (q/get-life-total db'' :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
-          ;; Tap both lands
-          db-after-first (game/activate-mana-ability db'' :player-1 obj-id1 :black)
-          db-after-second (game/activate-mana-ability db-after-first :player-1 obj-id2 :blue)]
-      (is (= 18 (q/get-life-total db-after-second :player-1))
-          "Player should lose 2 life total from tapping two City of Brass"))))
+          ;; Tap both lands - both triggers go on stack
+          db-after-first-tap (game/activate-mana-ability db'' :player-1 obj-id1 :black)
+          db-after-second-tap (game/activate-mana-ability db-after-first-tap :player-1 obj-id2 :blue)
+          _ (is (= 20 (q/get-life-total db-after-second-tap :player-1))
+                "Life unchanged before triggers resolve")
+          _ (is (= 2 (count (q/get-stack-items db-after-second-tap)))
+                "Two triggers should be on the stack")
+          ;; Resolve both triggers
+          db-after-first-resolve (game/resolve-top-trigger db-after-second-tap)
+          db-after-second-resolve (game/resolve-top-trigger db-after-first-resolve)]
+      (is (= 18 (q/get-life-total db-after-second-resolve :player-1))
+          "Player should lose 2 life total after resolving both triggers"))))
 
 
 (deftest test-gemstone-mine-no-damage
@@ -189,18 +203,28 @@
 
 
 (deftest test-city-of-brass-damage-via-trigger
-  (testing "City of Brass damage fires via trigger, not hardcoded"
-    ;; This test verifies that City of Brass damage comes from trigger resolution,
-    ;; not from direct hardcoded logic in activate-mana-ability.
-    ;; The damage should be :deal-damage (preventable) not :lose-life.
+  (testing "City of Brass damage fires via trigger on the stack"
+    ;; This test verifies that City of Brass damage comes from trigger resolution
+    ;; on the stack, not from immediate effect in activate-mana-ability.
+    ;; The trigger uses the stack per MTG rules - you can respond before damage.
     (let [db (create-test-db)
           [db' obj-id] (add-land-to-battlefield db :city-of-brass :player-1)
           initial-life (q/get-life-total db' :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
-          db'' (game/activate-mana-ability db' :player-1 obj-id :black)]
-      ;; Player should still lose 1 life (but via trigger mechanism)
-      (is (= 19 (q/get-life-total db'' :player-1))
-          "Player should lose 1 life when tapping City of Brass (via trigger)"))))
+          ;; Activate mana ability - trigger goes on stack
+          db-after-tap (game/activate-mana-ability db' :player-1 obj-id :black)]
+      ;; Verify trigger is on stack (damage not yet applied)
+      (is (= 20 (q/get-life-total db-after-tap :player-1))
+          "Life unchanged - trigger is on stack, can respond before damage")
+      (is (seq (q/get-stack-items db-after-tap))
+          "Trigger should be on the stack")
+      ;; Verify mana was added immediately (before trigger resolves)
+      (is (= 1 (:black (q/get-mana-pool db-after-tap :player-1)))
+          "Mana is available immediately, even with trigger on stack")
+      ;; Resolve trigger - now damage happens
+      (let [db-after-resolve (game/resolve-top-trigger db-after-tap)]
+        (is (= 19 (q/get-life-total db-after-resolve :player-1))
+            "Player loses 1 life after trigger resolves")))))
 
 
 (deftest test-gemstone-mine-etb-counters

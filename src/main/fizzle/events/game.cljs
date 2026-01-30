@@ -135,6 +135,21 @@
         db))))
 
 
+(defn resolve-top-trigger
+  "Resolve the top trigger on the stack.
+   Pure function: (db) -> db
+
+   Returns unchanged db if no triggers on stack."
+  [db]
+  (let [stack-triggers (queries/get-stack-items db)]
+    (if (seq stack-triggers)
+      (let [top-trigger (first stack-triggers)]
+        (-> db
+            (triggers/resolve-trigger top-trigger)
+            (triggers/remove-trigger (:trigger/id top-trigger))))
+      db)))
+
+
 (rf/reg-event-db
   ::resolve-top
   (fn [db _]
@@ -142,11 +157,7 @@
           stack-triggers (queries/get-stack-items game-db)]
       (if (seq stack-triggers)
         ;; Resolve top trigger (first = highest stack-order = most recent)
-        (let [top-trigger (first stack-triggers)
-              game-db' (-> game-db
-                           (triggers/resolve-trigger top-trigger)
-                           (triggers/remove-trigger (:trigger/id top-trigger)))]
-          (assoc db :game/db game-db'))
+        (assoc db :game/db (resolve-top-trigger game-db))
         ;; No triggers - resolve top spell object on stack (LIFO by position)
         (let [stack-objects (->> (queries/get-objects-in-zone game-db :player-1 :stack)
                                  (sort-by :object/position >))]
@@ -411,8 +422,8 @@
             (if db-after-costs
               (let [;; Step 2: Add mana (mana-color is player's choice for {:any 1})
                     db-after-mana (mana/add-mana db-after-costs player-id {mana-color 1})
-                    ;; Step 3: Fire and resolve triggers immediately (mana abilities don't use stack)
-                    db-after-triggers (triggers/fire-and-resolve-triggers db-before-costs db-after-mana)
+                    ;; Step 3: Fire triggers (add to stack - triggered abilities use the stack)
+                    db-after-triggers (triggers/fire-matching-triggers db-before-costs db-after-mana)
                     ;; Step 4: Check state-based actions (Gemstone Mine sacrifice)
                     db-after-sbas (state-based/check-and-execute-sbas db-after-triggers)]
                 db-after-sbas)
