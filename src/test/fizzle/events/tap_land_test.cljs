@@ -5,6 +5,7 @@
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
+    [fizzle.engine.rules :as rules]
     [fizzle.events.game :as game]))
 
 
@@ -308,3 +309,68 @@
         ;; Verify object is now in graveyard (sacrificed via SBA)
         (is (= :graveyard (:object/zone (q/get-object db' obj-id)))
             "Gemstone Mine should be in graveyard after last counter removed")))))
+
+
+;; === Stack LIFO ordering tests ===
+
+(deftest test-spell-resolves-before-earlier-trigger
+  (testing "Spell cast AFTER tapping City of Brass resolves BEFORE the trigger (LIFO)"
+    ;; Scenario: 1) Tap City of Brass (trigger on stack), 2) Cast Dark Ritual
+    ;; Stack order: [Dark Ritual (top), City of Brass trigger (bottom)]
+    ;; Resolution: Dark Ritual first, then City of Brass damage
+    (let [db (create-test-db)
+          ;; Add City of Brass to battlefield
+          [db' cob-id] (add-land-to-battlefield db :city-of-brass :player-1)
+          ;; Create conn from db' (which has City of Brass)
+          conn (d/conn-from-db db')
+          player-eid (q/get-player-eid db' :player-1)
+          ;; Add Dark Ritual to hand
+          ritual-eid (d/q '[:find ?e .
+                            :in $ ?cid
+                            :where [?e :card/id ?cid]]
+                          db' :dark-ritual)
+          ritual-obj-id (random-uuid)
+          _ (d/transact! conn [{:object/id ritual-obj-id
+                                :object/card ritual-eid
+                                :object/zone :hand
+                                :object/owner player-eid
+                                :object/controller player-eid
+                                :object/tapped false}])
+          db-with-ritual @conn
+          initial-life (q/get-life-total db-with-ritual :player-1)
+          _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
+
+          ;; Step 1: Tap City of Brass for black mana - trigger goes on stack
+          db-after-tap (game/activate-mana-ability db-with-ritual :player-1 cob-id :black)
+          _ (is (= 1 (:black (q/get-mana-pool db-after-tap :player-1)))
+                "Should have 1 black mana from City of Brass")
+          _ (is (= 1 (count (q/get-stack-items db-after-tap)))
+                "City of Brass trigger on stack")
+          _ (is (= 20 (q/get-life-total db-after-tap :player-1))
+                "Life unchanged - trigger not yet resolved")
+
+          ;; Step 2: Cast Dark Ritual (costs B, produces BBB) - spell goes on stack
+          db-after-cast (rules/cast-spell db-after-tap :player-1 ritual-obj-id)
+          _ (is (= :stack (:object/zone (q/get-object db-after-cast ritual-obj-id)))
+                "Dark Ritual on stack")
+          _ (is (= 0 (:black (q/get-mana-pool db-after-cast :player-1)))
+                "Black mana spent on casting Dark Ritual")
+
+          ;; Stack now has: Dark Ritual (top), City of Brass trigger (bottom)
+          ;; Step 3: Resolve top of stack - should be Dark Ritual (LIFO)
+          db-after-first-resolve (game/resolve-top-of-stack db-after-cast :player-1)
+          _ (is (= 20 (q/get-life-total db-after-first-resolve :player-1))
+                "Life STILL unchanged - Dark Ritual resolved first, not the trigger")
+          _ (is (= 3 (:black (q/get-mana-pool db-after-first-resolve :player-1)))
+                "Dark Ritual produced 3 black mana")
+          _ (is (= :graveyard (:object/zone (q/get-object db-after-first-resolve ritual-obj-id)))
+                "Dark Ritual in graveyard after resolution")
+          _ (is (= 1 (count (q/get-stack-items db-after-first-resolve)))
+                "City of Brass trigger still on stack")
+
+          ;; Step 4: Resolve top of stack again - now City of Brass trigger
+          db-after-second-resolve (game/resolve-top-of-stack db-after-first-resolve :player-1)]
+      (is (= 19 (q/get-life-total db-after-second-resolve :player-1))
+          "NOW player loses 1 life from City of Brass trigger")
+      (is (= 0 (count (q/get-stack-items db-after-second-resolve)))
+          "Stack is empty"))))

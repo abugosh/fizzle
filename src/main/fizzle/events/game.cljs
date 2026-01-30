@@ -155,22 +155,53 @@
       db)))
 
 
+(defn resolve-top-of-stack
+  "Resolve the topmost item on the stack (trigger or spell) in LIFO order.
+   Pure function: (db, player-id) -> db
+
+   Compares stack-order of triggers and position of spells to find the
+   most recently added item and resolves it.
+
+   Returns unchanged db if stack is empty."
+  [db player-id]
+  (let [;; Get triggers with their stack order
+        stack-triggers (queries/get-stack-items db)
+        top-trigger (first stack-triggers)
+        trigger-order (when top-trigger (:trigger/stack-order top-trigger))
+
+        ;; Get spells with their position (which shares counter space with trigger stack-order)
+        stack-objects (->> (queries/get-objects-in-zone db player-id :stack)
+                           (sort-by :object/position >))
+        top-spell (first stack-objects)
+        spell-order (when top-spell (:object/position top-spell))]
+    (cond
+      ;; Both trigger and spell - resolve whichever has higher order (LIFO)
+      (and trigger-order spell-order)
+      (if (> trigger-order spell-order)
+        (-> db
+            (triggers/resolve-trigger top-trigger)
+            (triggers/remove-trigger (:trigger/id top-trigger)))
+        (rules/resolve-spell db player-id (:object/id top-spell)))
+
+      ;; Only trigger
+      trigger-order
+      (-> db
+          (triggers/resolve-trigger top-trigger)
+          (triggers/remove-trigger (:trigger/id top-trigger)))
+
+      ;; Only spell
+      spell-order
+      (rules/resolve-spell db player-id (:object/id top-spell))
+
+      ;; Empty stack
+      :else db)))
+
+
 (rf/reg-event-db
   ::resolve-top
   (fn [db _]
-    (let [game-db (:game/db db)
-          stack-triggers (queries/get-stack-items game-db)]
-      (if (seq stack-triggers)
-        ;; Resolve top trigger (first = highest stack-order = most recent)
-        (assoc db :game/db (resolve-top-trigger game-db))
-        ;; No triggers - resolve top spell object on stack (LIFO by position)
-        (let [stack-objects (->> (queries/get-objects-in-zone game-db :player-1 :stack)
-                                 (sort-by :object/position >))]
-          (if (seq stack-objects)
-            (let [top-spell (first stack-objects)
-                  game-db' (rules/resolve-spell game-db :player-1 (:object/id top-spell))]
-              (assoc db :game/db game-db'))
-            db))))))
+    (let [game-db (:game/db db)]
+      (assoc db :game/db (resolve-top-of-stack game-db :player-1)))))
 
 
 ;; === Turn Structure ===
