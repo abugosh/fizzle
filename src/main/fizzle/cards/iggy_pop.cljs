@@ -60,7 +60,19 @@
    :card/mana-cost {}
    :card/colors #{}
    :card/types #{:land}
-   :card/text "Whenever City of Brass becomes tapped, it deals 1 damage to you. {T}: Add one mana of any color."})
+   :card/text "Whenever City of Brass becomes tapped, it deals 1 damage to you. {T}: Add one mana of any color."
+
+   ;; Trigger: fires when this permanent becomes tapped (ANY tap, not just mana ability)
+   :card/triggers [{:trigger/type :becomes-tapped
+                    :trigger/effects [{:effect/type :deal-damage
+                                       :effect/amount 1
+                                       :effect/target :controller}]}]
+
+   ;; Mana ability: T: Add one mana of any color
+   :card/abilities [{:ability/type :mana
+                     :ability/cost {:tap true}
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:any 1}}]}]})
 
 
 ;; Gemstone Mine - Rainbow land with counter depletion
@@ -72,7 +84,19 @@
    :card/mana-cost {}
    :card/colors #{}
    :card/types #{:land}
-   :card/text "Gemstone Mine enters the battlefield with three mining counters on it. {T}, Remove a mining counter from Gemstone Mine: Add one mana of any color. If there are no mining counters on Gemstone Mine, sacrifice it."})
+   :card/text "Gemstone Mine enters the battlefield with three mining counters on it. {T}, Remove a mining counter from Gemstone Mine: Add one mana of any color. If there are no mining counters on Gemstone Mine, sacrifice it."
+
+   ;; ETB effect: add 3 mining counters to this permanent
+   :card/etb-effects [{:effect/type :add-counters
+                       :effect/counters {:mining 3}
+                       :effect/target :self}]
+
+   ;; Mana ability: T, remove mining counter: Add one mana of any color
+   :card/abilities [{:ability/type :mana
+                     :ability/cost {:tap true
+                                    :remove-counter {:mining 1}}
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:any 1}}]}]})
 
 
 ;; All cards in this namespace for easy import
