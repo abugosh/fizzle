@@ -1,0 +1,187 @@
+(ns fizzle.engine.abilities-test
+  (:require
+    [cljs.test :refer-macros [deftest testing is]]
+    [datascript.core :as d]
+    [fizzle.db.init :refer [init-game-state]]
+    [fizzle.db.queries :as q]
+    [fizzle.engine.abilities :as abilities]))
+
+
+;; === Test helpers ===
+
+(defn add-permanent
+  "Add a permanent to the battlefield for testing.
+   Returns [db object-id] where object-id is the UUID of the created permanent."
+  ([db player-id]
+   (add-permanent db player-id nil))
+  ([db player-id initial-counters]
+   (add-permanent db player-id initial-counters false))
+  ([db player-id initial-counters tapped?]
+   (let [conn (d/conn-from-db db)
+         player-eid (q/get-player-eid db player-id)
+         card-eid (d/q '[:find ?e .
+                         :where [?e :card/id :dark-ritual]]
+                       @conn)
+         object-id (random-uuid)
+         base-entity {:object/id object-id
+                      :object/card card-eid
+                      :object/zone :battlefield
+                      :object/owner player-eid
+                      :object/controller player-eid
+                      :object/tapped tapped?}
+         entity (if initial-counters
+                  (assoc base-entity :object/counters initial-counters)
+                  base-entity)]
+     (d/transact! conn [entity])
+     [@conn object-id])))
+
+
+;; === can-activate? tests ===
+
+(deftest test-can-activate-tap-ability
+  (testing "can-activate? returns true for untapped permanent with :tap cost"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          ability {:ability/cost {:tap true}}]
+      (is (true? (abilities/can-activate? db object-id ability))))))
+
+
+(deftest test-can-activate-already-tapped
+  (testing "can-activate? returns false for tapped permanent with :tap cost"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1 nil true)
+          ability {:ability/cost {:tap true}}]
+      (is (false? (abilities/can-activate? db object-id ability))))))
+
+
+(deftest test-can-activate-counter-ability
+  (testing "can-activate? returns true when permanent has sufficient counters"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1 {:mining 3})
+          ability {:ability/cost {:remove-counter {:mining 1}}}]
+      (is (true? (abilities/can-activate? db object-id ability))))))
+
+
+(deftest test-can-activate-counter-ability-insufficient
+  (testing "can-activate? returns false when insufficient counters"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1 {:mining 0})
+          ability {:ability/cost {:remove-counter {:mining 1}}}]
+      (is (false? (abilities/can-activate? db object-id ability))))))
+
+
+(deftest test-can-activate-nil-cost
+  (testing "can-activate? returns true for ability with nil cost (free activation)"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          ability-nil {:ability/cost nil}
+          ability-empty {:ability/cost {}}
+          ability-missing {}]
+      (is (true? (abilities/can-activate? db object-id ability-nil)))
+      (is (true? (abilities/can-activate? db object-id ability-empty)))
+      (is (true? (abilities/can-activate? db object-id ability-missing))))))
+
+
+(deftest test-can-activate-invalid-object-id
+  (testing "can-activate? returns false for non-existent permanent"
+    (let [db (init-game-state)
+          ability {:ability/cost {:tap true}}]
+      (is (false? (abilities/can-activate? db (random-uuid) ability))))))
+
+
+;; === pay-all-costs tests ===
+
+(deftest test-pay-all-costs-single
+  (testing "pay-all-costs with single :tap cost taps permanent"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          costs {:tap true}
+          db' (abilities/pay-all-costs db object-id costs)]
+      ;; Should return new db
+      (is (some? db'))
+      ;; Permanent should be tapped
+      (is (= true (:object/tapped (q/get-object db' object-id)))))))
+
+
+(deftest test-pay-all-costs-multiple
+  (testing "pay-all-costs with :tap and :remove-counter pays both"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1 {:mining 3})
+          costs {:tap true :remove-counter {:mining 1}}
+          db' (abilities/pay-all-costs db object-id costs)]
+      ;; Should return new db
+      (is (some? db'))
+      ;; Permanent should be tapped
+      (is (= true (:object/tapped (q/get-object db' object-id))))
+      ;; Counters should be decremented
+      (is (= {:mining 2} (:object/counters (q/get-object db' object-id)))))))
+
+
+(deftest test-pay-all-costs-fails-partial
+  (testing "pay-all-costs returns nil if any cost fails, no partial payment"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1 {:mining 3} true) ; already tapped
+          costs {:tap true :remove-counter {:mining 1}}
+          result (abilities/pay-all-costs db object-id costs)]
+      ;; Should return nil (tap cost fails)
+      (is (nil? result)))))
+
+
+(deftest test-pay-all-costs-empty
+  (testing "pay-all-costs with empty/nil costs returns db unchanged"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          db-nil (abilities/pay-all-costs db object-id nil)
+          db-empty (abilities/pay-all-costs db object-id {})]
+      ;; Should return original db
+      (is (some? db-nil))
+      (is (some? db-empty))
+      ;; Permanent should still be untapped
+      (is (= false (:object/tapped (q/get-object db-nil object-id))))
+      (is (= false (:object/tapped (q/get-object db-empty object-id)))))))
+
+
+;; === activate-ability tests ===
+
+(deftest test-activate-tap-ability
+  (testing "activate-ability pays :tap cost and applies mana effect"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          ability {:ability/cost {:tap true}
+                   :ability/effects [{:effect/type :add-mana :effect/mana {:black 1}}]}
+          db' (abilities/activate-ability db object-id ability :player-1)]
+      ;; Should return new db
+      (is (some? db'))
+      ;; Permanent should be tapped
+      (is (= true (:object/tapped (q/get-object db' object-id))))
+      ;; Player should have 1 black mana
+      (is (= 1 (get (q/get-mana-pool db' :player-1) :black 0))))))
+
+
+(deftest test-activate-tap-already-tapped
+  (testing "activate-ability returns nil when cost cannot be paid"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1 nil true)
+          ability {:ability/cost {:tap true}
+                   :ability/effects [{:effect/type :add-mana :effect/mana {:black 1}}]}
+          original-mana (q/get-mana-pool db :player-1)
+          result (abilities/activate-ability db object-id ability :player-1)]
+      ;; Should return nil
+      (is (nil? result))
+      ;; Mana pool unchanged (checked via original db)
+      (is (= original-mana (q/get-mana-pool db :player-1))))))
+
+
+(deftest test-activate-counter-ability
+  (testing "activate-ability removes counter and applies mana effect"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1 {:mining 3})
+          ability {:ability/cost {:remove-counter {:mining 1}}
+                   :ability/effects [{:effect/type :add-mana :effect/mana {:green 1}}]}
+          db' (abilities/activate-ability db object-id ability :player-1)]
+      ;; Should return new db
+      (is (some? db'))
+      ;; Counters should be decremented
+      (is (= {:mining 2} (:object/counters (q/get-object db' object-id))))
+      ;; Player should have 1 green mana
+      (is (= 1 (get (q/get-mana-pool db' :player-1) :green 0))))))
+
+
+(deftest test-activate-ability-empty-effects
+  (testing "activate-ability with no effects still pays costs"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          ability {:ability/cost {:tap true}
+                   :ability/effects []}
+          db' (abilities/activate-ability db object-id ability :player-1)]
+      ;; Should return db (not nil)
+      (is (some? db'))
+      ;; Permanent should be tapped
+      (is (= true (:object/tapped (q/get-object db' object-id)))))))
