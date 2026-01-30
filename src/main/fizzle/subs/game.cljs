@@ -69,3 +69,24 @@
   :<- [::game-db]
   (fn [game-db _]
     (when game-db (:game/turn (queries/get-game-state game-db)))))
+
+
+(rf/reg-sub
+  ::life-total
+  :<- [::game-db]
+  (fn [game-db [_ player-id]]
+    (when game-db (queries/get-life-total game-db (or player-id :player-1)))))
+
+
+(rf/reg-sub
+  ::player-life
+  :<- [::game-db]
+  (fn [game-db _]
+    (when game-db (queries/get-life-total game-db :player-1))))
+
+
+(rf/reg-sub
+  ::opponent-life
+  :<- [::game-db]
+  (fn [game-db _]
+    (when game-db (queries/get-life-total game-db :opponent))))

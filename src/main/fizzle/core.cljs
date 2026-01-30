@@ -72,6 +72,33 @@
      [:div {:style {:font-size "24px" :font-weight "bold" :color "#FFD700"}} storm]]))
 
 
+(defn- life-view
+  []
+  (let [player-life @(rf/subscribe [::subs/player-life])
+        opponent-life @(rf/subscribe [::subs/opponent-life])]
+    [:div {:style {:margin-bottom "16px"}}
+     [:div {:style {:color "#999" :margin-bottom "6px" :font-size "12px"}} "LIFE TOTALS"]
+     [:div {:style {:display "flex" :gap "30px"}}
+      [:div
+       [:span {:style {:color "#888" :font-size "13px"}} "You: "]
+       [:span {:style {:font-size "20px"
+                       :font-weight "bold"
+                       :color (cond
+                                (<= player-life 0) "#D9534F"
+                                (<= player-life 5) "#F0AD4E"
+                                :else "#5CB85C")}}
+        player-life]]
+      [:div
+       [:span {:style {:color "#888" :font-size "13px"}} "Opponent: "]
+       [:span {:style {:font-size "20px"
+                       :font-weight "bold"
+                       :color (cond
+                                (<= opponent-life 0) "#5CB85C"
+                                (<= opponent-life 5) "#F0AD4E"
+                                :else "#D9534F")}}
+        opponent-life]]]]))
+
+
 (defn- stack-item-view
   [item]
   (let [label (or (:trigger/type item)
@@ -135,6 +162,7 @@
                  :color "#eee"
                  :min-height "100vh"}}
    [:h1 {:style {:margin-bottom "20px" :color "#eee"}} "Fizzle"]
+   [life-view]
    [hand-view]
    [controls-view]
    [mana-pool-view]
