@@ -414,3 +414,25 @@
           db' (fx/execute-effect db :nonexistent-player effect)]
       ;; Should be no-op - no crash, return db unchanged
       (is (= db db')))))
+
+
+;; === execute-effect :lose-life loss condition tests ===
+
+(deftest test-lose-life-to-zero-sets-loss-condition
+  (testing "Lose life to exactly 0 sets :game/loss-condition :life-zero"
+    (let [db (init-game-state) ; starts at 20 life
+          effect {:effect/type :lose-life
+                  :effect/amount 20}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 0 (q/get-life-total db' :player-1)))
+      (is (= :life-zero (get-loss-condition db'))))))
+
+
+(deftest test-lose-life-to-negative-sets-loss-condition
+  (testing "Lose life to negative sets :game/loss-condition :life-zero"
+    (let [db (init-game-state) ; starts at 20 life
+          effect {:effect/type :lose-life
+                  :effect/amount 25}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= -5 (q/get-life-total db' :player-1)))
+      (is (= :life-zero (get-loss-condition db'))))))
