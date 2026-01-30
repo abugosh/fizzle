@@ -124,6 +124,70 @@
         db))))
 
 
+(defmethod execute-effect :deal-damage
+  ;; Deal damage to a player.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/amount - Damage amount (integer)
+  ;;   :effect/target - Player ID receiving damage
+  ;;   :effect/source - Object ID dealing damage (optional, for future prevention)
+  ;;
+  ;; Handles edge cases:
+  ;;   - Amount <= 0: no-op (negative amount is NOT treated as heal)
+  ;;   - Invalid player: no-op (returns db unchanged)
+  ;;   - Life can go negative (no clamping at 0)
+  ;;   - Life reaching 0 or below sets :game/loss-condition :life-zero
+  ;;
+  ;; Note: For Phase 1.5, behaves identically to :lose-life.
+  ;; Kept separate for future damage prevention implementation.
+  ;; Damage can be prevented; life loss cannot (MTG rules).
+  [db _player-id effect]
+  (let [amount (get effect :effect/amount 0)
+        target (:effect/target effect)]
+    ;; Guard: amount <= 0 is no-op
+    (if (<= amount 0)
+      db
+      ;; Guard: invalid player is no-op
+      (if-let [player-eid (q/get-player-eid db target)]
+        (let [current-life (q/get-life-total db target)
+              new-life (- current-life amount)
+              db-after-damage (d/db-with db [[:db/add player-eid :player/life new-life]])]
+          ;; Check for loss condition
+          (if (<= new-life 0)
+            (set-loss-condition db-after-damage :life-zero)
+            db-after-damage))
+        db))))
+
+
+(defmethod execute-effect :add-counters
+  ;; Add counters to a permanent on the battlefield.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/target - Object ID (UUID) of the permanent
+  ;;   :effect/counters - Map of counter-type to amount {:mining 3}
+  ;;
+  ;; Handles edge cases:
+  ;;   - Nil/missing counters: initializes to provided counters
+  ;;   - Existing counters: merges, incrementing same types
+  ;;   - Invalid target: no-op (returns db unchanged)
+  [db _player-id effect]
+  (let [target-id (:effect/target effect)
+        counters-to-add (:effect/counters effect)]
+    (if-let [obj-eid (d/q '[:find ?e .
+                            :in $ ?oid
+                            :where [?e :object/id ?oid]]
+                          db target-id)]
+      (let [existing (or (d/q '[:find ?c .
+                                :in $ ?e
+                                :where [?e :object/counters ?c]]
+                              db obj-eid)
+                         {})
+            merged (merge-with + existing counters-to-add)]
+        (d/db-with db [[:db/add obj-eid :object/counters merged]]))
+      ;; Invalid target: no-op
+      db)))
+
+
 (defmethod execute-effect :draw
   ;; Draw cards from a player's library to their hand.
   ;;

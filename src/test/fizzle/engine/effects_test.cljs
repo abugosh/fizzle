@@ -436,3 +436,172 @@
           db' (fx/execute-effect db :player-1 effect)]
       (is (= -5 (q/get-life-total db' :player-1)))
       (is (= :life-zero (get-loss-condition db'))))))
+
+
+;; === Test helpers for add-counters ===
+
+(defn add-permanent
+  "Add a permanent to the battlefield for testing.
+   Returns [db object-id] where object-id is the UUID of the created permanent."
+  ([db player-id]
+   (add-permanent db player-id nil))
+  ([db player-id initial-counters]
+   (let [conn (d/conn-from-db db)
+         player-eid (q/get-player-eid db player-id)
+         card-eid (d/q '[:find ?e .
+                         :where [?e :card/id :dark-ritual]]
+                       @conn)
+         object-id (random-uuid)
+         base-entity {:object/id object-id
+                      :object/card card-eid
+                      :object/zone :battlefield
+                      :object/owner player-eid
+                      :object/controller player-eid
+                      :object/tapped false}
+         entity (if initial-counters
+                  (assoc base-entity :object/counters initial-counters)
+                  base-entity)]
+     (d/transact! conn [entity])
+     [@conn object-id])))
+
+
+(defn get-counters
+  "Get counters from an object by its UUID."
+  [db object-id]
+  (d/q '[:find ?counters .
+         :in $ ?oid
+         :where [?e :object/id ?oid]
+         [?e :object/counters ?counters]]
+       db object-id))
+
+
+;; === execute-effect :add-counters tests ===
+
+(deftest test-add-counters-to-permanent
+  (testing "add-counters sets counters on permanent with no existing counters"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          effect {:effect/type :add-counters
+                  :effect/target object-id
+                  :effect/counters {:mining 3}}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= {:mining 3} (get-counters db' object-id))))))
+
+
+(deftest test-add-counters-merges-existing
+  (testing "add-counters merges with existing counters (does not overwrite)"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1 {:charge 2})
+          effect {:effect/type :add-counters
+                  :effect/target object-id
+                  :effect/counters {:mining 3}}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= {:charge 2 :mining 3} (get-counters db' object-id))))))
+
+
+(deftest test-add-counters-increments-same-type
+  (testing "add-counters increments existing counter of same type"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1 {:mining 1})
+          effect {:effect/type :add-counters
+                  :effect/target object-id
+                  :effect/counters {:mining 2}}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= {:mining 3} (get-counters db' object-id))))))
+
+
+(deftest test-add-counters-invalid-target
+  (testing "add-counters with invalid target is no-op"
+    (let [db (init-game-state)
+          effect {:effect/type :add-counters
+                  :effect/target (random-uuid) ; non-existent object
+                  :effect/counters {:mining 3}}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')))))
+
+
+(deftest test-add-counters-zero-amount
+  (testing "add-counters with zero amount still sets counter (map with 0 value)"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          effect {:effect/type :add-counters
+                  :effect/target object-id
+                  :effect/counters {:mining 0}}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Counter should be added even with 0 value
+      (is (= {:mining 0} (get-counters db' object-id))))))
+
+
+;; === execute-effect :deal-damage tests ===
+
+(deftest test-deal-damage-reduces-life
+  (testing "deal-damage reduces target player life total"
+    (let [db (init-game-state) ; starts at 20 life
+          effect {:effect/type :deal-damage
+                  :effect/amount 3
+                  :effect/target :player-1}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 17 (q/get-life-total db' :player-1))))))
+
+
+(deftest test-deal-damage-zero-amount
+  (testing "deal-damage with 0 amount does nothing"
+    (let [db (init-game-state) ; starts at 20 life
+          effect {:effect/type :deal-damage
+                  :effect/amount 0
+                  :effect/target :player-1}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 20 (q/get-life-total db' :player-1))))))
+
+
+(deftest test-deal-damage-preserves-source
+  (testing "deal-damage effect includes source for future damage prevention"
+    ;; NOTE: For Phase 1.5, damage behaves like life loss
+    ;; Source field exists for future damage prevention implementation
+    ;; This test documents the interface, actual prevention is future work
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          effect {:effect/type :deal-damage
+                  :effect/amount 3
+                  :effect/target :player-1
+                  :effect/source object-id}  ; source present for future use
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Currently just reduces life like :lose-life
+      (is (= 17 (q/get-life-total db' :player-1))))))
+
+
+(deftest test-deal-damage-can-go-negative
+  (testing "deal-damage can reduce life below 0 (no clamping)"
+    (let [db (init-game-state) ; starts at 20 life
+          effect {:effect/type :deal-damage
+                  :effect/amount 25
+                  :effect/target :player-1}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= -5 (q/get-life-total db' :player-1))))))
+
+
+(deftest test-deal-damage-sets-loss-condition
+  (testing "deal-damage to 0 or below sets :game/loss-condition"
+    (let [db (init-game-state) ; starts at 20 life
+          effect {:effect/type :deal-damage
+                  :effect/amount 20
+                  :effect/target :player-1}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 0 (q/get-life-total db' :player-1)))
+      (is (= :life-zero (get-loss-condition db'))))))
+
+
+(deftest test-deal-damage-invalid-target-is-noop
+  (testing "deal-damage with invalid player-id is no-op, no crash"
+    (let [db (init-game-state)
+          effect {:effect/type :deal-damage
+                  :effect/amount 3
+                  :effect/target :nonexistent-player}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')))))
+
+
+(deftest test-deal-damage-negative-amount-is-noop
+  (testing "deal-damage with negative amount is no-op (not treated as heal)"
+    (let [db (init-game-state)
+          initial-life (q/get-life-total db :player-1)
+          effect {:effect/type :deal-damage
+                  :effect/amount -5
+                  :effect/target :player-1}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= initial-life (q/get-life-total db' :player-1))))))

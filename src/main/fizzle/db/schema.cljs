@@ -22,8 +22,10 @@
    :card/supertypes {:db/cardinality :db.cardinality/many}  ; #{:legendary}
    :card/text       {}  ; Rules text (for display)
    :card/effects    {}  ; EDN vector of effect maps
-   :card/abilities  {}  ; EDN for activated/triggered abilities
-   :card/keywords   {:db/cardinality :db.cardinality/many}  ; #{:storm :threshold}
+   :card/abilities    {}  ; EDN for activated abilities
+   :card/etb-effects  {}  ; EDN vector of effects to execute on entering battlefield
+   :card/triggers     {}  ; EDN vector of triggered abilities {:trigger/type :becomes-tapped ...}
+   :card/keywords     {:db/cardinality :db.cardinality/many}  ; #{:storm :threshold}
 
    ;; === Game Objects (instances) ===
    ;; Objects are instances of cards in a game.
