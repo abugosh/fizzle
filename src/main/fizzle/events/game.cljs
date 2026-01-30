@@ -6,10 +6,13 @@
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.abilities :as abilities]
     [fizzle.engine.effects :as effects]
+    [fizzle.engine.events :as game-events]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.state-based :as state-based]
+    [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.engine.triggers :as triggers]
+    [fizzle.engine.turn-based :as turn-based]
     [fizzle.engine.zones :as zones]
     [re-frame.core :as rf]))
 
@@ -101,6 +104,8 @@
                           :game/phase :main1
                           :game/active-player player-eid
                           :game/priority player-eid}])
+      ;; Register turn-based actions (draw, untap triggers)
+      (turn-based/register-turn-based-actions!)
       ;; Draw 7-card opening hand using draw effect
       (let [db-with-lib @conn
             db-after-draw (effects/execute-effect db-with-lib :player-1
@@ -186,18 +191,22 @@
 
 
 (defn advance-phase
-  "Advance to the next phase and clear mana pool.
+  "Advance to the next phase, clear mana pool, and dispatch phase-entered event.
    Pure function: (db, player-id) -> db
 
-   At cleanup phase, stays at cleanup (user must call start-turn for new turn)."
+   At cleanup phase, stays at cleanup (user must call start-turn for new turn).
+   Dispatches :phase-entered event to fire turn-based actions (draw, etc.)."
   [db player-id]
   (let [game-state (queries/get-game-state db)
         game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
         current-phase (:game/phase game-state)
-        new-phase (next-phase current-phase)]
+        new-phase (next-phase current-phase)
+        turn (:game/turn game-state)]
     (-> db
         (mana/empty-pool player-id)
-        (d/db-with [[:db/add game-eid :game/phase new-phase]]))))
+        (d/db-with [[:db/add game-eid :game/phase new-phase]])
+        ;; Dispatch phase-entered event to fire turn-based actions
+        (dispatch/dispatch-event (game-events/phase-entered-event new-phase turn player-id)))))
 
 
 (defn untap-all-permanents
@@ -219,21 +228,27 @@
 
 
 (defn start-turn
-  "Start a new turn: untap all permanents, increment turn counter, set phase to untap,
+  "Start a new turn: increment turn counter, set phase to untap,
    reset storm count and land plays to 1, clear mana pool.
-   Pure function: (db, player-id) -> db"
+   Pure function: (db, player-id) -> db
+
+   Note: Untap happens via :untap-step trigger when phase changes to :untap.
+   This dispatches the :phase-entered event to fire the turn-based action."
   [db player-id]
   (let [game-state (queries/get-game-state db)
         game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
         player-eid (queries/get-player-eid db player-id)
-        current-turn (or (:game/turn game-state) 0)]
+        current-turn (or (:game/turn game-state) 0)
+        new-turn (inc current-turn)]
     (-> db
-        (untap-all-permanents player-id)
+        ;; REMOVED: (untap-all-permanents player-id) - now via trigger
         (mana/empty-pool player-id)
-        (d/db-with [[:db/add game-eid :game/turn (inc current-turn)]
+        (d/db-with [[:db/add game-eid :game/turn new-turn]
                     [:db/add game-eid :game/phase :untap]
                     [:db/add player-eid :player/storm-count 0]
-                    [:db/add player-eid :player/land-plays-left 1]]))))
+                    [:db/add player-eid :player/land-plays-left 1]])
+        ;; Dispatch untap phase event to fire turn-based actions
+        (dispatch/dispatch-event (game-events/phase-entered-event :untap new-turn player-id)))))
 
 
 (rf/reg-event-db

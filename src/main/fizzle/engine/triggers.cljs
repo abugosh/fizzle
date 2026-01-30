@@ -168,6 +168,43 @@
       db)))
 
 
+;; === Turn-Based Action Triggers ===
+
+(defn- untap-all-permanents
+  "Untap all permanents controlled by a player on the battlefield.
+   Pure function: (db, player-id) -> db"
+  [db player-id]
+  (let [player-eid (q/get-player-eid db player-id)
+        ;; Find all tapped permanents controlled by player on battlefield
+        tapped-permanents (d/q '[:find ?e
+                                 :in $ ?controller
+                                 :where [?e :object/controller ?controller]
+                                 [?e :object/zone :battlefield]
+                                 [?e :object/tapped true]]
+                               db player-eid)]
+    (if (seq tapped-permanents)
+      (d/db-with db (mapv (fn [[eid]] [:db/add eid :object/tapped false])
+                          tapped-permanents))
+      db)))
+
+
+(defmethod resolve-trigger :draw-step
+  [db trigger]
+  (let [game-state (q/get-game-state db)
+        turn (:game/turn game-state)
+        active-player (:trigger/controller trigger)]
+    ;; Skip draw on turn 1 (MTG rules: play/draw rule)
+    (if (and turn (> turn 1))
+      (effects/execute-effect db active-player {:effect/type :draw :effect/amount 1})
+      db)))
+
+
+(defmethod resolve-trigger :untap-step
+  [db trigger]
+  (let [active-player (:trigger/controller trigger)]
+    (untap-all-permanents db active-player)))
+
+
 (defn- get-battlefield-objects
   "Get all objects on the battlefield with their card and controller data."
   [db]
