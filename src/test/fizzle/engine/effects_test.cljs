@@ -605,3 +605,103 @@
                   :effect/target :player-1}
           db' (fx/execute-effect db :player-1 effect)]
       (is (= initial-life (q/get-life-total db' :player-1))))))
+
+
+;; === execute-effect condition system tests ===
+
+(defn get-object-zone
+  "Get the zone of an object by its UUID."
+  [db object-id]
+  (d/q '[:find ?zone .
+         :in $ ?oid
+         :where [?e :object/id ?oid]
+         [?e :object/zone ?zone]]
+       db object-id))
+
+
+(deftest test-effect-without-condition-executes-normally
+  (testing "Effect with no :effect/condition executes as usual"
+    (let [db (init-game-state)
+          effect {:effect/type :add-mana
+                  :effect/mana {:black 3}}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Effect should execute normally
+      (is (= 3 (:black (q/get-mana-pool db' :player-1)))))))
+
+
+(deftest test-no-counters-condition-skips-when-counters-positive
+  (testing ":no-counters condition prevents effect when counters > 0"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1 {:mining 2})
+          effect {:effect/type :sacrifice
+                  :effect/target object-id
+                  :effect/condition {:condition/type :no-counters
+                                     :condition/counter-type :mining}}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Object should still be on battlefield (condition not met)
+      (is (= :battlefield (get-object-zone db' object-id))))))
+
+
+(deftest test-no-counters-condition-executes-when-counters-zero
+  (testing ":no-counters condition allows effect when counters = 0"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1 {:mining 0})
+          effect {:effect/type :sacrifice
+                  :effect/target object-id
+                  :effect/condition {:condition/type :no-counters
+                                     :condition/counter-type :mining}}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Object should be in graveyard (condition met, effect executed)
+      (is (= :graveyard (get-object-zone db' object-id))))))
+
+
+(deftest test-no-counters-condition-executes-when-counter-type-missing
+  (testing ":no-counters condition treats missing counter type as zero"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1 {:charge 1})
+          effect {:effect/type :sacrifice
+                  :effect/target object-id
+                  :effect/condition {:condition/type :no-counters
+                                     :condition/counter-type :mining}} ; different type
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Object should be in graveyard (mining = nil counts as zero)
+      (is (= :graveyard (get-object-zone db' object-id))))))
+
+
+(deftest test-no-counters-condition-executes-when-no-counters-at-all
+  (testing ":no-counters condition treats nil counters map as zero"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1) ; no counters
+          effect {:effect/type :sacrifice
+                  :effect/target object-id
+                  :effect/condition {:condition/type :no-counters
+                                     :condition/counter-type :mining}}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Object should be in graveyard (no counters = zero)
+      (is (= :graveyard (get-object-zone db' object-id))))))
+
+
+(deftest test-sacrifice-effect-moves-to-graveyard
+  (testing ":sacrifice effect moves target from battlefield to graveyard"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          effect {:effect/type :sacrifice
+                  :effect/target object-id}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= :graveyard (get-object-zone db' object-id))))))
+
+
+(deftest test-sacrifice-effect-invalid-target-is-noop
+  (testing ":sacrifice effect with invalid target is no-op, no crash"
+    (let [db (init-game-state)
+          effect {:effect/type :sacrifice
+                  :effect/target (random-uuid)} ; non-existent object
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Should be no-op - no crash, return db unchanged
+      (is (= db db')))))
+
+
+(deftest test-unknown-condition-type-skips-effect
+  (testing "Unknown condition type causes effect to be skipped (fail-safe)"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          effect {:effect/type :sacrifice
+                  :effect/target object-id
+                  :effect/condition {:condition/type :unknown-condition-type}}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Object should still be on battlefield (unknown condition = skip)
+      (is (= :battlefield (get-object-zone db' object-id))))))

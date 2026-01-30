@@ -10,8 +10,53 @@
     [fizzle.engine.zones :as zones]))
 
 
-(defmulti execute-effect
-  "Execute an effect on the game state.
+;; === Condition System ===
+;; Effects may have an optional :effect/condition that gates execution.
+;; Condition is checked BEFORE effect runs. If not met, effect is skipped.
+
+
+(defmulti check-condition
+  "Check if an effect's condition is met. Dispatches on :condition/type.
+   Returns true if condition met, false otherwise.
+   Unknown condition types return false (fail-safe: don't execute)."
+  (fn [_db _player-id _effect condition] (:condition/type condition)))
+
+
+(defmethod check-condition :default
+  [_db _player-id _effect _condition]
+  ;; Unknown condition types return false (fail-safe: skip effect)
+  false)
+
+
+(defmethod check-condition :no-counters
+  [db _player-id effect condition]
+  "Check if target has no counters of the specified type.
+   Condition keys:
+     :condition/counter-type - The counter type to check (e.g., :mining)
+   Returns true if counter is 0, nil, or missing."
+  (let [target-id (:effect/target effect)
+        counter-type (:condition/counter-type condition)]
+    (if-let [obj-eid (d/q '[:find ?e .
+                            :in $ ?oid
+                            :where [?e :object/id ?oid]]
+                          db target-id)]
+      (let [counters (or (d/q '[:find ?c .
+                                :in $ ?e
+                                :where [?e :object/counters ?c]]
+                              db obj-eid)
+                         {})
+            count-value (get counters counter-type 0)]
+        (<= count-value 0))
+      ;; Object doesn't exist - condition met (vacuously true, effect will no-op anyway)
+      true)))
+
+
+;; === Effect Execution ===
+
+
+(defmulti execute-effect-impl
+  "Internal effect executor. Dispatches on :effect/type.
+   Use execute-effect instead - it handles condition checking.
 
    Arguments:
      db - Datascript database value
@@ -25,18 +70,33 @@
   (fn [_db _player-id effect] (:effect/type effect)))
 
 
-(defmethod execute-effect :default
+(defmethod execute-effect-impl :default
   [db _player-id _effect]
   ;; Unknown effect types are no-ops
   db)
 
 
-(defmethod execute-effect :add-mana
+(defn execute-effect
+  "Execute an effect, checking condition first if present.
+   If :effect/condition exists and is not met, returns db unchanged.
+   If no condition or condition met, dispatches to execute-effect-impl.
+
+   Note: :self targets MUST be resolved to object-id by caller before
+   calling this function. See events/game.cljs play-land for pattern."
+  [db player-id effect]
+  (if-let [condition (:effect/condition effect)]
+    (if (check-condition db player-id effect condition)
+      (execute-effect-impl db player-id effect)
+      db)
+    (execute-effect-impl db player-id effect)))
+
+
+(defmethod execute-effect-impl :add-mana
   [db player-id effect]
   (mana/add-mana db player-id (:effect/mana effect)))
 
 
-(defmethod execute-effect :mill
+(defmethod execute-effect-impl :mill
   ;; Mill cards from a player's library to their graveyard.
   ;;
   ;; Effect keys:
@@ -69,7 +129,7 @@
     (d/db-with db [[:db/add game-eid :game/loss-condition condition]])))
 
 
-(defmethod execute-effect :lose-life
+(defmethod execute-effect-impl :lose-life
   ;; Reduce a player's life total.
   ;;
   ;; Effect keys:
@@ -99,7 +159,7 @@
         db))))
 
 
-(defmethod execute-effect :gain-life
+(defmethod execute-effect-impl :gain-life
   ;; Increase a player's life total.
   ;;
   ;; Effect keys:
@@ -124,7 +184,7 @@
         db))))
 
 
-(defmethod execute-effect :deal-damage
+(defmethod execute-effect-impl :deal-damage
   ;; Deal damage to a player.
   ;;
   ;; Effect keys:
@@ -159,7 +219,7 @@
         db))))
 
 
-(defmethod execute-effect :add-counters
+(defmethod execute-effect-impl :add-counters
   ;; Add counters to a permanent on the battlefield.
   ;;
   ;; Effect keys:
@@ -188,7 +248,7 @@
       db)))
 
 
-(defmethod execute-effect :draw
+(defmethod execute-effect-impl :draw
   ;; Draw cards from a player's library to their hand.
   ;;
   ;; Effect keys:
@@ -220,3 +280,24 @@
             db-after-draw))
         ;; get-top-n-library returns nil if player doesn't exist
         db))))
+
+
+(defmethod execute-effect-impl :sacrifice
+  ;; Sacrifice a permanent - move it to the graveyard.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/target - Object ID (UUID) of the permanent to sacrifice
+  ;;                    Caller must resolve :self to object-id before calling.
+  ;;
+  ;; Handles edge cases:
+  ;;   - Invalid target: no-op (returns db unchanged)
+  ;;   - Object not on battlefield: still moves to graveyard (zones handles it)
+  [db _player-id effect]
+  (let [target-id (:effect/target effect)]
+    (if (d/q '[:find ?e .
+               :in $ ?oid
+               :where [?e :object/id ?oid]]
+             db target-id)
+      (zones/move-to-zone db target-id :graveyard)
+      ;; Invalid target: no-op
+      db)))
