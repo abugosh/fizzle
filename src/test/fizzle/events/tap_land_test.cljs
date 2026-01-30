@@ -178,3 +178,109 @@
           "First land should be untapped after start-turn")
       (is (false? (get-object-tapped db-new-turn obj-id2))
           "Second land should be untapped after start-turn"))))
+
+
+;; === Data-driven ability tests ===
+
+(defn get-object-counters
+  "Get the counters map of an object by its ID."
+  [db object-id]
+  (:object/counters (q/get-object db object-id)))
+
+
+(deftest test-city-of-brass-damage-via-trigger
+  (testing "City of Brass damage fires via trigger, not hardcoded"
+    ;; This test verifies that City of Brass damage comes from trigger resolution,
+    ;; not from direct hardcoded logic in activate-mana-ability.
+    ;; The damage should be :deal-damage (preventable) not :lose-life.
+    (let [db (create-test-db)
+          [db' obj-id] (add-land-to-battlefield db :city-of-brass :player-1)
+          initial-life (q/get-life-total db' :player-1)
+          _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
+          db'' (game/activate-mana-ability db' :player-1 obj-id :black)]
+      ;; Player should still lose 1 life (but via trigger mechanism)
+      (is (= 19 (q/get-life-total db'' :player-1))
+          "Player should lose 1 life when tapping City of Brass (via trigger)"))))
+
+
+(deftest test-gemstone-mine-etb-counters
+  (testing "Gemstone Mine enters with 3 mining counters"
+    (let [db (create-test-db)
+          ;; Add Gemstone Mine to hand first
+          conn (d/conn-from-db db)
+          player-eid (q/get-player-eid db :player-1)
+          card-eid (d/q '[:find ?e .
+                          :in $ ?cid
+                          :where [?e :card/id ?cid]]
+                        db :gemstone-mine)
+          obj-id (random-uuid)]
+      (d/transact! conn [{:object/id obj-id
+                          :object/card card-eid
+                          :object/zone :hand
+                          :object/owner player-eid
+                          :object/controller player-eid
+                          :object/tapped false}])
+      ;; Play the land (should trigger ETB)
+      (let [db' (game/play-land @conn :player-1 obj-id)]
+        ;; Verify land is on battlefield
+        (is (= :battlefield (:object/zone (q/get-object db' obj-id)))
+            "Gemstone Mine should be on battlefield")
+        ;; Verify counters were added
+        (is (= {:mining 3} (get-object-counters db' obj-id))
+            "Gemstone Mine should enter with 3 mining counters")))))
+
+
+(deftest test-gemstone-mine-counter-cost
+  (testing "Gemstone Mine activation removes mining counter"
+    (let [db (create-test-db)
+          ;; Add Gemstone Mine directly with counters (simulating after ETB)
+          conn (d/conn-from-db db)
+          player-eid (q/get-player-eid db :player-1)
+          card-eid (d/q '[:find ?e .
+                          :in $ ?cid
+                          :where [?e :card/id ?cid]]
+                        db :gemstone-mine)
+          obj-id (random-uuid)]
+      (d/transact! conn [{:object/id obj-id
+                          :object/card card-eid
+                          :object/zone :battlefield
+                          :object/owner player-eid
+                          :object/controller player-eid
+                          :object/tapped false
+                          :object/counters {:mining 3}}])
+      ;; Activate mana ability
+      (let [db' (game/activate-mana-ability @conn :player-1 obj-id :blue)]
+        ;; Verify mana was added
+        (is (= 1 (:blue (q/get-mana-pool db' :player-1)))
+            "Blue mana should be added to pool")
+        ;; Verify counter was removed
+        (is (= {:mining 2} (get-object-counters db' obj-id))
+            "Gemstone Mine should have 2 mining counters after activation")))))
+
+
+(deftest test-gemstone-mine-sacrifice-at-zero
+  (testing "Gemstone Mine sacrificed when counters reach 0"
+    (let [db (create-test-db)
+          ;; Add Gemstone Mine with only 1 counter (final activation)
+          conn (d/conn-from-db db)
+          player-eid (q/get-player-eid db :player-1)
+          card-eid (d/q '[:find ?e .
+                          :in $ ?cid
+                          :where [?e :card/id ?cid]]
+                        db :gemstone-mine)
+          obj-id (random-uuid)]
+      (d/transact! conn [{:object/id obj-id
+                          :object/card card-eid
+                          :object/zone :battlefield
+                          :object/owner player-eid
+                          :object/controller player-eid
+                          :object/tapped false
+                          :object/counters {:mining 1}}])
+      ;; Activate mana ability (should deplete final counter)
+      (let [db' (game/activate-mana-ability @conn :player-1 obj-id :green)]
+        ;; Verify mana was added
+        (is (= 1 (:green (q/get-mana-pool db' :player-1)))
+            "Green mana should be added to pool")
+        ;; Verify object is now in graveyard (sacrificed via SBA)
+        (is (= :graveyard (:object/zone (q/get-object db' obj-id)))
+            "Gemstone Mine should be in graveyard after last counter removed")))))

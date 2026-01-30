@@ -104,7 +104,11 @@
   (let [controller (:trigger/controller trigger)
         effects-list (get-in trigger [:trigger/data :effects] [])]
     (reduce (fn [db' effect]
-              (effects/execute-effect db' controller effect))
+              ;; Resolve :controller target to actual player-id
+              (let [resolved-effect (if (= :controller (:effect/target effect))
+                                      (assoc effect :effect/target controller)
+                                      effect)]
+                (effects/execute-effect db' controller resolved-effect)))
             db
             effects-list)))
 
@@ -223,3 +227,41 @@
                     db trigger-id)]
     (d/db-with db [[:db/retractEntity eid]])
     db))
+
+
+(defn fire-and-resolve-triggers
+  "Fire matching triggers and resolve them immediately.
+
+   Use this for mana abilities where triggers don't use the stack.
+   For spell-based triggers that use the stack, use fire-matching-triggers.
+
+   Arguments:
+     old-db - Database state before action
+     new-db - Database state after action
+
+   Returns:
+     New db with all matching triggers resolved."
+  [old-db new-db]
+  (let [;; Get all objects on battlefield
+        battlefield (get-battlefield-objects new-db)
+        ;; Collect matching triggers
+        matching-triggers
+        (for [obj battlefield
+              :let [card (:object/card obj)
+                    triggers (:card/triggers card)]
+              :when triggers
+              trigger triggers
+              :let [trigger-with-source (assoc trigger :trigger/source (:object/id obj))]
+              :when (check-trigger old-db new-db trigger-with-source)]
+          {:trigger trigger-with-source
+           :controller (:player/id (:object/controller obj))})]
+    ;; Resolve each trigger immediately (don't add to stack)
+    (reduce (fn [db {:keys [trigger controller]}]
+              (let [full-trigger (create-trigger
+                                   (:trigger/type trigger)
+                                   (:trigger/source trigger)
+                                   controller
+                                   {:effects (:trigger/effects trigger)})]
+                (resolve-trigger db full-trigger)))
+            new-db
+            matching-triggers)))

@@ -4,9 +4,11 @@
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as queries]
     [fizzle.db.schema :refer [schema]]
+    [fizzle.engine.abilities :as abilities]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
+    [fizzle.engine.state-based :as state-based]
     [fizzle.engine.triggers :as triggers]
     [fizzle.engine.zones :as zones]
     [re-frame.core :as rf]))
@@ -291,6 +293,8 @@
    - Card must be a land type
    - Phase must be :main1 or :main2
 
+   After moving to battlefield, fires ETB effects from :card/etb-effects.
+
    Returns unchanged db if any validation fails."
   [db player-id object-id]
   (let [game-state (queries/get-game-state db)
@@ -311,9 +315,24 @@
              (= owner-eid player-eid)
              (land-card? db object-id)
              (#{:main1 :main2} phase))
-      (-> db
-          (zones/move-to-zone object-id :battlefield)
-          (d/db-with [[:db/add player-eid :player/land-plays-left (dec land-plays)]]))
+      (let [db-after-move (-> db
+                              (zones/move-to-zone object-id :battlefield)
+                              (d/db-with [[:db/add player-eid :player/land-plays-left (dec land-plays)]]))
+            ;; Get card data after move (object still has same card ref)
+            obj-after (queries/get-object db-after-move object-id)
+            card (:object/card obj-after)
+            etb-effects (:card/etb-effects card)]
+        ;; Fire ETB effects if any
+        (if (seq etb-effects)
+          (reduce (fn [db' effect]
+                    ;; Resolve :self target to actual object-id
+                    (let [resolved-effect (if (= :self (:effect/target effect))
+                                            (assoc effect :effect/target object-id)
+                                            effect)]
+                      (effects/execute-effect db' player-id resolved-effect)))
+                  db-after-move
+                  etb-effects)
+          db-after-move))
       db)))
 
 
@@ -353,7 +372,7 @@
 ;; === Activate Mana Ability ===
 
 (defn activate-mana-ability
-  "Activate a mana ability on a land: tap it and add mana to pool.
+  "Activate a mana ability on a land.
    Pure function: (db, player-id, object-id, mana-color) -> db
 
    Arguments:
@@ -362,35 +381,43 @@
      object-id - The land to tap
      mana-color - The color of mana to produce (:white :blue :black :red :green)
 
-   Validation:
-     - Object must exist and be on battlefield
-     - Object must be controlled by the player
-     - Object must be untapped
+   Flow:
+     1. Find mana ability from card data
+     2. Check can-activate? via abilities module
+     3. Pay costs via abilities module (includes tap, remove counters)
+     4. Add chosen mana to pool
+     5. Fire matching triggers (e.g., City of Brass :becomes-tapped)
+     6. Check state-based actions (e.g., Gemstone Mine sacrifice)
 
-   Card-specific effects:
-     - City of Brass deals 1 damage to controller when tapped
-
-   Returns unchanged db if any validation fails."
+   Returns unchanged db if any step fails."
   [db player-id object-id mana-color]
   (let [obj (queries/get-object db object-id)
         player-eid (queries/get-player-eid db player-id)]
+    ;; Basic validation
     (if (and obj
              player-eid
              (= (:object/zone obj) :battlefield)
-             (= (:db/id (:object/controller obj)) player-eid)
-             (not (:object/tapped obj)))
+             (= (:db/id (:object/controller obj)) player-eid))
+      ;; Find mana ability from card data
       (let [card (:object/card obj)
-            card-id (:card/id card)
-            db-after-tap (-> db
-                             (tap-permanent object-id)
-                             (mana/add-mana player-id {mana-color 1}))]
-        ;; City of Brass deals 1 damage to controller when tapped
-        (if (= card-id :city-of-brass)
-          (effects/execute-effect db-after-tap player-id
-                                  {:effect/type :lose-life
-                                   :effect/amount 1
-                                   :effect/target player-id})
-          db-after-tap))
+            card-abilities (:card/abilities card)
+            mana-ability (first (filter #(= (:ability/type %) :mana) card-abilities))]
+        (if (and mana-ability
+                 (abilities/can-activate? db object-id mana-ability))
+          ;; Execute ability
+          (let [db-before-costs db
+                ;; Step 1: Pay costs (tap, remove counters, etc.)
+                db-after-costs (abilities/pay-all-costs db object-id (:ability/cost mana-ability))]
+            (if db-after-costs
+              (let [;; Step 2: Add mana (mana-color is player's choice for {:any 1})
+                    db-after-mana (mana/add-mana db-after-costs player-id {mana-color 1})
+                    ;; Step 3: Fire and resolve triggers immediately (mana abilities don't use stack)
+                    db-after-triggers (triggers/fire-and-resolve-triggers db-before-costs db-after-mana)
+                    ;; Step 4: Check state-based actions (Gemstone Mine sacrifice)
+                    db-after-sbas (state-based/check-and-execute-sbas db-after-triggers)]
+                db-after-sbas)
+              db))
+          db))
       db)))
 
 
