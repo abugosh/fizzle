@@ -6,6 +6,7 @@
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.rules :as rules]
+    [fizzle.engine.state-based :as state-based]
     [fizzle.events.game :as game]))
 
 
@@ -374,3 +375,108 @@
           "NOW player loses 1 life from City of Brass trigger")
       (is (= 0 (count (q/get-stack-items db-after-second-resolve)))
           "Stack is empty"))))
+
+
+;; === Gemstone Mine sacrifice behavior tests ===
+
+(deftest test-gemstone-mine-no-sacrifice-on-manual-counter-removal
+  (testing "Gemstone Mine does NOT sacrifice when counters removed by non-ability means"
+    ;; This tests the key rules fix: sacrifice is part of the mana ability,
+    ;; NOT a state-based action. If counters are removed by external effect,
+    ;; Gemstone Mine should remain on the battlefield.
+    (let [db (create-test-db)
+          ;; Add Gemstone Mine with 3 counters
+          conn (d/conn-from-db db)
+          player-eid (q/get-player-eid db :player-1)
+          card-eid (d/q '[:find ?e .
+                          :in $ ?cid
+                          :where [?e :card/id ?cid]]
+                        db :gemstone-mine)
+          obj-id (random-uuid)]
+      (d/transact! conn [{:object/id obj-id
+                          :object/card card-eid
+                          :object/zone :battlefield
+                          :object/owner player-eid
+                          :object/controller player-eid
+                          :object/tapped false
+                          :object/counters {:mining 3}}])
+      ;; Directly set counters to 0 (simulating external effect, NOT mana ability)
+      (let [obj-eid (d/q '[:find ?e .
+                           :in $ ?oid
+                           :where [?e :object/id ?oid]]
+                         @conn obj-id)]
+        (d/transact! conn [[:db/add obj-eid :object/counters {:mining 0}]]))
+      ;; Now run state-based actions (the old implementation would sacrifice here)
+      (let [db-after-sba (state-based/check-and-execute-sbas @conn)]
+        ;; Gemstone Mine should STILL be on battlefield - no SBA sacrifice
+        (is (= :battlefield (:object/zone (q/get-object db-after-sba obj-id)))
+            "Gemstone Mine should NOT sacrifice when counters removed externally")))))
+
+
+(deftest test-gemstone-mine-sacrifices-on-last-counter
+  (testing "Gemstone Mine sacrifices when mana ability activates AND counters = 0"
+    ;; This verifies the rules-correct behavior: sacrifice happens as part
+    ;; of the mana ability resolution when the last counter is removed.
+    (let [db (create-test-db)
+          ;; Add Gemstone Mine with exactly 1 counter (final activation)
+          conn (d/conn-from-db db)
+          player-eid (q/get-player-eid db :player-1)
+          card-eid (d/q '[:find ?e .
+                          :in $ ?cid
+                          :where [?e :card/id ?cid]]
+                        db :gemstone-mine)
+          obj-id (random-uuid)]
+      (d/transact! conn [{:object/id obj-id
+                          :object/card card-eid
+                          :object/zone :battlefield
+                          :object/owner player-eid
+                          :object/controller player-eid
+                          :object/tapped false
+                          :object/counters {:mining 1}}])
+      ;; Activate mana ability (removes last counter AND should sacrifice)
+      (let [db' (game/activate-mana-ability @conn :player-1 obj-id :green)]
+        ;; Mana should be added
+        (is (= 1 (:green (q/get-mana-pool db' :player-1)))
+            "Green mana should be added to pool")
+        ;; Gemstone Mine should be in graveyard (sacrificed as part of ability)
+        (is (= :graveyard (:object/zone (q/get-object db' obj-id)))
+            "Gemstone Mine should sacrifice as part of mana ability resolution")))))
+
+
+(deftest test-mana-ability-executes-ability-effects
+  (testing "activate-mana-ability processes :ability/effects after adding mana"
+    ;; This test verifies that activate-mana-ability executes :ability/effects.
+    ;; We create a custom test card with a mana ability that has a gain life effect.
+    (let [db (create-test-db)
+          conn (d/conn-from-db db)
+          player-eid (q/get-player-eid db :player-1)
+          ;; Create a test land with mana ability that has :ability/effects
+          test-card-id (keyword (str "test-land-" (random-uuid)))
+          _ (d/transact! conn [{:card/id test-card-id
+                                :card/name "Test Land with Effect"
+                                :card/types #{:land}
+                                :card/abilities [{:ability/type :mana
+                                                  :ability/cost {:tap true}
+                                                  :ability/produces {:green 1}
+                                                  :ability/effects [{:effect/type :gain-life
+                                                                     :effect/amount 1}]}]}])
+          card-eid (d/q '[:find ?e .
+                          :in $ ?cid
+                          :where [?e :card/id ?cid]]
+                        @conn test-card-id)
+          obj-id (random-uuid)]
+      (d/transact! conn [{:object/id obj-id
+                          :object/card card-eid
+                          :object/zone :battlefield
+                          :object/owner player-eid
+                          :object/controller player-eid
+                          :object/tapped false}])
+      (let [initial-life (q/get-life-total @conn :player-1)
+            _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
+            db' (game/activate-mana-ability @conn :player-1 obj-id :green)]
+        ;; Mana should be added
+        (is (= 1 (:green (q/get-mana-pool db' :player-1)))
+            "Green mana should be added to pool")
+        ;; Effect should be executed (gain 1 life)
+        (is (= 21 (q/get-life-total db' :player-1))
+            "Player should gain 1 life from ability effect")))))

@@ -78,30 +78,9 @@
 
 
 ;; === zero-counters SBA tests ===
-
-(deftest test-zero-counters-detected
-  (testing "finds permanents with 0 counters that require counters"
-    (let [[db obj-id] (add-permanent
-                        (init-game-state)
-                        :player-1
-                        {:card/abilities [{:ability/cost {:remove-counter {:mining 1}}}]}
-                        {:mining 0})
-          sbas (filter #(= :zero-counters (:sba/type %)) (sba/check-all-sbas db))]
-      (is (= 1 (count sbas)))
-      (is (= :zero-counters (:sba/type (first sbas))))
-      (is (= obj-id (:sba/target (first sbas)))))))
-
-
-(deftest test-zero-counters-sacrifice
-  (testing "executes sacrifice for zero-counter permanent"
-    (let [[db obj-id] (add-permanent
-                        (init-game-state)
-                        :player-1
-                        {:card/abilities [{:ability/cost {:remove-counter {:mining 1}}}]}
-                        {:mining 0})
-          db-after (sba/check-and-execute-sbas db)
-          zone-after (get-object-zone db-after obj-id)]
-      (is (= :graveyard zone-after) "Object should be in graveyard after sacrifice"))))
+;; NOTE: These tests were removed in favor of ability-based sacrifice.
+;; The zero-counters SBA was replaced with :sacrifice effect in mana abilities.
+;; See test-gemstone-mine-sacrifices-on-last-counter in tap_land_test.cljs for new behavior.
 
 
 (deftest test-non-zero-counters-ignored

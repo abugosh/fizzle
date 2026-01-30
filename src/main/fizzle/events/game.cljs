@@ -468,9 +468,18 @@
             (if db-after-costs
               (let [;; Step 2: Add mana (mana-color is player's choice for {:any 1})
                     db-after-mana (mana/add-mana db-after-costs player-id {mana-color 1})
+                    ;; Step 2b: Execute ability effects (e.g., conditional sacrifice)
+                    ;; Resolve :self targets to object-id before execution
+                    db-after-effects (reduce (fn [db' effect]
+                                               (let [resolved-effect (if (= :self (:effect/target effect))
+                                                                       (assoc effect :effect/target object-id)
+                                                                       effect)]
+                                                 (effects/execute-effect db' player-id resolved-effect)))
+                                             db-after-mana
+                                             (:ability/effects mana-ability []))
                     ;; Step 3: Fire triggers (add to stack - triggered abilities use the stack)
-                    db-after-triggers (triggers/fire-matching-triggers db-before-costs db-after-mana)
-                    ;; Step 4: Check state-based actions (Gemstone Mine sacrifice)
+                    db-after-triggers (triggers/fire-matching-triggers db-before-costs db-after-effects)
+                    ;; Step 4: Check state-based actions
                     db-after-sbas (state-based/check-and-execute-sbas db-after-triggers)]
                 db-after-sbas)
               db))

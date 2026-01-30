@@ -4,10 +4,7 @@
    SBAs are checked after every game action. Uses registry pattern
    for extensibility - add new SBA types without modifying existing code.
 
-   All functions are pure: (db, args) -> db"
-  (:require
-    [datascript.core :as d]
-    [fizzle.engine.zones :as zones]))
+   All functions are pure: (db, args) -> db")
 
 
 ;; Registry of SBA check functions
@@ -55,43 +52,6 @@
 
 
 (defmethod execute-sba :default [db _sba] db)
-
-
-;; === Zero Counters SBA (Gemstone Mine) ===
-
-(defn- check-zero-counters
-  "Find permanents that have counter requirements but 0 counters.
-
-   Checks :object/counters map - if any counter type has 0 or negative value
-   and the card requires counters (has :card/abilities with :remove-counter cost),
-   the permanent should be sacrificed."
-  [db]
-  (let [battlefield-objects (d/q '[:find [(pull ?obj [* {:object/card [*]}]) ...]
-                                   :where [?obj :object/zone :battlefield]]
-                                 db)]
-    (for [obj battlefield-objects
-          :let [counters (:object/counters obj)
-                card (:object/card obj)
-                abilities (:card/abilities card)
-                ;; Check if any ability has remove-counter cost
-                has-counter-cost? (some #(get-in % [:ability/cost :remove-counter]) abilities)]
-          ;; Only sacrifice if: has counter-using ability AND all counters depleted
-          :when (and has-counter-cost?
-                     counters
-                     (every? (fn [[_type amt]] (<= amt 0)) counters))]
-      {:sba/type :zero-counters
-       :sba/target (:object/id obj)})))
-
-
-(defmethod execute-sba :zero-counters
-  [db sba]
-  (let [object-id (:sba/target sba)]
-    ;; Move to graveyard (sacrifice)
-    (zones/move-to-zone db object-id :graveyard)))
-
-
-;; Register built-in SBAs
-(register-sba! :zero-counters check-zero-counters)
 
 
 (defn check-and-execute-sbas

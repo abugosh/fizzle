@@ -93,11 +93,16 @@
                        :effect/target :self}]
 
    ;; Mana ability: T, remove mining counter: Add one mana of any color
+   ;; Mana production is handled by activate-mana-ability via :ability/produces.
+   ;; The conditional sacrifice is an :ability/effects that only fires when no counters remain.
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true
                                     :remove-counter {:mining 1}}
-                     :ability/effects [{:effect/type :add-mana
-                                        :effect/mana {:any 1}}]}]})
+                     :ability/produces {:any 1}
+                     :ability/effects [{:effect/type :sacrifice
+                                        :effect/target :self
+                                        :effect/condition {:condition/type :no-counters
+                                                           :condition/counter-type :mining}}]}]})
 
 
 ;; All cards in this namespace for easy import
