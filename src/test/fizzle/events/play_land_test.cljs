@@ -173,3 +173,56 @@
           db'' (game/play-land db' :player-1 obj-id)]
       (is (= :battlefield (get-object-zone db'' obj-id))
           "Land should be on battlefield after playing in main2"))))
+
+
+;; === can-play-land? tests ===
+
+(deftest test-can-play-land-returns-true-when-valid
+  (testing "can-play-land? returns true when all conditions met"
+    (let [db (create-test-db)
+          [db' obj-id] (add-card-to-zone db :city-of-brass :hand :player-1)]
+      (is (true? (game/can-play-land? db' :player-1 obj-id))
+          "Should be able to play land in hand during main phase with plays left"))))
+
+
+(deftest test-can-play-land-false-when-no-plays-left
+  (testing "can-play-land? returns false when land-plays-left = 0"
+    (let [db (-> (create-test-db)
+                 (set-land-plays :player-1 0))
+          [db' obj-id] (add-card-to-zone db :city-of-brass :hand :player-1)]
+      (is (false? (game/can-play-land? db' :player-1 obj-id))
+          "Should not be able to play land when no plays left"))))
+
+
+(deftest test-can-play-land-false-for-non-land
+  (testing "can-play-land? returns false for non-land card"
+    (let [db (create-test-db)
+          [db' obj-id] (add-card-to-zone db :dark-ritual :hand :player-1)]
+      (is (false? (game/can-play-land? db' :player-1 obj-id))
+          "Should not be able to play-land a spell"))))
+
+
+(deftest test-can-play-land-false-for-card-not-in-hand
+  (testing "can-play-land? returns false for card in graveyard"
+    (let [db (create-test-db)
+          [db' obj-id] (add-card-to-zone db :city-of-brass :graveyard :player-1)]
+      (is (false? (game/can-play-land? db' :player-1 obj-id))
+          "Should not be able to play land from graveyard"))))
+
+
+(deftest test-can-play-land-false-outside-main-phase
+  (testing "can-play-land? returns false during combat phase"
+    (let [db (-> (create-test-db)
+                 (set-phase :combat))
+          [db' obj-id] (add-card-to-zone db :city-of-brass :hand :player-1)]
+      (is (false? (game/can-play-land? db' :player-1 obj-id))
+          "Should not be able to play land during combat"))))
+
+
+(deftest test-can-play-land-true-in-main2
+  (testing "can-play-land? returns true during main phase 2"
+    (let [db (-> (create-test-db)
+                 (set-phase :main2))
+          [db' obj-id] (add-card-to-zone db :city-of-brass :hand :player-1)]
+      (is (true? (game/can-play-land? db' :player-1 obj-id))
+          "Should be able to play land during main2"))))

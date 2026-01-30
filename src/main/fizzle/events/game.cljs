@@ -258,7 +258,8 @@
    - Object is a land card
    - Object is in player's hand
    - Player has land plays remaining
-   - Current phase is main1 or main2"
+   - Current phase is main1 or main2
+   Returns true or false."
   [db player-id object-id]
   (let [game-state (queries/get-game-state db)
         phase (:game/phase game-state)
@@ -270,13 +271,14 @@
                         db player-id)
         obj (queries/get-object db object-id)
         owner-eid (:db/id (:object/owner obj))]
-    (and player-eid
-         obj
-         (pos? (or land-plays 0))
-         (= (:object/zone obj) :hand)
-         (= owner-eid player-eid)
-         (land-card? db object-id)
-         (#{:main1 :main2} phase))))
+    (boolean
+      (and player-eid
+           obj
+           (pos? (or land-plays 0))
+           (= (:object/zone obj) :hand)
+           (= owner-eid player-eid)
+           (land-card? db object-id)
+           (#{:main1 :main2} phase)))))
 
 
 (defn play-land
