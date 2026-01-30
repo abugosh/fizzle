@@ -199,6 +199,50 @@
        [:div {:style {:color "#555" :font-size "13px"}} "Empty"])]))
 
 
+(defn- phase-indicator
+  "Display a single phase name, highlighted if it's the current phase."
+  [phase current-phase]
+  [:span {:style {:padding "4px 8px"
+                  :border-radius "3px"
+                  :font-size "11px"
+                  :background (if (= phase current-phase) "#4A9BD9" "transparent")
+                  :color (if (= phase current-phase) "#fff" "#666")}}
+   (name phase)])
+
+
+(defn- turn-bar
+  "Display turn counter, phase strip, and Next Phase/New Turn button."
+  []
+  (let [current-phase (or @(rf/subscribe [::subs/current-phase]) :main1)
+        current-turn (or @(rf/subscribe [::subs/current-turn]) 1)
+        at-cleanup? (= current-phase :cleanup)]
+    [:div {:style {:display "flex"
+                   :align-items "center"
+                   :gap "16px"
+                   :padding "10px 16px"
+                   :margin-bottom "16px"
+                   :background "#1a1a2a"
+                   :border-bottom "1px solid #333"}}
+     [:span {:style {:font-weight "bold" :color "#eee" :font-size "14px"}}
+      (str "Turn " current-turn)]
+     [:div {:style {:display "flex" :gap "4px"}}
+      (for [phase events/phases]
+        ^{:key phase}
+        [phase-indicator phase current-phase])]
+     [:button {:style {:padding "6px 14px"
+                       :border "1px solid #555"
+                       :border-radius "4px"
+                       :cursor "pointer"
+                       :background "#2a6a2a"
+                       :color "#fff"
+                       :font-size "13px"
+                       :font-weight "bold"}
+               :on-click #(rf/dispatch [(if at-cleanup?
+                                          ::events/start-turn
+                                          ::events/advance-phase)])}
+      (if at-cleanup? "New Turn" "Next Phase")]]))
+
+
 (defn- controls-view
   []
   (let [can-cast? @(rf/subscribe [::subs/can-cast?])
@@ -238,6 +282,7 @@
                  :color "#eee"
                  :min-height "100vh"}}
    [:h1 {:style {:margin-bottom "20px" :color "#eee"}} "Fizzle"]
+   [turn-bar]
    [life-view]
    [battlefield-view]
    [hand-view]
