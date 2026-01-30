@@ -132,6 +132,8 @@
 (defn- controls-view
   []
   (let [can-cast? @(rf/subscribe [::subs/can-cast?])
+        can-play-land? @(rf/subscribe [::subs/can-play-land?])
+        selected @(rf/subscribe [::subs/selected-card])
         stack @(rf/subscribe [::subs/stack])
         btn-style (fn [enabled?]
                     {:padding "8px 20px"
@@ -148,6 +150,10 @@
                :disabled (not can-cast?)
                :on-click #(rf/dispatch [::events/cast-spell])}
       "Cast"]
+     [:button {:style (btn-style can-play-land?)
+               :disabled (not can-play-land?)
+               :on-click #(rf/dispatch [::events/play-land selected])}
+      "Play Land"]
      [:button {:style (btn-style (seq stack))
                :disabled (empty? stack)
                :on-click #(rf/dispatch [::events/resolve-top])}

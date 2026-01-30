@@ -2,6 +2,7 @@
   (:require
     [fizzle.db.queries :as queries]
     [fizzle.engine.rules :as rules]
+    [fizzle.events.game :as events]
     [re-frame.core :as rf]))
 
 
@@ -54,7 +55,18 @@
   :<- [::selected-card]
   (fn [[game-db selected] _]
     (when (and game-db selected)
-      (rules/can-cast? game-db :player-1 selected))))
+      (and (rules/can-cast? game-db :player-1 selected)
+           ;; Exclude lands - they use play-land, not cast
+           (not (events/land-card? game-db selected))))))
+
+
+(rf/reg-sub
+  ::can-play-land?
+  :<- [::game-db]
+  :<- [::selected-card]
+  (fn [[game-db selected] _]
+    (when (and game-db selected)
+      (events/can-play-land? game-db :player-1 selected))))
 
 
 (rf/reg-sub

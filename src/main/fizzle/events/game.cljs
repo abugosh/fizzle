@@ -252,6 +252,33 @@
         (contains? (set types) :land)))))
 
 
+(defn can-play-land?
+  "Check if a player can play a land from their hand.
+   Requires:
+   - Object is a land card
+   - Object is in player's hand
+   - Player has land plays remaining
+   - Current phase is main1 or main2"
+  [db player-id object-id]
+  (let [game-state (queries/get-game-state db)
+        phase (:game/phase game-state)
+        player-eid (queries/get-player-eid db player-id)
+        land-plays (d/q '[:find ?plays .
+                          :in $ ?pid
+                          :where [?e :player/id ?pid]
+                          [?e :player/land-plays-left ?plays]]
+                        db player-id)
+        obj (queries/get-object db object-id)
+        owner-eid (:db/id (:object/owner obj))]
+    (and player-eid
+         obj
+         (pos? (or land-plays 0))
+         (= (:object/zone obj) :hand)
+         (= owner-eid player-eid)
+         (land-card? db object-id)
+         (#{:main1 :main2} phase))))
+
+
 (defn play-land
   "Play a land from hand to battlefield.
    Pure function: (db, player-id, object-id) -> db
