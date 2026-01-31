@@ -191,7 +191,23 @@
                    :effect/selection :player}]})
 
 
+;; Mental Note - Self-mill cantrip
+;; U - Instant: Put the top two cards of your library into your graveyard, then draw a card.
+(def mental-note
+  {:card/id :mental-note
+   :card/name "Mental Note"
+   :card/cmc 1
+   :card/mana-cost {:blue 1}
+   :card/colors #{:blue}
+   :card/types #{:instant}
+   :card/text "Put the top two cards of your library into your graveyard, then draw a card."
+   :card/effects [{:effect/type :mill
+                   :effect/amount 2}
+                  {:effect/type :draw
+                   :effect/amount 1}]})
+
+
 ;; All cards in this namespace for easy import
 (def all-cards
   [dark-ritual brain-freeze cabal-ritual city-of-brass gemstone-mine
-   island swamp lotus-petal lions-eye-diamond careful-study])
+   island swamp lotus-petal lions-eye-diamond careful-study mental-note])
