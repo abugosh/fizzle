@@ -155,6 +155,25 @@
                      :ability/produces {:any 1}}]})
 
 
+;; Lion's Eye Diamond - Explosive mana acceleration
+;; {T}, Sacrifice Lion's Eye Diamond, Discard your hand: Add three mana of any one color.
+;; Note: Timing restriction "Activate only as an instant" deferred to future task
+(def lions-eye-diamond
+  {:card/id :lions-eye-diamond
+   :card/name "Lion's Eye Diamond"
+   :card/cmc 0
+   :card/mana-cost {}
+   :card/colors #{}
+   :card/types #{:artifact}
+   :card/text "{T}, Sacrifice Lion's Eye Diamond, Discard your hand: Add three mana of any one color. Activate only as an instant."
+   :card/abilities [{:ability/type :mana
+                     :ability/cost {:tap true
+                                    :sacrifice-self true
+                                    :discard-hand true}
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:any 3}}]}]})
+
+
 ;; All cards in this namespace for easy import
 (def all-cards
-  [dark-ritual brain-freeze cabal-ritual city-of-brass gemstone-mine island swamp lotus-petal])
+  [dark-ritual brain-freeze cabal-ritual city-of-brass gemstone-mine island swamp lotus-petal lions-eye-diamond])

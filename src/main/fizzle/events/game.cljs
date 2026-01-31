@@ -466,16 +466,34 @@
                 ;; Step 1: Pay costs (tap, remove counters, etc.)
                 db-after-costs (abilities/pay-all-costs db object-id (:ability/cost mana-ability))]
             (if db-after-costs
-              (let [;; Step 2: Add mana (mana-color is player's choice for {:any 1})
-                    db-after-mana (mana/add-mana db-after-costs player-id {mana-color 1})
-                    ;; Step 2b: Execute ability effects (e.g., conditional sacrifice)
+              (let [;; Step 2a: Handle :ability/produces (direct mana production)
+                    ;; Resolve {:any N} to chosen color
+                    produces (:ability/produces mana-ability)
+                    db-after-produces (if produces
+                                        (let [resolved-mana (if-let [any-count (:any produces)]
+                                                              {mana-color any-count}
+                                                              produces)]
+                                          (effects/execute-effect db-after-costs player-id
+                                                                  {:effect/type :add-mana
+                                                                   :effect/mana resolved-mana}))
+                                        db-after-costs)
+                    ;; Step 2b: Execute ability effects (mana and other effects)
                     ;; Resolve :self targets to object-id before execution
+                    ;; Resolve {:any N} mana effects to chosen color
                     db-after-effects (reduce (fn [db' effect]
-                                               (let [resolved-effect (if (= :self (:effect/target effect))
+                                               (let [;; Resolve :self target
+                                                     resolved-effect (if (= :self (:effect/target effect))
                                                                        (assoc effect :effect/target object-id)
-                                                                       effect)]
+                                                                       effect)
+                                                     ;; Resolve {:any N} mana to chosen color
+                                                     resolved-effect (if (= :add-mana (:effect/type resolved-effect))
+                                                                       (let [mana (:effect/mana resolved-effect)]
+                                                                         (if-let [any-count (:any mana)]
+                                                                           (assoc resolved-effect :effect/mana {mana-color any-count})
+                                                                           resolved-effect))
+                                                                       resolved-effect)]
                                                  (effects/execute-effect db' player-id resolved-effect)))
-                                             db-after-mana
+                                             db-after-produces
                                              (:ability/effects mana-ability []))
                     ;; Step 3: Fire triggers (add to stack - triggered abilities use the stack)
                     db-after-triggers (triggers/fire-matching-triggers db-before-costs db-after-effects)

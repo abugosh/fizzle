@@ -122,3 +122,43 @@
   (when (can-pay? db object-id cost)
     (let [obj-eid (get-object-eid db object-id)]
       (d/db-with db [[:db/add obj-eid :object/zone :graveyard]]))))
+
+
+;; === :discard-hand cost ===
+
+(defmethod can-pay? :discard-hand [db object-id _cost]
+  ;; Can pay discard-hand if:
+  ;; 1. Object exists
+  ;; 2. Object is on the battlefield
+  ;; Note: Can always discard hand (even if empty)
+  (if-let [obj-eid (get-object-eid db object-id)]
+    (= :battlefield (d/q '[:find ?z .
+                           :in $ ?e
+                           :where [?e :object/zone ?z]]
+                         db obj-eid))
+    false))
+
+
+(defmethod pay-cost :discard-hand [db object-id _cost]
+  ;; Move all cards in controller's hand to graveyard
+  ;; NOTE: No can-pay? guard here - by the time pay-cost is called,
+  ;; can-activate? has already verified all costs are payable.
+  ;; The object may have been sacrificed by a prior cost (:sacrifice-self),
+  ;; so we can't re-check zone. We just need the controller reference.
+  (if-let [obj-eid (get-object-eid db object-id)]
+    (let [controller-eid (d/q '[:find ?c .
+                                :in $ ?e
+                                :where [?e :object/controller ?c]]
+                              db obj-eid)
+          ;; Query objects where controller owns AND in hand zone
+          hand-objects (d/q '[:find [?e ...]
+                              :in $ ?owner
+                              :where [?e :object/owner ?owner]
+                              [?e :object/zone ?zone]
+                              [(= ?zone :hand)]]
+                            db controller-eid)]
+      (if (seq hand-objects)
+        (d/db-with db (mapv (fn [eid] [:db/add eid :object/zone :graveyard])
+                            hand-objects))
+        db))
+    db))
