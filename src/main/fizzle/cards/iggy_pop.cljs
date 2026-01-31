@@ -139,6 +139,22 @@
                      :ability/produces {:black 1}}]})
 
 
+;; Lotus Petal - Zero-cost artifact mana acceleration
+;; {T}, Sacrifice Lotus Petal: Add one mana of any color.
+(def lotus-petal
+  {:card/id :lotus-petal
+   :card/name "Lotus Petal"
+   :card/cmc 0
+   :card/mana-cost {}
+   :card/colors #{}
+   :card/types #{:artifact}
+   :card/text "{T}, Sacrifice Lotus Petal: Add one mana of any color."
+   :card/abilities [{:ability/type :mana
+                     :ability/cost {:tap true
+                                    :sacrifice-self true}
+                     :ability/produces {:any 1}}]})
+
+
 ;; All cards in this namespace for easy import
 (def all-cards
-  [dark-ritual brain-freeze cabal-ritual city-of-brass gemstone-mine island swamp])
+  [dark-ritual brain-freeze cabal-ritual city-of-brass gemstone-mine island swamp lotus-petal])

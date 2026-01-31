@@ -101,3 +101,24 @@
                       {})
           new-counters (merge-with - current required)]
       (d/db-with db [[:db/add obj-eid :object/counters new-counters]]))))
+
+
+;; === :sacrifice-self cost ===
+
+(defmethod can-pay? :sacrifice-self [db object-id _cost]
+  ;; Can pay sacrifice-self if:
+  ;; 1. Object exists
+  ;; 2. Object is on the battlefield
+  (if-let [obj-eid (get-object-eid db object-id)]
+    (= :battlefield (d/q '[:find ?z .
+                           :in $ ?e
+                           :where [?e :object/zone ?z]]
+                         db obj-eid))
+    false))
+
+
+(defmethod pay-cost :sacrifice-self [db object-id cost]
+  ;; Guard: check can pay first
+  (when (can-pay? db object-id cost)
+    (let [obj-eid (get-object-eid db object-id)]
+      (d/db-with db [[:db/add obj-eid :object/zone :graveyard]]))))
