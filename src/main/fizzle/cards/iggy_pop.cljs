@@ -105,6 +105,40 @@
                                                            :condition/counter-type :mining}}]}]})
 
 
+;; Island - Basic land producing blue mana
+;; T: Add {U}.
+(def island
+  {:card/id :island
+   :card/name "Island"
+   :card/cmc 0
+   :card/mana-cost {}
+   :card/colors #{}
+   :card/types #{:land}
+   :card/subtypes #{:island}
+   :card/supertypes #{:basic}
+   :card/text "{T}: Add {U}."
+   :card/abilities [{:ability/type :mana
+                     :ability/cost {:tap true}
+                     :ability/produces {:blue 1}}]})
+
+
+;; Swamp - Basic land producing black mana
+;; T: Add {B}.
+(def swamp
+  {:card/id :swamp
+   :card/name "Swamp"
+   :card/cmc 0
+   :card/mana-cost {}
+   :card/colors #{}
+   :card/types #{:land}
+   :card/subtypes #{:swamp}
+   :card/supertypes #{:basic}
+   :card/text "{T}: Add {B}."
+   :card/abilities [{:ability/type :mana
+                     :ability/cost {:tap true}
+                     :ability/produces {:black 1}}]})
+
+
 ;; All cards in this namespace for easy import
 (def all-cards
-  [dark-ritual brain-freeze cabal-ritual city-of-brass gemstone-mine])
+  [dark-ritual brain-freeze cabal-ritual city-of-brass gemstone-mine island swamp])
