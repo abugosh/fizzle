@@ -94,7 +94,7 @@
         (maybe-create-storm-trigger player-id object-id))))
 
 
-(defn- get-active-effects
+(defn get-active-effects
   "Select which effects to use based on card conditions.
 
    Cards may have:

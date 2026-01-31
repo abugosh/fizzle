@@ -275,6 +275,107 @@
       "Resolve"]]))
 
 
+;; === Selection Modal ===
+;; Modal overlay for selecting cards (e.g., Careful Study discard)
+
+(defn- selection-card-view
+  "A card in the selection modal, showing selected state."
+  [obj selected?]
+  (let [card-name (get-in obj [:object/card :card/name])
+        object-id (:object/id obj)]
+    [:div {:style {:border (if selected?
+                             "3px solid #4A9BD9"
+                             "2px solid #555")
+                   :border-radius "6px"
+                   :padding "10px 14px"
+                   :cursor "pointer"
+                   :background (if selected? "#1a3a5a" "#1a1a2a")
+                   :color "#eee"
+                   :min-width "90px"
+                   :text-align "center"
+                   :user-select "none"
+                   :transition "all 0.1s ease"}
+           :on-click #(rf/dispatch [::events/toggle-selection object-id])}
+     card-name]))
+
+
+(defn- selection-modal
+  "Modal overlay for player card selection.
+   Shows when :game/pending-selection exists."
+  []
+  (let [selection @(rf/subscribe [::subs/pending-selection])
+        hand @(rf/subscribe [::subs/selection-hand])]
+    (when selection
+      (let [selected (:selection/selected selection)
+            required-count (:selection/count selection)
+            current-count (count selected)
+            valid? (= current-count required-count)
+            effect-type (:selection/effect-type selection)]
+        [:div {:style {:position "fixed"
+                       :top 0
+                       :left 0
+                       :right 0
+                       :bottom 0
+                       :background "rgba(0, 0, 0, 0.8)"
+                       :display "flex"
+                       :align-items "center"
+                       :justify-content "center"
+                       :z-index 1000}}
+         [:div {:style {:background "#1a1a2a"
+                        :border "2px solid #4A9BD9"
+                        :border-radius "12px"
+                        :padding "24px"
+                        :max-width "600px"
+                        :width "90%"}}
+          ;; Header
+          [:h2 {:style {:color "#eee"
+                        :margin "0 0 8px 0"
+                        :font-size "18px"}}
+           (case effect-type
+             :discard "Select cards to discard"
+             "Select cards")]
+          ;; Counter
+          [:p {:style {:color (if valid? "#5CB85C" "#F0AD4E")
+                       :margin "0 0 16px 0"
+                       :font-size "14px"}}
+           (str current-count " / " required-count " selected")]
+          ;; Card grid
+          [:div {:style {:display "flex"
+                         :flex-wrap "wrap"
+                         :gap "10px"
+                         :margin-bottom "20px"
+                         :min-height "60px"}}
+           (if (seq hand)
+             (for [obj hand]
+               ^{:key (:object/id obj)}
+               [selection-card-view obj (contains? selected (:object/id obj))])
+             [:div {:style {:color "#666"}} "No cards in hand"])]
+          ;; Buttons
+          [:div {:style {:display "flex"
+                         :justify-content "flex-end"
+                         :gap "12px"}}
+           [:button {:style {:padding "8px 20px"
+                             :border "1px solid #555"
+                             :border-radius "4px"
+                             :cursor "pointer"
+                             :background "#333"
+                             :color "#ccc"
+                             :font-size "14px"}
+                     :on-click #(rf/dispatch [::events/cancel-selection])}
+            "Clear"]
+           [:button {:style {:padding "8px 20px"
+                             :border "none"
+                             :border-radius "4px"
+                             :cursor (if valid? "pointer" "not-allowed")
+                             :background (if valid? "#2a6a2a" "#333")
+                             :color (if valid? "#fff" "#666")
+                             :font-size "14px"
+                             :font-weight "bold"}
+                     :disabled (not valid?)
+                     :on-click #(rf/dispatch [::events/confirm-selection])}
+            "Confirm"]]]]))))
+
+
 (defn app
   []
   [:div {:style {:padding "20px"
@@ -290,7 +391,9 @@
    [controls-view]
    [mana-pool-view]
    [storm-count-view]
-   [stack-view]])
+   [stack-view]
+   ;; Selection modal (shows when pending selection exists)
+   [selection-modal]])
 
 
 (defn ^:dev/after-load mount-root

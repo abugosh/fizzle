@@ -301,3 +301,31 @@
       (zones/move-to-zone db target-id :graveyard)
       ;; Invalid target: no-op
       db)))
+
+
+(defmethod execute-effect-impl :discard
+  ;; Discard cards from a player's hand to their graveyard.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/count - Number of cards to discard
+  ;;   :effect/selection - How to select cards:
+  ;;     :player - Player chooses (requires UI interaction, returns db unchanged)
+  ;;     :random - Random selection (not implemented yet)
+  ;;     nil - Defaults to :player for now
+  ;;
+  ;; When :selection is :player:
+  ;;   This effect returns db UNCHANGED. The actual discard happens at the
+  ;;   app-db level via re-frame events when the player confirms their selection.
+  ;;   The calling code (resolve-spell) checks for :selection :player and sets up
+  ;;   pending selection state instead of expecting immediate resolution.
+  ;;
+  ;; Handles edge cases:
+  ;;   - :selection :player: Returns db unchanged (UI handles selection)
+  ;;   - Invalid player: no-op (returns db unchanged)
+  [db _player-id effect]
+  (let [selection (get effect :effect/selection :player)]
+    (case selection
+      ;; Player selection - return unchanged, UI will handle
+      :player db
+      ;; Default to player selection
+      db)))

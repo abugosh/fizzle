@@ -510,3 +510,138 @@
   (fn [db [_ object-id mana-color]]
     (let [game-db (:game/db db)]
       (assoc db :game/db (activate-mana-ability game-db :player-1 object-id mana-color)))))
+
+
+;; === Selection System ===
+;; For effects that require player selection (e.g., Careful Study discard)
+;;
+;; Selection state lives in app-db at :game/pending-selection
+;; Structure:
+;;   {:selection/zone :hand           ;; Zone to select from
+;;    :selection/count 2              ;; Exact number to select
+;;    :selection/player-id :player-1  ;; Who is selecting
+;;    :selection/selected #{}         ;; Set of object-ids currently selected
+;;    :selection/spell-id <uuid>      ;; Spell waiting for selection to resolve
+;;    :selection/remaining-effects [] ;; Effects to execute after selection confirmed
+;;    :selection/effect-type :discard} ;; What happens to selected cards
+
+
+(defn has-selection-effect?
+  "Check if any effect in the list requires player selection."
+  [effects]
+  (some #(= :player (:effect/selection %)) effects))
+
+
+(defn find-selection-effect-index
+  "Find the index of the first effect that requires player selection.
+   Returns nil if no selection effect found."
+  [effects]
+  (first (keep-indexed (fn [i effect]
+                         (when (= :player (:effect/selection effect))
+                           i))
+                       effects)))
+
+
+(defn resolve-spell-with-selection
+  "Resolve a spell, pausing if a selection effect is encountered.
+
+   Returns a map with:
+     :db - The updated game-db
+     :pending-selection - Selection state if paused for selection, nil otherwise
+
+   When a selection effect is encountered:
+   - Effects before the selection are executed
+   - The selection effect creates pending selection state
+   - Effects after the selection are stored for later execution"
+  [db player-id object-id]
+  (let [obj (queries/get-object db object-id)]
+    (if (not= :stack (:object/zone obj))
+      {:db db :pending-selection nil}  ; No-op if spell not on stack
+      (let [card (:object/card obj)
+            effects-list (or (rules/get-active-effects db player-id card) [])
+            selection-idx (find-selection-effect-index effects-list)]
+        (if (nil? selection-idx)
+          ;; No selection effect - resolve normally
+          {:db (rules/resolve-spell db player-id object-id)
+           :pending-selection nil}
+          ;; Has selection effect - execute effects before it, then pause
+          (let [effects-before (subvec (vec effects-list) 0 selection-idx)
+                selection-effect (nth effects-list selection-idx)
+                effects-after (subvec (vec effects-list) (inc selection-idx))
+                ;; Execute effects before selection
+                db-after-before (reduce (fn [d effect]
+                                          (effects/execute-effect d player-id effect))
+                                        db
+                                        effects-before)]
+            {:db db-after-before
+             :pending-selection {:selection/zone :hand
+                                 :selection/count (:effect/count selection-effect)
+                                 :selection/player-id player-id
+                                 :selection/selected #{}
+                                 :selection/spell-id object-id
+                                 :selection/remaining-effects effects-after
+                                 :selection/effect-type (:effect/type selection-effect)}}))))))
+
+
+(rf/reg-event-db
+  ::set-pending-selection
+  (fn [db [_ selection-state]]
+    (assoc db :game/pending-selection selection-state)))
+
+
+(rf/reg-event-db
+  ::toggle-selection
+  (fn [db [_ object-id]]
+    (let [selected (get-in db [:game/pending-selection :selection/selected] #{})
+          max-count (get-in db [:game/pending-selection :selection/count] 0)
+          currently-selected? (contains? selected object-id)
+          new-selected (if currently-selected?
+                         (disj selected object-id)
+                         ;; Only add if under limit
+                         (if (< (count selected) max-count)
+                           (conj selected object-id)
+                           selected))]
+      (assoc-in db [:game/pending-selection :selection/selected] new-selected))))
+
+
+(rf/reg-event-db
+  ::confirm-selection
+  (fn [db _]
+    (let [selection (:game/pending-selection db)
+          selected (:selection/selected selection)
+          count-required (:selection/count selection)
+          spell-id (:selection/spell-id selection)
+          remaining-effects (:selection/remaining-effects selection)
+          effect-type (:selection/effect-type selection)
+          player-id (:selection/player-id selection)]
+      (if (= (count selected) count-required)
+        ;; Valid selection - execute the effect on selected cards
+        (let [game-db (:game/db db)
+              ;; Move selected cards based on effect type
+              db-after-effect (case effect-type
+                                :discard (reduce (fn [gdb obj-id]
+                                                   (zones/move-to-zone gdb obj-id :graveyard))
+                                                 game-db
+                                                 selected)
+                                ;; Default: no-op
+                                game-db)
+              ;; Execute remaining effects
+              db-after-remaining (reduce (fn [d effect]
+                                           (effects/execute-effect d player-id effect))
+                                         db-after-effect
+                                         (or remaining-effects []))
+              ;; Move spell to graveyard (it was waiting on stack)
+              db-final (zones/move-to-zone db-after-remaining spell-id :graveyard)]
+          (-> db
+              (assoc :game/db db-final)
+              (dissoc :game/pending-selection)))
+        ;; Invalid count - do nothing
+        db))))
+
+
+(rf/reg-event-db
+  ::cancel-selection
+  (fn [db _]
+    ;; Cancel clears selection but keeps the pending state
+    ;; Player must still make a valid selection
+    (assoc-in db [:game/pending-selection :selection/selected] #{})))

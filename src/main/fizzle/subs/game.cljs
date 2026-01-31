@@ -113,3 +113,21 @@
   :<- [::game-db]
   (fn [game-db _]
     (when game-db (queries/get-objects-in-zone game-db :player-1 :battlefield))))
+
+
+;; === Selection System Subscriptions ===
+
+(rf/reg-sub
+  ::pending-selection
+  (fn [db _]
+    (:game/pending-selection db)))
+
+
+(rf/reg-sub
+  ::selection-hand
+  :<- [::game-db]
+  :<- [::pending-selection]
+  (fn [[game-db selection] _]
+    (when (and game-db selection)
+      (let [player-id (:selection/player-id selection)]
+        (queries/get-hand game-db player-id)))))
