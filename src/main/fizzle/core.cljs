@@ -97,12 +97,37 @@
      symbol]))
 
 
+(defn- get-producible-colors
+  "Get the mana colors a permanent can produce from its abilities."
+  [obj]
+  (let [abilities (get-in obj [:object/card :card/abilities])
+        mana-abilities (filter #(= :mana (:ability/type %)) abilities)]
+    (if (seq mana-abilities)
+      (let [;; Check :ability/produces (e.g., Lotus Petal, basic lands)
+            produces-maps (keep :ability/produces mana-abilities)
+            ;; Check :ability/effects for :add-mana (e.g., LED)
+            effect-mana-maps (->> mana-abilities
+                                  (mapcat :ability/effects)
+                                  (filter #(= :add-mana (:effect/type %)))
+                                  (keep :effect/mana))
+            all-mana-maps (concat produces-maps effect-mana-maps)
+            ;; Check for {:any N} which means any color
+            has-any? (some :any all-mana-maps)]
+        (if has-any?
+          [:white :blue :black :red :green]
+          ;; Get specific colors from mana maps
+          (distinct (mapcat keys all-mana-maps))))
+      ;; No mana abilities - no buttons
+      [])))
+
+
 (defn- permanent-view
   [obj]
   (let [card-name (get-in obj [:object/card :card/name])
         object-id (:object/id obj)
         tapped? (:object/tapped obj)
-        counters (:object/counters obj)]
+        counters (:object/counters obj)
+        producible-colors (get-producible-colors obj)]
     [:div {:style {:border (if tapped? "2px solid #444" "2px solid #6a6")
                    :border-radius "6px"
                    :padding "8px"
@@ -122,11 +147,12 @@
           ^{:key counter-type}
           [:span {:style {:margin-right "6px"}}
            (str (name counter-type) ": " count)])])
-     ;; Mana buttons for lands
-     [:div {:style {:display "flex" :justify-content "center" :flex-wrap "wrap"}}
-      (for [color [:white :blue :black :red :green]]
-        ^{:key color}
-        [mana-button object-id color tapped?])]]))
+     ;; Mana buttons - only for colors this permanent can produce
+     (when (seq producible-colors)
+       [:div {:style {:display "flex" :justify-content "center" :flex-wrap "wrap"}}
+        (for [color producible-colors]
+          ^{:key color}
+          [mana-button object-id color tapped?])])]))
 
 
 (defn- battlefield-view
@@ -167,6 +193,40 @@
                                 (<= opponent-life 5) "#F0AD4E"
                                 :else "#D9534F")}}
         opponent-life]]]]))
+
+
+(defn- graveyard-view
+  []
+  (let [graveyard @(rf/subscribe [::subs/graveyard])
+        card-count (count graveyard)
+        threshold? (>= card-count 7)]
+    [:div {:style {:margin-bottom "16px"}}
+     [:div {:style {:color "#999" :margin-bottom "6px" :font-size "12px"}}
+      (str "GRAVEYARD (" card-count ")")
+      (when threshold?
+        [:span {:style {:margin-left "8px"
+                        :padding "2px 6px"
+                        :background "#6a2a6a"
+                        :border-radius "3px"
+                        :font-size "10px"
+                        :color "#eee"}}
+         "THRESHOLD"])]
+     (if (seq graveyard)
+       [:div {:style {:display "flex"
+                      :flex-direction "column"
+                      :gap "2px"
+                      :max-height "200px"
+                      :overflow-y "auto"}}
+        (for [obj graveyard]
+          ^{:key (:object/id obj)}
+          [:div {:style {:padding "4px 8px"
+                         :background "#2a1a2a"
+                         :border "1px solid #444"
+                         :border-radius "3px"
+                         :font-size "12px"
+                         :color "#aaa"}}
+           (get-in obj [:object/card :card/name])])]
+       [:div {:style {:color "#555" :font-size "13px"}} "Empty"])]))
 
 
 (defn- stack-item-view
@@ -389,6 +449,7 @@
    [battlefield-view]
    [hand-view]
    [controls-view]
+   [graveyard-view]
    [mana-pool-view]
    [storm-count-view]
    [stack-view]

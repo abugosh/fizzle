@@ -363,3 +363,99 @@
       ;; but the test ensures we know what happens with bad data
       (is (= (+ initial-black 1) final-black)
           "Negative cost subtracts negative (adds mana) - documents malformed behavior"))))
+
+
+;; === Permanent type resolution tests ===
+
+(deftest test-permanent-type-artifact
+  (testing "permanent-type? returns true for artifacts"
+    (is (true? (rules/permanent-type? #{:artifact}))
+        "Artifact should be a permanent type")))
+
+
+(deftest test-permanent-type-creature
+  (testing "permanent-type? returns true for creatures"
+    (is (true? (rules/permanent-type? #{:creature}))
+        "Creature should be a permanent type")))
+
+
+(deftest test-permanent-type-enchantment
+  (testing "permanent-type? returns true for enchantments"
+    (is (true? (rules/permanent-type? #{:enchantment}))
+        "Enchantment should be a permanent type")))
+
+
+(deftest test-permanent-type-instant-sorcery
+  (testing "permanent-type? returns false for instant and sorcery"
+    (is (false? (rules/permanent-type? #{:instant}))
+        "Instant should not be a permanent type")
+    (is (false? (rules/permanent-type? #{:sorcery}))
+        "Sorcery should not be a permanent type")))
+
+
+(deftest test-permanent-type-land
+  (testing "permanent-type? returns false for land (lands don't go through resolve-spell)"
+    ;; Lands use play-land, not cast-spell/resolve-spell
+    ;; but if they somehow did, they shouldn't be treated as permanents here
+    (is (false? (rules/permanent-type? #{:land}))
+        "Land should not be treated as permanent in resolve-spell")))
+
+
+(defn add-artifact-to-hand
+  "Add an artifact card to player's hand for testing resolution.
+   Returns [obj-id db] tuple."
+  [db player-id card-id]
+  (let [conn (d/conn-from-db db)
+        player-eid (q/get-player-eid db player-id)
+        card-eid (d/q '[:find ?e .
+                        :in $ ?cid
+                        :where [?e :card/id ?cid]]
+                      @conn card-id)
+        obj-id (random-uuid)]
+    (d/transact! conn [{:object/id obj-id
+                        :object/card card-eid
+                        :object/zone :hand
+                        :object/owner player-eid
+                        :object/controller player-eid
+                        :object/tapped false}])
+    [obj-id @conn]))
+
+
+(deftest test-artifact-resolves-to-battlefield
+  (testing "Artifact spell resolves to battlefield, not graveyard"
+    (let [db (init-game-state)
+          ;; Add Lotus Petal card definition (it's in cards/all-cards via init)
+          ;; But init-game-state only loads dark-ritual, so add it
+          conn (d/conn-from-db db)
+          _ (d/transact! conn [cards/lotus-petal])
+          db @conn
+          [obj-id db] (add-artifact-to-hand db :player-1 :lotus-petal)
+          ;; Cast - artifacts have 0 mana cost
+          db-cast (rules/cast-spell db :player-1 obj-id)
+          _ (is (= :stack (:object/zone (q/get-object db-cast obj-id)))
+                "Artifact should be on stack after casting")
+          ;; Resolve
+          db-resolved (rules/resolve-spell db-cast :player-1 obj-id)]
+      (is (= :battlefield (:object/zone (q/get-object db-resolved obj-id)))
+          "Artifact should resolve to battlefield")
+      (is (= 1 (count (q/get-objects-in-zone db-resolved :player-1 :battlefield)))
+          "Should have 1 permanent on battlefield")
+      (is (= 0 (count (q/get-objects-in-zone db-resolved :player-1 :graveyard)))
+          "Graveyard should be empty"))))
+
+
+(deftest test-instant-still-resolves-to-graveyard
+  (testing "Instant spell still resolves to graveyard (not battlefield)"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1}))
+          hand (q/get-hand db :player-1)
+          ritual (first hand)  ; Dark Ritual is an instant
+          obj-id (:object/id ritual)
+          db-cast (rules/cast-spell db :player-1 obj-id)
+          db-resolved (rules/resolve-spell db-cast :player-1 obj-id)]
+      (is (= :graveyard (:object/zone (q/get-object db-resolved obj-id)))
+          "Instant should resolve to graveyard")
+      (is (= 0 (count (q/get-objects-in-zone db-resolved :player-1 :battlefield)))
+          "Battlefield should be empty")
+      (is (= 1 (count (q/get-objects-in-zone db-resolved :player-1 :graveyard)))
+          "Should have 1 card in graveyard"))))

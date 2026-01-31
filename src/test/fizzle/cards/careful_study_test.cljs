@@ -20,7 +20,8 @@
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.rules :as rules]
-    [fizzle.engine.zones :as zones]))
+    [fizzle.engine.zones :as zones]
+    [fizzle.events.game :as game]))
 
 
 ;; === Test helpers ===
@@ -317,3 +318,64 @@
           actual-discard (min hand-count required-discard)]
       (is (= 1 actual-discard)
           "Should discard only what's available"))))
+
+
+;; === resolve-spell-with-selection Integration Tests ===
+
+(deftest test-resolve-spell-with-selection-creates-pending-state
+  (testing "resolve-spell-with-selection pauses on selection effect and returns pending state"
+    (let [db (create-test-db)
+          ;; Add cards to library for drawing
+          [db' _lib-ids] (add-cards-to-library db
+                                               [:dark-ritual :cabal-ritual :brain-freeze :island]
+                                               :player-1)
+          ;; Add Careful Study to hand
+          [db'' cs-id] (add-card-to-zone db' :careful-study :hand :player-1)
+          _ (is (= 1 (get-hand-count db'' :player-1)) "Precondition: 1 card in hand")
+          ;; Cast Careful Study
+          db-after-cast (rules/cast-spell db'' :player-1 cs-id)
+          _ (is (= :stack (get-object-zone db-after-cast cs-id))
+                "Precondition: Careful Study on stack")
+          ;; Resolve with selection system
+          result (game/resolve-spell-with-selection db-after-cast :player-1 cs-id)]
+      ;; Should have pending selection
+      (is (some? (:pending-selection result))
+          "Should return pending selection state")
+      ;; Selection state should require 2 cards
+      (is (= 2 (get-in result [:pending-selection :selection/count]))
+          "Selection should require exactly 2 cards")
+      ;; Selection type should be :discard
+      (is (= :discard (get-in result [:pending-selection :selection/effect-type]))
+          "Selection effect type should be :discard")
+      ;; Draw effect should have executed (3 cards in hand: 2 drawn + 0 from empty hand after CS cast)
+      (is (= 2 (get-hand-count (:db result) :player-1))
+          "Draw effect should have executed - 2 cards in hand")
+      ;; Spell should still be on stack (waiting for selection)
+      (is (= :stack (get-object-zone (:db result) cs-id))
+          "Spell should remain on stack until selection confirmed"))))
+
+
+(deftest test-resolve-spell-with-selection-no-selection-effect
+  (testing "resolve-spell-with-selection resolves normally for spells without selection"
+    (let [db (create-test-db)
+          ;; Add Dark Ritual to hand
+          [db' dr-id] (add-card-to-zone db :dark-ritual :hand :player-1)
+          ;; Add mana to cast
+          conn (d/conn-from-db db')
+          player-eid (q/get-player-eid db' :player-1)
+          _ (d/transact! conn [[:db/add player-eid :player/mana-pool
+                                {:white 0 :blue 0 :black 1 :red 0 :green 0 :colorless 0}]])
+          db'' @conn
+          ;; Cast Dark Ritual
+          db-after-cast (rules/cast-spell db'' :player-1 dr-id)
+          ;; Resolve with selection system
+          result (game/resolve-spell-with-selection db-after-cast :player-1 dr-id)]
+      ;; Should NOT have pending selection
+      (is (nil? (:pending-selection result))
+          "Should NOT return pending selection for spells without selection effects")
+      ;; Spell should be in graveyard (resolved normally)
+      (is (= :graveyard (get-object-zone (:db result) dr-id))
+          "Spell should be in graveyard after normal resolution")
+      ;; Effect should have executed (BBB added)
+      (is (= 3 (:black (q/get-mana-pool (:db result) :player-1)))
+          "Dark Ritual effect should have added BBB"))))

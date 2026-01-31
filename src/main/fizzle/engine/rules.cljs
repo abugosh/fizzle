@@ -117,21 +117,33 @@
       default-effects)))
 
 
+(defn permanent-type?
+  "Check if card types include a permanent type (artifact, creature, enchantment, planeswalker)."
+  [card-types]
+  (let [types-set (set card-types)]
+    (boolean (some types-set [:artifact :creature :enchantment :planeswalker]))))
+
+
 (defn resolve-spell
   "Resolve a spell on the stack.
 
    - Verifies spell is on stack (no-op if not)
    - Checks conditions and selects appropriate effects
    - Executes all selected effects
-   - Moves card to graveyard"
+   - Permanents (artifact, creature, enchantment) move to battlefield
+   - Instants/sorceries move to graveyard"
   [db player-id object-id]
   (let [obj (q/get-object db object-id)]
     (if (not= :stack (:object/zone obj))
       db  ; No-op if spell not on stack
       (let [card (:object/card obj)
-            effects-list (get-active-effects db player-id card)]
+            card-types (:card/types card)
+            effects-list (get-active-effects db player-id card)
+            destination (if (permanent-type? card-types)
+                          :battlefield
+                          :graveyard)]
         (as-> db db'
               (reduce (fn [d effect] (effects/execute-effect d player-id effect))
                       db'
                       (or effects-list []))
-              (zones/move-to-zone db' object-id :graveyard))))))
+              (zones/move-to-zone db' object-id destination))))))

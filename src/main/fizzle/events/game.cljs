@@ -17,19 +17,29 @@
     [re-frame.core :as rf]))
 
 
+;; Forward declaration for selection-aware spell resolution
+(declare resolve-spell-with-selection)
+
+
 (defn make-test-deck
   "Create a test deck as a vector of card-ids.
-   12x each of: dark-ritual, cabal-ritual, brain-freeze, city-of-brass, gemstone-mine
+   Mix of storm staples: rituals, lands, acceleration, card filtering.
    Returns shuffled vector of 60 card-ids."
   []
   (shuffle
     (into []
           (concat
-            (repeat 12 :dark-ritual)
-            (repeat 12 :cabal-ritual)
-            (repeat 12 :brain-freeze)
-            (repeat 12 :city-of-brass)
-            (repeat 12 :gemstone-mine)))))
+            (repeat 8 :dark-ritual)
+            (repeat 8 :cabal-ritual)
+            (repeat 4 :brain-freeze)
+            (repeat 4 :city-of-brass)
+            (repeat 4 :gemstone-mine)
+            (repeat 8 :island)
+            (repeat 8 :swamp)
+            (repeat 4 :lotus-petal)
+            (repeat 4 :lions-eye-diamond)
+            (repeat 4 :careful-study)
+            (repeat 4 :mental-note)))))
 
 
 (defn init-game-state
@@ -200,8 +210,28 @@
 (rf/reg-event-db
   ::resolve-top
   (fn [db _]
-    (let [game-db (:game/db db)]
-      (assoc db :game/db (resolve-top-of-stack game-db :player-1)))))
+    (let [game-db (:game/db db)
+          ;; Check if top item is a spell that needs selection handling
+          stack-objects (->> (queries/get-objects-in-zone game-db :player-1 :stack)
+                             (sort-by :object/position >))
+          top-spell (first stack-objects)
+          stack-triggers (queries/get-stack-items game-db)
+          top-trigger (first stack-triggers)
+          trigger-order (when top-trigger (:trigger/stack-order top-trigger))
+          spell-order (when top-spell (:object/position top-spell))
+          ;; Determine if we should use selection-aware resolution for spell
+          resolve-spell? (or (and spell-order (not trigger-order))
+                             (and spell-order trigger-order (> spell-order trigger-order)))]
+      (if resolve-spell?
+        ;; Use selection-aware resolution for spells
+        (let [result (resolve-spell-with-selection game-db :player-1 (:object/id top-spell))]
+          (if (:pending-selection result)
+            (-> db
+                (assoc :game/db (:db result))
+                (assoc :game/pending-selection (:pending-selection result)))
+            (assoc db :game/db (:db result))))
+        ;; Use standard resolution for triggers or empty stack
+        (assoc db :game/db (resolve-top-of-stack game-db :player-1))))))
 
 
 ;; === Turn Structure ===

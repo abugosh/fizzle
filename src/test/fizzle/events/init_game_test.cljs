@@ -39,7 +39,7 @@
 
 
 (deftest test-deck-cards-have-correct-distribution
-  (testing "deck (library + hand) contains 12x each of 5 card types"
+  (testing "deck (library + hand) contains expected card distribution"
     (let [db (init-and-get-db)
           library (get-library-objects db :player-1)
           hand (get-hand-objects db :player-1)
@@ -48,16 +48,33 @@
           card-counts (->> all-cards
                            (map #(get-in % [:object/card :card/id]))
                            frequencies)]
-      (is (= 12 (get card-counts :dark-ritual))
-          "Should have 12 Dark Rituals in deck")
-      (is (= 12 (get card-counts :cabal-ritual))
-          "Should have 12 Cabal Rituals in deck")
-      (is (= 12 (get card-counts :brain-freeze))
-          "Should have 12 Brain Freezes in deck")
-      (is (= 12 (get card-counts :city-of-brass))
-          "Should have 12 City of Brass in deck")
-      (is (= 12 (get card-counts :gemstone-mine))
-          "Should have 12 Gemstone Mines in deck"))))
+      ;; 8x rituals
+      (is (= 8 (get card-counts :dark-ritual))
+          "Should have 8 Dark Rituals in deck")
+      (is (= 8 (get card-counts :cabal-ritual))
+          "Should have 8 Cabal Rituals in deck")
+      ;; 4x win conditions and rainbow lands
+      (is (= 4 (get card-counts :brain-freeze))
+          "Should have 4 Brain Freezes in deck")
+      (is (= 4 (get card-counts :city-of-brass))
+          "Should have 4 City of Brass in deck")
+      (is (= 4 (get card-counts :gemstone-mine))
+          "Should have 4 Gemstone Mines in deck")
+      ;; 8x basic lands
+      (is (= 8 (get card-counts :island))
+          "Should have 8 Islands in deck")
+      (is (= 8 (get card-counts :swamp))
+          "Should have 8 Swamps in deck")
+      ;; 4x mana acceleration
+      (is (= 4 (get card-counts :lotus-petal))
+          "Should have 4 Lotus Petals in deck")
+      (is (= 4 (get card-counts :lions-eye-diamond))
+          "Should have 4 Lion's Eye Diamonds in deck")
+      ;; 4x card filtering
+      (is (= 4 (get card-counts :careful-study))
+          "Should have 4 Careful Studies in deck")
+      (is (= 4 (get card-counts :mental-note))
+          "Should have 4 Mental Notes in deck"))))
 
 
 ;; === Starting hand tests ===

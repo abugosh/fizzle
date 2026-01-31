@@ -115,6 +115,13 @@
     (when game-db (queries/get-objects-in-zone game-db :player-1 :battlefield))))
 
 
+(rf/reg-sub
+  ::graveyard
+  :<- [::game-db]
+  (fn [game-db _]
+    (when game-db (queries/get-objects-in-zone game-db :player-1 :graveyard))))
+
+
 ;; === Selection System Subscriptions ===
 
 (rf/reg-sub
