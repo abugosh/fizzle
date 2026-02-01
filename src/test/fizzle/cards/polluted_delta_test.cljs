@@ -368,3 +368,112 @@
       ;; Remaining 4 cards should be in library
       (is (= 4 (get-library-count db-after :player-1))
           "Library should have 4 cards after fetch"))))
+
+
+;; === Activated Ability Uses Stack Tests ===
+
+(deftest test-activate-ability-adds-trigger-to-stack
+  (testing "Activating Polluted Delta ability adds trigger to stack"
+    (let [db (create-test-db)
+          ;; Add Polluted Delta to battlefield and Island to library
+          [db' delta-id] (add-card-to-zone db :polluted-delta :battlefield :player-1)
+          [db'' _island-ids] (add-cards-to-library db' [:island] :player-1)
+          ;; Give player enough life to pay the cost
+          player-eid (q/get-player-eid db'' :player-1)
+          db-with-life (d/db-with db'' [[:db/add player-eid :player/life 20]])
+          ;; Verify no stack items before
+          _ (is (= 0 (count (q/get-stack-items db-with-life)))
+                "Precondition: no items on stack")
+          ;; Activate ability
+          result (game/activate-ability db-with-life :player-1 delta-id 0)
+          db-after (:db result)]
+      ;; Should have trigger on stack
+      (is (= 1 (count (q/get-stack-items db-after)))
+          "Activated ability should create a trigger on stack")
+      ;; Trigger should be :activated-ability type
+      (let [trigger (first (q/get-stack-items db-after))]
+        (is (= :activated-ability (:trigger/type trigger))
+            "Trigger should have type :activated-ability")))))
+
+
+(deftest test-sacrifice-cost-paid-on-activation-not-resolution
+  (testing "Polluted Delta sacrifices immediately when ability is activated (as cost)"
+    (let [db (create-test-db)
+          [db' delta-id] (add-card-to-zone db :polluted-delta :battlefield :player-1)
+          [db'' _] (add-cards-to-library db' [:island] :player-1)
+          player-eid (q/get-player-eid db'' :player-1)
+          db-with-life (d/db-with db'' [[:db/add player-eid :player/life 20]])
+          ;; Verify Delta on battlefield before
+          _ (is (= :battlefield (get-object-zone db-with-life delta-id))
+                "Precondition: Delta on battlefield")
+          ;; Activate ability (costs are paid immediately)
+          result (game/activate-ability db-with-life :player-1 delta-id 0)
+          db-after (:db result)]
+      ;; Delta should be in graveyard (sacrificed as cost)
+      (is (= :graveyard (get-object-zone db-after delta-id))
+          "Polluted Delta should be sacrificed immediately as cost")
+      ;; But trigger is still on stack (not yet resolved)
+      (is (= 1 (count (q/get-stack-items db-after)))
+          "Trigger should still be on stack awaiting resolution"))))
+
+
+(deftest test-life-cost-paid-on-activation
+  (testing "Pay-life cost is deducted immediately when ability is activated"
+    (let [db (create-test-db)
+          [db' delta-id] (add-card-to-zone db :polluted-delta :battlefield :player-1)
+          [db'' _] (add-cards-to-library db' [:island] :player-1)
+          player-eid (q/get-player-eid db'' :player-1)
+          db-with-life (d/db-with db'' [[:db/add player-eid :player/life 20]])
+          ;; Verify life before
+          _ (is (= 20 (q/get-life-total db-with-life :player-1))
+                "Precondition: player has 20 life")
+          ;; Activate ability
+          result (game/activate-ability db-with-life :player-1 delta-id 0)
+          db-after (:db result)]
+      ;; Life should be 19 (paid 1 as cost)
+      (is (= 19 (q/get-life-total db-after :player-1))
+          "Player should have paid 1 life as cost"))))
+
+
+(deftest test-can-respond-to-activated-ability
+  (testing "With trigger on stack, can tap lands before resolution (priority window)"
+    (let [db (create-test-db)
+          ;; Add Polluted Delta and City of Brass to battlefield
+          [db' delta-id] (add-card-to-zone db :polluted-delta :battlefield :player-1)
+          [db'' cob-id] (add-card-to-zone db' :city-of-brass :battlefield :player-1)
+          [db''' _] (add-cards-to-library db'' [:island] :player-1)
+          player-eid (q/get-player-eid db''' :player-1)
+          db-with-life (d/db-with db''' [[:db/add player-eid :player/life 20]])
+          ;; Activate Polluted Delta ability (puts trigger on stack)
+          result (game/activate-ability db-with-life :player-1 delta-id 0)
+          db-after-activate (:db result)]
+      ;; Trigger is on stack
+      (is (= 1 (count (q/get-stack-items db-after-activate)))
+          "Trigger should be on stack")
+      ;; Can still tap City of Brass for mana (responding to ability on stack)
+      (let [db-after-tap (game/activate-mana-ability db-after-activate :player-1 cob-id :blue)
+            mana-pool (q/get-mana-pool db-after-tap :player-1)]
+        (is (= 1 (:blue mana-pool))
+            "Should be able to tap City of Brass while ability is on stack")
+        ;; Trigger still on stack
+        (is (= 1 (count (q/get-stack-items db-after-tap)))
+            "Trigger should remain on stack after tapping for mana")))))
+
+
+(deftest test-mana-abilities-still-immediate
+  (testing "Mana abilities resolve immediately (don't use stack)"
+    (let [db (create-test-db)
+          ;; Add City of Brass to battlefield
+          [db' cob-id] (add-card-to-zone db :city-of-brass :battlefield :player-1)
+          ;; Verify no stack items
+          _ (is (= 0 (count (q/get-stack-items db')))
+                "Precondition: no items on stack")
+          ;; Activate mana ability
+          db-after-tap (game/activate-mana-ability db' :player-1 cob-id :blue)]
+      ;; Mana should be added immediately
+      (is (= 1 (:blue (q/get-mana-pool db-after-tap :player-1)))
+          "Mana should be added immediately")
+      ;; No triggers on stack from mana ability
+      ;; (Note: City of Brass damage trigger goes on stack, but that's from the tapped event, not the mana ability)
+      ;; Just verify we got mana - the key point is mana abilities don't use activate-ability
+      )))

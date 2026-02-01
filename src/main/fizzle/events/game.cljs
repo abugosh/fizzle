@@ -20,6 +20,7 @@
 
 ;; Forward declarations for selection-aware spell resolution
 (declare resolve-spell-with-selection)
+(declare resolve-activated-ability-with-selection)
 (declare find-selection-effect-index)
 (declare build-tutor-selection)
 
@@ -224,19 +225,38 @@
           top-trigger (first stack-triggers)
           trigger-order (when top-trigger (:trigger/stack-order top-trigger))
           spell-order (when top-spell (:object/position top-spell))
-          ;; Determine if we should use selection-aware resolution for spell
-          resolve-spell? (or (and spell-order (not trigger-order))
-                             (and spell-order trigger-order (> spell-order trigger-order)))]
-      (if resolve-spell?
-        ;; Use selection-aware resolution for spells
+          ;; Determine what to resolve based on stack order
+          resolve-spell? (and spell-order
+                              (or (not trigger-order)
+                                  (> spell-order trigger-order)))
+          resolve-trigger? (and trigger-order
+                                (or (not spell-order)
+                                    (> trigger-order spell-order)))]
+      (cond
+        ;; Resolve spell with selection handling
+        resolve-spell?
         (let [result (resolve-spell-with-selection game-db :player-1 (:object/id top-spell))]
           (if (:pending-selection result)
             (-> db
                 (assoc :game/db (:db result))
                 (assoc :game/pending-selection (:pending-selection result)))
             (assoc db :game/db (:db result))))
-        ;; Use standard resolution for triggers or empty stack
-        (assoc db :game/db (resolve-top-of-stack game-db :player-1))))))
+
+        ;; Resolve activated ability trigger with selection handling
+        (and resolve-trigger? (= :activated-ability (:trigger/type top-trigger)))
+        (let [result (resolve-activated-ability-with-selection game-db top-trigger)]
+          (if (:pending-selection result)
+            (-> db
+                (assoc :game/db (:db result))
+                (assoc :game/pending-selection (:pending-selection result)))
+            (assoc db :game/db (:db result))))
+
+        ;; Resolve other triggers normally
+        resolve-trigger?
+        (assoc db :game/db (resolve-top-of-stack game-db :player-1))
+
+        ;; Empty stack
+        :else db))))
 
 
 ;; === Turn Structure ===
@@ -601,7 +621,7 @@
 
 (defn activate-ability
   "Activate a non-mana ability on a permanent (e.g., fetchlands).
-   Pure function: (db, player-id, object-id, ability-index) -> {:db db :pending-selection sel}
+   Pure function: (db, player-id, object-id, ability-index) -> {:db db :pending-selection nil}
 
    Arguments:
      db - Datascript database value
@@ -612,10 +632,17 @@
    Flow:
      1. Find ability from card data
      2. Check can-activate? via abilities module
-     3. Pay costs (tap, sacrifice, etc.)
-     4. Execute effects or set up pending selection
+     3. Pay costs (tap, sacrifice, pay-life, etc.) - immediate
+     4. Add ability trigger to stack - effects resolve later
 
-   Returns {:db db :pending-selection nil|selection-state}"
+   The ability goes on the stack and effects execute on resolution.
+   This allows opponents to respond (e.g., counter with Stifle).
+   Costs are paid on activation, not resolution.
+
+   Selection effects (like tutor) are handled on resolution via
+   resolve-activated-ability-with-selection.
+
+   Returns {:db db :pending-selection nil}"
   [db player-id object-id ability-index]
   (let [obj (queries/get-object db object-id)
         player-eid (queries/get-player-eid db player-id)]
@@ -629,35 +656,20 @@
         (if (and ability
                  (= :activated (:ability/type ability))
                  (abilities/can-activate? db object-id ability))
-          ;; Pay costs
+          ;; Pay costs (tap, sacrifice, pay-life) - these happen immediately on activation
           (let [db-after-costs (abilities/pay-all-costs db object-id (:ability/cost ability))]
             (if db-after-costs
-              ;; Check if any effect requires selection (like :tutor)
+              ;; Create ability trigger and add to stack (effects resolve later)
               (let [effects-list (:ability/effects ability [])
-                    selection-idx (find-selection-effect-index effects-list)]
-                (if (nil? selection-idx)
-                  ;; No selection needed - execute all effects
-                  {:db (reduce (fn [db' effect]
-                                 (effects/execute-effect db' player-id effect))
-                               db-after-costs
-                               effects-list)
-                   :pending-selection nil}
-                  ;; Has selection effect (e.g., tutor) - set up pending selection
-                  (let [effects-before (subvec (vec effects-list) 0 selection-idx)
-                        selection-effect (nth effects-list selection-idx)
-                        effects-after (subvec (vec effects-list) (inc selection-idx))
-                        ;; Execute effects before selection
-                        db-after-before (reduce (fn [d effect]
-                                                  (effects/execute-effect d player-id effect))
-                                                db-after-costs
-                                                effects-before)]
-                    ;; Build selection state (for tutor effect)
-                    (if (= :tutor (:effect/type selection-effect))
-                      {:db db-after-before
-                       :pending-selection (build-tutor-selection db-after-before player-id object-id
-                                                                 selection-effect effects-after)}
-                      ;; Unknown selection type - just return db
-                      {:db db-after-before :pending-selection nil}))))
+                    ability-trigger (triggers/create-trigger
+                                      :activated-ability
+                                      object-id
+                                      player-id
+                                      {:effects effects-list
+                                       :description (:ability/description ability)})
+                    db-with-trigger (triggers/add-trigger-to-stack db-after-costs ability-trigger)]
+                {:db db-with-trigger
+                 :pending-selection nil})
               {:db db :pending-selection nil}))
           {:db db :pending-selection nil}))
       {:db db :pending-selection nil})))
@@ -794,6 +806,80 @@
              :pending-selection pending-selection}))))))
 
 
+(defn- build-tutor-selection-for-trigger
+  "Build pending selection state for a tutor effect from an activated ability trigger.
+   Uses :selection/trigger-id instead of :selection/spell-id for cleanup."
+  [db player-id trigger-id tutor-effect effects-after]
+  (let [criteria (:effect/criteria tutor-effect)
+        target-zone (or (:effect/target-zone tutor-effect) :hand)
+        matching-objs (queries/query-library-by-criteria db player-id criteria)
+        candidate-ids (set (map :object/id matching-objs))]
+    {:selection/zone :library
+     :selection/count 1
+     :selection/player-id player-id
+     :selection/selected #{}
+     :selection/trigger-id trigger-id  ; Use trigger-id, not spell-id
+     :selection/source-type :trigger   ; Indicates this is from a trigger, not a spell
+     :selection/remaining-effects effects-after
+     :selection/effect-type :tutor
+     :selection/target-zone target-zone
+     :selection/allow-fail-to-find true
+     :selection/candidates candidate-ids
+     :selection/shuffle? (get tutor-effect :effect/shuffle? true)
+     :selection/enters-tapped (:effect/enters-tapped tutor-effect)}))
+
+
+(defn resolve-activated-ability-with-selection
+  "Resolve an activated ability trigger, pausing if a selection effect is encountered.
+
+   Returns a map with:
+     :db - The updated game-db
+     :pending-selection - Selection state if paused for selection, nil otherwise
+
+   When a selection effect (like tutor) is encountered:
+   - Effects before the selection are executed
+   - The selection effect creates pending selection state
+   - Effects after the selection are stored for later execution
+   - The trigger is NOT removed from stack until selection is confirmed
+
+   For abilities without selection effects, use resolve-trigger :activated-ability instead."
+  [db trigger]
+  (let [controller (:trigger/controller trigger)
+        source-id (:trigger/source trigger)
+        trigger-id (:trigger/id trigger)
+        effects-list (get-in trigger [:trigger/data :effects] [])
+        selection-idx (find-selection-effect-index effects-list)]
+    (if (nil? selection-idx)
+      ;; No selection effect - resolve normally and remove trigger
+      {:db (-> db
+               (triggers/resolve-trigger trigger)
+               (triggers/remove-trigger trigger-id))
+       :pending-selection nil}
+      ;; Has selection effect - pause for selection
+      (let [effects-before (subvec (vec effects-list) 0 selection-idx)
+            selection-effect (nth effects-list selection-idx)
+            effects-after (subvec (vec effects-list) (inc selection-idx))
+            ;; Execute effects before selection, resolving :self target
+            db-after-before (reduce (fn [d effect]
+                                      (let [resolved-effect (cond
+                                                              (= :self (:effect/target effect))
+                                                              (assoc effect :effect/target source-id)
+
+                                                              (= :controller (:effect/target effect))
+                                                              (assoc effect :effect/target controller)
+
+                                                              :else effect)]
+                                        (effects/execute-effect d controller resolved-effect)))
+                                    db
+                                    effects-before)
+            ;; Build selection state for tutor
+            pending-selection (when (= :tutor (:effect/type selection-effect))
+                                (build-tutor-selection-for-trigger db-after-before controller trigger-id
+                                                                   selection-effect effects-after))]
+        {:db db-after-before
+         :pending-selection pending-selection}))))
+
+
 (rf/reg-event-db
   ::set-pending-selection
   (fn [db [_ selection-state]]
@@ -923,6 +1009,8 @@
           selected (:selection/selected selection)
           candidates (:selection/candidates selection)
           spell-id (:selection/spell-id selection)
+          trigger-id (:selection/trigger-id selection)
+          source-type (:selection/source-type selection)
           remaining-effects (:selection/remaining-effects selection)
           player-id (:selection/player-id selection)
           game-db (:game/db db)]
@@ -937,8 +1025,12 @@
                                            (effects/execute-effect d player-id effect))
                                          db-after-tutor
                                          (or remaining-effects []))
-              ;; Move spell to graveyard
-              db-final (zones/move-to-zone db-after-remaining spell-id :graveyard)]
+              ;; Clean up source: move spell to graveyard OR remove trigger from stack
+              db-final (if (= source-type :trigger)
+                         ;; Trigger-based selection (activated ability): remove trigger
+                         (triggers/remove-trigger db-after-remaining trigger-id)
+                         ;; Spell-based selection: move spell to graveyard
+                         (zones/move-to-zone db-after-remaining spell-id :graveyard))]
           (-> db
               (assoc :game/db db-final)
               (dissoc :game/pending-selection)))

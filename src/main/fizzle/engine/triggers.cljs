@@ -119,6 +119,34 @@
             effects-list)))
 
 
+(defmethod resolve-trigger :activated-ability [db trigger]
+  "Resolve an :activated-ability trigger from the stack.
+
+   Executes effects stored in :trigger/data :effects.
+
+   Note: This method only handles abilities WITHOUT selection effects.
+   Abilities with selection effects (like tutors) are handled by
+   resolve-activated-ability-with-selection in game.cljs.
+
+   Used by non-mana activated abilities on permanents."
+  (let [controller (:trigger/controller trigger)
+        source (:trigger/source trigger)
+        effects-list (get-in trigger [:trigger/data :effects] [])]
+    (reduce (fn [db' effect]
+              ;; Resolve :self target to source object, :controller to player-id
+              (let [resolved-effect (cond
+                                      (= :self (:effect/target effect))
+                                      (assoc effect :effect/target source)
+
+                                      (= :controller (:effect/target effect))
+                                      (assoc effect :effect/target controller)
+
+                                      :else effect)]
+                (effects/execute-effect db' controller resolved-effect)))
+            db
+            effects-list)))
+
+
 (defn create-spell-copy
   "Create a copy of a spell on the stack.
 
