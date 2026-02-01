@@ -336,6 +336,7 @@
   [trigger-type]
   (case trigger-type
     :becomes-tapped :permanent-tapped
+    :land-entered :land-entered
     ;; Add more mappings as needed
     trigger-type))
 
@@ -353,13 +354,18 @@
   [object-id controller-id card]
   (doseq [trigger (:card/triggers card)]
     (let [trigger-type (:trigger/type trigger)
-          event-type (trigger-type->event-type trigger-type)]
+          event-type (trigger-type->event-type trigger-type)
+          ;; Use card's filter if specified, otherwise default to :self matching
+          ;; City of Brass uses {:event/object-id :self} (fires when THIS taps)
+          ;; City of Traitors uses {:exclude-self true} (fires when OTHER lands enter)
+          trigger-filter (or (:trigger/filter trigger)
+                             {:event/object-id :self})]
       (registry/register-trigger!
         {:trigger/id (random-uuid)
          :trigger/event-type event-type
          :trigger/source object-id
          :trigger/controller controller-id
-         :trigger/filter {:event/object-id :self}  ; only when THIS permanent taps
+         :trigger/filter trigger-filter
          :trigger/uses-stack? true
          :trigger/effects (:trigger/effects trigger)
          :trigger/description (:trigger/description trigger)}))))
@@ -417,7 +423,10 @@
    - Card must be a land type
    - Phase must be :main1 or :main2
 
-   After moving to battlefield, fires ETB effects from :card/etb-effects.
+   After moving to battlefield:
+   1. Registers card triggers
+   2. Fires ETB effects from :card/etb-effects
+   3. Dispatches :land-entered event for triggers like City of Traitors
 
    Returns unchanged db if any validation fails."
   [db player-id object-id]
@@ -446,20 +455,22 @@
             obj-after (queries/get-object db-after-move object-id)
             card (:object/card obj-after)
             etb-effects (:card/etb-effects card)
-            ;; Register card triggers (e.g., City of Brass :becomes-tapped)
+            ;; Register card triggers (e.g., City of Brass :becomes-tapped, City of Traitors :land-entered)
             _ (when (seq (:card/triggers card))
-                (register-card-triggers! object-id player-id card))]
-        ;; Fire ETB effects if any
-        (if (seq etb-effects)
-          (reduce (fn [db' effect]
-                    ;; Resolve :self target to actual object-id
-                    (let [resolved-effect (if (= :self (:effect/target effect))
-                                            (assoc effect :effect/target object-id)
-                                            effect)]
-                      (effects/execute-effect db' player-id resolved-effect)))
-                  db-after-move
-                  etb-effects)
-          db-after-move))
+                (register-card-triggers! object-id player-id card))
+            ;; Fire ETB effects if any
+            db-after-etb (if (seq etb-effects)
+                           (reduce (fn [db' effect]
+                                     ;; Resolve :self target to actual object-id
+                                     (let [resolved-effect (if (= :self (:effect/target effect))
+                                                             (assoc effect :effect/target object-id)
+                                                             effect)]
+                                       (effects/execute-effect db' player-id resolved-effect)))
+                                   db-after-move
+                                   etb-effects)
+                           db-after-move)]
+        ;; Dispatch :land-entered event (triggers City of Traitors sacrifice when another land enters)
+        (dispatch/dispatch-event db-after-etb (game-events/land-entered-event object-id player-id)))
       db)))
 
 
@@ -635,7 +646,8 @@
      :selection/target-zone target-zone
      :selection/allow-fail-to-find true  ; Always allow fail-to-find (anti-pattern: NO auto-select)
      :selection/candidates candidate-ids
-     :selection/shuffle? (get tutor-effect :effect/shuffle? true)}))
+     :selection/shuffle? (get tutor-effect :effect/shuffle? true)
+     :selection/enters-tapped (:effect/enters-tapped tutor-effect)}))
 
 
 (defn- build-discard-selection
@@ -788,31 +800,42 @@
      db - Datascript game database (not app-db)
      selection - Selection state map with:
        :selection/selected - Set of object-ids (0 or 1 for tutor)
-       :selection/target-zone - Zone to move card to (:hand for Merchant Scroll)
+       :selection/target-zone - Zone to move card to (:hand for Merchant Scroll, :battlefield for fetchlands)
        :selection/player-id - Who is tutoring
        :selection/shuffle? - Whether to shuffle after (default true)
+       :selection/enters-tapped - If true and target-zone is :battlefield, enters tapped
 
    Handles:
      - Empty selection (fail-to-find): Just shuffles library
-     - Card selected: Moves to target zone, then shuffles
+     - Card selected: Moves to target zone, sets tapped if needed, then shuffles
 
    CRITICAL: Move card BEFORE shuffle (anti-pattern: NO shuffling first)"
   [db selection]
   (let [selected (:selection/selected selection)
         target-zone (:selection/target-zone selection)
         player-id (:selection/player-id selection)
-        should-shuffle? (get selection :selection/shuffle? true)]
+        should-shuffle? (get selection :selection/shuffle? true)
+        enters-tapped? (and (= target-zone :battlefield)
+                            (:selection/enters-tapped selection))]
     (if (empty? selected)
       ;; Fail-to-find: just shuffle
       (if should-shuffle?
         (zones/shuffle-library db player-id)
         db)
-      ;; Card found: move to target zone, then shuffle
+      ;; Card found: move to target zone, set tapped if needed, then shuffle
       (let [card-id (first selected)
-            db-after-move (zones/move-to-zone db card-id target-zone)]
+            db-after-move (zones/move-to-zone db card-id target-zone)
+            ;; If entering battlefield tapped, set tapped state
+            db-after-tapped (if enters-tapped?
+                              (let [obj-eid (d/q '[:find ?e .
+                                                   :in $ ?oid
+                                                   :where [?e :object/id ?oid]]
+                                                 db-after-move card-id)]
+                                (d/db-with db-after-move [[:db/add obj-eid :object/tapped true]]))
+                              db-after-move)]
         (if should-shuffle?
-          (zones/shuffle-library db-after-move player-id)
-          db-after-move)))))
+          (zones/shuffle-library db-after-tapped player-id)
+          db-after-tapped)))))
 
 
 (rf/reg-event-db

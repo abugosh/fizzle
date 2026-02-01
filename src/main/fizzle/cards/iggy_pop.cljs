@@ -76,6 +76,31 @@
                                         :effect/mana {:any 1}}]}]})
 
 
+;; City of Traitors - High-yield colorless mana with sacrifice trigger
+;; T: Add {C}{C}. When you play another land, sacrifice City of Traitors.
+(def city-of-traitors
+  {:card/id :city-of-traitors
+   :card/name "City of Traitors"
+   :card/cmc 0
+   :card/mana-cost {}
+   :card/colors #{}
+   :card/types #{:land}
+   :card/text "When you play another land, sacrifice City of Traitors. {T}: Add {C}{C}."
+
+   ;; Trigger: When ANOTHER land enters (not self)
+   ;; Uses :exclude-self filter to prevent triggering on own entry
+   :card/triggers [{:trigger/type :land-entered
+                    :trigger/description "sacrifice City of Traitors"
+                    :trigger/filter {:exclude-self true}
+                    :trigger/effects [{:effect/type :sacrifice
+                                       :effect/target :self}]}]
+
+   ;; Mana ability: T: Add {C}{C}
+   :card/abilities [{:ability/type :mana
+                     :ability/cost {:tap true}
+                     :ability/produces {:colorless 2}}]})
+
+
 ;; Gemstone Mine - Rainbow land with counter depletion
 ;; T, Remove a mining counter: Add one mana of any color.
 (def gemstone-mine
@@ -225,8 +250,29 @@
                    :effect/shuffle? true}]})
 
 
+;; Polluted Delta - Fetchland
+;; Land - {T}, Sacrifice Polluted Delta: Search your library for an Island or Swamp card,
+;; put it onto the battlefield, then shuffle.
+(def polluted-delta
+  {:card/id :polluted-delta
+   :card/name "Polluted Delta"
+   :card/cmc 0
+   :card/mana-cost {}
+   :card/colors #{}
+   :card/types #{:land}
+   :card/text "{T}, Sacrifice Polluted Delta: Search your library for an Island or Swamp card, put it onto the battlefield, then shuffle."
+   :card/abilities [{:ability/type :activated
+                     :ability/costs [{:cost/type :tap}
+                                     {:cost/type :sacrifice-self}]
+                     :ability/effects [{:effect/type :tutor
+                                        :effect/criteria {:card/subtypes #{:island :swamp}}
+                                        :effect/target-zone :battlefield
+                                        :effect/enters-tapped true
+                                        :effect/shuffle? true}]}]})
+
+
 ;; All cards in this namespace for easy import
 (def all-cards
-  [dark-ritual brain-freeze cabal-ritual city-of-brass gemstone-mine
-   island swamp lotus-petal lions-eye-diamond careful-study mental-note
-   merchant-scroll])
+  [dark-ritual brain-freeze cabal-ritual city-of-brass city-of-traitors
+   gemstone-mine island swamp lotus-petal lions-eye-diamond careful-study
+   mental-note merchant-scroll polluted-delta])
