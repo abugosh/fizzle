@@ -18,8 +18,10 @@
     [re-frame.core :as rf]))
 
 
-;; Forward declaration for selection-aware spell resolution
+;; Forward declarations for selection-aware spell resolution
 (declare resolve-spell-with-selection)
+(declare find-selection-effect-index)
+(declare build-tutor-selection)
 
 
 (defn make-test-deck
@@ -35,8 +37,9 @@
             (repeat 4 :brain-freeze)
             (repeat 4 :city-of-brass)
             (repeat 4 :gemstone-mine)
-            (repeat 6 :island)
-            (repeat 6 :swamp)
+            (repeat 4 :polluted-delta)
+            (repeat 4 :island)
+            (repeat 4 :swamp)
             (repeat 4 :lotus-petal)
             (repeat 4 :lions-eye-diamond)
             (repeat 4 :careful-study)
@@ -592,6 +595,81 @@
   (fn [db [_ object-id mana-color]]
     (let [game-db (:game/db db)]
       (assoc db :game/db (activate-mana-ability game-db :player-1 object-id mana-color)))))
+
+
+;; === Activate Non-Mana Ability ===
+
+(defn activate-ability
+  "Activate a non-mana ability on a permanent (e.g., fetchlands).
+   Pure function: (db, player-id, object-id, ability-index) -> {:db db :pending-selection sel}
+
+   Arguments:
+     db - Datascript database value
+     player-id - The player activating the ability
+     object-id - The permanent to activate
+     ability-index - Index of the ability in :card/abilities
+
+   Flow:
+     1. Find ability from card data
+     2. Check can-activate? via abilities module
+     3. Pay costs (tap, sacrifice, etc.)
+     4. Execute effects or set up pending selection
+
+   Returns {:db db :pending-selection nil|selection-state}"
+  [db player-id object-id ability-index]
+  (let [obj (queries/get-object db object-id)
+        player-eid (queries/get-player-eid db player-id)]
+    (if (and obj
+             player-eid
+             (= (:object/zone obj) :battlefield)
+             (= (:db/id (:object/controller obj)) player-eid))
+      (let [card (:object/card obj)
+            card-abilities (:card/abilities card)
+            ability (nth card-abilities ability-index nil)]
+        (if (and ability
+                 (= :activated (:ability/type ability))
+                 (abilities/can-activate? db object-id ability))
+          ;; Pay costs
+          (let [db-after-costs (abilities/pay-all-costs db object-id (:ability/cost ability))]
+            (if db-after-costs
+              ;; Check if any effect requires selection (like :tutor)
+              (let [effects-list (:ability/effects ability [])
+                    selection-idx (find-selection-effect-index effects-list)]
+                (if (nil? selection-idx)
+                  ;; No selection needed - execute all effects
+                  {:db (reduce (fn [db' effect]
+                                 (effects/execute-effect db' player-id effect))
+                               db-after-costs
+                               effects-list)
+                   :pending-selection nil}
+                  ;; Has selection effect (e.g., tutor) - set up pending selection
+                  (let [effects-before (subvec (vec effects-list) 0 selection-idx)
+                        selection-effect (nth effects-list selection-idx)
+                        effects-after (subvec (vec effects-list) (inc selection-idx))
+                        ;; Execute effects before selection
+                        db-after-before (reduce (fn [d effect]
+                                                  (effects/execute-effect d player-id effect))
+                                                db-after-costs
+                                                effects-before)]
+                    ;; Build selection state (for tutor effect)
+                    (if (= :tutor (:effect/type selection-effect))
+                      {:db db-after-before
+                       :pending-selection (build-tutor-selection db-after-before player-id object-id
+                                                                 selection-effect effects-after)}
+                      ;; Unknown selection type - just return db
+                      {:db db-after-before :pending-selection nil}))))
+              {:db db :pending-selection nil}))
+          {:db db :pending-selection nil}))
+      {:db db :pending-selection nil})))
+
+
+(rf/reg-event-db
+  ::activate-ability
+  (fn [db [_ object-id ability-index]]
+    (let [game-db (:game/db db)
+          result (activate-ability game-db :player-1 object-id ability-index)]
+      (cond-> (assoc db :game/db (:db result))
+        (:pending-selection result) (assoc :game/pending-selection (:pending-selection result))))))
 
 
 ;; === Selection System ===

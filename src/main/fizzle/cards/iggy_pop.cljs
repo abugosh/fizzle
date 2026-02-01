@@ -262,12 +262,11 @@
    :card/types #{:land}
    :card/text "{T}, Sacrifice Polluted Delta: Search your library for an Island or Swamp card, put it onto the battlefield, then shuffle."
    :card/abilities [{:ability/type :activated
-                     :ability/costs [{:cost/type :tap}
-                                     {:cost/type :sacrifice-self}]
+                     :ability/cost {:tap true
+                                    :sacrifice-self true}
                      :ability/effects [{:effect/type :tutor
                                         :effect/criteria {:card/subtypes #{:island :swamp}}
                                         :effect/target-zone :battlefield
-                                        :effect/enters-tapped true
                                         :effect/shuffle? true}]}]})
 
 

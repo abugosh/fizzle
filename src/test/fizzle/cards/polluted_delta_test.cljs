@@ -143,13 +143,11 @@
       (let [ability (first abilities)]
         (is (= :activated (:ability/type ability))
             "Ability should be activated")
-        (let [costs (:ability/costs ability)]
-          (is (= 2 (count costs))
-              "Should have 2 costs (tap and sacrifice)")
-          (is (= :tap (:cost/type (first costs)))
-              "First cost should be tap")
-          (is (= :sacrifice-self (:cost/type (second costs)))
-              "Second cost should be sacrifice-self"))))))
+        (let [cost (:ability/cost ability)]
+          (is (true? (:tap cost))
+              "Should have tap cost")
+          (is (true? (:sacrifice-self cost))
+              "Should have sacrifice-self cost"))))))
 
 
 (deftest test-polluted-delta-tutors-to-battlefield
@@ -160,8 +158,8 @@
           "Effect type should be :tutor")
       (is (= :battlefield (:effect/target-zone effect))
           "Target zone should be :battlefield (not :hand)")
-      (is (true? (:effect/enters-tapped effect))
-          "Should enter tapped"))))
+      (is (nil? (:effect/enters-tapped effect))
+          "Should NOT enter tapped (Polluted Delta puts land onto battlefield untapped)"))))
 
 
 (deftest test-polluted-delta-searches-island-or-swamp

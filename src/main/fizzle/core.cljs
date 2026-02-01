@@ -121,13 +121,41 @@
       [])))
 
 
+(defn- get-activated-abilities
+  "Get non-mana activated abilities with their indices."
+  [obj]
+  (let [abilities (get-in obj [:object/card :card/abilities])]
+    (->> abilities
+         (map-indexed vector)
+         (filter (fn [[_idx ability]] (= :activated (:ability/type ability))))
+         (into []))))
+
+
+(defn- ability-button
+  "Button to activate a non-mana ability."
+  [object-id ability-index label tapped?]
+  [:button {:style {:padding "2px 8px"
+                    :margin "2px"
+                    :border "1px solid #555"
+                    :border-radius "3px"
+                    :cursor (if tapped? "default" "pointer")
+                    :background (if tapped? "#333" "#4a3a2a")
+                    :color (if tapped? "#555" "#d4a")
+                    :font-size "11px"
+                    :font-weight "bold"}
+            :disabled tapped?
+            :on-click #(rf/dispatch [::events/activate-ability object-id ability-index])}
+   label])
+
+
 (defn- permanent-view
   [obj]
   (let [card-name (get-in obj [:object/card :card/name])
         object-id (:object/id obj)
         tapped? (:object/tapped obj)
         counters (:object/counters obj)
-        producible-colors (get-producible-colors obj)]
+        producible-colors (get-producible-colors obj)
+        activated-abilities (get-activated-abilities obj)]
     [:div {:style {:border (if tapped? "2px solid #444" "2px solid #6a6")
                    :border-radius "6px"
                    :padding "8px"
@@ -152,7 +180,13 @@
        [:div {:style {:display "flex" :justify-content "center" :flex-wrap "wrap"}}
         (for [color producible-colors]
           ^{:key color}
-          [mana-button object-id color tapped?])])]))
+          [mana-button object-id color tapped?])])
+     ;; Activated ability buttons (non-mana)
+     (when (seq activated-abilities)
+       [:div {:style {:display "flex" :justify-content "center" :flex-wrap "wrap" :margin-top "4px"}}
+        (for [[idx _ability] activated-abilities]
+          ^{:key idx}
+          [ability-button object-id idx "Fetch" tapped?])])]))
 
 
 (defn- battlefield-view
