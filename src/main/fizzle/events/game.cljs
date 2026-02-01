@@ -660,6 +660,7 @@
           (let [db-after-costs (abilities/pay-all-costs db object-id (:ability/cost ability))]
             (if db-after-costs
               ;; Create ability trigger and add to stack (effects resolve later)
+              ;; Note: UI adds card name from source, so description should just be the ability text
               (let [effects-list (:ability/effects ability [])
                     ability-trigger (triggers/create-trigger
                                       :activated-ability

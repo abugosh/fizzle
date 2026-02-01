@@ -265,6 +265,7 @@
                      :ability/cost {:tap true
                                     :sacrifice-self true
                                     :pay-life 1}
+                     :ability/description "Search for Island or Swamp"
                      :ability/effects [{:effect/type :tutor
                                         :effect/criteria {:card/subtypes #{:island :swamp}}
                                         :effect/target-zone :battlefield
