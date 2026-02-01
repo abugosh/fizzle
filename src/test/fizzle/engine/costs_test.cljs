@@ -158,3 +158,51 @@
     (let [[db object-id] (add-permanent (init-game-state) :player-1)
           cost {:sacrifice true}]
       (is (false? (costs/can-pay? db object-id cost))))))
+
+
+;; === :pay-life cost tests ===
+
+(deftest test-pay-life-can-pay-with-sufficient-life
+  (testing "can-pay? :pay-life returns true when controller has >= required life"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          cost {:pay-life 1}]
+      ;; Player starts with 20 life
+      (is (true? (costs/can-pay? db object-id cost))))))
+
+
+(deftest test-pay-life-cannot-pay-with-insufficient-life
+  (testing "can-pay? :pay-life returns false when controller has < required life"
+    (let [db (init-game-state)
+          ;; Set player to 0 life
+          conn (d/conn-from-db db)
+          player-eid (q/get-player-eid db :player-1)
+          _ (d/transact! conn [[:db/add player-eid :player/life 0]])
+          [db' object-id] (add-permanent @conn :player-1)
+          cost {:pay-life 1}]
+      (is (false? (costs/can-pay? db' object-id cost))))))
+
+
+(deftest test-pay-life-can-pay-exact-life
+  (testing "can-pay? :pay-life returns true when controller has exactly required life (going to 0 is allowed)"
+    (let [db (init-game-state)
+          ;; Set player to 1 life
+          conn (d/conn-from-db db)
+          player-eid (q/get-player-eid db :player-1)
+          _ (d/transact! conn [[:db/add player-eid :player/life 1]])
+          [db' object-id] (add-permanent @conn :player-1)
+          cost {:pay-life 1}]
+      (is (true? (costs/can-pay? db' object-id cost))))))
+
+
+(deftest test-pay-life-deducts-correctly
+  (testing "pay-cost :pay-life deducts life from controller"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          cost {:pay-life 1}
+          player-eid (q/get-player-eid db :player-1)
+          life-before (:player/life (d/entity db player-eid))
+          db' (costs/pay-cost db object-id cost)
+          life-after (:player/life (d/entity db' player-eid))]
+      ;; Should return new db
+      (is (some? db'))
+      ;; Life should be decremented by 1
+      (is (= (dec life-before) life-after)))))

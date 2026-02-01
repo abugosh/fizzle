@@ -162,3 +162,45 @@
                             hand-objects))
         db))
     db))
+
+
+;; === :pay-life cost ===
+
+(defmethod can-pay? :pay-life [db object-id cost]
+  ;; Can pay life if:
+  ;; 1. Object exists
+  ;; 2. Controller has life >= required amount
+  ;; Note: Can pay life even if it would reduce to 0 (MTG rules)
+  (if-let [obj-eid (get-object-eid db object-id)]
+    (let [controller-eid (d/q '[:find ?c .
+                                :in $ ?e
+                                :where [?e :object/controller ?c]]
+                              db obj-eid)
+          current-life (d/q '[:find ?life .
+                              :in $ ?p
+                              :where [?p :player/life ?life]]
+                            db controller-eid)
+          required (:pay-life cost)]
+      (>= (or current-life 0) required))
+    false))
+
+
+(defmethod pay-cost :pay-life [db object-id cost]
+  ;; Deduct life from controller.
+  ;; NOTE: No can-pay? guard here - by the time pay-cost is called,
+  ;; can-activate? has already verified all costs are payable.
+  ;; The object may have been sacrificed by a prior cost (:sacrifice-self),
+  ;; so we can't re-check zone. We just need the controller reference.
+  (if-let [obj-eid (get-object-eid db object-id)]
+    (let [controller-eid (d/q '[:find ?c .
+                                :in $ ?e
+                                :where [?e :object/controller ?c]]
+                              db obj-eid)
+          current-life (d/q '[:find ?life .
+                              :in $ ?p
+                              :where [?p :player/life ?life]]
+                            db controller-eid)
+          required (:pay-life cost)
+          new-life (- current-life required)]
+      (d/db-with db [[:db/add controller-eid :player/life new-life]]))
+    db))

@@ -136,7 +136,7 @@
 
 
 (deftest test-polluted-delta-has-activated-ability
-  (testing "Polluted Delta has activated ability with tap and sacrifice costs"
+  (testing "Polluted Delta has activated ability with tap, sacrifice, and pay-life costs"
     (let [abilities (:card/abilities cards/polluted-delta)]
       (is (= 1 (count abilities))
           "Polluted Delta should have 1 ability")
@@ -147,7 +147,9 @@
           (is (true? (:tap cost))
               "Should have tap cost")
           (is (true? (:sacrifice-self cost))
-              "Should have sacrifice-self cost"))))))
+              "Should have sacrifice-self cost")
+          (is (= 1 (:pay-life cost))
+              "Should have pay-life 1 cost"))))))
 
 
 (deftest test-polluted-delta-tutors-to-battlefield
