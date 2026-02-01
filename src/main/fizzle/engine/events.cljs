@@ -52,3 +52,18 @@
    :event/object-id object-id
    :event/from-zone from-zone
    :event/to-zone to-zone})
+
+
+(defn land-entered-event
+  "Create a land-entered event.
+
+   Arguments:
+     object-id     - ID of the land that entered the battlefield
+     controller-id - Player ID of the land's controller
+
+   Returns:
+     Event map with :event/type :land-entered"
+  [object-id controller-id]
+  {:event/type :land-entered
+   :event/object-id object-id
+   :event/controller controller-id})

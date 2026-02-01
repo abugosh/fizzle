@@ -12,6 +12,7 @@
   "Check if event matches trigger's filter criteria.
 
    :self in filter value matches trigger's source object.
+   :exclude-self true means trigger source must NOT match event object.
    Returns true if no filter (matches all events of type).
 
    Arguments:
@@ -25,7 +26,10 @@
     (if (and f (seq f))
       (every? (fn [[k v]]
                 (cond
+                  ;; :self in value means trigger's source must match event's key
                   (= v :self) (= (get event k) (:trigger/source trigger))
+                  ;; :exclude-self true means trigger source must NOT match event object
+                  (= k :exclude-self) (not= (:event/object-id event) (:trigger/source trigger))
                   :else (= (get event k) v)))
               f)
       true)))

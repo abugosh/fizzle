@@ -94,6 +94,31 @@
             effects-list)))
 
 
+(defmethod resolve-trigger :land-entered [db trigger]
+  "Resolve a :land-entered trigger from the event-based system.
+
+   Executes effects stored in :trigger/data :effects.
+   Resolves :self target to trigger source, :controller to player-id.
+
+   Used by City of Traitors sacrifice trigger."
+  (let [controller (:trigger/controller trigger)
+        source (:trigger/source trigger)
+        effects-list (get-in trigger [:trigger/data :effects] [])]
+    (reduce (fn [db' effect]
+              ;; Resolve :self target to source object, :controller to player-id
+              (let [resolved-effect (cond
+                                      (= :self (:effect/target effect))
+                                      (assoc effect :effect/target source)
+
+                                      (= :controller (:effect/target effect))
+                                      (assoc effect :effect/target controller)
+
+                                      :else effect)]
+                (effects/execute-effect db' controller resolved-effect)))
+            db
+            effects-list)))
+
+
 (defn create-spell-copy
   "Create a copy of a spell on the stack.
 
