@@ -138,3 +138,29 @@
     (when (and game-db selection)
       (let [player-id (:selection/player-id selection)]
         (queries/get-hand game-db player-id)))))
+
+
+(rf/reg-sub
+  ::selection-cards
+  :<- [::game-db]
+  :<- [::pending-selection]
+  (fn [[game-db selection] _]
+    "Returns the cards available for selection based on selection type.
+     For :discard -> hand cards
+     For :tutor -> library cards filtered to candidates"
+    (when (and game-db selection)
+      (let [player-id (:selection/player-id selection)
+            effect-type (:selection/effect-type selection)
+            zone (:selection/zone selection)]
+        (case effect-type
+          :tutor
+          ;; For tutor, get library and filter to candidates
+          (let [candidates (:selection/candidates selection)
+                library (queries/get-objects-in-zone game-db player-id :library)]
+            (filterv #(contains? candidates (:object/id %)) library))
+
+          :discard
+          (queries/get-hand game-db player-id)
+
+          ;; Default: use the zone from selection
+          (queries/get-objects-in-zone game-db player-id (or zone :hand)))))))

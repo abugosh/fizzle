@@ -60,11 +60,11 @@
           "Should have 4 City of Brass in deck")
       (is (= 4 (get card-counts :gemstone-mine))
           "Should have 4 Gemstone Mines in deck")
-      ;; 8x basic lands
-      (is (= 8 (get card-counts :island))
-          "Should have 8 Islands in deck")
-      (is (= 8 (get card-counts :swamp))
-          "Should have 8 Swamps in deck")
+      ;; 6x basic lands (reduced to make room for Merchant Scrolls)
+      (is (= 6 (get card-counts :island))
+          "Should have 6 Islands in deck")
+      (is (= 6 (get card-counts :swamp))
+          "Should have 6 Swamps in deck")
       ;; 4x mana acceleration
       (is (= 4 (get card-counts :lotus-petal))
           "Should have 4 Lotus Petals in deck")
@@ -74,7 +74,10 @@
       (is (= 4 (get card-counts :careful-study))
           "Should have 4 Careful Studies in deck")
       (is (= 4 (get card-counts :mental-note))
-          "Should have 4 Mental Notes in deck"))))
+          "Should have 4 Mental Notes in deck")
+      ;; 4x tutors
+      (is (= 4 (get card-counts :merchant-scroll))
+          "Should have 4 Merchant Scrolls in deck"))))
 
 
 ;; === Starting hand tests ===

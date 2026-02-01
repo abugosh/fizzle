@@ -386,7 +386,7 @@
 
 (deftest test-merchant-scroll-costs-1u
   (testing "Merchant Scroll costs 1U"
-    (is (= {:blue 1 :generic 1} (:card/mana-cost cards/merchant-scroll))
+    (is (= {:colorless 1 :blue 1} (:card/mana-cost cards/merchant-scroll))
         "Merchant Scroll should cost {1}{U}")))
 
 

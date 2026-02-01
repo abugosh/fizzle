@@ -361,16 +361,25 @@
 
 (defn- selection-modal
   "Modal overlay for player card selection.
-   Shows when :game/pending-selection exists."
+   Shows when :game/pending-selection exists.
+   Handles both discard (select from hand) and tutor (search library) effects."
   []
   (let [selection @(rf/subscribe [::subs/pending-selection])
-        hand @(rf/subscribe [::subs/selection-hand])]
+        cards @(rf/subscribe [::subs/selection-cards])]
     (when selection
       (let [selected (:selection/selected selection)
             required-count (:selection/count selection)
             current-count (count selected)
-            valid? (= current-count required-count)
-            effect-type (:selection/effect-type selection)]
+            effect-type (:selection/effect-type selection)
+            is-tutor? (= effect-type :tutor)
+            ;; For tutors: valid if 0 (fail-to-find) or 1 card selected
+            ;; For discard: valid if exactly required-count selected
+            valid? (if is-tutor?
+                     (<= current-count 1)
+                     (= current-count required-count))
+            confirm-event (if is-tutor?
+                            ::events/confirm-tutor-selection
+                            ::events/confirm-selection)]
         [:div {:style {:position "fixed"
                        :top 0
                        :left 0
@@ -393,36 +402,60 @@
                         :font-size "18px"}}
            (case effect-type
              :discard "Select cards to discard"
+             :tutor "Search your library"
              "Select cards")]
-          ;; Counter
+          ;; Counter / instructions
           [:p {:style {:color (if valid? "#5CB85C" "#F0AD4E")
                        :margin "0 0 16px 0"
                        :font-size "14px"}}
-           (str current-count " / " required-count " selected")]
+           (if is-tutor?
+             (if (= current-count 1)
+               "1 card selected"
+               "Select a card or Find Nothing")
+             (str current-count " / " required-count " selected"))]
           ;; Card grid
           [:div {:style {:display "flex"
                          :flex-wrap "wrap"
                          :gap "10px"
                          :margin-bottom "20px"
                          :min-height "60px"}}
-           (if (seq hand)
-             (for [obj hand]
+           (if (seq cards)
+             (for [obj cards]
                ^{:key (:object/id obj)}
                [selection-card-view obj (contains? selected (:object/id obj))])
-             [:div {:style {:color "#666"}} "No cards in hand"])]
+             [:div {:style {:color "#666"}}
+              (if is-tutor?
+                "No matching cards in library"
+                "No cards available")])]
           ;; Buttons
           [:div {:style {:display "flex"
                          :justify-content "flex-end"
                          :gap "12px"}}
-           [:button {:style {:padding "8px 20px"
-                             :border "1px solid #555"
-                             :border-radius "4px"
-                             :cursor "pointer"
-                             :background "#333"
-                             :color "#ccc"
-                             :font-size "14px"}
-                     :on-click #(rf/dispatch [::events/cancel-selection])}
-            "Clear"]
+           ;; For tutors: "Find Nothing" button (fail-to-find)
+           (when is-tutor?
+             [:button {:style {:padding "8px 20px"
+                               :border "1px solid #555"
+                               :border-radius "4px"
+                               :cursor "pointer"
+                               :background "#333"
+                               :color "#ccc"
+                               :font-size "14px"}
+                       :on-click #(do
+                                    (rf/dispatch [::events/cancel-selection])
+                                    (rf/dispatch [confirm-event]))}
+              "Find Nothing"])
+           ;; For discard: Clear button
+           (when (not is-tutor?)
+             [:button {:style {:padding "8px 20px"
+                               :border "1px solid #555"
+                               :border-radius "4px"
+                               :cursor "pointer"
+                               :background "#333"
+                               :color "#ccc"
+                               :font-size "14px"}
+                       :on-click #(rf/dispatch [::events/cancel-selection])}
+              "Clear"])
+           ;; Confirm button
            [:button {:style {:padding "8px 20px"
                              :border "none"
                              :border-radius "4px"
@@ -432,8 +465,8 @@
                              :font-size "14px"
                              :font-weight "bold"}
                      :disabled (not valid?)
-                     :on-click #(rf/dispatch [::events/confirm-selection])}
-            "Confirm"]]]]))))
+                     :on-click #(rf/dispatch [confirm-event])}
+            (if is-tutor? "Select Card" "Confirm")]]]]))))
 
 
 (defn app

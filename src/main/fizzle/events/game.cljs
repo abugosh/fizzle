@@ -35,12 +35,13 @@
             (repeat 4 :brain-freeze)
             (repeat 4 :city-of-brass)
             (repeat 4 :gemstone-mine)
-            (repeat 8 :island)
-            (repeat 8 :swamp)
+            (repeat 6 :island)
+            (repeat 6 :swamp)
             (repeat 4 :lotus-petal)
             (repeat 4 :lions-eye-diamond)
             (repeat 4 :careful-study)
-            (repeat 4 :mental-note)))))
+            (repeat 4 :mental-note)
+            (repeat 4 :merchant-scroll)))))
 
 
 (defn init-game-state
@@ -714,13 +715,23 @@
   (fn [db [_ object-id]]
     (let [selected (get-in db [:game/pending-selection :selection/selected] #{})
           max-count (get-in db [:game/pending-selection :selection/count] 0)
+          effect-type (get-in db [:game/pending-selection :selection/effect-type])
           currently-selected? (contains? selected object-id)
-          new-selected (if currently-selected?
+          new-selected (cond
+                         ;; Deselecting current selection
+                         currently-selected?
                          (disj selected object-id)
-                         ;; Only add if under limit
-                         (if (< (count selected) max-count)
-                           (conj selected object-id)
-                           selected))]
+
+                         ;; For tutors (max 1): replace current selection
+                         (and (= effect-type :tutor) (= max-count 1))
+                         #{object-id}
+
+                         ;; Under limit: add to selection
+                         (< (count selected) max-count)
+                         (conj selected object-id)
+
+                         ;; At limit: don't add
+                         :else selected)]
       (assoc-in db [:game/pending-selection :selection/selected] new-selected))))
 
 
