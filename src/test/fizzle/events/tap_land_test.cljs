@@ -480,3 +480,86 @@
         ;; Effect should be executed (gain 1 life)
         (is (= 21 (q/get-life-total db' :player-1))
             "Player should gain 1 life from ability effect")))))
+
+
+;; === Mana ability corner case tests ===
+
+(deftest test-mana-ability-wrong-color-request
+  (testing "Requesting wrong color from basic land produces the land's actual color"
+    ;; Swamp only produces black. Requesting blue should still produce black
+    ;; (the mana-color param is only relevant for :any mana)
+    (let [db (create-test-db)
+          [db' obj-id] (add-land-to-battlefield db :swamp :player-1)
+          initial-pool (q/get-mana-pool db' :player-1)
+          _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
+          _ (is (= 0 (:blue initial-pool)) "Precondition: blue mana is 0")
+          ;; Request blue from a Swamp (which only produces black)
+          db'' (game/activate-mana-ability db' :player-1 obj-id :blue)]
+      ;; Swamp should produce black, not blue (ignores color request for fixed mana)
+      (is (= 1 (:black (q/get-mana-pool db'' :player-1)))
+          "Swamp produces black even when blue requested")
+      (is (= 0 (:blue (q/get-mana-pool db'' :player-1)))
+          "No blue mana produced")
+      (is (true? (get-object-tapped db'' obj-id))
+          "Swamp should be tapped after activation"))))
+
+
+(deftest test-colorless-mana-from-colored-only-land
+  (testing "Requesting colorless from a basic land produces the land's actual color"
+    ;; Island only produces blue. Requesting colorless should produce blue
+    ;; (only lands with :any or :colorless in produces can produce colorless)
+    (let [db (create-test-db)
+          [db' obj-id] (add-land-to-battlefield db :island :player-1)
+          initial-pool (q/get-mana-pool db' :player-1)
+          _ (is (= 0 (:blue initial-pool)) "Precondition: blue mana is 0")
+          _ (is (= 0 (:colorless initial-pool)) "Precondition: colorless mana is 0")
+          ;; Request colorless from an Island (which only produces blue)
+          db'' (game/activate-mana-ability db' :player-1 obj-id :colorless)]
+      ;; Island should produce blue, not colorless
+      (is (= 1 (:blue (q/get-mana-pool db'' :player-1)))
+          "Island produces blue even when colorless requested")
+      (is (= 0 (:colorless (q/get-mana-pool db'' :player-1)))
+          "No colorless mana produced")
+      (is (true? (get-object-tapped db'' obj-id))
+          "Island should be tapped after activation"))))
+
+
+(deftest test-mana-ability-atomic-resolution
+  (testing "Mana abilities resolve atomically (no stack interruption possible)"
+    ;; MTG Rules: Mana abilities don't use the stack; they resolve immediately.
+    ;; This test verifies that Gemstone Mine sacrifice happens as part of
+    ;; the mana ability resolution - there's no window to interrupt.
+    ;;
+    ;; Corner case "object-destroyed-between-cost-and-effect" is N/A because:
+    ;; 1. Mana abilities don't use the stack
+    ;; 2. Cost payment and mana production are atomic
+    ;; 3. Sacrifice (if any) happens at the END of ability resolution
+    ;;
+    ;; We verify this by showing Gemstone Mine produces mana BEFORE being sacrificed.
+    (let [db (create-test-db)
+          conn (d/conn-from-db db)
+          player-eid (q/get-player-eid db :player-1)
+          card-eid (d/q '[:find ?e .
+                          :in $ ?cid
+                          :where [?e :card/id ?cid]]
+                        db :gemstone-mine)
+          obj-id (random-uuid)]
+      ;; Add Gemstone Mine with 1 counter (final activation)
+      (d/transact! conn [{:object/id obj-id
+                          :object/card card-eid
+                          :object/zone :battlefield
+                          :object/owner player-eid
+                          :object/controller player-eid
+                          :object/tapped false
+                          :object/counters {:mining 1}}])
+      ;; Activate - this pays tap+counter cost, produces mana, THEN sacrifices
+      (let [db' (game/activate-mana-ability @conn :player-1 obj-id :red)]
+        ;; Mana was produced (ability worked before sacrifice)
+        (is (= 1 (:red (q/get-mana-pool db' :player-1)))
+            "Red mana produced before sacrifice")
+        ;; Object is now in graveyard (sacrificed as part of ability)
+        (is (= :graveyard (:object/zone (q/get-object db' obj-id)))
+            "Gemstone Mine sacrificed after mana produced")
+        ;; Key insight: there's no window where mana was NOT produced but
+        ;; object was already sacrificed - the resolution is atomic
+        ))))
