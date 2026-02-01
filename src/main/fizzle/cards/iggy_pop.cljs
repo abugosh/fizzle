@@ -207,7 +207,26 @@
                    :effect/amount 1}]})
 
 
+;; Merchant Scroll - Blue instant tutor
+;; 1U - Sorcery: Search your library for a blue instant card, reveal it,
+;; put it into your hand, then shuffle.
+(def merchant-scroll
+  {:card/id :merchant-scroll
+   :card/name "Merchant Scroll"
+   :card/cmc 2
+   :card/mana-cost {:generic 1 :blue 1}
+   :card/colors #{:blue}
+   :card/types #{:sorcery}
+   :card/text "Search your library for a blue instant card, reveal it, put it into your hand, then shuffle."
+   :card/effects [{:effect/type :tutor
+                   :effect/criteria {:card/types #{:instant}
+                                     :card/colors #{:blue}}
+                   :effect/target-zone :hand
+                   :effect/shuffle? true}]})
+
+
 ;; All cards in this namespace for easy import
 (def all-cards
   [dark-ritual brain-freeze cabal-ritual city-of-brass gemstone-mine
-   island swamp lotus-petal lions-eye-diamond careful-study mental-note])
+   island swamp lotus-petal lions-eye-diamond careful-study mental-note
+   merchant-scroll])

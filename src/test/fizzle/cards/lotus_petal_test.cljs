@@ -184,7 +184,32 @@
           "Lotus Petal should remain in hand"))))
 
 
-(deftest test-lotus-petal-is-artifact-type
-  (testing "Lotus Petal card definition has artifact type"
-    (is (contains? (:card/types cards/lotus-petal) :artifact)
-        "Lotus Petal should be an artifact")))
+(deftest test-lotus-petal-card-definition
+  (testing "Lotus Petal card definition is complete and correct"
+    (let [card cards/lotus-petal]
+      ;; Card must exist
+      (is (some? card)
+          "Lotus Petal card definition should exist")
+      ;; Core attributes
+      (is (= :lotus-petal (:card/id card))
+          "Card ID should be :lotus-petal")
+      (is (= "Lotus Petal" (:card/name card))
+          "Card name should be 'Lotus Petal'")
+      (is (= 0 (:card/cmc card))
+          "Lotus Petal should have CMC 0")
+      (is (= {} (:card/mana-cost card))
+          "Lotus Petal should have no mana cost")
+      ;; Types - verify exact set, not just contains
+      (is (= #{:artifact} (:card/types card))
+          "Lotus Petal should be exactly an artifact (no other types)")
+      ;; Colors
+      (is (= #{} (:card/colors card))
+          "Lotus Petal should be colorless")
+      ;; Abilities
+      (is (= 1 (count (:card/abilities card)))
+          "Lotus Petal should have exactly 1 ability")
+      (let [ability (first (:card/abilities card))]
+        (is (= :mana (:ability/type ability))
+            "Ability should be a mana ability")
+        (is (= {:any 1} (:ability/produces ability))
+            "Should produce 1 mana of any color")))))

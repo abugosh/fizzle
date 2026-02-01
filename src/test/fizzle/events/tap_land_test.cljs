@@ -1,13 +1,30 @@
 (ns fizzle.events.tap-land-test
   (:require
-    [cljs.test :refer-macros [deftest testing is]]
+    [cljs.test :refer-macros [deftest testing is use-fixtures]]
     [datascript.core :as d]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.state-based :as state-based]
+    [fizzle.engine.trigger-registry :as registry]
+    [fizzle.engine.turn-based :as turn-based]
     [fizzle.events.game :as game]))
+
+
+;; === Test fixtures ===
+
+(defn reset-registry
+  "Clear trigger registry before and after each test.
+   Re-registers turn-based actions after clearing."
+  [f]
+  (registry/clear-registry!)
+  (turn-based/register-turn-based-actions!)
+  (f)
+  (registry/clear-registry!))
+
+
+(use-fixtures :each reset-registry)
 
 
 ;; === Test helpers ===
@@ -38,6 +55,7 @@
 
 (defn add-land-to-battlefield
   "Add a land card to the battlefield for a player.
+   Also registers any card triggers (e.g., City of Brass).
    Returns [db object-id] tuple."
   [db card-id player-id]
   (let [conn (d/conn-from-db db)
@@ -53,6 +71,11 @@
                         :object/owner player-eid
                         :object/controller player-eid
                         :object/tapped false}])
+    ;; Register triggers for this card (e.g., City of Brass :becomes-tapped)
+    (let [result-db @conn
+          card (d/pull result-db '[*] card-eid)]
+      (when (seq (:card/triggers card))
+        (game/register-card-triggers! obj-id player-id card)))
     [@conn obj-id]))
 
 

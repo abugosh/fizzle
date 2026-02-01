@@ -11,6 +11,7 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.state-based :as state-based]
     [fizzle.engine.trigger-dispatch :as dispatch]
+    [fizzle.engine.trigger-registry :as registry]
     [fizzle.engine.triggers :as triggers]
     [fizzle.engine.turn-based :as turn-based]
     [fizzle.engine.zones :as zones]
@@ -328,6 +329,41 @@
 
 ;; === Play Land ===
 
+(defn- trigger-type->event-type
+  "Map card trigger type to event type for registration.
+   E.g., :becomes-tapped in card data becomes :permanent-tapped event."
+  [trigger-type]
+  (case trigger-type
+    :becomes-tapped :permanent-tapped
+    ;; Add more mappings as needed
+    trigger-type))
+
+
+(defn register-card-triggers!
+  "Register all triggers from a card when it enters the battlefield.
+
+   Arguments:
+     object-id     - The permanent's object ID (becomes :trigger/source)
+     controller-id - Player ID who controls this permanent
+     card          - Card map with optional :card/triggers
+
+   Side effect: Registers triggers in the trigger registry.
+   Returns nil."
+  [object-id controller-id card]
+  (doseq [trigger (:card/triggers card)]
+    (let [trigger-type (:trigger/type trigger)
+          event-type (trigger-type->event-type trigger-type)]
+      (registry/register-trigger!
+        {:trigger/id (random-uuid)
+         :trigger/event-type event-type
+         :trigger/source object-id
+         :trigger/controller controller-id
+         :trigger/filter {:event/object-id :self}  ; only when THIS permanent taps
+         :trigger/uses-stack? true
+         :trigger/effects (:trigger/effects trigger)
+         :trigger/description (:trigger/description trigger)}))))
+
+
 (defn land-card?
   "Check if an object's card has :land in its types.
    Returns false if object or card not found."
@@ -408,7 +444,10 @@
             ;; Get card data after move (object still has same card ref)
             obj-after (queries/get-object db-after-move object-id)
             card (:object/card obj-after)
-            etb-effects (:card/etb-effects card)]
+            etb-effects (:card/etb-effects card)
+            ;; Register card triggers (e.g., City of Brass :becomes-tapped)
+            _ (when (seq (:card/triggers card))
+                (register-card-triggers! object-id player-id card))]
         ;; Fire ETB effects if any
         (if (seq etb-effects)
           (reduce (fn [db' effect]
@@ -492,8 +531,7 @@
         (if (and mana-ability
                  (abilities/can-activate? db object-id mana-ability))
           ;; Execute ability
-          (let [db-before-costs db
-                ;; Step 1: Pay costs (tap, remove counters, etc.)
+          (let [;; Step 1: Pay costs (tap, remove counters, etc.)
                 db-after-costs (abilities/pay-all-costs db object-id (:ability/cost mana-ability))]
             (if db-after-costs
               (let [;; Step 2a: Handle :ability/produces (direct mana production)
@@ -525,8 +563,10 @@
                                                  (effects/execute-effect db' player-id resolved-effect)))
                                              db-after-produces
                                              (:ability/effects mana-ability []))
-                    ;; Step 3: Fire triggers (add to stack - triggered abilities use the stack)
-                    db-after-triggers (triggers/fire-matching-triggers db-before-costs db-after-effects)
+                    ;; Step 3: Dispatch permanent-tapped event to trigger registered triggers
+                    ;; (replaces old fire-matching-triggers scanning approach)
+                    db-after-triggers (dispatch/dispatch-event db-after-effects
+                                                               (game-events/permanent-tapped-event object-id player-id))
                     ;; Step 4: Check state-based actions
                     db-after-sbas (state-based/check-and-execute-sbas db-after-triggers)]
                 db-after-sbas)
@@ -559,17 +599,54 @@
 (defn has-selection-effect?
   "Check if any effect in the list requires player selection."
   [effects]
-  (some #(= :player (:effect/selection %)) effects))
+  (some #(or (= :player (:effect/selection %))
+             (= :tutor (:effect/type %)))
+        effects))
 
 
 (defn find-selection-effect-index
   "Find the index of the first effect that requires player selection.
+   This includes :discard with :selection :player and :tutor effects.
    Returns nil if no selection effect found."
   [effects]
   (first (keep-indexed (fn [i effect]
-                         (when (= :player (:effect/selection effect))
+                         (when (or (= :player (:effect/selection effect))
+                                   (= :tutor (:effect/type effect)))
                            i))
                        effects)))
+
+
+(defn- build-tutor-selection
+  "Build pending selection state for a tutor effect.
+   Pre-filters library to find valid candidates."
+  [db player-id object-id tutor-effect effects-after]
+  (let [criteria (:effect/criteria tutor-effect)
+        target-zone (or (:effect/target-zone tutor-effect) :hand)
+        matching-objs (queries/query-library-by-criteria db player-id criteria)
+        candidate-ids (set (map :object/id matching-objs))]
+    {:selection/zone :library
+     :selection/count 1
+     :selection/player-id player-id
+     :selection/selected #{}
+     :selection/spell-id object-id
+     :selection/remaining-effects effects-after
+     :selection/effect-type :tutor
+     :selection/target-zone target-zone
+     :selection/allow-fail-to-find true  ; Always allow fail-to-find (anti-pattern: NO auto-select)
+     :selection/candidates candidate-ids
+     :selection/shuffle? (get tutor-effect :effect/shuffle? true)}))
+
+
+(defn- build-discard-selection
+  "Build pending selection state for a discard effect."
+  [player-id object-id discard-effect effects-after]
+  {:selection/zone :hand
+   :selection/count (:effect/count discard-effect)
+   :selection/player-id player-id
+   :selection/selected #{}
+   :selection/spell-id object-id
+   :selection/remaining-effects effects-after
+   :selection/effect-type :discard})
 
 
 (defn resolve-spell-with-selection
@@ -582,7 +659,11 @@
    When a selection effect is encountered:
    - Effects before the selection are executed
    - The selection effect creates pending selection state
-   - Effects after the selection are stored for later execution"
+   - Effects after the selection are stored for later execution
+
+   Handles two types of selection:
+   - :discard with :selection :player - player chooses cards to discard
+   - :tutor - player searches library for matching card (with fail-to-find)"
   [db player-id object-id]
   (let [obj (queries/get-object db object-id)]
     (if (not= :stack (:object/zone obj))
@@ -598,19 +679,28 @@
           (let [effects-before (subvec (vec effects-list) 0 selection-idx)
                 selection-effect (nth effects-list selection-idx)
                 effects-after (subvec (vec effects-list) (inc selection-idx))
+                effect-type (:effect/type selection-effect)
                 ;; Execute effects before selection
                 db-after-before (reduce (fn [d effect]
                                           (effects/execute-effect d player-id effect))
                                         db
-                                        effects-before)]
+                                        effects-before)
+                ;; Build selection state based on effect type
+                pending-selection (case effect-type
+                                    :tutor (build-tutor-selection db-after-before player-id object-id
+                                                                  selection-effect effects-after)
+                                    :discard (build-discard-selection player-id object-id
+                                                                      selection-effect effects-after)
+                                    ;; Default for unknown selection types
+                                    {:selection/zone :hand
+                                     :selection/count (:effect/count selection-effect)
+                                     :selection/player-id player-id
+                                     :selection/selected #{}
+                                     :selection/spell-id object-id
+                                     :selection/remaining-effects effects-after
+                                     :selection/effect-type effect-type})]
             {:db db-after-before
-             :pending-selection {:selection/zone :hand
-                                 :selection/count (:effect/count selection-effect)
-                                 :selection/player-id player-id
-                                 :selection/selected #{}
-                                 :selection/spell-id object-id
-                                 :selection/remaining-effects effects-after
-                                 :selection/effect-type (:effect/type selection-effect)}}))))))
+             :pending-selection pending-selection}))))))
 
 
 (rf/reg-event-db
@@ -675,3 +765,70 @@
     ;; Cancel clears selection but keeps the pending state
     ;; Player must still make a valid selection
     (assoc-in db [:game/pending-selection :selection/selected] #{})))
+
+
+;; === Tutor Selection ===
+
+(defn execute-tutor-selection
+  "Execute a tutor selection - move selected card to target zone and shuffle.
+   Pure function: (db, selection) -> db
+
+   Arguments:
+     db - Datascript game database (not app-db)
+     selection - Selection state map with:
+       :selection/selected - Set of object-ids (0 or 1 for tutor)
+       :selection/target-zone - Zone to move card to (:hand for Merchant Scroll)
+       :selection/player-id - Who is tutoring
+       :selection/shuffle? - Whether to shuffle after (default true)
+
+   Handles:
+     - Empty selection (fail-to-find): Just shuffles library
+     - Card selected: Moves to target zone, then shuffles
+
+   CRITICAL: Move card BEFORE shuffle (anti-pattern: NO shuffling first)"
+  [db selection]
+  (let [selected (:selection/selected selection)
+        target-zone (:selection/target-zone selection)
+        player-id (:selection/player-id selection)
+        should-shuffle? (get selection :selection/shuffle? true)]
+    (if (empty? selected)
+      ;; Fail-to-find: just shuffle
+      (if should-shuffle?
+        (zones/shuffle-library db player-id)
+        db)
+      ;; Card found: move to target zone, then shuffle
+      (let [card-id (first selected)
+            db-after-move (zones/move-to-zone db card-id target-zone)]
+        (if should-shuffle?
+          (zones/shuffle-library db-after-move player-id)
+          db-after-move)))))
+
+
+(rf/reg-event-db
+  ::confirm-tutor-selection
+  (fn [db _]
+    (let [selection (:game/pending-selection db)
+          selected (:selection/selected selection)
+          candidates (:selection/candidates selection)
+          spell-id (:selection/spell-id selection)
+          remaining-effects (:selection/remaining-effects selection)
+          player-id (:selection/player-id selection)
+          game-db (:game/db db)]
+      ;; Validate selection: must be empty (fail-to-find) or a valid candidate
+      (if (or (empty? selected)
+              (and (= 1 (count selected))
+                   (contains? candidates (first selected))))
+        ;; Valid tutor selection
+        (let [db-after-tutor (execute-tutor-selection game-db selection)
+              ;; Execute remaining effects
+              db-after-remaining (reduce (fn [d effect]
+                                           (effects/execute-effect d player-id effect))
+                                         db-after-tutor
+                                         (or remaining-effects []))
+              ;; Move spell to graveyard
+              db-final (zones/move-to-zone db-after-remaining spell-id :graveyard)]
+          (-> db
+              (assoc :game/db db-final)
+              (dissoc :game/pending-selection)))
+        ;; Invalid selection - do nothing
+        db))))

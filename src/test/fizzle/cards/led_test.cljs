@@ -193,7 +193,32 @@
           "LED should remain in hand"))))
 
 
-(deftest test-led-is-artifact-type
-  (testing "LED card definition has artifact type"
-    (is (contains? (:card/types cards/lions-eye-diamond) :artifact)
-        "Lion's Eye Diamond should be an artifact")))
+(deftest test-led-card-definition
+  (testing "Lion's Eye Diamond card definition is complete and correct"
+    (let [card cards/lions-eye-diamond]
+      ;; Card must exist
+      (is (some? card)
+          "LED card definition should exist")
+      ;; Core attributes
+      (is (= :lions-eye-diamond (:card/id card))
+          "Card ID should be :lions-eye-diamond")
+      (is (= "Lion's Eye Diamond" (:card/name card))
+          "Card name should be 'Lion's Eye Diamond'")
+      (is (= 0 (:card/cmc card))
+          "LED should have CMC 0")
+      (is (= {} (:card/mana-cost card))
+          "LED should have no mana cost")
+      ;; Types - verify exact set, not just contains
+      (is (= #{:artifact} (:card/types card))
+          "LED should be exactly an artifact (no other types)")
+      ;; Colors
+      (is (= #{} (:card/colors card))
+          "LED should be colorless")
+      ;; Abilities
+      (is (= 1 (count (:card/abilities card)))
+          "LED should have exactly 1 ability")
+      (let [ability (first (:card/abilities card))]
+        (is (= :mana (:ability/type ability))
+            "Ability should be a mana ability")
+        (is (true? (get-in ability [:ability/cost :discard-hand]))
+            "LED should require discarding hand as part of cost")))))

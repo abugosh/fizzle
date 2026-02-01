@@ -31,6 +31,30 @@
       true)))
 
 
+(defn- registry-trigger->stack-trigger
+  "Convert a registry trigger to stack trigger format.
+
+   Registry triggers have :trigger/event-type and :trigger/effects.
+   Stack triggers need :trigger/type and :trigger/data {:effects ...}.
+
+   Arguments:
+     registry-trigger - Trigger from the registry
+
+   Returns:
+     Trigger formatted for the stack (nil values filtered out)"
+  [registry-trigger]
+  (let [effects (or (:trigger/effects registry-trigger) [])
+        base {:trigger/id (:trigger/id registry-trigger)
+              :trigger/type (:trigger/event-type registry-trigger)
+              :trigger/source (:trigger/source registry-trigger)
+              :trigger/controller (:trigger/controller registry-trigger)
+              :trigger/data {:effects effects}}]
+    ;; Only add description if present (Datascript doesn't allow nil values)
+    (if-let [desc (:trigger/description registry-trigger)]
+      (assoc base :trigger/description desc)
+      base)))
+
+
 (defn dispatch-event
   "Dispatch event to all matching triggers. Returns new db.
 
@@ -52,6 +76,11 @@
         {stacked true, immediate false} (group-by #(get % :trigger/uses-stack? true) matching)]
     (as-> db db'
           ;; Execute immediate triggers first (turn-based actions)
+          ;; Immediate triggers use registry format (already have :trigger/type from turn-based)
           (reduce (fn [d t] (triggers/resolve-trigger d t)) db' (or immediate []))
           ;; Add stacked triggers to stack (card triggers)
-          (reduce (fn [d t] (triggers/add-trigger-to-stack d t)) db' (or stacked [])))))
+          ;; Convert registry format to stack format
+          (reduce (fn [d t]
+                    (triggers/add-trigger-to-stack d (registry-trigger->stack-trigger t)))
+                  db'
+                  (or stacked [])))))

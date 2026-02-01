@@ -329,3 +329,22 @@
       :player db
       ;; Default to player selection
       db)))
+
+
+(defmethod execute-effect-impl :tutor
+  ;; Search library for a card matching criteria.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/criteria - Map of card attributes to match (types, colors, subtypes)
+  ;;   :effect/target-zone - Zone to move found card to (:hand for Merchant Scroll)
+  ;;   :effect/shuffle? - Whether to shuffle after (default true)
+  ;;
+  ;; This effect returns db UNCHANGED. The actual tutor happens at the
+  ;; app-db level via re-frame events when the player confirms their selection.
+  ;; The calling code checks for :tutor effect type and sets up pending selection.
+  ;;
+  ;; Selection is always required (anti-pattern: NO auto-select for tutors).
+  ;; Player must always have fail-to-find option (rules: hidden information).
+  [db _player-id _effect]
+  ;; Return unchanged - selection handled at app-db level
+  db)

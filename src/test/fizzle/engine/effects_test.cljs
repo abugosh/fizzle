@@ -705,3 +705,54 @@
           db' (fx/execute-effect db :player-1 effect)]
       ;; Object should still be on battlefield (unknown condition = skip)
       (is (= :battlefield (get-object-zone db' object-id))))))
+
+
+;; === Additional corner case tests ===
+
+(deftest test-draw-extremely-large-amount
+  (testing "Draw 10000 from small library draws all available, sets loss condition"
+    ;; Corner case: verify no overflow/performance issue with absurd draw amounts
+    ;; Should draw all available cards and set loss condition, not hang or crash
+    (let [db (-> (init-game-state)
+                 (add-library-cards :player-1 [:card-1 :card-2 :card-3]))
+          initial-hand-size (count-zone db :player-1 :hand)
+          effect {:effect/type :draw
+                  :effect/amount 10000}  ; absurdly large
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Should draw all 3 available cards
+      (is (= 0 (count-zone db' :player-1 :library))
+          "Library should be empty")
+      (is (= (+ initial-hand-size 3) (count-zone db' :player-1 :hand))
+          "Hand should have all drawn cards")
+      ;; Loss condition should be set (tried to draw from empty)
+      (is (= :empty-library (get-loss-condition db'))
+          "Loss condition should be set after attempting to draw more than available"))))
+
+
+(deftest test-mill-extremely-large-amount
+  (testing "Mill 10000 from small library mills all available gracefully"
+    ;; Corner case: verify no overflow/performance issue with absurd mill amounts
+    (let [db (-> (init-game-state)
+                 (add-library-cards :player-1 [:card-1 :card-2 :card-3]))
+          effect {:effect/type :mill
+                  :effect/amount 10000}  ; absurdly large
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Should mill all 3 available cards
+      (is (= 0 (count-zone db' :player-1 :library))
+          "Library should be empty")
+      (is (= 3 (count-zone db' :player-1 :graveyard))
+          "All cards should be in graveyard"))))
+
+
+(deftest test-deal-damage-exact-lethal-sets-loss
+  (testing "Deal exactly 20 damage from 20 life sets loss condition"
+    ;; Boundary test: exactly lethal damage
+    (let [db (init-game-state) ; starts at 20 life
+          effect {:effect/type :deal-damage
+                  :effect/amount 20
+                  :effect/target :player-1}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 0 (q/get-life-total db' :player-1))
+          "Life should be exactly 0")
+      (is (= :life-zero (get-loss-condition db'))
+          "Loss condition should be set at exactly 0 life"))))

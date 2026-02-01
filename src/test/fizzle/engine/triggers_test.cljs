@@ -194,112 +194,6 @@
     (d/db-with db [[:db/add obj-eid :object/tapped tapped?]])))
 
 
-;; === check-trigger tests ===
-
-(deftest test-check-trigger-becomes-tapped-matches
-  (testing "check-trigger :becomes-tapped returns true when object transitions untapped->tapped"
-    (let [[db object-id] (add-permanent (init-game-state) :player-1)
-          old-db db
-          new-db (tap-permanent db object-id true)
-          trigger {:trigger/type :becomes-tapped
-                   :trigger/source object-id}]
-      (is (true? (triggers/check-trigger old-db new-db trigger))))))
-
-
-(deftest test-check-trigger-becomes-tapped-no-change
-  (testing "check-trigger :becomes-tapped returns false when object was already tapped"
-    (let [[db object-id] (add-permanent (init-game-state) :player-1 nil true)
-          old-db db
-          new-db db  ; No change
-          trigger {:trigger/type :becomes-tapped
-                   :trigger/source object-id}]
-      (is (false? (triggers/check-trigger old-db new-db trigger))))))
-
-
-(deftest test-check-trigger-becomes-tapped-untapped-still
-  (testing "check-trigger :becomes-tapped returns false when object remains untapped"
-    (let [[db object-id] (add-permanent (init-game-state) :player-1)
-          old-db db
-          new-db db  ; No change, still untapped
-          trigger {:trigger/type :becomes-tapped
-                   :trigger/source object-id}]
-      (is (false? (triggers/check-trigger old-db new-db trigger))))))
-
-
-(deftest test-check-trigger-becomes-tapped-missing-object
-  (testing "check-trigger :becomes-tapped returns false when object doesn't exist"
-    (let [db (init-game-state)
-          fake-id (random-uuid)
-          trigger {:trigger/type :becomes-tapped
-                   :trigger/source fake-id}]
-      (is (false? (triggers/check-trigger db db trigger))))))
-
-
-;; === fire-matching-triggers tests ===
-
-(deftest test-fire-matching-triggers-creates-trigger-on-stack
-  (testing "fire-matching-triggers adds trigger to stack when condition matches"
-    (let [trigger-def [{:trigger/type :becomes-tapped
-                        :trigger/effects [{:effect/type :deal-damage
-                                           :effect/amount 1
-                                           :effect/target :player-1}]}]
-          [db object-id] (add-permanent (init-game-state) :player-1 trigger-def)
-          old-db db
-          new-db (tap-permanent db object-id true)
-          result-db (triggers/fire-matching-triggers old-db new-db)]
-      ;; Should have a trigger on the stack
-      (is (= 1 (count (q/get-stack-items result-db))))
-      (is (= :becomes-tapped (:trigger/type (first (q/get-stack-items result-db))))))))
-
-
-(deftest test-fire-matching-triggers-no-match-unchanged
-  (testing "fire-matching-triggers returns db unchanged when no triggers match"
-    (let [trigger-def [{:trigger/type :becomes-tapped
-                        :trigger/effects [{:effect/type :deal-damage
-                                           :effect/amount 1
-                                           :effect/target :player-1}]}]
-          [db _object-id] (add-permanent (init-game-state) :player-1 trigger-def)
-          ;; Object stays untapped - no state transition
-          result-db (triggers/fire-matching-triggers db db)]
-      ;; Stack should be empty
-      (is (= 0 (count (q/get-stack-items result-db)))))))
-
-
-(deftest test-fire-matching-triggers-multiple-triggers
-  (testing "fire-matching-triggers handles multiple triggers on same permanent"
-    (let [trigger-defs [{:trigger/type :becomes-tapped
-                         :trigger/effects [{:effect/type :deal-damage
-                                            :effect/amount 1
-                                            :effect/target :player-1}]}
-                        {:trigger/type :becomes-tapped
-                         :trigger/effects [{:effect/type :lose-life
-                                            :effect/amount 1
-                                            :effect/target :player-1}]}]
-          [db object-id] (add-permanent (init-game-state) :player-1 trigger-defs)
-          old-db db
-          new-db (tap-permanent db object-id true)
-          result-db (triggers/fire-matching-triggers old-db new-db)]
-      ;; Both triggers should fire
-      (is (= 2 (count (q/get-stack-items result-db)))))))
-
-
-(deftest test-fire-matching-triggers-multiple-permanents
-  (testing "fire-matching-triggers checks all permanents with triggers"
-    (let [trigger-def [{:trigger/type :becomes-tapped
-                        :trigger/effects [{:effect/type :deal-damage
-                                           :effect/amount 1
-                                           :effect/target :player-1}]}]
-          ;; Add two permanents with triggers
-          [db1 obj1-id] (add-permanent (init-game-state) :player-1 trigger-def)
-          [db2 _obj2-id] (add-permanent db1 :player-1 trigger-def)
-          old-db db2
-          ;; Only tap the first permanent
-          new-db (tap-permanent db2 obj1-id true)
-          result-db (triggers/fire-matching-triggers old-db new-db)]
-      ;; Only one trigger should fire (only first permanent tapped)
-      (is (= 1 (count (q/get-stack-items result-db)))))))
-
-
 ;; === trigger/description tests ===
 
 (deftest test-create-trigger-with-description
@@ -327,16 +221,42 @@
       (is (= :source-1 (:trigger/source trigger))))))
 
 
-(deftest test-fire-matching-triggers-passes-description
-  (testing "fire-matching-triggers passes description from card trigger definition"
-    (let [trigger-def [{:trigger/type :becomes-tapped
-                        :trigger/description "deals 1 damage to you"
-                        :trigger/effects [{:effect/type :deal-damage
-                                           :effect/amount 1
-                                           :effect/target :controller}]}]
-          [db object-id] (add-permanent (init-game-state) :player-1 trigger-def)
-          old-db db
-          new-db (tap-permanent db object-id true)
-          result-db (triggers/fire-matching-triggers old-db new-db)
-          stack-item (first (q/get-stack-items result-db))]
-      (is (= "deals 1 damage to you" (:trigger/description stack-item))))))
+;; === Corner case tests ===
+
+(deftest test-trigger-with-nil-controller-graceful
+  (testing "resolve-trigger with nil controller doesn't crash and returns db"
+    ;; Edge case: trigger was created with nil controller (shouldn't happen
+    ;; in normal flow, but defensive code should handle it)
+    (let [db (init-game-state)
+          ;; Create trigger with nil controller
+          trigger {:trigger/id (random-uuid)
+                   :trigger/type :becomes-tapped
+                   :trigger/source :some-source
+                   :trigger/controller nil  ; nil controller
+                   :trigger/data {:effects [{:effect/type :draw
+                                             :effect/amount 1}]}}
+          ;; Resolve should not throw - effects handle nil player gracefully
+          result-db (triggers/resolve-trigger db trigger)]
+      ;; Should return db unchanged (draw effect no-ops with nil target)
+      (is (some? result-db) "Should return a db value, not throw")
+      ;; Verify it's still a valid db by running a query
+      (is (some? (q/get-game-state result-db))
+          "Returned db should be queryable"))))
+
+
+(deftest test-storm-trigger-with-destroyed-source
+  (testing "resolve-trigger :storm returns unchanged db when source spell was exiled"
+    ;; Scenario: Storm trigger is on stack, but the source spell was exiled
+    ;; (e.g., by Tormod's Crypt in response)
+    (let [db (init-game-state)
+          ;; Create storm trigger referencing non-existent source
+          destroyed-source-id (random-uuid)
+          trigger (triggers/create-trigger :storm destroyed-source-id :player-1 {:count 5})
+          ;; Resolve should not crash and should return db unchanged
+          result-db (triggers/resolve-trigger db trigger)]
+      ;; Should return same db (no copies created since source doesn't exist)
+      (is (= db result-db)
+          "Storm trigger should return unchanged db when source doesn't exist")
+      ;; Stack should be empty (no copies created)
+      (is (= 0 (count (q/get-stack-items result-db)))
+          "No spell copies should be created when source is missing"))))
