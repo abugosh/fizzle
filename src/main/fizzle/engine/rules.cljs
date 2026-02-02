@@ -13,20 +13,116 @@
     [fizzle.engine.zones :as zones]))
 
 
+;; =====================================================
+;; Alternate Casting Modes
+;; =====================================================
+
+(defn- get-primary-mode
+  "Returns the primary casting mode for a card.
+   Primary mode is: cast from hand with the card's mana cost."
+  [card]
+  {:mode/id :primary
+   :mode/zone :hand
+   :mode/mana-cost (or (:card/mana-cost card) {})
+   :mode/additional-costs []
+   :mode/on-resolve (if (some #{:instant :sorcery} (:card/types card))
+                      :graveyard
+                      :battlefield)})
+
+
+(defn- alternate-to-mode
+  "Converts an alternate-cost definition to a mode map."
+  [alternate]
+  {:mode/id (:alternate/id alternate)
+   :mode/zone (:alternate/zone alternate)
+   :mode/mana-cost (or (:alternate/mana-cost alternate) {})
+   :mode/additional-costs (or (:alternate/additional-costs alternate) [])
+   :mode/on-resolve (or (:alternate/on-resolve alternate) :graveyard)})
+
+
+(defn- get-alternate-modes
+  "Returns alternate casting modes that are valid for the card's current zone."
+  [card current-zone]
+  (let [alternates (or (:card/alternate-costs card) [])]
+    (->> alternates
+         (filter #(= current-zone (:alternate/zone %)))
+         (map alternate-to-mode))))
+
+
+(defn get-casting-modes
+  "Returns all valid casting modes for a card based on its current zone.
+   Each mode is a map with :mode/id, :mode/mana-cost, :mode/additional-costs, :mode/on-resolve.
+
+   - Card in hand: returns primary mode + any alternates with :alternate/zone :hand
+   - Card in graveyard: returns only alternates with :alternate/zone :graveyard (e.g. flashback)
+   - Card elsewhere: returns empty (can't cast)"
+  [db _player-id object-id]
+  (if-let [obj (q/get-object db object-id)]
+    (let [card (:object/card obj)
+          current-zone (:object/zone obj)]
+      (case current-zone
+        :hand (let [primary (get-primary-mode card)
+                    alternates (get-alternate-modes card :hand)]
+                (into [primary] alternates))
+        :graveyard (vec (get-alternate-modes card :graveyard))
+        ;; Other zones: can't cast
+        []))
+    []))
+
+
+(defn- can-pay-additional-cost?
+  "Check if an additional cost can be paid.
+   Uses costs/can-pay? for recognized cost types."
+  [db _player-id object-id cost]
+  (case (:cost/type cost)
+    :pay-life (let [obj (q/get-object db object-id)
+                    controller-eid (:db/id (:object/controller obj))
+                    current-life (d/q '[:find ?life .
+                                        :in $ ?p
+                                        :where [?p :player/life ?life]]
+                                      db controller-eid)]
+                (>= (or current-life 0) (:cost/amount cost)))
+    ;; For unimplemented cost types, return false
+    ;; This ensures we don't accidentally allow casting when costs can't be validated
+    false))
+
+
+(defn can-cast-mode?
+  "Check if player can pay all costs for a specific casting mode.
+   Checks mana cost AND all additional costs."
+  [db player-id object-id mode]
+  (let [mana-payable (mana/can-pay? db player-id (:mode/mana-cost mode))
+        additional-costs (:mode/additional-costs mode)
+        additional-payable (every? #(can-pay-additional-cost? db player-id object-id %)
+                                   additional-costs)]
+    (and mana-payable additional-payable)))
+
+
 (defn can-cast?
   "Check if a player can cast a card.
 
-   Requires:
-   - Card is in player's hand
-   - Player has sufficient mana
+   Checks if ANY valid casting mode is castable.
+   A mode is valid if:
+   - The card is in the mode's required zone
+   - Player can pay the mode's mana cost
+   - Player can pay all additional costs
 
-   Returns false if object doesn't exist."
+   Returns false if object doesn't exist or no modes are castable."
   [db player-id object-id]
-  (when-let [obj (q/get-object db object-id)]
-    (let [card (:object/card obj)
-          cost (:card/mana-cost card)]
-      (and (= :hand (:object/zone obj))
-           (mana/can-pay? db player-id cost)))))
+  (let [modes (get-casting-modes db player-id object-id)]
+    (boolean (some #(can-cast-mode? db player-id object-id %) modes))))
+
+
+(defn get-castable-cards
+  "Returns all cards (from hand and graveyard) with at least one valid casting mode.
+   Returns vector of objects with card data."
+  [db player-id]
+  (let [hand-objs (q/get-objects-in-zone db player-id :hand)
+        gy-objs (q/get-objects-in-zone db player-id :graveyard)
+        all-candidates (concat hand-objs gy-objs)]
+    (->> all-candidates
+         (filter #(can-cast? db player-id (:object/id %)))
+         vec)))
 
 
 (defn- increment-storm

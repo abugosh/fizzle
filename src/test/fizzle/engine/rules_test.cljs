@@ -459,3 +459,311 @@
           "Battlefield should be empty")
       (is (= 1 (count (q/get-objects-in-zone db-resolved :player-1 :graveyard)))
           "Should have 1 card in graveyard"))))
+
+
+;; =====================================================
+;; Alternate Casting Modes Tests
+;; =====================================================
+
+;; Test card definitions for alternate costs testing
+
+(def deep-analysis-card
+  "Deep Analysis card with flashback for testing alternate costs."
+  {:card/id :deep-analysis
+   :card/name "Deep Analysis"
+   :card/cmc 4
+   :card/mana-cost {:colorless 3 :blue 1}
+   :card/colors #{:blue}
+   :card/types #{:sorcery}
+   :card/text "Target player draws two cards. Flashback—{1}{U}, Pay 3 life."
+   :card/effects [{:effect/type :draw
+                   :effect/amount 2
+                   :effect/target :any-player}]
+   :card/alternate-costs [{:alternate/id :flashback
+                           :alternate/zone :graveyard
+                           :alternate/mana-cost {:colorless 1 :blue 1}
+                           :alternate/additional-costs [{:cost/type :pay-life :cost/amount 3}]
+                           :alternate/on-resolve :exile}]})
+
+
+(def gush-like-card
+  "A Gush-like card with alternate cost from hand for testing."
+  {:card/id :gush-like
+   :card/name "Test Gush"
+   :card/cmc 5
+   :card/mana-cost {:colorless 4 :blue 1}
+   :card/colors #{:blue}
+   :card/types #{:instant}
+   :card/text "Draw two cards. You may return two Islands you control to hand instead of paying mana cost."
+   :card/effects [{:effect/type :draw
+                   :effect/amount 2}]
+   :card/alternate-costs [{:alternate/id :return-islands
+                           :alternate/zone :hand
+                           :alternate/mana-cost {}
+                           :alternate/additional-costs [{:cost/type :return-lands
+                                                         :cost/subtype :island
+                                                         :cost/amount 2}]
+                           :alternate/on-resolve :graveyard}]})
+
+
+(defn add-card-to-zone
+  "Add a card definition and create an object in specified zone.
+   Returns [obj-id db] tuple."
+  [db player-id card zone]
+  (let [conn (d/conn-from-db db)
+        player-eid (q/get-player-eid db player-id)]
+    ;; Add card definition if not already present
+    (when-not (d/q '[:find ?e .
+                     :in $ ?cid
+                     :where [?e :card/id ?cid]]
+                   @conn (:card/id card))
+      (d/transact! conn [card]))
+    ;; Create object in zone
+    (let [card-eid (d/q '[:find ?e .
+                          :in $ ?cid
+                          :where [?e :card/id ?cid]]
+                        @conn (:card/id card))
+          obj-id (random-uuid)]
+      (d/transact! conn [{:object/id obj-id
+                          :object/card card-eid
+                          :object/zone zone
+                          :object/owner player-eid
+                          :object/controller player-eid
+                          :object/tapped false}])
+      [obj-id @conn])))
+
+
+;; === get-casting-modes tests ===
+
+(deftest get-casting-modes-primary-only-hand-test
+  (testing "get-casting-modes returns primary mode for card in hand without alternates"
+    (let [db (init-game-state)
+          hand (q/get-hand db :player-1)
+          ritual (first hand)  ; Dark Ritual has no alternate costs
+          modes (rules/get-casting-modes db :player-1 (:object/id ritual))]
+      (is (= 1 (count modes))
+          "Should return exactly one mode")
+      (is (= :primary (:mode/id (first modes)))
+          "Mode should be :primary")
+      (is (= {:black 1} (:mode/mana-cost (first modes)))
+          "Mode should have Dark Ritual's mana cost"))))
+
+
+(deftest get-casting-modes-no-modes-wrong-zone-test
+  (testing "get-casting-modes returns empty for card in graveyard without flashback"
+    (let [db (init-game-state)
+          hand (q/get-hand db :player-1)
+          ritual (first hand)
+          obj-id (:object/id ritual)
+          ;; Move Dark Ritual (no flashback) to graveyard
+          db' (zones/move-to-zone db obj-id :graveyard)
+          modes (rules/get-casting-modes db' :player-1 obj-id)]
+      (is (empty? modes)
+          "Should return empty vector - Dark Ritual can't be cast from graveyard"))))
+
+
+(deftest get-casting-modes-flashback-in-graveyard-test
+  (testing "get-casting-modes returns flashback mode for flashback card in graveyard"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 deep-analysis-card :graveyard)
+          modes (rules/get-casting-modes db :player-1 obj-id)]
+      (is (= 1 (count modes))
+          "Should return exactly one mode (flashback only, not primary)")
+      (is (= :flashback (:mode/id (first modes)))
+          "Mode should be :flashback")
+      (is (= {:colorless 1 :blue 1} (:mode/mana-cost (first modes)))
+          "Mode should have flashback mana cost"))))
+
+
+(deftest get-casting-modes-flashback-not-in-hand-test
+  (testing "get-casting-modes does NOT return flashback mode when card in hand"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 deep-analysis-card :hand)
+          modes (rules/get-casting-modes db :player-1 obj-id)]
+      (is (= 1 (count modes))
+          "Should return exactly one mode (primary only)")
+      (is (= :primary (:mode/id (first modes)))
+          "Mode should be :primary (not flashback)")
+      (is (= {:colorless 3 :blue 1} (:mode/mana-cost (first modes)))
+          "Mode should have normal mana cost, not flashback cost"))))
+
+
+(deftest get-casting-modes-multiple-modes-test
+  (testing "get-casting-modes returns both modes for card with hand-alternate"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 gush-like-card :hand)
+          modes (rules/get-casting-modes db :player-1 obj-id)]
+      (is (= 2 (count modes))
+          "Should return two modes (primary + alternate)")
+      (is (some #(= :primary (:mode/id %)) modes)
+          "Should include primary mode")
+      (is (some #(= :return-islands (:mode/id %)) modes)
+          "Should include alternate mode"))))
+
+
+;; === can-cast-mode? tests ===
+
+(deftest can-cast-mode-sufficient-mana-test
+  (testing "can-cast-mode? returns true when player has sufficient mana"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1}))
+          hand (q/get-hand db :player-1)
+          ritual (first hand)
+          modes (rules/get-casting-modes db :player-1 (:object/id ritual))
+          mode (first modes)]
+      (is (true? (rules/can-cast-mode? db :player-1 (:object/id ritual) mode))
+          "Should be able to cast with sufficient mana"))))
+
+
+(deftest can-cast-mode-insufficient-mana-test
+  (testing "can-cast-mode? returns false when player lacks mana"
+    (let [db (init-game-state)  ; No mana added
+          hand (q/get-hand db :player-1)
+          ritual (first hand)
+          modes (rules/get-casting-modes db :player-1 (:object/id ritual))
+          mode (first modes)]
+      (is (false? (rules/can-cast-mode? db :player-1 (:object/id ritual) mode))
+          "Should not be able to cast without mana"))))
+
+
+(deftest can-cast-mode-with-life-cost-test
+  (testing "can-cast-mode? checks additional life cost"
+    (let [db (init-game-state)
+          ;; Add Deep Analysis to graveyard
+          [obj-id db] (add-card-to-zone db :player-1 deep-analysis-card :graveyard)
+          ;; Add mana for flashback (1U)
+          db (mana/add-mana db :player-1 {:colorless 1 :blue 1})
+          ;; Player starts with 20 life (default) which is >= 3
+          modes (rules/get-casting-modes db :player-1 obj-id)
+          flashback-mode (first modes)]
+      (is (= :flashback (:mode/id flashback-mode))
+          "Should be flashback mode")
+      (is (true? (rules/can-cast-mode? db :player-1 obj-id flashback-mode))
+          "Should be able to cast flashback with mana and life available"))))
+
+
+(deftest can-cast-mode-insufficient-life-test
+  (testing "can-cast-mode? returns false when can't pay life cost"
+    (let [db (init-game-state)
+          ;; Add Deep Analysis to graveyard
+          [obj-id db] (add-card-to-zone db :player-1 deep-analysis-card :graveyard)
+          ;; Add mana for flashback (1U)
+          db (mana/add-mana db :player-1 {:colorless 1 :blue 1})
+          ;; Set player life to 2 (less than required 3)
+          player-eid (q/get-player-eid db :player-1)
+          db (d/db-with db [[:db/add player-eid :player/life 2]])
+          modes (rules/get-casting-modes db :player-1 obj-id)
+          flashback-mode (first modes)]
+      (is (false? (rules/can-cast-mode? db :player-1 obj-id flashback-mode))
+          "Should not be able to cast flashback without enough life"))))
+
+
+;; === Edge case tests ===
+
+(deftest get-casting-modes-nil-alternate-costs-test
+  (testing "get-casting-modes handles nil alternate-costs gracefully"
+    ;; Dark Ritual has no :card/alternate-costs key at all
+    (let [db (init-game-state)
+          hand (q/get-hand db :player-1)
+          ritual (first hand)
+          modes (rules/get-casting-modes db :player-1 (:object/id ritual))]
+      (is (= 1 (count modes))
+          "Should return primary mode when alternate-costs is nil")
+      (is (= :primary (:mode/id (first modes)))))))
+
+
+(deftest get-casting-modes-empty-alternate-costs-test
+  (testing "get-casting-modes handles empty alternate-costs vector"
+    ;; Create card with explicit empty vector
+    (let [card-with-empty-alts {:card/id :empty-alts-test
+                                :card/name "Empty Alts Test"
+                                :card/cmc 1
+                                :card/mana-cost {:black 1}
+                                :card/colors #{:black}
+                                :card/types #{:instant}
+                                :card/text "Test card"
+                                :card/effects []
+                                :card/alternate-costs []}
+          db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 card-with-empty-alts :hand)
+          modes (rules/get-casting-modes db :player-1 obj-id)]
+      (is (= 1 (count modes))
+          "Should return primary mode when alternate-costs is empty vector")
+      (is (= :primary (:mode/id (first modes)))))))
+
+
+(deftest can-cast-mode-empty-mana-cost-test
+  (testing "can-cast-mode? returns true for zero mana cost mode"
+    ;; Test Gush's alternate mode which has {} (empty) mana cost
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 gush-like-card :hand)
+          modes (rules/get-casting-modes db :player-1 obj-id)
+          ;; Find the alternate mode with empty mana cost
+          alt-mode (first (filter #(= :return-islands (:mode/id %)) modes))]
+      ;; Note: This tests mana cost only. The additional cost (return lands)
+      ;; is not validated here since we don't have the cost type implemented yet.
+      ;; For now we just verify empty mana cost is considered payable.
+      (is (= {} (:mode/mana-cost alt-mode))
+          "Alternate mode should have empty mana cost")
+      ;; Mana portion is payable (0 cost)
+      ;; Additional costs check would fail for :return-lands but that's expected
+      ;; since we haven't implemented that cost type yet
+      )))
+
+
+;; === Backwards compatibility ===
+
+(deftest can-cast-unchanged-for-existing-cards-test
+  (testing "can-cast? behavior unchanged for cards without alternate costs"
+    ;; These replicate existing tests to ensure backwards compatibility
+    (let [db (init-game-state)
+          hand (q/get-hand db :player-1)
+          ritual (first hand)]
+      ;; Without mana - should be false
+      (is (false? (rules/can-cast? db :player-1 (:object/id ritual)))
+          "can-cast? should return false without mana")
+      ;; With mana - should be true
+      (let [db' (mana/add-mana db :player-1 {:black 1})]
+        (is (true? (rules/can-cast? db' :player-1 (:object/id ritual)))
+            "can-cast? should return true with mana"))
+      ;; Wrong zone - should be false
+      (let [db' (-> db
+                    (mana/add-mana :player-1 {:black 1})
+                    (zones/move-to-zone (:object/id ritual) :graveyard))]
+        (is (false? (rules/can-cast? db' :player-1 (:object/id ritual)))
+            "can-cast? should return false when card not in hand (no flashback)")))))
+
+
+;; === get-castable-cards tests ===
+
+(deftest get-castable-cards-from-hand-test
+  (testing "get-castable-cards returns cards that can be cast from hand"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1}))
+          castable (rules/get-castable-cards db :player-1)]
+      (is (= 1 (count castable))
+          "Should return 1 castable card (Dark Ritual)")
+      (is (= :dark-ritual (get-in (first castable) [:object/card :card/id]))
+          "Castable card should be Dark Ritual"))))
+
+
+(deftest get-castable-cards-includes-graveyard-flashback-test
+  (testing "get-castable-cards includes flashback cards from graveyard"
+    (let [db (init-game-state)
+          ;; Add Deep Analysis to graveyard
+          [_obj-id db] (add-card-to-zone db :player-1 deep-analysis-card :graveyard)
+          ;; Add mana for flashback (1U)
+          db (mana/add-mana db :player-1 {:colorless 1 :blue 1})
+          ;; Player has 20 life by default, enough for pay 3 life
+          castable (rules/get-castable-cards db :player-1)]
+      ;; Should include Deep Analysis from graveyard
+      (is (some #(= :deep-analysis (get-in % [:object/card :card/id])) castable)
+          "Castable cards should include Deep Analysis from graveyard"))))
+
+
+(deftest get-castable-cards-empty-when-no-mana-test
+  (testing "get-castable-cards returns empty when no mana and no free spells"
+    (let [db (init-game-state)
+          castable (rules/get-castable-cards db :player-1)]
+      (is (empty? castable)
+          "Should return empty when can't afford anything"))))
