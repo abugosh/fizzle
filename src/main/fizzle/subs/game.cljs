@@ -186,3 +186,21 @@
 
           ;; Default: use the zone from selection
           (queries/get-objects-in-zone game-db player-id (or zone :hand)))))))
+
+
+;; Subscription for scry card objects
+;; Returns full card objects for IDs in :selection/cards, :selection/top-pile, :selection/bottom-pile
+(rf/reg-sub
+  ::scry-cards
+  :<- [::game-db]
+  :<- [::pending-selection]
+  (fn [[game-db selection] _]
+    (when (and game-db selection (= :scry (:selection/type selection)))
+      (let [card-ids (:selection/cards selection)
+            top-pile (:selection/top-pile selection)
+            bottom-pile (:selection/bottom-pile selection)
+            get-obj (fn [oid] (queries/get-object game-db oid))]
+        {:cards (mapv get-obj card-ids)
+         :top-pile (mapv get-obj top-pile)
+         :bottom-pile (mapv get-obj bottom-pile)
+         :assigned (into (set top-pile) bottom-pile)}))))

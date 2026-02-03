@@ -1262,6 +1262,37 @@
     (confirm-scry-selection db)))
 
 
+;; === Scry Pile Assignment Events ===
+;; Events for assigning cards to top/bottom piles during scry selection
+
+(rf/reg-event-db
+  ::scry-assign-top
+  (fn [db [_ obj-id]]
+    (-> db
+        (update-in [:game/pending-selection :selection/top-pile] conj obj-id)
+        (update-in [:game/pending-selection :selection/bottom-pile]
+                   (fn [pile] (vec (remove #{obj-id} pile)))))))
+
+
+(rf/reg-event-db
+  ::scry-assign-bottom
+  (fn [db [_ obj-id]]
+    (-> db
+        (update-in [:game/pending-selection :selection/bottom-pile] conj obj-id)
+        (update-in [:game/pending-selection :selection/top-pile]
+                   (fn [pile] (vec (remove #{obj-id} pile)))))))
+
+
+(rf/reg-event-db
+  ::scry-unassign
+  (fn [db [_ obj-id]]
+    (-> db
+        (update-in [:game/pending-selection :selection/top-pile]
+                   (fn [pile] (vec (remove #{obj-id} pile))))
+        (update-in [:game/pending-selection :selection/bottom-pile]
+                   (fn [pile] (vec (remove #{obj-id} pile)))))))
+
+
 ;; === Player Target Selection ===
 ;; For effects with :effect/target :any-player (e.g., Deep Analysis "target player draws")
 

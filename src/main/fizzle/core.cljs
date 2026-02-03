@@ -603,17 +603,116 @@
         (if is-tutor? "Select Card" "Confirm")]]]]))
 
 
+(defn- scry-card-view
+  "A card in the scry selection modal, showing pile assignment."
+  [obj pile]
+  (let [card (:object/card obj)
+        card-name (or (:card/name card) "Unknown")]
+    [:div {:style {:width "100px"
+                   :padding "8px"
+                   :border-radius "6px"
+                   :background (case pile
+                                 :top "#2a4a2a"
+                                 :bottom "#4a2a2a"
+                                 "#1a2a3a")
+                   :border "1px solid #4A9BD9"
+                   :text-align "center"
+                   :font-size "11px"
+                   :color "#eee"
+                   :cursor "pointer"}}
+     card-name]))
+
+
+(defn- scry-modal
+  "Modal for scry selection - assign cards to top or bottom piles."
+  [selection]
+  (let [scry-data @(rf/subscribe [::subs/scry-cards])
+        all-cards (:cards scry-data)
+        top-pile-ids (set (:selection/top-pile selection))
+        bottom-pile-ids (set (:selection/bottom-pile selection))
+        assigned (into top-pile-ids bottom-pile-ids)
+        unassigned-cards (remove #(contains? assigned (:object/id %)) all-cards)
+        top-cards (filter #(contains? top-pile-ids (:object/id %)) all-cards)
+        bottom-cards (filter #(contains? bottom-pile-ids (:object/id %)) all-cards)]
+    [:div {:style {:position "fixed" :top 0 :left 0 :right 0 :bottom 0
+                   :background "rgba(0, 0, 0, 0.8)"
+                   :display "flex" :align-items "center" :justify-content "center"
+                   :z-index 1000}}
+     [:div {:style {:background "#1a1a2a" :border "2px solid #4A9BD9"
+                    :border-radius "12px" :padding "24px"
+                    :max-width "600px" :width "90%"}}
+      ;; Header
+      [:h2 {:style {:color "#eee" :margin "0 0 16px 0"}}
+       (str "Scry " (count all-cards))]
+
+      ;; Top Pile section
+      [:div {:style {:margin-bottom "16px"}}
+       [:h3 {:style {:color "#5CB85C" :font-size "14px" :margin "0 0 8px 0"}}
+        "Top of Library (first)"]
+       [:div {:style {:display "flex" :flex-wrap "wrap" :gap "8px" :min-height "40px"}}
+        (for [obj top-cards]
+          ^{:key (:object/id obj)}
+          [:div {:on-click #(rf/dispatch [::events/scry-unassign (:object/id obj)])}
+           [scry-card-view obj :top]])]]
+
+      ;; Unassigned cards section
+      [:div {:style {:margin-bottom "16px"}}
+       [:h3 {:style {:color "#aaa" :font-size "14px" :margin "0 0 8px 0"}}
+        "Revealed Cards"]
+       [:div {:style {:display "flex" :flex-wrap "wrap" :gap "8px" :min-height "40px"}}
+        (for [obj unassigned-cards]
+          ^{:key (:object/id obj)}
+          [:div {:style {:display "flex" :gap "4px" :align-items "center"}}
+           [scry-card-view obj nil]
+           [:div {:style {:display "flex" :flex-direction "column" :gap "2px"}}
+            [:button {:style {:padding "4px 8px" :background "#2a4a2a" :border "1px solid #5CB85C"
+                              :border-radius "4px" :color "#eee" :cursor "pointer" :font-size "10px"}
+                      :on-click #(rf/dispatch [::events/scry-assign-top (:object/id obj)])}
+             "Top"]
+            [:button {:style {:padding "4px 8px" :background "#4a2a2a" :border "1px solid #D9534F"
+                              :border-radius "4px" :color "#eee" :cursor "pointer" :font-size "10px"}
+                      :on-click #(rf/dispatch [::events/scry-assign-bottom (:object/id obj)])}
+             "Bottom"]]])]]
+
+      ;; Bottom Pile section
+      [:div {:style {:margin-bottom "20px"}}
+       [:h3 {:style {:color "#D9534F" :font-size "14px" :margin "0 0 8px 0"}}
+        "Bottom of Library (last)"]
+       [:div {:style {:display "flex" :flex-wrap "wrap" :gap "8px" :min-height "40px"}}
+        (for [obj bottom-cards]
+          ^{:key (:object/id obj)}
+          [:div {:on-click #(rf/dispatch [::events/scry-unassign (:object/id obj)])}
+           [scry-card-view obj :bottom]])]]
+
+      ;; Confirm button
+      [:button {:style {:width "100%" :padding "12px" :background "#4A9BD9"
+                        :border "none" :border-radius "8px" :color "#fff"
+                        :font-size "16px" :cursor "pointer"}
+                :on-click #(rf/dispatch [::events/confirm-scry-selection])}
+       "Confirm"]]]))
+
+
 (defn- selection-modal
   "Modal overlay for player selection.
    Shows when :game/pending-selection exists.
-   Handles discard, tutor, and player-target effects."
+   Handles discard, tutor, scry, and player-target effects."
   []
   (let [selection @(rf/subscribe [::subs/pending-selection])
         cards @(rf/subscribe [::subs/selection-cards])]
     (when selection
-      (let [effect-type (:selection/effect-type selection)]
-        (if (= effect-type :player-target)
+      (let [selection-type (:selection/type selection)
+            effect-type (:selection/effect-type selection)]
+        (cond
+          ;; Scry selection (has :selection/type :scry)
+          (= selection-type :scry)
+          [scry-modal selection]
+
+          ;; Player target selection
+          (= effect-type :player-target)
           [player-target-modal selection]
+
+          ;; Card selection (discard, tutor)
+          :else
           [card-selection-modal selection cards])))))
 
 
