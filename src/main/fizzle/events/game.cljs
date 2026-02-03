@@ -751,7 +751,9 @@
   "Check if any effect in the list requires player selection."
   [effects]
   (some #(or (= :player (:effect/selection %))
-             (= :tutor (:effect/type %)))
+             (= :tutor (:effect/type %))
+             (and (= :scry (:effect/type %))
+                  (pos? (or (:effect/amount %) 0))))
         effects))
 
 
@@ -760,12 +762,15 @@
    This includes:
    - :discard with :selection :player - player chooses cards to discard
    - :tutor - player searches library for matching card
+   - :scry with amount > 0 - player arranges top N cards
    - :effect/target :any-player - player chooses a target player
    Returns nil if no selection effect found."
   [effects]
   (first (keep-indexed (fn [i effect]
                          (when (or (= :player (:effect/selection effect))
                                    (= :tutor (:effect/type effect))
+                                   (and (= :scry (:effect/type effect))
+                                        (pos? (or (:effect/amount effect) 0)))
                                    (= :any-player (:effect/target effect)))
                            i))
                        effects)))

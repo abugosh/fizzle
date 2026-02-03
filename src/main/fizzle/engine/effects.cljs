@@ -348,3 +348,28 @@
   [db _player-id _effect]
   ;; Return unchanged - selection handled at app-db level
   db)
+
+
+(defmethod execute-effect-impl :scry
+  ;; Look at top N cards of library and rearrange them.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/amount - Number of cards to scry (default 0)
+  ;;
+  ;; This effect returns db UNCHANGED. The actual scry happens at the
+  ;; app-db level via re-frame events when the player confirms their selection.
+  ;; The calling code checks for :scry effect type and sets up pending selection
+  ;; with the top N cards revealed.
+  ;;
+  ;; Player assigns each card to either top or bottom pile. Click order
+  ;; determines arrangement within each pile. On confirm, library is reordered.
+  ;;
+  ;; Edge cases:
+  ;;   - amount <= 0: No-op (returns db unchanged, no selection needed)
+  ;;   - amount > library size: Scry available cards only (handled in selection setup)
+  ;;   - missing amount: Defaults to 0 (no-op)
+  [db _player-id effect]
+  (let [amount (or (:effect/amount effect) 0)]
+    (if (<= amount 0)
+      db  ; No-op for scry 0, negative, or missing amount
+      db))) ; Return unchanged - selection handled at app-db level
