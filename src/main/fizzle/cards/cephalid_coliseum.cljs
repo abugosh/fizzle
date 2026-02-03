@@ -38,6 +38,7 @@
     ;; Threshold ability: {U}, T, Sacrifice: Target player draws 3, discards 3
     ;; Only activatable with 7+ cards in graveyard
     {:ability/type :activated
+     :ability/name "Threshold"
      :ability/cost {:tap true
                     :sacrifice-self true
                     :mana {:blue 1}}

@@ -185,9 +185,16 @@
      ;; Activated ability buttons (non-mana)
      (when (seq activated-abilities)
        [:div {:style {:display "flex" :justify-content "center" :flex-wrap "wrap" :margin-top "4px"}}
-        (for [[idx _ability] activated-abilities]
-          ^{:key idx}
-          [ability-button object-id idx "Fetch" tapped?])])]))
+        (for [[idx ability] activated-abilities]
+          (let [label (or (:ability/name ability)
+                          (when-let [desc (:ability/description ability)]
+                            ;; Truncate long descriptions to first 15 chars
+                            (if (> (count desc) 15)
+                              (str (subs desc 0 12) "...")
+                              desc))
+                          "Activate")]
+            ^{:key idx}
+            [ability-button object-id idx label tapped?]))])]))
 
 
 (defn- battlefield-view

@@ -882,6 +882,20 @@
      :selection/enters-tapped (:effect/enters-tapped tutor-effect)}))
 
 
+(defn- build-player-target-selection-for-trigger
+  "Build pending selection state for a player-targeted effect from an activated ability trigger.
+   Uses :selection/trigger-id instead of :selection/spell-id for cleanup."
+  [player-id trigger-id target-effect effects-after]
+  {:selection/type :player-target
+   :selection/player-id player-id
+   :selection/selected-target nil  ; Will be :player-1 or :opponent
+   :selection/trigger-id trigger-id
+   :selection/source-type :trigger   ; Indicates this is from a trigger, not a spell
+   :selection/target-effect target-effect  ; The effect needing a target
+   :selection/remaining-effects effects-after
+   :selection/effect-type :player-target})
+
+
 (defn resolve-activated-ability-with-selection
   "Resolve an activated ability trigger, pausing if a selection effect is encountered.
 
@@ -925,10 +939,30 @@
                                         (effects/execute-effect d controller resolved-effect)))
                                     db
                                     effects-before)
-            ;; Build selection state for tutor
-            pending-selection (when (= :tutor (:effect/type selection-effect))
+            ;; Build selection state based on effect type
+            pending-selection (cond
+                                ;; Player targeting (e.g., Cephalid Coliseum "target player draws")
+                                (= :any-player (:effect/target selection-effect))
+                                (build-player-target-selection-for-trigger controller trigger-id
+                                                                           selection-effect effects-after)
+
+                                ;; Tutor effect
+                                (= :tutor (:effect/type selection-effect))
                                 (build-tutor-selection-for-trigger db-after-before controller trigger-id
-                                                                   selection-effect effects-after))]
+                                                                   selection-effect effects-after)
+
+                                ;; Discard selection
+                                (= :player (:effect/selection selection-effect))
+                                {:selection/type :discard
+                                 :selection/player-id controller
+                                 :selection/count (:effect/count selection-effect)
+                                 :selection/selected #{}
+                                 :selection/trigger-id trigger-id
+                                 :selection/source-type :trigger
+                                 :selection/remaining-effects effects-after
+                                 :selection/effect-type :discard}
+
+                                :else nil)]
         {:db db-after-before
          :pending-selection pending-selection}))))
 
@@ -971,6 +1005,8 @@
           selected (:selection/selected selection)
           count-required (:selection/count selection)
           spell-id (:selection/spell-id selection)
+          trigger-id (:selection/trigger-id selection)
+          source-type (:selection/source-type selection)
           remaining-effects (:selection/remaining-effects selection)
           effect-type (:selection/effect-type selection)
           player-id (:selection/player-id selection)]
@@ -990,8 +1026,12 @@
                                            (effects/execute-effect d player-id effect))
                                          db-after-effect
                                          (or remaining-effects []))
-              ;; Move spell to graveyard (it was waiting on stack)
-              db-final (zones/move-to-zone db-after-remaining spell-id :graveyard)]
+              ;; Clean up source: move spell to graveyard OR remove trigger from stack
+              db-final (if (= source-type :trigger)
+                         ;; Trigger-based selection (activated ability): remove trigger
+                         (triggers/remove-trigger db-after-remaining trigger-id)
+                         ;; Spell-based selection: move spell to graveyard
+                         (zones/move-to-zone db-after-remaining spell-id :graveyard))]
           (-> db
               (assoc :game/db db-final)
               (dissoc :game/pending-selection)))
@@ -1106,8 +1146,10 @@
     (let [selection (:game/pending-selection db)
           selected-target (:selection/selected-target selection)
           spell-id (:selection/spell-id selection)
+          trigger-id (:selection/trigger-id selection)
+          source-type (:selection/source-type selection)
           target-effect (:selection/target-effect selection)
-          remaining-effects (:selection/remaining-effects selection)
+          remaining-effects (vec (or (:selection/remaining-effects selection) []))
           player-id (:selection/player-id selection)
           game-db (:game/db db)]
       (if selected-target
@@ -1116,16 +1158,47 @@
               resolved-effect (assoc target-effect :effect/target selected-target)
               ;; Execute the targeted effect
               db-after-effect (effects/execute-effect game-db player-id resolved-effect)
-              ;; Execute remaining effects
-              db-after-remaining (reduce (fn [d effect]
-                                           (effects/execute-effect d player-id effect))
-                                         db-after-effect
-                                         (or remaining-effects []))
-              ;; Move spell to graveyard
-              db-final (zones/move-to-zone db-after-remaining spell-id :graveyard)]
-          (-> db
-              (assoc :game/db db-final)
-              (dissoc :game/pending-selection)))
+              ;; Check if remaining effects need selection
+              next-selection-idx (find-selection-effect-index remaining-effects)]
+          (if next-selection-idx
+            ;; Chain to next selection (e.g., discard after draw)
+            (let [effects-before-next (subvec remaining-effects 0 next-selection-idx)
+                  next-selection-effect (nth remaining-effects next-selection-idx)
+                  effects-after-next (subvec remaining-effects (inc next-selection-idx))
+                  ;; Execute effects before the next selection
+                  db-after-before (reduce (fn [d effect]
+                                            (effects/execute-effect d player-id effect))
+                                          db-after-effect
+                                          effects-before-next)
+                  ;; Build selection state for discard (targeting the same player)
+                  ;; The selected-target becomes the player who must discard
+                  next-selection (when (= :player (:effect/selection next-selection-effect))
+                                   {:selection/type :discard
+                                    :selection/player-id selected-target  ; Target player discards
+                                    :selection/count (:effect/count next-selection-effect)
+                                    :selection/selected #{}
+                                    :selection/spell-id spell-id
+                                    :selection/trigger-id trigger-id
+                                    :selection/source-type source-type
+                                    :selection/remaining-effects effects-after-next
+                                    :selection/effect-type :discard})]
+              (-> db
+                  (assoc :game/db db-after-before)
+                  (assoc :game/pending-selection next-selection)))
+            ;; No more selections - execute all remaining and clean up
+            (let [db-after-remaining (reduce (fn [d effect]
+                                               (effects/execute-effect d player-id effect))
+                                             db-after-effect
+                                             remaining-effects)
+                  ;; Clean up source: move spell to graveyard OR remove trigger from stack
+                  db-final (if (= source-type :trigger)
+                             ;; Trigger-based selection (activated ability): remove trigger
+                             (triggers/remove-trigger db-after-remaining trigger-id)
+                             ;; Spell-based selection: move spell to graveyard
+                             (zones/move-to-zone db-after-remaining spell-id :graveyard))]
+              (-> db
+                  (assoc :game/db db-final)
+                  (dissoc :game/pending-selection)))))
         ;; No target selected - do nothing
         db))))
 
