@@ -315,3 +315,22 @@
                       db'
                       (or effects-list []))
               (zones/move-to-zone db' object-id destination))))))
+
+
+(defn move-spell-off-stack
+  "Remove a spell from stack without resolving (counter, fizzle).
+
+   Uses cast mode's :mode/on-resolve for destination if present.
+   Otherwise sends to graveyard.
+
+   This ensures flashback spells exile when countered, per MTG rules:
+   'If the flashback cost was paid, exile this card instead of putting
+   it anywhere else any time it would leave the stack.'"
+  [db _player-id object-id]
+  (let [obj (q/get-object db object-id)]
+    (if (not= :stack (:object/zone obj))
+      db  ; No-op if not on stack
+      (let [cast-mode (:object/cast-mode obj)
+            mode-destination (:mode/on-resolve cast-mode)
+            destination (or mode-destination :graveyard)]
+        (zones/move-to-zone db object-id destination)))))
