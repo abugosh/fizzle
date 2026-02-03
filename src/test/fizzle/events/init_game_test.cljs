@@ -48,11 +48,11 @@
           card-counts (->> all-cards
                            (map #(get-in % [:object/card :card/id]))
                            frequencies)]
-      ;; 8x rituals
-      (is (= 8 (get card-counts :dark-ritual))
-          "Should have 8 Dark Rituals in deck")
-      (is (= 8 (get card-counts :cabal-ritual))
-          "Should have 8 Cabal Rituals in deck")
+      ;; 6x rituals
+      (is (= 6 (get card-counts :dark-ritual))
+          "Should have 6 Dark Rituals in deck")
+      (is (= 6 (get card-counts :cabal-ritual))
+          "Should have 6 Cabal Rituals in deck")
       ;; 4x win conditions and rainbow lands
       (is (= 4 (get card-counts :brain-freeze))
           "Should have 4 Brain Freezes in deck")
@@ -82,6 +82,8 @@
           "Should have 4 Careful Studies in deck")
       (is (= 4 (get card-counts :mental-note))
           "Should have 4 Mental Notes in deck")
+      (is (= 4 (get card-counts :opt))
+          "Should have 4 Opts in deck")
       ;; 2x tutors
       (is (= 2 (get card-counts :merchant-scroll))
           "Should have 2 Merchant Scrolls in deck")

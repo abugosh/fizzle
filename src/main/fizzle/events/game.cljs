@@ -33,8 +33,8 @@
   (shuffle
     (into []
           (concat
-            (repeat 8 :dark-ritual)
-            (repeat 8 :cabal-ritual)
+            (repeat 6 :dark-ritual)
+            (repeat 6 :cabal-ritual)
             (repeat 4 :brain-freeze)
             (repeat 4 :city-of-brass)
             (repeat 4 :gemstone-mine)
@@ -46,6 +46,7 @@
             (repeat 4 :lions-eye-diamond)
             (repeat 4 :careful-study)
             (repeat 4 :mental-note)
+            (repeat 4 :opt)
             (repeat 2 :merchant-scroll)
             (repeat 2 :deep-analysis)))))
 
