@@ -17,6 +17,27 @@
        db object-id))
 
 
+(defn get-controller-eid
+  "Get the controller entity ID for an object.
+   Returns nil if object doesn't exist."
+  [db object-id]
+  (when-let [obj-eid (get-object-eid db object-id)]
+    (d/q '[:find ?c .
+           :in $ ?e
+           :where [?e :object/controller ?c]]
+         db obj-eid)))
+
+
+(defn get-player-id-from-eid
+  "Get the :player/id for a player entity.
+   Returns nil if entity is not a player."
+  [db player-eid]
+  (d/q '[:find ?pid .
+         :in $ ?e
+         :where [?e :player/id ?pid]]
+       db player-eid))
+
+
 (defmulti pay-cost
   "Pay a single cost on an object.
 
@@ -203,4 +224,47 @@
           required (:pay-life cost)
           new-life (- current-life required)]
       (d/db-with db [[:db/add controller-eid :player/life new-life]]))
+    db))
+
+
+;; === :mana cost ===
+
+(defmethod can-pay? :mana [db object-id cost]
+  ;; Can pay mana if:
+  ;; 1. Object exists
+  ;; 2. Controller has sufficient mana in pool for each color required
+  (if-let [obj-eid (get-object-eid db object-id)]
+    (let [controller-eid (d/q '[:find ?c .
+                                :in $ ?e
+                                :where [?e :object/controller ?c]]
+                              db obj-eid)
+          current-pool (or (d/q '[:find ?pool .
+                                  :in $ ?p
+                                  :where [?p :player/mana-pool ?pool]]
+                                db controller-eid)
+                           {})
+          required (:mana cost)]
+      (every? (fn [[color amount]]
+                (>= (get current-pool color 0) amount))
+              required))
+    false))
+
+
+(defmethod pay-cost :mana [db object-id cost]
+  ;; Deduct mana from controller's pool.
+  ;; NOTE: No can-pay? guard here - by the time pay-cost is called,
+  ;; can-activate? has already verified all costs are payable.
+  (if-let [obj-eid (get-object-eid db object-id)]
+    (let [controller-eid (d/q '[:find ?c .
+                                :in $ ?e
+                                :where [?e :object/controller ?c]]
+                              db obj-eid)
+          current-pool (or (d/q '[:find ?pool .
+                                  :in $ ?p
+                                  :where [?p :player/mana-pool ?pool]]
+                                db controller-eid)
+                           {})
+          required (:mana cost)
+          new-pool (merge-with - current-pool required)]
+      (d/db-with db [[:db/add controller-eid :player/mana-pool new-pool]]))
     db))

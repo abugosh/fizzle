@@ -598,12 +598,18 @@
                                         db-after-costs)
                     ;; Step 2b: Execute ability effects (mana and other effects)
                     ;; Resolve :self targets to object-id before execution
+                    ;; Resolve :controller targets to player-id before execution
                     ;; Resolve {:any N} mana effects to chosen color
                     db-after-effects (reduce (fn [db' effect]
-                                               (let [;; Resolve :self target
-                                                     resolved-effect (if (= :self (:effect/target effect))
+                                               (let [;; Resolve :self target (for objects)
+                                                     resolved-effect (cond
+                                                                       (= :self (:effect/target effect))
                                                                        (assoc effect :effect/target object-id)
-                                                                       effect)
+
+                                                                       (= :controller (:effect/target effect))
+                                                                       (assoc effect :effect/target player-id)
+
+                                                                       :else effect)
                                                      ;; Resolve {:any N} mana to chosen color
                                                      resolved-effect (if (= :add-mana (:effect/type resolved-effect))
                                                                        (let [mana (:effect/mana resolved-effect)]

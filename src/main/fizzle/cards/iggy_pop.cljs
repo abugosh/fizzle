@@ -4,6 +4,7 @@
    Cards are pure data - the engine interprets their effects.
    This namespace will grow to contain all Iggy Pop maindeck cards."
   (:require
+    [fizzle.cards.cephalid-coliseum :as cephalid-coliseum]
     [fizzle.cards.deep-analysis :as deep-analysis]))
 
 
@@ -278,4 +279,5 @@
 (def all-cards
   [dark-ritual brain-freeze cabal-ritual city-of-brass city-of-traitors
    gemstone-mine island swamp lotus-petal lions-eye-diamond careful-study
-   mental-note merchant-scroll polluted-delta deep-analysis/deep-analysis])
+   mental-note merchant-scroll polluted-delta deep-analysis/deep-analysis
+   cephalid-coliseum/cephalid-coliseum])
