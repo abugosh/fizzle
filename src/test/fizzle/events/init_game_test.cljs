@@ -66,11 +66,12 @@
       ;; 2x Cephalid Coliseum (threshold draw/discard)
       (is (= 2 (get card-counts :cephalid-coliseum))
           "Should have 2 Cephalid Coliseums in deck")
-      ;; 2x basic islands + 4x swamps (reduced islands to make room for Coliseums)
+      ;; 4x Underground River (pain land for U/B)
+      (is (= 4 (get card-counts :underground-river))
+          "Should have 4 Underground Rivers in deck")
+      ;; 2x basic islands
       (is (= 2 (get card-counts :island))
           "Should have 2 Islands in deck")
-      (is (= 4 (get card-counts :swamp))
-          "Should have 4 Swamps in deck")
       ;; 4x mana acceleration
       (is (= 4 (get card-counts :lotus-petal))
           "Should have 4 Lotus Petals in deck")

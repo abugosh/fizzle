@@ -39,9 +39,9 @@
             (repeat 4 :city-of-brass)
             (repeat 4 :gemstone-mine)
             (repeat 4 :polluted-delta)
+            (repeat 4 :underground-river)
             (repeat 2 :cephalid-coliseum)
             (repeat 2 :island)
-            (repeat 4 :swamp)
             (repeat 4 :lotus-petal)
             (repeat 4 :lions-eye-diamond)
             (repeat 4 :careful-study)
@@ -579,7 +579,32 @@
       ;; Find mana ability from card data
       (let [card (:object/card obj)
             card-abilities (:card/abilities card)
-            mana-ability (first (filter #(= (:ability/type %) :mana) card-abilities))]
+            all-mana-abilities (filter #(= :mana (:ability/type %)) card-abilities)
+            ;; Find mana ability that produces the requested color
+            ;; Handles multiple patterns:
+            ;; 1. :ability/produces {:blue 1} - direct match
+            ;; 2. :ability/produces {:any 1} - any color (Gemstone Mine, Lotus Petal)
+            ;; 3. :ability/effects with :add-mana {:any N} - City of Brass, LED
+            ;; If mana-color is nil or no match found, fall back to first mana ability
+            matching-ability (when mana-color
+                               (first (filter
+                                        (fn [ability]
+                                          (let [produces (:ability/produces ability)
+                                                effects (:ability/effects ability)
+                                                ;; Check if any effect adds {:any N} mana
+                                                has-any-mana-effect? (some #(and (= :add-mana (:effect/type %))
+                                                                                 (contains? (:effect/mana %) :any))
+                                                                           effects)]
+                                            (or
+                                              ;; Direct produces match
+                                              (and produces (contains? produces mana-color))
+                                              ;; Produces any color
+                                              (and produces (contains? produces :any))
+                                              ;; Effect adds any color
+                                              has-any-mana-effect?)))
+                                        all-mana-abilities)))
+            ;; Fall back to first mana ability if no match or nil color
+            mana-ability (or matching-ability (first all-mana-abilities))]
         (if (and mana-ability
                  (abilities/can-activate? db object-id mana-ability))
           ;; Execute ability

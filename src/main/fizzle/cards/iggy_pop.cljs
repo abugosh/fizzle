@@ -167,6 +167,33 @@
                      :ability/produces {:black 1}}]})
 
 
+;; Underground River - Pain land producing blue or black mana
+;; T: Add {C}. T: Add {U} or {B}. Underground River deals 1 damage to you.
+(def underground-river
+  {:card/id :underground-river
+   :card/name "Underground River"
+   :card/cmc 0
+   :card/mana-cost {}
+   :card/colors #{}
+   :card/types #{:land}
+   :card/text "{T}: Add {C}. {T}: Add {U} or {B}. Underground River deals 1 damage to you."
+   :card/abilities [{:ability/type :mana
+                     :ability/cost {:tap true}
+                     :ability/produces {:colorless 1}}
+                    {:ability/type :mana
+                     :ability/cost {:tap true}
+                     :ability/produces {:blue 1}
+                     :ability/effects [{:effect/type :deal-damage
+                                        :effect/amount 1
+                                        :effect/target :controller}]}
+                    {:ability/type :mana
+                     :ability/cost {:tap true}
+                     :ability/produces {:black 1}
+                     :ability/effects [{:effect/type :deal-damage
+                                        :effect/amount 1
+                                        :effect/target :controller}]}]})
+
+
 ;; Lotus Petal - Zero-cost artifact mana acceleration
 ;; {T}, Sacrifice Lotus Petal: Add one mana of any color.
 (def lotus-petal
@@ -278,6 +305,6 @@
 ;; All cards in this namespace for easy import
 (def all-cards
   [dark-ritual brain-freeze cabal-ritual city-of-brass city-of-traitors
-   gemstone-mine island swamp lotus-petal lions-eye-diamond careful-study
-   mental-note merchant-scroll polluted-delta deep-analysis/deep-analysis
-   cephalid-coliseum/cephalid-coliseum])
+   gemstone-mine island swamp underground-river lotus-petal lions-eye-diamond
+   careful-study mental-note merchant-scroll polluted-delta
+   deep-analysis/deep-analysis cephalid-coliseum/cephalid-coliseum])
