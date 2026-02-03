@@ -1184,6 +1184,84 @@
         db))))
 
 
+;; === Scry Selection ===
+;; For scry effects that reveal top N cards for rearrangement
+
+(defn- reorder-library-for-scry
+  "Reorder library after scry confirmation.
+   top-pile cards go to positions 0, 1, 2... (click order)
+   bottom-pile cards go to last positions (click order)
+   Unassigned cards from selection stay at original relative positions.
+   Cards not in scry selection are unaffected."
+  [db player-id selection]
+  (let [scry-card-ids (set (:selection/cards selection))
+        top-pile (vec (or (:selection/top-pile selection) []))
+        bottom-pile (vec (or (:selection/bottom-pile selection) []))
+        assigned-ids (into (set top-pile) bottom-pile)
+        ;; Get all library objects sorted by current position
+        library-objs (->> (queries/get-objects-in-zone db player-id :library)
+                          (sort-by :object/position))
+        ;; Separate scry cards from non-scry cards
+        non-scry-objs (remove #(scry-card-ids (:object/id %)) library-objs)
+        ;; Cards in selection but not assigned to either pile (keep at top)
+        unassigned (filterv #(and (scry-card-ids %)
+                                  (not (assigned-ids %)))
+                            (map :object/id library-objs))
+        ;; Build new position order:
+        ;; 1. Top pile (click order)
+        ;; 2. Unassigned scry cards (original relative order)
+        ;; 3. Non-scry cards (original positions preserved)
+        ;; 4. Bottom pile (click order)
+        new-order (vec (concat top-pile
+                               unassigned
+                               (map :object/id non-scry-objs)
+                               bottom-pile))
+        ;; Build position update transactions
+        position-txs (map-indexed
+                       (fn [idx obj-id]
+                         (let [obj-eid (d/q '[:find ?e .
+                                              :in $ ?oid
+                                              :where [?e :object/id ?oid]]
+                                            db obj-id)]
+                           (when obj-eid
+                             [:db/add obj-eid :object/position idx])))
+                       new-order)]
+    (d/db-with db (filterv some? position-txs))))
+
+
+(defn confirm-scry-selection
+  "Handle scry selection confirmation.
+   Reorders library, executes remaining effects, moves spell to graveyard.
+   Exported for testing."
+  [app-db]
+  (let [selection (:game/pending-selection app-db)
+        spell-id (:selection/spell-id selection)
+        remaining-effects (:selection/remaining-effects selection)
+        player-id (:selection/player-id selection)
+        game-db (:game/db app-db)]
+    (if (= :scry (:selection/type selection))
+      (let [;; Reorder library based on pile assignments
+            db-after-reorder (reorder-library-for-scry game-db player-id selection)
+            ;; Execute remaining effects (e.g., draw for Opt)
+            db-after-remaining (reduce (fn [d effect]
+                                         (effects/execute-effect d player-id effect))
+                                       db-after-reorder
+                                       (or remaining-effects []))
+            ;; Move spell to graveyard
+            db-final (zones/move-to-zone db-after-remaining spell-id :graveyard)]
+        (-> app-db
+            (assoc :game/db db-final)
+            (dissoc :game/pending-selection)))
+      ;; Not a scry selection - do nothing
+      app-db)))
+
+
+(rf/reg-event-db
+  ::confirm-scry-selection
+  (fn [db _]
+    (confirm-scry-selection db)))
+
+
 ;; === Player Target Selection ===
 ;; For effects with :effect/target :any-player (e.g., Deep Analysis "target player draws")
 
