@@ -798,6 +798,24 @@
      :selection/enters-tapped (:effect/enters-tapped tutor-effect)}))
 
 
+(defn build-scry-selection
+  "Build pending selection state for a scry effect.
+   Reveals top N cards from library for player to arrange.
+   Returns nil if library is empty or amount <= 0 (no selection needed)."
+  [db player-id object-id scry-effect effects-after]
+  (let [amount (or (:effect/amount scry-effect) 0)]
+    (when (pos? amount)
+      (let [library-cards (queries/get-top-n-library db player-id amount)]
+        (when (seq library-cards)
+          {:selection/type :scry
+           :selection/player-id player-id
+           :selection/cards (vec library-cards)
+           :selection/top-pile []
+           :selection/bottom-pile []
+           :selection/spell-id object-id
+           :selection/remaining-effects (vec effects-after)})))))
+
+
 (defn- build-discard-selection
   "Build pending selection state for a discard effect."
   [player-id object-id discard-effect effects-after]
@@ -875,6 +893,11 @@
                                     (= effect-type :discard)
                                     (build-discard-selection player-id object-id
                                                              selection-effect effects-after)
+
+                                    ;; Scry effect
+                                    (= effect-type :scry)
+                                    (build-scry-selection db-after-before player-id object-id
+                                                          selection-effect effects-after)
 
                                     ;; Default for unknown selection types
                                     :else
