@@ -87,6 +87,31 @@
     false))
 
 
+(defn- pay-additional-cost
+  "Pay a single additional cost. Returns updated db.
+   Precondition: cost has been validated with can-pay-additional-cost?"
+  [db _player-id object-id cost]
+  (case (:cost/type cost)
+    :pay-life (let [obj (q/get-object db object-id)
+                    controller-eid (:db/id (:object/controller obj))
+                    current-life (d/q '[:find ?life .
+                                        :in $ ?p
+                                        :where [?p :player/life ?life]]
+                                      db controller-eid)
+                    new-life (- current-life (:cost/amount cost))]
+                (d/db-with db [[:db/add controller-eid :player/life new-life]]))
+    ;; Unknown cost type - return db unchanged (validated in can-pay)
+    db))
+
+
+(defn- pay-additional-costs
+  "Pay all additional costs for a mode. Returns updated db."
+  [db player-id object-id costs]
+  (reduce (fn [d cost] (pay-additional-cost d player-id object-id cost))
+          db
+          (or costs [])))
+
+
 (defn can-cast-mode?
   "Check if player can pay all costs for a specific casting mode.
    Checks mana cost AND all additional costs."
@@ -169,25 +194,66 @@
     (d/db-with db [[:db/add obj-eid :object/position stack-order]])))
 
 
+(defn- set-cast-mode
+  "Store the casting mode on an object for use during resolution."
+  [db object-id mode]
+  (let [obj-eid (d/q '[:find ?e .
+                       :in $ ?oid
+                       :where [?e :object/id ?oid]]
+                     db object-id)]
+    (d/db-with db [[:db/add obj-eid :object/cast-mode mode]])))
+
+
+(defn cast-spell-mode
+  "Cast a spell using a specific mode.
+
+   - Pays mana cost from mode
+   - Pays additional costs (life, etc.)
+   - Moves card to stack (with stack order for LIFO resolution)
+   - Stores casting mode on object for resolution
+   - Increments storm count
+   - Creates storm trigger if spell has :storm keyword
+
+   Precondition: Caller should verify can-cast-mode? first."
+  [db player-id object-id mode]
+  (-> db
+      (mana/pay-mana player-id (:mode/mana-cost mode))
+      (pay-additional-costs player-id object-id (:mode/additional-costs mode))
+      (zones/move-to-zone object-id :stack)
+      (set-stack-order object-id)
+      (set-cast-mode object-id mode)
+      (increment-storm player-id)
+      (maybe-create-storm-trigger player-id object-id)))
+
+
 (defn cast-spell
-  "Cast a spell from hand.
+  "Cast a spell from hand using the primary mode.
 
    - Pays mana cost
    - Moves card to stack (with stack order for LIFO resolution)
    - Increments storm count
    - Creates storm trigger if spell has :storm keyword
 
-   Caller should verify can-cast? first."
+   Caller should verify can-cast? first.
+
+   Note: For cards with alternate costs, use cast-spell-mode with the
+   desired mode from get-casting-modes."
   [db player-id object-id]
-  (let [obj (q/get-object db object-id)
-        card (:object/card obj)
-        cost (:card/mana-cost card)]
-    (-> db
-        (mana/pay-mana player-id cost)
-        (zones/move-to-zone object-id :stack)
-        (set-stack-order object-id)
-        (increment-storm player-id)
-        (maybe-create-storm-trigger player-id object-id))))
+  (let [modes (get-casting-modes db player-id object-id)
+        primary (first (filter #(= :primary (:mode/id %)) modes))]
+    (if primary
+      (cast-spell-mode db player-id object-id primary)
+      ;; Fallback for cards in graveyard with only flashback
+      ;; In normal usage, caller uses cast-spell-mode directly for non-primary
+      (let [obj (q/get-object db object-id)
+            card (:object/card obj)
+            cost (:card/mana-cost card)]
+        (-> db
+            (mana/pay-mana player-id cost)
+            (zones/move-to-zone object-id :stack)
+            (set-stack-order object-id)
+            (increment-storm player-id)
+            (maybe-create-storm-trigger player-id object-id))))))
 
 
 (defn get-active-effects
@@ -226,8 +292,8 @@
    - Verifies spell is on stack (no-op if not)
    - Checks conditions and selects appropriate effects
    - Executes all selected effects
-   - Permanents (artifact, creature, enchantment) move to battlefield
-   - Instants/sorceries move to graveyard"
+   - Uses mode's :mode/on-resolve if present (e.g., :exile for flashback)
+   - Otherwise: permanents to battlefield, instants/sorceries to graveyard"
   [db player-id object-id]
   (let [obj (q/get-object db object-id)]
     (if (not= :stack (:object/zone obj))
@@ -235,9 +301,15 @@
       (let [card (:object/card obj)
             card-types (:card/types card)
             effects-list (get-active-effects db player-id card)
-            destination (if (permanent-type? card-types)
-                          :battlefield
-                          :graveyard)]
+            cast-mode (:object/cast-mode obj)
+            mode-destination (:mode/on-resolve cast-mode)
+            destination (cond
+                          ;; Use mode's destination if specified
+                          mode-destination mode-destination
+                          ;; Permanents go to battlefield
+                          (permanent-type? card-types) :battlefield
+                          ;; Default: graveyard
+                          :else :graveyard)]
         (as-> db db'
               (reduce (fn [d effect] (effects/execute-effect d player-id effect))
                       db'

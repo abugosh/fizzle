@@ -767,3 +767,97 @@
           castable (rules/get-castable-cards db :player-1)]
       (is (empty? castable)
           "Should return empty when can't afford anything"))))
+
+
+;; =====================================================
+;; cast-spell-mode and resolve-spell mode tests
+;; =====================================================
+
+(deftest cast-spell-mode-primary-test
+  (testing "cast-spell-mode casts with primary mode from hand"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1}))
+          hand (q/get-hand db :player-1)
+          ritual (first hand)
+          obj-id (:object/id ritual)
+          modes (rules/get-casting-modes db :player-1 obj-id)
+          primary-mode (first modes)
+          db' (rules/cast-spell-mode db :player-1 obj-id primary-mode)]
+      (is (= :stack (:object/zone (q/get-object db' obj-id)))
+          "Card should be on stack")
+      (is (= 0 (:black (q/get-mana-pool db' :player-1)))
+          "Mana should be paid")
+      (is (= 1 (q/get-storm-count db' :player-1))
+          "Storm should increment"))))
+
+
+(deftest cast-spell-mode-flashback-test
+  (testing "cast-spell-mode casts flashback from graveyard"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 deep-analysis-card :graveyard)
+          db (mana/add-mana db :player-1 {:colorless 1 :blue 1})
+          initial-life (q/get-life-total db :player-1)
+          modes (rules/get-casting-modes db :player-1 obj-id)
+          flashback-mode (first modes)
+          db' (rules/cast-spell-mode db :player-1 obj-id flashback-mode)]
+      (is (= :stack (:object/zone (q/get-object db' obj-id)))
+          "Card should be on stack")
+      (is (= (- initial-life 3) (q/get-life-total db' :player-1))
+          "Life should be paid (3 life for flashback)")
+      (is (= 1 (q/get-storm-count db' :player-1))
+          "Storm should increment for flashback cast"))))
+
+
+(deftest cast-spell-mode-tracks-mode-on-stack-test
+  (testing "cast-spell-mode stores :object/cast-mode on stack"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 deep-analysis-card :graveyard)
+          db (mana/add-mana db :player-1 {:colorless 1 :blue 1})
+          modes (rules/get-casting-modes db :player-1 obj-id)
+          flashback-mode (first modes)
+          db' (rules/cast-spell-mode db :player-1 obj-id flashback-mode)
+          obj' (q/get-object db' obj-id)]
+      (is (some? (:object/cast-mode obj'))
+          "Cast mode should be stored on object")
+      (is (= :exile (get-in obj' [:object/cast-mode :mode/on-resolve]))
+          "Flashback mode should have :exile on-resolve"))))
+
+
+(deftest resolve-flashback-exiles-test
+  (testing "resolve-spell sends flashback spell to exile"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 deep-analysis-card :graveyard)
+          db (mana/add-mana db :player-1 {:colorless 1 :blue 1})
+          modes (rules/get-casting-modes db :player-1 obj-id)
+          flashback-mode (first modes)
+          db-cast (rules/cast-spell-mode db :player-1 obj-id flashback-mode)
+          db-resolved (rules/resolve-spell db-cast :player-1 obj-id)]
+      (is (= :exile (:object/zone (q/get-object db-resolved obj-id)))
+          "Flashback spell should go to exile, not graveyard"))))
+
+
+(deftest resolve-normal-goes-to-graveyard-test
+  (testing "resolve-spell sends normal spell to graveyard"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 deep-analysis-card :hand)
+          db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
+          modes (rules/get-casting-modes db :player-1 obj-id)
+          primary-mode (first modes)
+          db-cast (rules/cast-spell-mode db :player-1 obj-id primary-mode)
+          db-resolved (rules/resolve-spell db-cast :player-1 obj-id)]
+      (is (= :graveyard (:object/zone (q/get-object db-resolved obj-id)))
+          "Normal spell should go to graveyard"))))
+
+
+(deftest cast-spell-without-mode-backwards-compat-test
+  (testing "cast-spell without mode argument still works (backwards compatible)"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1}))
+          hand (q/get-hand db :player-1)
+          ritual (first hand)
+          obj-id (:object/id ritual)
+          db' (rules/cast-spell db :player-1 obj-id)]
+      (is (= :stack (:object/zone (q/get-object db' obj-id)))
+          "Existing cast-spell API should still work")
+      (is (= 1 (q/get-storm-count db' :player-1))
+          "Storm should increment"))))
