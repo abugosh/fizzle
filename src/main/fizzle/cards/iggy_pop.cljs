@@ -262,6 +262,22 @@
                    :effect/amount 1}]})
 
 
+;; Opt - Invasion cantrip
+;; U - Instant: Scry 1, then draw a card.
+(def opt
+  {:card/id :opt
+   :card/name "Opt"
+   :card/cmc 1
+   :card/mana-cost {:blue 1}
+   :card/colors #{:blue}
+   :card/types #{:instant}
+   :card/text "Scry 1, then draw a card."
+   :card/effects [{:effect/type :scry
+                   :effect/amount 1}
+                  {:effect/type :draw
+                   :effect/amount 1}]})
+
+
 ;; Merchant Scroll - Blue instant tutor
 ;; 1U - Sorcery: Search your library for a blue instant card, reveal it,
 ;; put it into your hand, then shuffle.
@@ -306,5 +322,5 @@
 (def all-cards
   [dark-ritual brain-freeze cabal-ritual city-of-brass city-of-traitors
    gemstone-mine island swamp underground-river lotus-petal lions-eye-diamond
-   careful-study mental-note merchant-scroll polluted-delta
+   careful-study mental-note opt merchant-scroll polluted-delta
    deep-analysis/deep-analysis cephalid-coliseum/cephalid-coliseum])
