@@ -63,9 +63,12 @@
       ;; 4x fetchlands
       (is (= 4 (get card-counts :polluted-delta))
           "Should have 4 Polluted Deltas in deck")
-      ;; 4x basic lands (reduced to make room for fetchlands)
-      (is (= 4 (get card-counts :island))
-          "Should have 4 Islands in deck")
+      ;; 2x Cephalid Coliseum (threshold draw/discard)
+      (is (= 2 (get card-counts :cephalid-coliseum))
+          "Should have 2 Cephalid Coliseums in deck")
+      ;; 2x basic islands + 4x swamps (reduced islands to make room for Coliseums)
+      (is (= 2 (get card-counts :island))
+          "Should have 2 Islands in deck")
       (is (= 4 (get card-counts :swamp))
           "Should have 4 Swamps in deck")
       ;; 4x mana acceleration
