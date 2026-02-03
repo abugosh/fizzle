@@ -7,6 +7,7 @@
 
    This tests:
    - Card definition (type, cost, alternate costs)
+   - Player targeting (target player draws)
    - Flashback mode availability from graveyard
    - Counter/fizzle behavior (flashback spells exile when leaving stack)
    - Normal spells go to graveyard when countered"
@@ -16,14 +17,18 @@
     [fizzle.cards.deep-analysis :as deep-analysis]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
+    [fizzle.engine.effects :as effects]
     [fizzle.engine.mana :as mana]
-    [fizzle.engine.rules :as rules]))
+    [fizzle.engine.rules :as rules]
+    [fizzle.engine.zones :as zones]
+    [fizzle.events.game :as events]))
 
 
 ;; === Test helpers ===
 
 (defn add-card-to-zone
   "Add a card definition and create an object in specified zone.
+   For library zone, sets position to 0 (top of library).
    Returns [obj-id db] tuple."
   [db player-id card zone]
   (let [conn (d/conn-from-db db)
@@ -39,13 +44,18 @@
                           :in $ ?cid
                           :where [?e :card/id ?cid]]
                         @conn (:card/id card))
-          obj-id (random-uuid)]
-      (d/transact! conn [{:object/id obj-id
-                          :object/card card-eid
-                          :object/zone zone
-                          :object/owner player-eid
-                          :object/controller player-eid
-                          :object/tapped false}])
+          obj-id (random-uuid)
+          base-obj {:object/id obj-id
+                    :object/card card-eid
+                    :object/zone zone
+                    :object/owner player-eid
+                    :object/controller player-eid
+                    :object/tapped false}
+          ;; Add position for library cards (0 = top)
+          obj (if (= zone :library)
+                (assoc base-obj :object/position 0)
+                base-obj)]
+      (d/transact! conn [obj])
       [obj-id @conn])))
 
 
@@ -231,3 +241,161 @@
           db-countered (rules/move-spell-off-stack db-cast :player-1 obj-id)]
       (is (= :graveyard (:object/zone (q/get-object db-countered obj-id)))
           "Spell without cast-mode should go to graveyard (default)"))))
+
+
+;; === Player targeting tests ===
+
+(deftest deep-analysis-triggers-player-target-selection-test
+  (testing "Resolving Deep Analysis triggers player target selection"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :hand)
+          db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
+          db-cast (rules/cast-spell db :player-1 obj-id)
+          result (events/resolve-spell-with-selection db-cast :player-1 obj-id)]
+      (is (some? (:pending-selection result))
+          "Should have pending selection")
+      (is (= :player-target (:selection/effect-type (:pending-selection result)))
+          "Selection type should be :player-target")
+      (is (= obj-id (:selection/spell-id (:pending-selection result)))
+          "Should track spell id for cleanup"))))
+
+
+(deftest deep-analysis-finds-any-player-target-test
+  (testing "find-selection-effect-index detects :any-player target"
+    (let [effects (:card/effects deep-analysis/deep-analysis)
+          idx (events/find-selection-effect-index effects)]
+      (is (= 0 idx)
+          "Should find the draw effect at index 0")
+      (is (= :any-player (:effect/target (nth effects idx)))
+          "Should detect :any-player target"))))
+
+
+(deftest deep-analysis-player-target-selection-state-test
+  (testing "Player target selection state has correct structure"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :hand)
+          db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
+          db-cast (rules/cast-spell db :player-1 obj-id)
+          result (events/resolve-spell-with-selection db-cast :player-1 obj-id)
+          selection (:pending-selection result)]
+      (is (= :player-1 (:selection/player-id selection))
+          "Caster should be tracked")
+      (is (nil? (:selection/selected-target selection))
+          "No target should be selected initially")
+      (is (some? (:selection/target-effect selection))
+          "Should store the effect needing a target")
+      (is (= :draw (:effect/type (:selection/target-effect selection)))
+          "Stored effect should be the draw effect"))))
+
+
+(deftest deep-analysis-draw-effect-with-resolved-target-test
+  (testing "Draw effect executes correctly when target is resolved player"
+    (let [;; Use full game init which has a proper library
+          full-state (events/init-game-state)
+          db (:game/db full-state)
+          initial-hand-count (count (q/get-hand db :player-1))
+          ;; Execute draw effect with resolved target (simulating confirmed selection)
+          db-after (effects/execute-effect db :player-1
+                                           {:effect/type :draw
+                                            :effect/amount 2
+                                            :effect/target :player-1})
+          final-hand-count (count (q/get-hand db-after :player-1))]
+      (is (= (+ initial-hand-count 2) final-hand-count)
+          "Player should have drawn 2 cards when target is :player-1"))))
+
+
+(deftest deep-analysis-selection-stores-target-effect-test
+  (testing "Player target selection stores effect for later execution"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :hand)
+          db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
+          db-cast (rules/cast-spell db :player-1 obj-id)
+          result (events/resolve-spell-with-selection db-cast :player-1 obj-id)
+          selection (:pending-selection result)
+          target-effect (:selection/target-effect selection)]
+      ;; The stored effect should have :any-player target (to be replaced on confirm)
+      (is (= :draw (:effect/type target-effect))
+          "Should store draw effect")
+      (is (= 2 (:effect/amount target-effect))
+          "Should store amount")
+      (is (= :any-player (:effect/target target-effect))
+          "Should have :any-player target awaiting selection"))))
+
+
+;; === Flashback casting from graveyard ===
+
+(deftest deep-analysis-flashback-uses-flashback-mode-test
+  (testing "cast-spell from graveyard uses flashback mode, not primary"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :graveyard)
+          ;; Add flashback mana (1U) - NOT primary mana (3U)
+          db (mana/add-mana db :player-1 {:colorless 1 :blue 1})
+          ;; Verify can cast with flashback cost
+          _ (is (rules/can-cast? db :player-1 obj-id)
+                "Should be castable from graveyard with flashback cost")
+          ;; Cast using cast-spell (should pick flashback mode)
+          initial-life (q/get-life-total db :player-1)
+          db-cast (rules/cast-spell db :player-1 obj-id)
+          after-life (q/get-life-total db-cast :player-1)]
+      ;; Verify spell is on stack
+      (is (= :stack (:object/zone (q/get-object db-cast obj-id)))
+          "Spell should be on stack")
+      ;; Verify flashback life cost was paid
+      (is (= (- initial-life 3) after-life)
+          "Flashback should pay 3 life")
+      ;; Verify cast mode is flashback (for exile on resolution)
+      (let [obj (q/get-object db-cast obj-id)]
+        (is (= :flashback (:mode/id (:object/cast-mode obj)))
+            "Cast mode should be flashback")))))
+
+
+(deftest deep-analysis-flashback-full-flow-exiles-test
+  (testing "Flashback Deep Analysis with player targeting exiles after resolution"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :graveyard)
+          db (mana/add-mana db :player-1 {:colorless 1 :blue 1})
+          db-cast (rules/cast-spell db :player-1 obj-id)
+          result (events/resolve-spell-with-selection db-cast :player-1 obj-id)
+          ;; Confirm with player target
+          selection (assoc (:pending-selection result) :selection/selected-target :player-1)
+          app-db {:game/db (:db result)
+                  :game/pending-selection selection}
+          ;; Simulate confirm - must use cast-mode for destination
+          confirm-handler (fn [db _]
+                            (let [sel (:game/pending-selection db)
+                                  target (:selection/selected-target sel)
+                                  spell-id (:selection/spell-id sel)
+                                  target-effect (:selection/target-effect sel)
+                                  player-id (:selection/player-id sel)
+                                  game-db (:game/db db)
+                                  resolved-effect (assoc target-effect :effect/target target)
+                                  obj (q/get-object game-db spell-id)
+                                  cast-mode (:object/cast-mode obj)
+                                  destination (or (:mode/on-resolve cast-mode) :graveyard)
+                                  db-after (-> game-db
+                                               (effects/execute-effect player-id resolved-effect)
+                                               (zones/move-to-zone spell-id destination))]
+                              (assoc db :game/db db-after :game/pending-selection nil)))
+          result-db (confirm-handler app-db nil)
+          final-zone (:object/zone (q/get-object (:game/db result-db) obj-id))]
+      (is (= :exile final-zone)
+          "Flashback spell should exile after resolution with player targeting"))))
+
+
+(deftest deep-analysis-not-castable-from-graveyard-without-mana-test
+  (testing "Deep Analysis not castable from graveyard without flashback mana"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :graveyard)]
+      ;; No mana added
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable from graveyard without mana"))))
+
+
+(deftest deep-analysis-not-castable-from-graveyard-with-wrong-mana-test
+  (testing "Deep Analysis not castable from graveyard with primary cost mana"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :graveyard)
+          ;; Add colorless only - flashback needs blue
+          db (mana/add-mana db :player-1 {:colorless 2})]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable without blue mana"))))

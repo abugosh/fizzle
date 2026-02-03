@@ -2,7 +2,9 @@
   "Card definitions for the Iggy Pop storm deck.
 
    Cards are pure data - the engine interprets their effects.
-   This namespace will grow to contain all Iggy Pop maindeck cards.")
+   This namespace will grow to contain all Iggy Pop maindeck cards."
+  (:require
+    [fizzle.cards.deep-analysis :as deep-analysis]))
 
 
 ;; Dark Ritual - The foundation of black storm
@@ -276,4 +278,4 @@
 (def all-cards
   [dark-ritual brain-freeze cabal-ritual city-of-brass city-of-traitors
    gemstone-mine island swamp lotus-petal lions-eye-diamond careful-study
-   mental-note merchant-scroll polluted-delta])
+   mental-note merchant-scroll polluted-delta deep-analysis/deep-analysis])

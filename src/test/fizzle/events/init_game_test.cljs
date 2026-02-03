@@ -78,9 +78,12 @@
           "Should have 4 Careful Studies in deck")
       (is (= 4 (get card-counts :mental-note))
           "Should have 4 Mental Notes in deck")
-      ;; 4x tutors
-      (is (= 4 (get card-counts :merchant-scroll))
-          "Should have 4 Merchant Scrolls in deck"))))
+      ;; 2x tutors
+      (is (= 2 (get card-counts :merchant-scroll))
+          "Should have 2 Merchant Scrolls in deck")
+      ;; 2x flashback card advantage
+      (is (= 2 (get card-counts :deep-analysis))
+          "Should have 2 Deep Analysis in deck"))))
 
 
 ;; === Starting hand tests ===

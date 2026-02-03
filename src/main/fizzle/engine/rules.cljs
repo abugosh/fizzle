@@ -227,33 +227,25 @@
 
 
 (defn cast-spell
-  "Cast a spell from hand using the primary mode.
+  "Cast a spell using the best available mode.
 
-   - Pays mana cost
+   - Prefers primary mode (from hand with normal cost)
+   - Falls back to first available mode (e.g., flashback from graveyard)
+   - Pays mana cost and any additional costs
    - Moves card to stack (with stack order for LIFO resolution)
    - Increments storm count
    - Creates storm trigger if spell has :storm keyword
 
-   Caller should verify can-cast? first.
-
-   Note: For cards with alternate costs, use cast-spell-mode with the
-   desired mode from get-casting-modes."
+   Caller should verify can-cast? first."
   [db player-id object-id]
   (let [modes (get-casting-modes db player-id object-id)
-        primary (first (filter #(= :primary (:mode/id %)) modes))]
-    (if primary
-      (cast-spell-mode db player-id object-id primary)
-      ;; Fallback for cards in graveyard with only flashback
-      ;; In normal usage, caller uses cast-spell-mode directly for non-primary
-      (let [obj (q/get-object db object-id)
-            card (:object/card obj)
-            cost (:card/mana-cost card)]
-        (-> db
-            (mana/pay-mana player-id cost)
-            (zones/move-to-zone object-id :stack)
-            (set-stack-order object-id)
-            (increment-storm player-id)
-            (maybe-create-storm-trigger player-id object-id))))))
+        primary (first (filter #(= :primary (:mode/id %)) modes))
+        ;; Use primary if available, otherwise first available mode (e.g., flashback)
+        mode (or primary (first modes))]
+    (if mode
+      (cast-spell-mode db player-id object-id mode)
+      ;; No modes available - shouldn't happen if can-cast? was checked
+      db)))
 
 
 (defn get-active-effects
