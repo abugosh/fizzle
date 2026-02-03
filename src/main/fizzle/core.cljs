@@ -1,5 +1,6 @@
 (ns fizzle.core
   (:require
+    [clojure.string :as str]
     [fizzle.events.game :as events]
     [fizzle.subs.game :as subs]
     [re-frame.core :as rf]
@@ -229,9 +230,43 @@
         opponent-life]]]]))
 
 
+(defn- graveyard-card-view
+  "A card in the graveyard. Flashback-castable cards are highlighted and selectable."
+  [obj flashback-castable? selected?]
+  (let [card-name (get-in obj [:object/card :card/name])
+        object-id (:object/id obj)]
+    [:div {:style {:padding "4px 8px"
+                   :background (cond
+                                 selected? "#3a2a5a"
+                                 flashback-castable? "#2a2a3a"
+                                 :else "#2a1a2a")
+                   :border (cond
+                             selected? "2px solid #FFD700"
+                             flashback-castable? "1px solid #6a4a8a"
+                             :else "1px solid #444")
+                   :border-radius "3px"
+                   :font-size "12px"
+                   :color (if flashback-castable? "#c8a" "#aaa")
+                   :cursor (if flashback-castable? "pointer" "default")
+                   :user-select "none"}
+           :on-click (when flashback-castable?
+                       #(rf/dispatch [::events/select-card object-id]))}
+     card-name
+     (when flashback-castable?
+       [:span {:style {:margin-left "6px"
+                       :padding "1px 4px"
+                       :background "#6a2a6a"
+                       :border-radius "2px"
+                       :font-size "9px"
+                       :color "#eee"}}
+        "FB"])]))
+
+
 (defn- graveyard-view
   []
   (let [graveyard @(rf/subscribe [::subs/graveyard])
+        flashback-ids @(rf/subscribe [::subs/flashback-castable-ids])
+        selected @(rf/subscribe [::subs/selected-card])
         card-count (count graveyard)
         threshold? (>= card-count 7)]
     [:div {:style {:margin-bottom "16px"}}
@@ -253,13 +288,9 @@
                       :overflow-y "auto"}}
         (for [obj graveyard]
           ^{:key (:object/id obj)}
-          [:div {:style {:padding "4px 8px"
-                         :background "#2a1a2a"
-                         :border "1px solid #444"
-                         :border-radius "3px"
-                         :font-size "12px"
-                         :color "#aaa"}}
-           (get-in obj [:object/card :card/name])])]
+          [graveyard-card-view obj
+           (contains? flashback-ids (:object/id obj))
+           (= (:object/id obj) selected)])]
        [:div {:style {:color "#555" :font-size "13px"}} "Empty"])]))
 
 
@@ -393,27 +424,272 @@
      card-name]))
 
 
+(defn- player-target-button
+  "Button to select a player as target."
+  [player-id label selected?]
+  [:button {:style {:padding "16px 32px"
+                    :margin "8px"
+                    :border (if selected? "3px solid #4A9BD9" "2px solid #555")
+                    :border-radius "8px"
+                    :cursor "pointer"
+                    :background (if selected? "#1a3a5a" "#1a1a2a")
+                    :color "#eee"
+                    :font-size "16px"
+                    :font-weight "bold"
+                    :min-width "120px"
+                    :transition "all 0.1s ease"}
+            :on-click #(rf/dispatch [::events/select-player-target player-id])}
+   label])
+
+
+(defn- player-target-modal
+  "Modal for selecting a player as target (e.g., Deep Analysis)."
+  [selection]
+  (let [selected-target (:selection/selected-target selection)
+        valid? (some? selected-target)]
+    [:div {:style {:position "fixed"
+                   :top 0
+                   :left 0
+                   :right 0
+                   :bottom 0
+                   :background "rgba(0, 0, 0, 0.8)"
+                   :display "flex"
+                   :align-items "center"
+                   :justify-content "center"
+                   :z-index 1000}}
+     [:div {:style {:background "#1a1a2a"
+                    :border "2px solid #4A9BD9"
+                    :border-radius "12px"
+                    :padding "24px"
+                    :max-width "400px"
+                    :width "90%"
+                    :text-align "center"}}
+      ;; Header
+      [:h2 {:style {:color "#eee"
+                    :margin "0 0 16px 0"
+                    :font-size "18px"}}
+       "Choose target player"]
+      ;; Player buttons
+      [:div {:style {:display "flex"
+                     :justify-content "center"
+                     :margin-bottom "20px"}}
+       [player-target-button :player-1 "You" (= selected-target :player-1)]
+       [player-target-button :opponent "Opponent" (= selected-target :opponent)]]
+      ;; Confirm button
+      [:div {:style {:display "flex"
+                     :justify-content "center"}}
+       [:button {:style {:padding "10px 32px"
+                         :border "none"
+                         :border-radius "4px"
+                         :cursor (if valid? "pointer" "not-allowed")
+                         :background (if valid? "#2a6a2a" "#333")
+                         :color (if valid? "#fff" "#666")
+                         :font-size "14px"
+                         :font-weight "bold"}
+                 :disabled (not valid?)
+                 :on-click #(rf/dispatch [::events/confirm-player-target-selection])}
+        "Confirm"]]]]))
+
+
+(defn- card-selection-modal
+  "Modal for selecting cards (discard or tutor)."
+  [selection cards]
+  (let [selected (:selection/selected selection)
+        required-count (:selection/count selection)
+        current-count (count selected)
+        effect-type (:selection/effect-type selection)
+        is-tutor? (= effect-type :tutor)
+        ;; For tutors: valid if 0 (fail-to-find) or 1 card selected
+        ;; For discard: valid if exactly required-count selected
+        valid? (if is-tutor?
+                 (<= current-count 1)
+                 (= current-count required-count))
+        confirm-event (if is-tutor?
+                        ::events/confirm-tutor-selection
+                        ::events/confirm-selection)]
+    [:div {:style {:position "fixed"
+                   :top 0
+                   :left 0
+                   :right 0
+                   :bottom 0
+                   :background "rgba(0, 0, 0, 0.8)"
+                   :display "flex"
+                   :align-items "center"
+                   :justify-content "center"
+                   :z-index 1000}}
+     [:div {:style {:background "#1a1a2a"
+                    :border "2px solid #4A9BD9"
+                    :border-radius "12px"
+                    :padding "24px"
+                    :max-width "600px"
+                    :width "90%"}}
+      ;; Header
+      [:h2 {:style {:color "#eee"
+                    :margin "0 0 8px 0"
+                    :font-size "18px"}}
+       (case effect-type
+         :discard "Select cards to discard"
+         :tutor "Search your library"
+         "Select cards")]
+      ;; Counter / instructions
+      [:p {:style {:color (if valid? "#5CB85C" "#F0AD4E")
+                   :margin "0 0 16px 0"
+                   :font-size "14px"}}
+       (if is-tutor?
+         (if (= current-count 1)
+           "1 card selected"
+           "Select a card or Find Nothing")
+         (str current-count " / " required-count " selected"))]
+      ;; Card grid
+      [:div {:style {:display "flex"
+                     :flex-wrap "wrap"
+                     :gap "10px"
+                     :margin-bottom "20px"
+                     :min-height "60px"}}
+       (if (seq cards)
+         (for [obj cards]
+           ^{:key (:object/id obj)}
+           [selection-card-view obj (contains? selected (:object/id obj))])
+         [:div {:style {:color "#666"}}
+          (if is-tutor?
+            "No matching cards in library"
+            "No cards available")])]
+      ;; Buttons
+      [:div {:style {:display "flex"
+                     :justify-content "flex-end"
+                     :gap "12px"}}
+       ;; For tutors: "Find Nothing" button (fail-to-find)
+       (when is-tutor?
+         [:button {:style {:padding "8px 20px"
+                           :border "1px solid #555"
+                           :border-radius "4px"
+                           :cursor "pointer"
+                           :background "#333"
+                           :color "#ccc"
+                           :font-size "14px"}
+                   :on-click #(do
+                                (rf/dispatch [::events/cancel-selection])
+                                (rf/dispatch [confirm-event]))}
+          "Find Nothing"])
+       ;; For discard: Clear button
+       (when (not is-tutor?)
+         [:button {:style {:padding "8px 20px"
+                           :border "1px solid #555"
+                           :border-radius "4px"
+                           :cursor "pointer"
+                           :background "#333"
+                           :color "#ccc"
+                           :font-size "14px"}
+                   :on-click #(rf/dispatch [::events/cancel-selection])}
+          "Clear"])
+       ;; Confirm button
+       [:button {:style {:padding "8px 20px"
+                         :border "none"
+                         :border-radius "4px"
+                         :cursor (if valid? "pointer" "not-allowed")
+                         :background (if valid? "#2a6a2a" "#333")
+                         :color (if valid? "#fff" "#666")
+                         :font-size "14px"
+                         :font-weight "bold"}
+                 :disabled (not valid?)
+                 :on-click #(rf/dispatch [confirm-event])}
+        (if is-tutor? "Select Card" "Confirm")]]]]))
+
+
 (defn- selection-modal
-  "Modal overlay for player card selection.
+  "Modal overlay for player selection.
    Shows when :game/pending-selection exists.
-   Handles both discard (select from hand) and tutor (search library) effects."
+   Handles discard, tutor, and player-target effects."
   []
   (let [selection @(rf/subscribe [::subs/pending-selection])
         cards @(rf/subscribe [::subs/selection-cards])]
     (when selection
-      (let [selected (:selection/selected selection)
-            required-count (:selection/count selection)
-            current-count (count selected)
-            effect-type (:selection/effect-type selection)
-            is-tutor? (= effect-type :tutor)
-            ;; For tutors: valid if 0 (fail-to-find) or 1 card selected
-            ;; For discard: valid if exactly required-count selected
-            valid? (if is-tutor?
-                     (<= current-count 1)
-                     (= current-count required-count))
-            confirm-event (if is-tutor?
-                            ::events/confirm-tutor-selection
-                            ::events/confirm-selection)]
+      (let [effect-type (:selection/effect-type selection)]
+        (if (= effect-type :player-target)
+          [player-target-modal selection]
+          [card-selection-modal selection cards])))))
+
+
+;; === Mode Selection Modal ===
+;; Modal for selecting alternate casting modes (e.g., normal vs. Gush-style alternate cost)
+
+(defn- format-mana-cost
+  "Format a mana cost map as a string (e.g., {3}{U})."
+  [mana-cost]
+  (if (or (nil? mana-cost) (empty? mana-cost))
+    "{0}"
+    (str
+      (when-let [c (:colorless mana-cost)]
+        (when (pos? c) (str "{" c "}")))
+      (when-let [w (:white mana-cost)]
+        (apply str (repeat w "{W}")))
+      (when-let [u (:blue mana-cost)]
+        (apply str (repeat u "{U}")))
+      (when-let [b (:black mana-cost)]
+        (apply str (repeat b "{B}")))
+      (when-let [r (:red mana-cost)]
+        (apply str (repeat r "{R}")))
+      (when-let [g (:green mana-cost)]
+        (apply str (repeat g "{G}"))))))
+
+
+(defn- format-additional-costs
+  "Format additional costs for display."
+  [additional-costs]
+  (when (seq additional-costs)
+    (->> additional-costs
+         (map (fn [cost]
+                (case (:cost/type cost)
+                  :pay-life (str "Pay " (:cost/amount cost) " life")
+                  :return-lands (str "Return " (:cost/count cost) " " (name (:cost/subtype cost)) "s")
+                  :sacrifice (str "Sacrifice " (:cost/count cost) " " (name (:cost/subtype cost)))
+                  (str "Additional cost"))))
+         (str/join ", "))))
+
+
+(defn- mode-button
+  "Button for selecting a casting mode."
+  [mode]
+  (let [mode-id (:mode/id mode)
+        mana-cost (:mode/mana-cost mode)
+        additional-costs (:mode/additional-costs mode)
+        formatted-mana (format-mana-cost mana-cost)
+        formatted-additional (format-additional-costs additional-costs)]
+    [:button {:style {:width "100%"
+                      :padding "12px 16px"
+                      :margin-bottom "8px"
+                      :border "2px solid #4A9BD9"
+                      :border-radius "8px"
+                      :cursor "pointer"
+                      :background "#1a2a3a"
+                      :color "#eee"
+                      :text-align "left"
+                      :transition "all 0.1s ease"}
+              :on-click #(rf/dispatch [::events/select-casting-mode mode])
+              :on-mouse-over #(set! (.. % -target -style -background) "#2a3a5a")
+              :on-mouse-out #(set! (.. % -target -style -background) "#1a2a3a")}
+     [:div {:style {:font-weight "bold"
+                    :font-size "14px"
+                    :margin-bottom "4px"}}
+      (case mode-id
+        :primary "Normal Cast"
+        :flashback "Flashback"
+        (name mode-id))]
+     [:div {:style {:font-size "13px"
+                    :color "#aaa"}}
+      formatted-mana
+      (when formatted-additional
+        [:span {:style {:margin-left "8px"
+                        :color "#c8a"}}
+         (str "+ " formatted-additional)])]]))
+
+
+(defn- mode-selector-modal
+  "Modal for selecting casting mode when multiple modes available."
+  []
+  (let [pending @(rf/subscribe [::subs/pending-mode-selection])]
+    (when pending
+      (let [modes (:modes pending)]
         [:div {:style {:position "fixed"
                        :top 0
                        :left 0
@@ -423,84 +699,39 @@
                        :display "flex"
                        :align-items "center"
                        :justify-content "center"
-                       :z-index 1000}}
+                       :z-index 1000}
+               :on-click #(rf/dispatch [::events/cancel-mode-selection])}
          [:div {:style {:background "#1a1a2a"
                         :border "2px solid #4A9BD9"
                         :border-radius "12px"
                         :padding "24px"
-                        :max-width "600px"
-                        :width "90%"}}
+                        :max-width "400px"
+                        :width "90%"}
+                :on-click #(.stopPropagation %)}  ; Prevent closing when clicking inside
           ;; Header
           [:h2 {:style {:color "#eee"
-                        :margin "0 0 8px 0"
-                        :font-size "18px"}}
-           (case effect-type
-             :discard "Select cards to discard"
-             :tutor "Search your library"
-             "Select cards")]
-          ;; Counter / instructions
-          [:p {:style {:color (if valid? "#5CB85C" "#F0AD4E")
-                       :margin "0 0 16px 0"
-                       :font-size "14px"}}
-           (if is-tutor?
-             (if (= current-count 1)
-               "1 card selected"
-               "Select a card or Find Nothing")
-             (str current-count " / " required-count " selected"))]
-          ;; Card grid
+                        :margin "0 0 16px 0"
+                        :font-size "18px"
+                        :text-align "center"}}
+           "Choose casting mode"]
+          ;; Mode buttons
           [:div {:style {:display "flex"
-                         :flex-wrap "wrap"
-                         :gap "10px"
-                         :margin-bottom "20px"
-                         :min-height "60px"}}
-           (if (seq cards)
-             (for [obj cards]
-               ^{:key (:object/id obj)}
-               [selection-card-view obj (contains? selected (:object/id obj))])
-             [:div {:style {:color "#666"}}
-              (if is-tutor?
-                "No matching cards in library"
-                "No cards available")])]
-          ;; Buttons
-          [:div {:style {:display "flex"
-                         :justify-content "flex-end"
-                         :gap "12px"}}
-           ;; For tutors: "Find Nothing" button (fail-to-find)
-           (when is-tutor?
-             [:button {:style {:padding "8px 20px"
-                               :border "1px solid #555"
-                               :border-radius "4px"
-                               :cursor "pointer"
-                               :background "#333"
-                               :color "#ccc"
-                               :font-size "14px"}
-                       :on-click #(do
-                                    (rf/dispatch [::events/cancel-selection])
-                                    (rf/dispatch [confirm-event]))}
-              "Find Nothing"])
-           ;; For discard: Clear button
-           (when (not is-tutor?)
-             [:button {:style {:padding "8px 20px"
-                               :border "1px solid #555"
-                               :border-radius "4px"
-                               :cursor "pointer"
-                               :background "#333"
-                               :color "#ccc"
-                               :font-size "14px"}
-                       :on-click #(rf/dispatch [::events/cancel-selection])}
-              "Clear"])
-           ;; Confirm button
-           [:button {:style {:padding "8px 20px"
-                             :border "none"
-                             :border-radius "4px"
-                             :cursor (if valid? "pointer" "not-allowed")
-                             :background (if valid? "#2a6a2a" "#333")
-                             :color (if valid? "#fff" "#666")
-                             :font-size "14px"
-                             :font-weight "bold"}
-                     :disabled (not valid?)
-                     :on-click #(rf/dispatch [confirm-event])}
-            (if is-tutor? "Select Card" "Confirm")]]]]))))
+                         :flex-direction "column"}}
+           (for [mode modes]
+             ^{:key (:mode/id mode)}
+             [mode-button mode])]
+          ;; Cancel button
+          [:button {:style {:width "100%"
+                            :padding "8px 16px"
+                            :margin-top "8px"
+                            :border "1px solid #555"
+                            :border-radius "4px"
+                            :cursor "pointer"
+                            :background "#333"
+                            :color "#999"
+                            :font-size "13px"}
+                    :on-click #(rf/dispatch [::events/cancel-mode-selection])}
+           "Cancel"]]]))))
 
 
 (defn app
@@ -521,7 +752,9 @@
    [storm-count-view]
    [stack-view]
    ;; Selection modal (shows when pending selection exists)
-   [selection-modal]])
+   [selection-modal]
+   ;; Mode selection modal (shows when multiple casting modes available)
+   [mode-selector-modal]])
 
 
 (defn ^:dev/after-load mount-root

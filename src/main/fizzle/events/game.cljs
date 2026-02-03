@@ -45,7 +45,8 @@
             (repeat 4 :lions-eye-diamond)
             (repeat 4 :careful-study)
             (repeat 4 :mental-note)
-            (repeat 4 :merchant-scroll)))))
+            (repeat 2 :merchant-scroll)
+            (repeat 2 :deep-analysis)))))
 
 
 (defn init-game-state
@@ -150,9 +151,24 @@
     (let [game-db (:game/db db)
           selected (:game/selected-card db)]
       (if (and selected (rules/can-cast? game-db :player-1 selected))
-        (-> db
-            (assoc :game/db (rules/cast-spell game-db :player-1 selected))
-            (dissoc :game/selected-card))
+        (let [modes (rules/get-casting-modes game-db :player-1 selected)
+              castable-modes (filterv #(rules/can-cast-mode? game-db :player-1 selected %) modes)]
+          (cond
+            ;; No castable modes - shouldn't happen if can-cast? passed
+            (empty? castable-modes)
+            db
+
+            ;; Single mode: auto-cast without showing selector
+            (= 1 (count castable-modes))
+            (-> db
+                (assoc :game/db (rules/cast-spell-mode game-db :player-1 selected (first castable-modes)))
+                (dissoc :game/selected-card))
+
+            ;; Multiple modes: show selector
+            :else
+            (assoc db :game/pending-mode-selection
+                   {:object-id selected
+                    :modes castable-modes})))
         db))))
 
 
@@ -709,12 +725,16 @@
 
 (defn find-selection-effect-index
   "Find the index of the first effect that requires player selection.
-   This includes :discard with :selection :player and :tutor effects.
+   This includes:
+   - :discard with :selection :player - player chooses cards to discard
+   - :tutor - player searches library for matching card
+   - :effect/target :any-player - player chooses a target player
    Returns nil if no selection effect found."
   [effects]
   (first (keep-indexed (fn [i effect]
                          (when (or (= :player (:effect/selection effect))
-                                   (= :tutor (:effect/type effect)))
+                                   (= :tutor (:effect/type effect))
+                                   (= :any-player (:effect/target effect)))
                            i))
                        effects)))
 
@@ -753,6 +773,19 @@
    :selection/effect-type :discard})
 
 
+(defn- build-player-target-selection
+  "Build pending selection state for a player-targeted effect.
+   Used when :effect/target is :any-player - player must choose target."
+  [player-id object-id target-effect effects-after]
+  {:selection/type :player-target
+   :selection/player-id player-id
+   :selection/selected-target nil  ; Will be :player-1 or :opponent
+   :selection/spell-id object-id
+   :selection/target-effect target-effect  ; The effect needing a target
+   :selection/remaining-effects effects-after
+   :selection/effect-type :player-target})
+
+
 (defn resolve-spell-with-selection
   "Resolve a spell, pausing if a selection effect is encountered.
 
@@ -789,13 +822,25 @@
                                           (effects/execute-effect d player-id effect))
                                         db
                                         effects-before)
-                ;; Build selection state based on effect type
-                pending-selection (case effect-type
-                                    :tutor (build-tutor-selection db-after-before player-id object-id
-                                                                  selection-effect effects-after)
-                                    :discard (build-discard-selection player-id object-id
-                                                                      selection-effect effects-after)
+                ;; Build selection state based on effect type or target type
+                pending-selection (cond
+                                    ;; Player targeting (e.g., Deep Analysis "target player draws")
+                                    (= :any-player (:effect/target selection-effect))
+                                    (build-player-target-selection player-id object-id
+                                                                   selection-effect effects-after)
+
+                                    ;; Tutor effect
+                                    (= effect-type :tutor)
+                                    (build-tutor-selection db-after-before player-id object-id
+                                                           selection-effect effects-after)
+
+                                    ;; Discard effect
+                                    (= effect-type :discard)
+                                    (build-discard-selection player-id object-id
+                                                             selection-effect effects-after)
+
                                     ;; Default for unknown selection types
+                                    :else
                                     {:selection/zone :hand
                                      :selection/count (:effect/count selection-effect)
                                      :selection/player-id player-id
@@ -1037,3 +1082,66 @@
               (dissoc :game/pending-selection)))
         ;; Invalid selection - do nothing
         db))))
+
+
+;; === Player Target Selection ===
+;; For effects with :effect/target :any-player (e.g., Deep Analysis "target player draws")
+
+(rf/reg-event-db
+  ::select-player-target
+  (fn [db [_ target-player-id]]
+    (assoc-in db [:game/pending-selection :selection/selected-target] target-player-id)))
+
+
+(rf/reg-event-db
+  ::confirm-player-target-selection
+  (fn [db _]
+    (let [selection (:game/pending-selection db)
+          selected-target (:selection/selected-target selection)
+          spell-id (:selection/spell-id selection)
+          target-effect (:selection/target-effect selection)
+          remaining-effects (:selection/remaining-effects selection)
+          player-id (:selection/player-id selection)
+          game-db (:game/db db)]
+      (if selected-target
+        ;; Valid target - execute effect with resolved target
+        (let [;; Replace :any-player with selected target
+              resolved-effect (assoc target-effect :effect/target selected-target)
+              ;; Execute the targeted effect
+              db-after-effect (effects/execute-effect game-db player-id resolved-effect)
+              ;; Execute remaining effects
+              db-after-remaining (reduce (fn [d effect]
+                                           (effects/execute-effect d player-id effect))
+                                         db-after-effect
+                                         (or remaining-effects []))
+              ;; Move spell to graveyard
+              db-final (zones/move-to-zone db-after-remaining spell-id :graveyard)]
+          (-> db
+              (assoc :game/db db-final)
+              (dissoc :game/pending-selection)))
+        ;; No target selected - do nothing
+        db))))
+
+
+;; === Mode Selection System ===
+;; For spells with multiple valid casting modes from the same zone
+;; (e.g., a Gush-like card with primary cost and alternate cost from hand)
+
+(rf/reg-event-db
+  ::select-casting-mode
+  (fn [db [_ mode]]
+    (let [game-db (:game/db db)
+          pending (:game/pending-mode-selection db)
+          object-id (:object-id pending)]
+      (if (and pending object-id mode)
+        (-> db
+            (assoc :game/db (rules/cast-spell-mode game-db :player-1 object-id mode))
+            (dissoc :game/selected-card)
+            (dissoc :game/pending-mode-selection))
+        db))))
+
+
+(rf/reg-event-db
+  ::cancel-mode-selection
+  (fn [db _]
+    (dissoc db :game/pending-mode-selection)))

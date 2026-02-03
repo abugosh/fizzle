@@ -122,12 +122,34 @@
     (when game-db (queries/get-objects-in-zone game-db :player-1 :graveyard))))
 
 
+;; Set of object-ids in graveyard that have castable flashback modes
+(rf/reg-sub
+  ::flashback-castable-ids
+  :<- [::game-db]
+  (fn [game-db _]
+    (when game-db
+      (let [gy-cards (queries/get-objects-in-zone game-db :player-1 :graveyard)]
+        (->> gy-cards
+             (filter #(rules/can-cast? game-db :player-1 (:object/id %)))
+             (map :object/id)
+             set)))))
+
+
 ;; === Selection System Subscriptions ===
 
 (rf/reg-sub
   ::pending-selection
   (fn [db _]
     (:game/pending-selection db)))
+
+
+;; === Mode Selection Subscriptions ===
+;; For spells with multiple casting modes from the same zone
+
+(rf/reg-sub
+  ::pending-mode-selection
+  (fn [db _]
+    (:game/pending-mode-selection db)))
 
 
 (rf/reg-sub
@@ -140,14 +162,14 @@
         (queries/get-hand game-db player-id)))))
 
 
+;; Returns the cards available for selection based on selection type.
+;; For :discard -> hand cards
+;; For :tutor -> library cards filtered to candidates
 (rf/reg-sub
   ::selection-cards
   :<- [::game-db]
   :<- [::pending-selection]
   (fn [[game-db selection] _]
-    "Returns the cards available for selection based on selection type.
-     For :discard -> hand cards
-     For :tutor -> library cards filtered to candidates"
     (when (and game-db selection)
       (let [player-id (:selection/player-id selection)
             effect-type (:selection/effect-type selection)
