@@ -1,5 +1,6 @@
 (ns fizzle.events.game
   (:require
+    [clojure.set :as set]
     [datascript.core :as d]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as queries]
@@ -941,6 +942,54 @@
      :selection/pile-choice (:effect/pile-choice tutor-effect)}))
 
 
+(defn build-pile-choice-selection
+  "Build pending selection state for pile choice (Intuition-style).
+   After multi-select tutor, player chooses which cards go to hand vs graveyard.
+
+   Arguments:
+     card-ids - Set of object-ids selected from tutor
+     pile-choice - Config map with :hand (count for hand) and :graveyard :rest
+     player-id - Player making the choice
+     spell-id - The spell that triggered this selection
+     remaining-effects - Effects to execute after pile choice
+
+   Returns selection state with:
+     :selection/type :pile-choice
+     :selection/candidates - Set of card IDs to distribute
+     :selection/hand-count - How many go to hand
+     :selection/selected - Pre-selected cards (auto-select if only 1 card)
+     :selection/allow-random - true (Random button available)"
+  [card-ids pile-choice player-id spell-id remaining-effects]
+  (let [hand-count (:hand pile-choice)
+        candidates (set card-ids)
+        ;; Auto-select if only 1 card (per epic open question: still show UI)
+        auto-selected (if (= 1 (count candidates))
+                        candidates
+                        #{})]
+    {:selection/type :pile-choice
+     :selection/candidates candidates
+     :selection/hand-count hand-count
+     :selection/selected auto-selected
+     :selection/player-id player-id
+     :selection/spell-id spell-id
+     :selection/remaining-effects remaining-effects
+     :selection/allow-random true}))
+
+
+(defn select-random-pile-choice
+  "Randomly select hand-count cards from pile-choice candidates.
+   Pure function: (app-db) -> app-db
+
+   Updates :game/pending-selection with random selection.
+   Does NOT confirm - user can review and change before confirming."
+  [app-db]
+  (let [selection (:game/pending-selection app-db)
+        candidates (vec (:selection/candidates selection))
+        hand-count (:selection/hand-count selection)
+        random-selected (set (take hand-count (shuffle candidates)))]
+    (assoc-in app-db [:game/pending-selection :selection/selected] random-selected)))
+
+
 (defn build-scry-selection
   "Build pending selection state for a scry effect.
    Reveals top N cards from library for player to arrange.
@@ -1434,6 +1483,35 @@
           db-after-tapped)))))
 
 
+(defn execute-pile-choice
+  "Execute pile choice - move selected cards to hand, rest to graveyard.
+   Pure function: (db, selection) -> db
+
+   Arguments:
+     db - Datascript game database (not app-db)
+     selection - Pile choice selection state with:
+       :selection/selected - Set of object-ids going to hand
+       :selection/candidates - Set of all object-ids in pile choice
+
+   Note: Does NOT shuffle library. Shuffle happens in confirm-pile-choice-selection
+   after all pile choice operations are complete."
+  [db selection]
+  (let [hand-selected (:selection/selected selection)
+        all-candidates (:selection/candidates selection)
+        graveyard-cards (clojure.set/difference all-candidates hand-selected)
+        ;; Move selected cards to hand
+        db-after-hand (reduce (fn [d card-id]
+                                (zones/move-to-zone d card-id :hand))
+                              db
+                              hand-selected)
+        ;; Move remaining to graveyard
+        db-after-graveyard (reduce (fn [d card-id]
+                                     (zones/move-to-zone d card-id :graveyard))
+                                   db-after-hand
+                                   graveyard-cards)]
+    db-after-graveyard))
+
+
 (rf/reg-event-db
   ::confirm-tutor-selection
   (fn [db _]
@@ -1446,32 +1524,89 @@
           source-type (:selection/source-type selection)
           remaining-effects (:selection/remaining-effects selection)
           player-id (:selection/player-id selection)
+          pile-choice (:selection/pile-choice selection)
           game-db (:game/db db)
           ;; Validate: empty (fail-to-find) OR correct count of valid candidates
           valid-selection? (or (empty? selected)
                                (and (= (count selected) select-count)
                                     (every? #(contains? candidates %) selected)))]
       (if valid-selection?
-        ;; Valid tutor selection (single or multi-select)
-        (let [db-after-tutor (execute-tutor-selection game-db selection)
+        ;; Valid tutor selection - check if pile-choice needed
+        (if (and pile-choice (seq selected))
+          ;; Pile-choice present and cards selected: chain to pile-choice phase
+          ;; Cards stay in library, spell stays on stack until pile-choice confirms
+          (let [pile-selection (build-pile-choice-selection
+                                 selected
+                                 pile-choice
+                                 player-id
+                                 spell-id
+                                 remaining-effects)]
+            (assoc db :game/pending-selection pile-selection))
+          ;; No pile-choice OR fail-to-find: normal tutor flow
+          (let [db-after-tutor (execute-tutor-selection game-db selection)
+                ;; Execute remaining effects
+                db-after-remaining (reduce (fn [d effect]
+                                             (effects/execute-effect d player-id effect))
+                                           db-after-tutor
+                                           (or remaining-effects []))
+                ;; Clean up source: move spell to destination OR remove trigger from stack
+                db-final (if (= source-type :trigger)
+                           ;; Trigger-based selection (activated ability): remove trigger
+                           (triggers/remove-trigger db-after-remaining trigger-id)
+                           ;; Spell-based selection: use cast mode's destination (e.g., :exile for flashback)
+                           (let [spell-obj (queries/get-object db-after-remaining spell-id)
+                                 cast-mode (:object/cast-mode spell-obj)
+                                 destination (or (:mode/on-resolve cast-mode) :graveyard)]
+                             (zones/move-to-zone db-after-remaining spell-id destination)))]
+            (-> db
+                (assoc :game/db db-final)
+                (dissoc :game/pending-selection))))
+        ;; Invalid selection - do nothing
+        db))))
+
+
+;; === Pile Choice Selection ===
+;; For Intuition-style effects where player distributes cards to hand/graveyard
+
+(rf/reg-event-db
+  ::select-random-pile-choice
+  (fn [db _]
+    (select-random-pile-choice db)))
+
+
+(rf/reg-event-db
+  ::confirm-pile-choice-selection
+  (fn [db _]
+    (let [selection (:game/pending-selection db)
+          hand-count (:selection/hand-count selection)
+          selected (:selection/selected selection)
+          candidates (:selection/candidates selection)
+          player-id (:selection/player-id selection)
+          spell-id (:selection/spell-id selection)
+          remaining-effects (:selection/remaining-effects selection)
+          game-db (:game/db db)
+          ;; Validate: correct number selected and all are candidates
+          valid? (and (= hand-count (count selected))
+                      (every? #(contains? candidates %) selected))]
+      (if valid?
+        (let [;; Execute pile choice: move cards to hand/graveyard
+              db-after-pile (execute-pile-choice game-db selection)
+              ;; Shuffle library AFTER pile choice (tutor requirement)
+              db-after-shuffle (zones/shuffle-library db-after-pile player-id)
               ;; Execute remaining effects
-              db-after-remaining (reduce (fn [d effect]
-                                           (effects/execute-effect d player-id effect))
-                                         db-after-tutor
-                                         (or remaining-effects []))
-              ;; Clean up source: move spell to destination OR remove trigger from stack
-              db-final (if (= source-type :trigger)
-                         ;; Trigger-based selection (activated ability): remove trigger
-                         (triggers/remove-trigger db-after-remaining trigger-id)
-                         ;; Spell-based selection: use cast mode's destination (e.g., :exile for flashback)
-                         (let [spell-obj (queries/get-object db-after-remaining spell-id)
-                               cast-mode (:object/cast-mode spell-obj)
-                               destination (or (:mode/on-resolve cast-mode) :graveyard)]
-                           (zones/move-to-zone db-after-remaining spell-id destination)))]
+              db-after-effects (reduce (fn [d effect]
+                                         (effects/execute-effect d player-id effect))
+                                       db-after-shuffle
+                                       (or remaining-effects []))
+              ;; Move spell to graveyard (or exile for flashback)
+              spell-obj (queries/get-object db-after-effects spell-id)
+              cast-mode (:object/cast-mode spell-obj)
+              destination (or (:mode/on-resolve cast-mode) :graveyard)
+              db-final (zones/move-to-zone db-after-effects spell-id destination)]
           (-> db
               (assoc :game/db db-final)
               (dissoc :game/pending-selection)))
-        ;; Invalid selection - do nothing
+        ;; Invalid - do nothing
         db))))
 
 
