@@ -10,6 +10,7 @@
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.state-based :as state-based]
+    [fizzle.engine.targeting :as targeting]
     [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.engine.trigger-registry :as registry]
     [fizzle.engine.triggers :as triggers]
@@ -842,6 +843,18 @@
    :selection/effect-type :player-target})
 
 
+(defn- resolve-effect-with-stored-target
+  "Resolve an effect using stored targets from :object/targets.
+   Returns the effect with :any-player replaced by the actual stored target."
+  [effect stored-targets]
+  (if (= :any-player (:effect/target effect))
+    ;; Look up the stored player target and resolve
+    (if-let [stored-player (:player stored-targets)]
+      (assoc effect :effect/target stored-player)
+      effect)
+    effect))
+
+
 (defn resolve-spell-with-selection
   "Resolve a spell, pausing if a selection effect is encountered.
 
@@ -854,6 +867,10 @@
    - The selection effect creates pending selection state
    - Effects after the selection are stored for later execution
 
+   If :object/targets contains stored targets from cast-time targeting:
+   - Uses stored targets instead of prompting
+   - Resolves effects normally using the pre-selected targets
+
    Handles two types of selection:
    - :discard with :selection :player - player chooses cards to discard
    - :tutor - player searches library for matching card (with fail-to-find)"
@@ -862,13 +879,41 @@
     (if (not= :stack (:object/zone obj))
       {:db db :pending-selection nil}  ; No-op if spell not on stack
       (let [card (:object/card obj)
+            stored-targets (:object/targets obj)
             effects-list (or (rules/get-active-effects db player-id card) [])
-            selection-idx (find-selection-effect-index effects-list)]
-        (if (nil? selection-idx)
+            selection-idx (find-selection-effect-index effects-list)
+            ;; Check if stored targets can satisfy the selection effect
+            has-stored-player-target (and stored-targets
+                                          (:player stored-targets)
+                                          selection-idx
+                                          (= :any-player (:effect/target (nth effects-list selection-idx))))]
+        (cond
+          ;; Cast-time targeting: check fizzle, use stored targets
+          has-stored-player-target
+          (let [cast-mode (:object/cast-mode obj)
+                destination (or (:mode/on-resolve cast-mode) :graveyard)]
+            ;; Fizzle check: if any target is no longer legal, skip effects
+            (if (targeting/all-targets-legal? db object-id)
+              ;; Targets legal - resolve normally with stored targets
+              (let [resolved-effects (mapv #(resolve-effect-with-stored-target % stored-targets) effects-list)
+                    db-after-effects (reduce (fn [d effect]
+                                               (effects/execute-effect d player-id effect))
+                                             db
+                                             resolved-effects)
+                    db-final (zones/move-to-zone db-after-effects object-id destination)]
+                {:db db-final
+                 :pending-selection nil})
+              ;; Fizzle: targets invalid, skip effects, move spell off stack
+              {:db (zones/move-to-zone db object-id destination)
+               :pending-selection nil}))
+
           ;; No selection effect - resolve normally
+          (nil? selection-idx)
           {:db (rules/resolve-spell db player-id object-id)
            :pending-selection nil}
-          ;; Has selection effect - execute effects before it, then pause
+
+          ;; Has selection effect without stored targets - pause for selection
+          :else
           (let [effects-before (subvec (vec effects-list) 0 selection-idx)
                 selection-effect (nth effects-list selection-idx)
                 effects-after (subvec (vec effects-list) (inc selection-idx))
@@ -1388,3 +1433,102 @@
   ::cancel-mode-selection
   (fn [db _]
     (dissoc db :game/pending-mode-selection)))
+
+
+;; === Cast-Time Targeting System ===
+;; For spells with :card/targeting that require target selection BEFORE going on stack
+
+(defn- build-cast-time-target-selection
+  "Build pending selection state for cast-time targeting.
+   Used when a spell has :card/targeting requirements.
+
+   Arguments:
+     db - Datascript database
+     player-id - Casting player
+     object-id - Spell being cast
+     mode - Casting mode being used
+     target-req - First targeting requirement (player target for now)
+
+   Returns selection state map."
+  [db player-id object-id mode target-req]
+  (let [valid-targets (targeting/find-valid-targets db player-id target-req)]
+    {:selection/type :cast-time-targeting
+     :selection/player-id player-id
+     :selection/object-id object-id
+     :selection/mode mode
+     :selection/target-requirement target-req
+     :selection/valid-targets valid-targets
+     :selection/selected-target nil}))
+
+
+(defn cast-spell-with-targeting
+  "Cast a spell, pausing for target selection if needed.
+
+   For spells with :card/targeting:
+   - Returns {:db db :pending-target-selection selection-state}
+   - Spell does NOT go to stack yet
+   - After target confirmed, call confirm-cast-time-target to complete
+
+   For spells without targeting:
+   - Returns {:db db :pending-target-selection nil}
+   - Spell immediately goes to stack via rules/cast-spell
+
+   Arguments:
+     db - Datascript database
+     player-id - Casting player
+     object-id - Object to cast"
+  [db player-id object-id]
+  (let [obj (queries/get-object db object-id)
+        card (:object/card obj)
+        targeting-reqs (targeting/get-targeting-requirements card)
+        modes (rules/get-casting-modes db player-id object-id)
+        ;; Pick best mode (primary if available, else first)
+        primary (first (filter #(= :primary (:mode/id %)) modes))
+        mode (or primary (first modes))]
+    (if (and (seq targeting-reqs)
+             (rules/can-cast-mode? db player-id object-id mode))
+      ;; Has targeting - pause for target selection
+      (let [first-req (first targeting-reqs)
+            selection (build-cast-time-target-selection db player-id object-id mode first-req)]
+        {:db db
+         :pending-target-selection selection})
+      ;; No targeting - cast normally
+      {:db (if (rules/can-cast? db player-id object-id)
+             (rules/cast-spell db player-id object-id)
+             db)
+       :pending-target-selection nil})))
+
+
+(defn confirm-cast-time-target
+  "Complete casting a spell after target selection.
+
+   1. Pays mana and additional costs
+   2. Moves spell to stack
+   3. Stores the selected target on the object as :object/targets
+
+   Arguments:
+     db - Datascript database
+     selection - Cast-time target selection state with :selection/selected-target set
+
+   Returns updated db with spell on stack and target stored."
+  [db selection]
+  (let [player-id (:selection/player-id selection)
+        object-id (:selection/object-id selection)
+        mode (:selection/mode selection)
+        target-req (:selection/target-requirement selection)
+        selected-target (:selection/selected-target selection)
+        target-id (:target/id target-req)]
+    (if selected-target
+      ;; Cast spell and store target
+      (let [;; Cast via rules/cast-spell-mode (pays costs, moves to stack)
+            db-after-cast (rules/cast-spell-mode db player-id object-id mode)
+            ;; Store the target on the object
+            obj-eid (d/q '[:find ?e .
+                           :in $ ?oid
+                           :where [?e :object/id ?oid]]
+                         db-after-cast object-id)
+            db-with-target (d/db-with db-after-cast
+                                      [[:db/add obj-eid :object/targets {target-id selected-target}]])]
+        db-with-target)
+      ;; No target selected - return unchanged
+      db)))

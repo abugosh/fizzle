@@ -14,6 +14,12 @@
    :card/colors #{:blue}
    :card/types #{:sorcery}
    :card/text "Target player draws two cards. Flashback—{1}{U}, Pay 3 life."
+   ;; Cast-time targeting: player must be chosen when casting
+   :card/targeting [{:target/id :player
+                     :target/type :player
+                     :target/options [:self :opponent :any-player]
+                     :target/required true}]
+   ;; Effects still use :effect/target :any-player for backwards compat during migration
    :card/effects [{:effect/type :draw
                    :effect/amount 2
                    :effect/target :any-player}]

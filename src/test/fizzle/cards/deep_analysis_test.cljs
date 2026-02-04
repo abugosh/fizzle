@@ -8,6 +8,7 @@
    This tests:
    - Card definition (type, cost, alternate costs)
    - Player targeting (target player draws)
+   - Cast-time targeting (new targeting system)
    - Flashback mode availability from graveyard
    - Counter/fizzle behavior (flashback spells exile when leaving stack)
    - Normal spells go to graveyard when countered"
@@ -20,6 +21,7 @@
     [fizzle.engine.effects :as effects]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
+    [fizzle.engine.targeting :as targeting]
     [fizzle.engine.zones :as zones]
     [fizzle.events.game :as events]))
 
@@ -399,3 +401,114 @@
           db (mana/add-mana db :player-1 {:colorless 2})]
       (is (false? (rules/can-cast? db :player-1 obj-id))
           "Should not be castable without blue mana"))))
+
+
+;; === Cast-time Targeting Tests ===
+
+(deftest deep-analysis-has-targeting-requirement-test
+  (testing "Deep Analysis has :card/targeting for player target"
+    (let [card deep-analysis/deep-analysis
+          reqs (targeting/get-targeting-requirements card)]
+      (is (= 1 (count reqs))
+          "Should have exactly 1 targeting requirement")
+      (is (= :player (:target/id (first reqs)))
+          "Target id should be :player")
+      (is (= :player (:target/type (first reqs)))
+          "Target type should be :player")
+      (is (true? (:target/required (first reqs)))
+          "Target should be required"))))
+
+
+(deftest deep-analysis-cast-time-targeting-test
+  (testing "Casting Deep Analysis prompts for target selection via cast-spell-with-targeting"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :hand)
+          db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
+          ;; Use cast-spell-with-targeting which should return pending-selection
+          ;; for cards with :card/targeting
+          result (events/cast-spell-with-targeting db :player-1 obj-id)]
+      ;; Should have pending target selection (not yet on stack)
+      (is (some? (:pending-target-selection result))
+          "Should return pending target selection for Deep Analysis")
+      (is (= :cast-time-targeting (:selection/type (:pending-target-selection result)))
+          "Selection type should be :cast-time-targeting"))))
+
+
+(deftest deep-analysis-confirm-cast-time-target-test
+  (testing "Confirming cast-time target moves spell to stack with stored target"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :hand)
+          db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
+          ;; Start casting - get pending selection
+          result (events/cast-spell-with-targeting db :player-1 obj-id)
+          selection (assoc (:pending-target-selection result)
+                           :selection/selected-target :player-1)
+          ;; Confirm the target selection
+          db-after (events/confirm-cast-time-target (:db result) selection)]
+      ;; Spell should be on stack
+      (is (= :stack (:object/zone (q/get-object db-after obj-id)))
+          "Spell should be on stack after confirming target")
+      ;; Target should be stored on object
+      (is (= {:player :player-1} (:object/targets (q/get-object db-after obj-id)))
+          "Object should have stored target {:player :player-1}"))))
+
+
+(deftest deep-analysis-resolution-uses-stored-target-test
+  (testing "Resolution uses stored :object/targets when present"
+    (let [;; Use full game init which has a proper library
+          full-state (events/init-game-state)
+          db (:game/db full-state)
+          ;; Add Deep Analysis to hand
+          [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :hand)
+          db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
+          ;; Cast with targeting flow
+          result (events/cast-spell-with-targeting db :player-1 obj-id)
+          selection (assoc (:pending-target-selection result)
+                           :selection/selected-target :player-1)
+          db-cast (events/confirm-cast-time-target (:db result) selection)
+          ;; Count cards before resolution
+          initial-hand-count (count (q/get-hand db-cast :player-1))
+          ;; Resolve the spell - should use stored target, not prompt
+          resolve-result (events/resolve-spell-with-selection db-cast :player-1 obj-id)]
+      ;; Should NOT have pending selection (target already chosen at cast time)
+      (is (nil? (:pending-selection resolve-result))
+          "Should not prompt for target when :object/targets is present")
+      ;; Spell should have moved off stack
+      (is (= :graveyard (:object/zone (q/get-object (:db resolve-result) obj-id)))
+          "Spell should be in graveyard after resolution")
+      ;; Player 1 should have drawn 2 cards
+      (is (= (+ initial-hand-count 2)
+             (count (q/get-hand (:db resolve-result) :player-1)))
+          "Target player should have drawn 2 cards"))))
+
+
+(deftest deep-analysis-player-target-always-legal-test
+  (testing "Player targets are always legal (players don't move zones)"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :hand)
+          db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
+          ;; Cast with targeting flow
+          result (events/cast-spell-with-targeting db :player-1 obj-id)
+          selection (assoc (:pending-target-selection result)
+                           :selection/selected-target :player-1)
+          db-cast (events/confirm-cast-time-target (:db result) selection)]
+      ;; Check that all targets are legal (player targets always are)
+      (is (targeting/all-targets-legal? db-cast obj-id)
+          "Player targets should always be legal"))))
+
+
+(deftest deep-analysis-flashback-with-targeting-test
+  (testing "Flashback cast also uses cast-time targeting"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :graveyard)
+          db (mana/add-mana db :player-1 {:colorless 1 :blue 1})
+          ;; Cast via cast-spell-with-targeting (should work from graveyard too)
+          result (events/cast-spell-with-targeting db :player-1 obj-id)]
+      ;; Should have pending target selection
+      (is (some? (:pending-target-selection result))
+          "Flashback cast should also prompt for target selection")
+      (is (= :cast-time-targeting (:selection/type (:pending-target-selection result)))
+          "Selection type should be :cast-time-targeting")
+      ;; Mode should be flashback
+      (is (= :flashback (:mode/id (:selection/mode (:pending-target-selection result))))
+          "Mode should be flashback"))))
