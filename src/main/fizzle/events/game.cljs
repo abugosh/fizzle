@@ -1036,6 +1036,42 @@
    :selection/effect-type :discard})
 
 
+(defn build-graveyard-selection
+  "Build pending selection state for returning cards from graveyard.
+   Unlike tutor (hidden zone), graveyard is public - no fail-to-find option.
+   Player can select 0 to :effect/count cards.
+
+   Arguments:
+     db - Datascript game database
+     player-id - Caster's player-id (used to resolve :self target)
+     object-id - Spell-id for cleanup after selection confirmed
+     effect - The :return-from-graveyard effect map with:
+       :effect/target - :self, :opponent, or player-id (defaults to caster)
+       :effect/count - Max cards to return (0 to N selection)
+       :effect/selection - Should be :player for this to be called
+     effects-after - Vector of effects to execute after selection
+
+   Returns selection state map for UI to render graveyard selection."
+  [db player-id object-id effect effects-after]
+  (let [target (get effect :effect/target player-id)
+        target-player (cond
+                        (= target :opponent) (queries/get-opponent-id db player-id)
+                        (= target :self) player-id
+                        :else target)
+        gy-cards (or (queries/get-objects-in-zone db target-player :graveyard) [])
+        candidate-ids (set (map :object/id gy-cards))]
+    {:selection/type :graveyard-return
+     :selection/zone :graveyard
+     :selection/count (:effect/count effect)
+     :selection/min-count 0  ; Can select 0 cards (up to N)
+     :selection/player-id target-player
+     :selection/selected #{}
+     :selection/spell-id object-id
+     :selection/remaining-effects effects-after
+     :selection/effect-type :return-from-graveyard
+     :selection/candidate-ids candidate-ids}))
+
+
 (defn- build-player-target-selection
   "Build pending selection state for a player-targeted effect.
    Used when :effect/target is :any-player - player must choose target."
@@ -1167,6 +1203,11 @@
                                     (= effect-type :scry)
                                     (build-scry-selection db-after-before player-id object-id
                                                           selection-effect effects-after)
+
+                                    ;; Return from graveyard effect
+                                    (= effect-type :return-from-graveyard)
+                                    (build-graveyard-selection db-after-before player-id object-id
+                                                               selection-effect effects-after)
 
                                     ;; Default for unknown selection types
                                     :else
@@ -1454,6 +1495,50 @@
     ;; Cancel clears selection but keeps the pending state
     ;; Player must still make a valid selection
     (assoc-in db [:game/pending-selection :selection/selected] #{})))
+
+
+;; === Graveyard Selection ===
+;; For :return-from-graveyard effects with player selection
+
+(rf/reg-event-db
+  ::confirm-graveyard-selection
+  (fn [db _]
+    (let [selection (:game/pending-selection db)
+          selected (:selection/selected selection)
+          max-count (:selection/count selection)
+          candidates (:selection/candidate-ids selection)
+          spell-id (:selection/spell-id selection)
+          trigger-id (:selection/trigger-id selection)
+          source-type (:selection/source-type selection)
+          remaining-effects (:selection/remaining-effects selection)
+          player-id (:selection/player-id selection)
+          game-db (:game/db db)
+          ;; Validate: 0 to max-count cards, all from candidate set
+          valid-selection? (and (<= (count selected) max-count)
+                                (every? #(contains? candidates %) selected))]
+      (if valid-selection?
+        (let [;; Move selected cards from graveyard to hand
+              db-after-effect (reduce (fn [gdb obj-id]
+                                        (zones/move-to-zone gdb obj-id :hand))
+                                      game-db
+                                      selected)
+              ;; Execute remaining effects
+              db-after-remaining (reduce (fn [d effect]
+                                           (effects/execute-effect d player-id effect))
+                                         db-after-effect
+                                         (or remaining-effects []))
+              ;; Clean up source: move spell to destination OR remove trigger
+              db-final (if (= source-type :trigger)
+                         (triggers/remove-trigger db-after-remaining trigger-id)
+                         (let [spell-obj (queries/get-object db-after-remaining spell-id)
+                               cast-mode (:object/cast-mode spell-obj)
+                               destination (or (:mode/on-resolve cast-mode) :graveyard)]
+                           (zones/move-to-zone db-after-remaining spell-id destination)))]
+          (-> db
+              (assoc :game/db db-final)
+              (dissoc :game/pending-selection)))
+        ;; Invalid selection - do nothing (player must fix selection)
+        db))))
 
 
 ;; === Tutor Selection ===
