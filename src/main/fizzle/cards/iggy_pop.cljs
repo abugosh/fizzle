@@ -297,6 +297,22 @@
                    :effect/shuffle? true}]})
 
 
+;; Intuition - The power tutor
+;; 2U - Instant: Search for 3 cards, choose 1 for hand, rest to graveyard
+(def intuition
+  {:card/id :intuition
+   :card/name "Intuition"
+   :card/cmc 3
+   :card/mana-cost {:colorless 2 :blue 1}
+   :card/colors #{:blue}
+   :card/types #{:instant}
+   :card/text "Search your library for three cards and reveal them. Target opponent chooses one. Put that card into your hand and the rest into your graveyard. Then shuffle."
+   :card/effects [{:effect/type :tutor
+                   :effect/select-count 3
+                   :effect/target-zone :hand
+                   :effect/pile-choice {:hand 1 :graveyard :rest}}]})
+
+
 ;; Polluted Delta - Fetchland
 ;; Land - {T}, Sacrifice Polluted Delta: Search your library for an Island or Swamp card,
 ;; put it onto the battlefield, then shuffle.
@@ -323,5 +339,5 @@
 (def all-cards
   [dark-ritual brain-freeze cabal-ritual city-of-brass city-of-traitors
    gemstone-mine island swamp underground-river lotus-petal lions-eye-diamond
-   careful-study mental-note opt merchant-scroll polluted-delta
+   careful-study mental-note opt merchant-scroll intuition polluted-delta
    deep-analysis/deep-analysis cephalid-coliseum/cephalid-coliseum recoup/recoup])
