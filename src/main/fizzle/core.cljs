@@ -686,10 +686,23 @@
         current-count (count selected)
         effect-type (:selection/effect-type selection)
         is-tutor? (= effect-type :tutor)
-        ;; For tutors: valid if 0 (fail-to-find) or 1 card selected
-        ;; For discard: valid if exactly required-count selected
-        valid? (if is-tutor?
+        ;; Multi-select tutor support (for Intuition-style cards)
+        select-count (:selection/select-count selection)
+        is-multi-select? (and is-tutor? select-count (> select-count 1))
+        allow-fail-to-find? (:selection/allow-fail-to-find selection)
+        ;; Validation logic:
+        ;; - Multi-select tutor: exactly select-count OR 0 if fail-to-find allowed
+        ;; - Single-select tutor: 0 (fail-to-find) or 1 card
+        ;; - Discard: exactly required-count
+        valid? (cond
+                 is-multi-select?
+                 (or (= current-count select-count)
+                     (and allow-fail-to-find? (zero? current-count)))
+
+                 is-tutor?
                  (<= current-count 1)
+
+                 :else
                  (= current-count required-count))
         confirm-event (if is-tutor?
                         ::events/confirm-tutor-selection
@@ -722,10 +735,16 @@
       [:p {:style {:color (if valid? "#5CB85C" "#F0AD4E")
                    :margin "0 0 16px 0"
                    :font-size "14px"}}
-       (if is-tutor?
+       (cond
+         is-multi-select?
+         (str current-count " / " select-count " cards selected")
+
+         is-tutor?
          (if (= current-count 1)
            "1 card selected"
            "Select a card or Find Nothing")
+
+         :else
          (str current-count " / " required-count " selected"))]
       ;; Card grid
       [:div {:style {:display "flex"
@@ -780,7 +799,10 @@
                          :font-weight "bold"}
                  :disabled (not valid?)
                  :on-click #(rf/dispatch [confirm-event])}
-        (if is-tutor? "Select Card" "Confirm")]]]]))
+        (cond
+          is-multi-select? "Select Cards"
+          is-tutor? "Select Card"
+          :else "Confirm")]]]]))
 
 
 (defn- scry-card-view
