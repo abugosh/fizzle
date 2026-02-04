@@ -24,6 +24,8 @@
 (declare resolve-activated-ability-with-selection)
 (declare find-selection-effect-index)
 (declare build-tutor-selection)
+(declare build-cast-time-target-selection)
+(declare confirm-cast-time-target)
 
 
 (defn make-test-deck
@@ -47,9 +49,10 @@
             (repeat 4 :lions-eye-diamond)
             (repeat 4 :careful-study)
             (repeat 4 :mental-note)
-            (repeat 4 :opt)
+            (repeat 2 :opt)
             (repeat 2 :merchant-scroll)
-            (repeat 2 :deep-analysis)))))
+            (repeat 2 :deep-analysis)
+            (repeat 2 :recoup)))))
 
 
 (defn init-game-state
@@ -155,23 +158,36 @@
           selected (:game/selected-card db)]
       (if (and selected (rules/can-cast? game-db :player-1 selected))
         (let [modes (rules/get-casting-modes game-db :player-1 selected)
-              castable-modes (filterv #(rules/can-cast-mode? game-db :player-1 selected %) modes)]
+              castable-modes (filterv #(rules/can-cast-mode? game-db :player-1 selected %) modes)
+              ;; Check for targeting requirements
+              obj (queries/get-object game-db selected)
+              card (:object/card obj)
+              targeting-reqs (targeting/get-targeting-requirements card)]
           (cond
             ;; No castable modes - shouldn't happen if can-cast? passed
             (empty? castable-modes)
             db
 
-            ;; Single mode: auto-cast without showing selector
-            (= 1 (count castable-modes))
-            (-> db
-                (assoc :game/db (rules/cast-spell-mode game-db :player-1 selected (first castable-modes)))
-                (dissoc :game/selected-card))
-
-            ;; Multiple modes: show selector
-            :else
+            ;; Multiple modes: show selector first (targeting checked after mode selection)
+            (> (count castable-modes) 1)
             (assoc db :game/pending-mode-selection
                    {:object-id selected
-                    :modes castable-modes})))
+                    :modes castable-modes})
+
+            ;; Single mode with targeting: prompt for targets
+            (and (= 1 (count castable-modes)) (seq targeting-reqs))
+            (let [mode (first castable-modes)
+                  first-req (first targeting-reqs)
+                  selection (build-cast-time-target-selection game-db :player-1 selected mode first-req)]
+              (-> db
+                  (assoc :game/pending-selection selection)
+                  (dissoc :game/selected-card)))
+
+            ;; Single mode without targeting: cast immediately
+            :else
+            (-> db
+                (assoc :game/db (rules/cast-spell-mode game-db :player-1 selected (first castable-modes)))
+                (dissoc :game/selected-card))))
         db))))
 
 
@@ -669,6 +685,72 @@
 
 ;; === Activate Non-Mana Ability ===
 
+(defn- build-ability-target-selection
+  "Build pending selection state for ability targeting.
+   Used when an ability has :ability/targeting requirements.
+
+   Arguments:
+     db - Datascript database
+     player-id - Activating player
+     object-id - Permanent being activated
+     ability-index - Index of ability in :card/abilities
+     target-req - First targeting requirement (player target for now)
+
+   Returns selection state map."
+  [db player-id object-id ability-index target-req]
+  (let [valid-targets (targeting/find-valid-targets db player-id target-req)]
+    {:selection/type :ability-targeting
+     :selection/player-id player-id
+     :selection/object-id object-id
+     :selection/ability-index ability-index
+     :selection/target-requirement target-req
+     :selection/valid-targets valid-targets
+     :selection/selected-target nil}))
+
+
+(defn confirm-ability-target
+  "Complete ability activation after target selection.
+
+   1. Pays costs (tap, sacrifice, pay-life)
+   2. Creates ability trigger with stored targets
+   3. Adds trigger to stack
+
+   Arguments:
+     db - Datascript database
+     selection - Ability target selection state with :selection/selected-target set
+
+   Returns {:db db :pending-selection nil}"
+  [db selection]
+  (let [player-id (:selection/player-id selection)
+        object-id (:selection/object-id selection)
+        ability-index (:selection/ability-index selection)
+        target-req (:selection/target-requirement selection)
+        target-id (:selection/selected-target selection)
+        target-ref (:target/id target-req)]
+    (if target-id
+      (let [obj (queries/get-object db object-id)
+            card (:object/card obj)
+            ability (nth (:card/abilities card) ability-index)
+            ;; Pay costs now
+            db-after-costs (abilities/pay-all-costs db object-id (:ability/cost ability))]
+        (if db-after-costs
+          ;; Create trigger with stored targets
+          (let [effects-list (:ability/effects ability [])
+                ability-trigger (triggers/create-trigger
+                                  :activated-ability
+                                  object-id
+                                  player-id
+                                  {:effects effects-list
+                                   :description (:ability/description ability)
+                                   :targets {target-ref target-id}})
+                db-with-trigger (triggers/add-trigger-to-stack db-after-costs ability-trigger)]
+            {:db db-with-trigger
+             :pending-selection nil})
+          {:db db :pending-selection nil}))
+      ;; No target selected - return unchanged (activation cancelled)
+      {:db db :pending-selection nil})))
+
+
 (defn activate-ability
   "Activate a non-mana ability on a permanent (e.g., fetchlands).
    Pure function: (db, player-id, object-id, ability-index) -> {:db db :pending-selection nil}
@@ -682,17 +764,17 @@
    Flow:
      1. Find ability from card data
      2. Check can-activate? via abilities module
-     3. Pay costs (tap, sacrifice, pay-life, etc.) - immediate
-     4. Add ability trigger to stack - effects resolve later
+     3. If ability has targeting: pause for target selection (costs not paid yet)
+     4. If no targeting: Pay costs and add to stack immediately
 
    The ability goes on the stack and effects execute on resolution.
    This allows opponents to respond (e.g., counter with Stifle).
-   Costs are paid on activation, not resolution.
+   Costs are paid on activation (or after target selection), not resolution.
 
    Selection effects (like tutor) are handled on resolution via
    resolve-activated-ability-with-selection.
 
-   Returns {:db db :pending-selection nil}"
+   Returns {:db db :pending-selection selection-state-or-nil}"
   [db player-id object-id ability-index]
   (let [obj (queries/get-object db object-id)
         player-eid (queries/get-player-eid db player-id)]
@@ -706,22 +788,30 @@
         (if (and ability
                  (= :activated (:ability/type ability))
                  (abilities/can-activate? db object-id ability))
-          ;; Pay costs (tap, sacrifice, pay-life) - these happen immediately on activation
-          (let [db-after-costs (abilities/pay-all-costs db object-id (:ability/cost ability))]
-            (if db-after-costs
-              ;; Create ability trigger and add to stack (effects resolve later)
-              ;; Note: UI adds card name from source, so description should just be the ability text
-              (let [effects-list (:ability/effects ability [])
-                    ability-trigger (triggers/create-trigger
-                                      :activated-ability
-                                      object-id
-                                      player-id
-                                      {:effects effects-list
-                                       :description (:ability/description ability)})
-                    db-with-trigger (triggers/add-trigger-to-stack db-after-costs ability-trigger)]
-                {:db db-with-trigger
-                 :pending-selection nil})
-              {:db db :pending-selection nil}))
+          ;; Check if ability has targeting requirements
+          (let [targeting-reqs (targeting/get-targeting-requirements ability)]
+            (if (seq targeting-reqs)
+              ;; Has targeting - pause for target selection (don't pay costs yet)
+              (let [first-req (first targeting-reqs)
+                    selection (build-ability-target-selection db player-id object-id ability-index first-req)]
+                {:db db
+                 :pending-selection selection})
+              ;; No targeting - pay costs and add to stack immediately
+              (let [db-after-costs (abilities/pay-all-costs db object-id (:ability/cost ability))]
+                (if db-after-costs
+                  ;; Create ability trigger and add to stack (effects resolve later)
+                  ;; Note: UI adds card name from source, so description should just be the ability text
+                  (let [effects-list (:ability/effects ability [])
+                        ability-trigger (triggers/create-trigger
+                                          :activated-ability
+                                          object-id
+                                          player-id
+                                          {:effects effects-list
+                                           :description (:ability/description ability)})
+                        db-with-trigger (triggers/add-trigger-to-stack db-after-costs ability-trigger)]
+                    {:db db-with-trigger
+                     :pending-selection nil})
+                  {:db db :pending-selection nil}))))
           {:db db :pending-selection nil}))
       {:db db :pending-selection nil})))
 
@@ -733,6 +823,46 @@
           result (activate-ability game-db :player-1 object-id ability-index)]
       (cond-> (assoc db :game/db (:db result))
         (:pending-selection result) (assoc :game/pending-selection (:pending-selection result))))))
+
+
+(rf/reg-event-db
+  ::confirm-ability-target
+  (fn [db [_ target-id]]
+    (let [selection (get db :game/pending-selection)
+          selection-with-target (assoc selection :selection/selected-target target-id)
+          game-db (:game/db db)
+          result (confirm-ability-target game-db selection-with-target)]
+      (-> db
+          (assoc :game/db (:db result))
+          (dissoc :game/pending-selection)))))
+
+
+(rf/reg-event-db
+  ::confirm-cast-time-target
+  (fn [db [_ target-id]]
+    (let [selection (get db :game/pending-selection)
+          selection-with-target (assoc selection :selection/selected-target target-id)
+          game-db (:game/db db)
+          new-game-db (confirm-cast-time-target game-db selection-with-target)]
+      (-> db
+          (assoc :game/db new-game-db)
+          (dissoc :game/pending-selection)))))
+
+
+(rf/reg-event-db
+  ::select-cast-time-object-target
+  (fn [db [_ object-id]]
+    (let [selection (:game/pending-selection db)
+          valid-targets (set (:selection/valid-targets selection))]
+      (if (contains? valid-targets object-id)
+        ;; Toggle selection: if already selected, deselect; otherwise select
+        (let [currently-selected (:selection/selected-target selection)
+              new-selection (if (= currently-selected object-id)
+                              nil
+                              object-id)]
+          (assoc-in db [:game/pending-selection :selection/selected-target] new-selection))
+        ;; Invalid target - ignore
+        db))))
 
 
 ;; === Selection System ===
@@ -778,16 +908,26 @@
                        effects)))
 
 
-(defn- build-tutor-selection
+(defn build-tutor-selection
   "Build pending selection state for a tutor effect.
-   Pre-filters library to find valid candidates."
+   Pre-filters library to find valid candidates.
+
+   Supports multi-select via :effect/select-count (default 1 for backwards compat).
+   Actual selection count = min(select-count, candidate-count).
+   When select-count > 1, :selection/exact? is true (must select exactly that many)."
   [db player-id object-id tutor-effect effects-after]
   (let [criteria (:effect/criteria tutor-effect)
         target-zone (or (:effect/target-zone tutor-effect) :hand)
         matching-objs (queries/query-library-by-criteria db player-id criteria)
-        candidate-ids (set (map :object/id matching-objs))]
+        candidate-ids (set (map :object/id matching-objs))
+        ;; Multi-select support: default to 1 for backwards compat
+        effect-select-count (max 1 (or (:effect/select-count tutor-effect) 1))
+        ;; Actual count is min of requested and available candidates
+        actual-select-count (min effect-select-count (count candidate-ids))]
     {:selection/zone :library
-     :selection/count 1
+     :selection/count actual-select-count  ; Legacy key for UI compatibility
+     :selection/select-count actual-select-count  ; New key for multi-select
+     :selection/exact? true  ; Must select exactly this many (or fail-to-find)
      :selection/player-id player-id
      :selection/selected #{}
      :selection/spell-id object-id
@@ -797,7 +937,8 @@
      :selection/allow-fail-to-find true  ; Always allow fail-to-find (anti-pattern: NO auto-select)
      :selection/candidates candidate-ids
      :selection/shuffle? (get tutor-effect :effect/shuffle? true)
-     :selection/enters-tapped (:effect/enters-tapped tutor-effect)}))
+     :selection/enters-tapped (:effect/enters-tapped tutor-effect)
+     :selection/pile-choice (:effect/pile-choice tutor-effect)}))
 
 
 (defn build-scry-selection
@@ -886,9 +1027,13 @@
             has-stored-player-target (and stored-targets
                                           (:player stored-targets)
                                           selection-idx
-                                          (= :any-player (:effect/target (nth effects-list selection-idx))))]
+                                          (= :any-player (:effect/target (nth effects-list selection-idx))))
+            ;; Check if spell has object targets (for fizzle checking)
+            has-stored-object-targets (and stored-targets
+                                           (seq stored-targets)
+                                           (not (:player stored-targets)))]
         (cond
-          ;; Cast-time targeting: check fizzle, use stored targets
+          ;; Cast-time targeting with player target: check fizzle, use stored targets
           has-stored-player-target
           (let [cast-mode (:object/cast-mode obj)
                 destination (or (:mode/on-resolve cast-mode) :graveyard)]
@@ -907,7 +1052,20 @@
               {:db (zones/move-to-zone db object-id destination)
                :pending-selection nil}))
 
-          ;; No selection effect - resolve normally
+          ;; Cast-time targeting with object target (e.g., Recoup): check fizzle, resolve with object-id
+          has-stored-object-targets
+          (let [cast-mode (:object/cast-mode obj)
+                destination (or (:mode/on-resolve cast-mode) :graveyard)]
+            ;; Fizzle check: if any target is no longer legal, skip effects
+            (if (targeting/all-targets-legal? db object-id)
+              ;; Targets legal - resolve with object-id for effects that need stored targets
+              {:db (rules/resolve-spell db player-id object-id)
+               :pending-selection nil}
+              ;; Fizzle: targets invalid, skip effects, move spell off stack
+              {:db (zones/move-to-zone db object-id destination)
+               :pending-selection nil}))
+
+          ;; No selection effect and no stored targets - resolve normally
           (nil? selection-idx)
           {:db (rules/resolve-spell db player-id object-id)
            :pending-selection nil}
@@ -1008,20 +1166,92 @@
    - Effects after the selection are stored for later execution
    - The trigger is NOT removed from stack until selection is confirmed
 
+   If stored targets exist in :trigger/data :targets (from cast-time targeting):
+   - Uses stored targets for :any-player effects instead of prompting
+   - Still prompts for discard/tutor selection effects
+   - Resolves effects in order, stopping at selection effects
+
    For abilities without selection effects, use resolve-trigger :activated-ability instead."
   [db trigger]
   (let [controller (:trigger/controller trigger)
         source-id (:trigger/source trigger)
         trigger-id (:trigger/id trigger)
         effects-list (get-in trigger [:trigger/data :effects] [])
-        selection-idx (find-selection-effect-index effects-list)]
-    (if (nil? selection-idx)
+        stored-targets (get-in trigger [:trigger/data :targets])
+        selection-idx (find-selection-effect-index effects-list)
+        stored-player (:player stored-targets)
+        ;; Check if stored targets can satisfy the :any-player effect
+        ;; (the first selection effect is :any-player targeting)
+        has-stored-player-target (and stored-player
+                                      selection-idx
+                                      (= :any-player (:effect/target (nth effects-list selection-idx))))]
+    (cond
+      ;; Stored targets exist for player targeting - use them instead of prompting for player
+      ;; But there may still be subsequent selection effects (like discard)
+      has-stored-player-target
+      (let [;; The :any-player effect is at selection-idx
+            ;; Resolve it with stored target, then check for next selection effect
+            player-target-effect (nth effects-list selection-idx)
+            resolved-player-effect (assoc player-target-effect :effect/target stored-player)
+            effects-before (subvec (vec effects-list) 0 selection-idx)
+            effects-after (subvec (vec effects-list) (inc selection-idx))
+            ;; Execute effects before the player target, resolving :self/:controller
+            db-after-before (reduce (fn [d effect]
+                                      (let [resolved-effect (cond
+                                                              (= :self (:effect/target effect))
+                                                              (assoc effect :effect/target source-id)
+
+                                                              (= :controller (:effect/target effect))
+                                                              (assoc effect :effect/target controller)
+
+                                                              :else effect)]
+                                        (effects/execute-effect d controller resolved-effect)))
+                                    db
+                                    effects-before)
+            ;; Execute the resolved player target effect (e.g., draw 3 for target player)
+            db-after-player-effect (effects/execute-effect db-after-before controller resolved-player-effect)
+            ;; Check if there's another selection effect in effects-after
+            next-selection-idx (find-selection-effect-index effects-after)]
+        (if next-selection-idx
+          ;; There's another selection effect (e.g., discard) - build selection for it
+          (let [effects-before-next (subvec (vec effects-after) 0 next-selection-idx)
+                next-selection-effect (nth effects-after next-selection-idx)
+                effects-after-next (subvec (vec effects-after) (inc next-selection-idx))
+                ;; Execute effects before the next selection
+                db-after-before-next (reduce (fn [d effect]
+                                               (effects/execute-effect d controller effect))
+                                             db-after-player-effect
+                                             effects-before-next)
+                ;; Build selection state for the discard (target player discards)
+                pending-selection (when (= :player (:effect/selection next-selection-effect))
+                                    {:selection/type :discard
+                                     :selection/player-id stored-player  ; Target player discards, not controller!
+                                     :selection/count (:effect/count next-selection-effect)
+                                     :selection/selected #{}
+                                     :selection/trigger-id trigger-id
+                                     :selection/source-type :trigger
+                                     :selection/remaining-effects effects-after-next
+                                     :selection/effect-type :discard})]
+            {:db db-after-before-next
+             :pending-selection pending-selection})
+          ;; No more selection effects - execute remaining and clean up
+          (let [db-after-all (reduce (fn [d effect]
+                                       (effects/execute-effect d controller effect))
+                                     db-after-player-effect
+                                     effects-after)
+                db-final (triggers/remove-trigger db-after-all trigger-id)]
+            {:db db-final
+             :pending-selection nil})))
+
       ;; No selection effect - resolve normally and remove trigger
+      (nil? selection-idx)
       {:db (-> db
                (triggers/resolve-trigger trigger)
                (triggers/remove-trigger trigger-id))
        :pending-selection nil}
-      ;; Has selection effect - pause for selection
+
+      ;; Has selection effect without stored targets - pause for selection
+      :else
       (let [effects-before (subvec (vec effects-list) 0 selection-idx)
             selection-effect (nth effects-list selection-idx)
             effects-after (subvec (vec effects-list) (inc selection-idx))
@@ -1125,12 +1355,15 @@
                                            (effects/execute-effect d player-id effect))
                                          db-after-effect
                                          (or remaining-effects []))
-              ;; Clean up source: move spell to graveyard OR remove trigger from stack
+              ;; Clean up source: move spell to destination OR remove trigger from stack
               db-final (if (= source-type :trigger)
                          ;; Trigger-based selection (activated ability): remove trigger
                          (triggers/remove-trigger db-after-remaining trigger-id)
-                         ;; Spell-based selection: move spell to graveyard
-                         (zones/move-to-zone db-after-remaining spell-id :graveyard))]
+                         ;; Spell-based selection: use cast mode's destination (e.g., :exile for flashback)
+                         (let [spell-obj (queries/get-object db-after-remaining spell-id)
+                               cast-mode (:object/cast-mode spell-obj)
+                               destination (or (:mode/on-resolve cast-mode) :graveyard)]
+                           (zones/move-to-zone db-after-remaining spell-id destination)))]
           (-> db
               (assoc :game/db db-final)
               (dissoc :game/pending-selection)))
@@ -1149,23 +1382,23 @@
 ;; === Tutor Selection ===
 
 (defn execute-tutor-selection
-  "Execute a tutor selection - move selected card to target zone and shuffle.
+  "Execute a tutor selection - move selected cards to target zone and shuffle.
    Pure function: (db, selection) -> db
 
    Arguments:
      db - Datascript game database (not app-db)
      selection - Selection state map with:
-       :selection/selected - Set of object-ids (0 or 1 for tutor)
-       :selection/target-zone - Zone to move card to (:hand for Merchant Scroll, :battlefield for fetchlands)
+       :selection/selected - Set of object-ids (1 or more for multi-select tutor)
+       :selection/target-zone - Zone to move cards to (:hand for Merchant Scroll, :battlefield for fetchlands)
        :selection/player-id - Who is tutoring
        :selection/shuffle? - Whether to shuffle after (default true)
        :selection/enters-tapped - If true and target-zone is :battlefield, enters tapped
 
    Handles:
      - Empty selection (fail-to-find): Just shuffles library
-     - Card selected: Moves to target zone, sets tapped if needed, then shuffles
+     - Cards selected: Moves ALL to target zone, sets tapped if needed, then shuffles ONCE
 
-   CRITICAL: Move card BEFORE shuffle (anti-pattern: NO shuffling first)"
+   CRITICAL: Move ALL cards BEFORE shuffle (anti-pattern: NO shuffling between moves)"
   [db selection]
   (let [selected (:selection/selected selection)
         target-zone (:selection/target-zone selection)
@@ -1178,17 +1411,24 @@
       (if should-shuffle?
         (zones/shuffle-library db player-id)
         db)
-      ;; Card found: move to target zone, set tapped if needed, then shuffle
-      (let [card-id (first selected)
-            db-after-move (zones/move-to-zone db card-id target-zone)
-            ;; If entering battlefield tapped, set tapped state
+      ;; Cards found: move ALL to target zone, set tapped if needed, then shuffle ONCE
+      (let [;; Move all selected cards to target zone
+            db-after-moves (reduce (fn [d card-id]
+                                     (zones/move-to-zone d card-id target-zone))
+                                   db
+                                   selected)
+            ;; If entering battlefield tapped, set tapped state for all moved cards
             db-after-tapped (if enters-tapped?
-                              (let [obj-eid (d/q '[:find ?e .
-                                                   :in $ ?oid
-                                                   :where [?e :object/id ?oid]]
-                                                 db-after-move card-id)]
-                                (d/db-with db-after-move [[:db/add obj-eid :object/tapped true]]))
-                              db-after-move)]
+                              (reduce (fn [d card-id]
+                                        (let [obj-eid (d/q '[:find ?e .
+                                                             :in $ ?oid
+                                                             :where [?e :object/id ?oid]]
+                                                           d card-id)]
+                                          (d/db-with d [[:db/add obj-eid :object/tapped true]])))
+                                      db-after-moves
+                                      selected)
+                              db-after-moves)]
+        ;; Shuffle ONCE after all moves (anti-pattern: NO shuffling between moves)
         (if should-shuffle?
           (zones/shuffle-library db-after-tapped player-id)
           db-after-tapped)))))
@@ -1200,29 +1440,34 @@
     (let [selection (:game/pending-selection db)
           selected (:selection/selected selection)
           candidates (:selection/candidates selection)
+          select-count (or (:selection/select-count selection) 1)
           spell-id (:selection/spell-id selection)
           trigger-id (:selection/trigger-id selection)
           source-type (:selection/source-type selection)
           remaining-effects (:selection/remaining-effects selection)
           player-id (:selection/player-id selection)
-          game-db (:game/db db)]
-      ;; Validate selection: must be empty (fail-to-find) or a valid candidate
-      (if (or (empty? selected)
-              (and (= 1 (count selected))
-                   (contains? candidates (first selected))))
-        ;; Valid tutor selection
+          game-db (:game/db db)
+          ;; Validate: empty (fail-to-find) OR correct count of valid candidates
+          valid-selection? (or (empty? selected)
+                               (and (= (count selected) select-count)
+                                    (every? #(contains? candidates %) selected)))]
+      (if valid-selection?
+        ;; Valid tutor selection (single or multi-select)
         (let [db-after-tutor (execute-tutor-selection game-db selection)
               ;; Execute remaining effects
               db-after-remaining (reduce (fn [d effect]
                                            (effects/execute-effect d player-id effect))
                                          db-after-tutor
                                          (or remaining-effects []))
-              ;; Clean up source: move spell to graveyard OR remove trigger from stack
+              ;; Clean up source: move spell to destination OR remove trigger from stack
               db-final (if (= source-type :trigger)
                          ;; Trigger-based selection (activated ability): remove trigger
                          (triggers/remove-trigger db-after-remaining trigger-id)
-                         ;; Spell-based selection: move spell to graveyard
-                         (zones/move-to-zone db-after-remaining spell-id :graveyard))]
+                         ;; Spell-based selection: use cast mode's destination (e.g., :exile for flashback)
+                         (let [spell-obj (queries/get-object db-after-remaining spell-id)
+                               cast-mode (:object/cast-mode spell-obj)
+                               destination (or (:mode/on-resolve cast-mode) :graveyard)]
+                           (zones/move-to-zone db-after-remaining spell-id destination)))]
           (-> db
               (assoc :game/db db-final)
               (dissoc :game/pending-selection)))
@@ -1398,12 +1643,15 @@
                                                (effects/execute-effect d player-id effect))
                                              db-after-effect
                                              remaining-effects)
-                  ;; Clean up source: move spell to graveyard OR remove trigger from stack
+                  ;; Clean up source: move spell to destination OR remove trigger from stack
                   db-final (if (= source-type :trigger)
                              ;; Trigger-based selection (activated ability): remove trigger
                              (triggers/remove-trigger db-after-remaining trigger-id)
-                             ;; Spell-based selection: move spell to graveyard
-                             (zones/move-to-zone db-after-remaining spell-id :graveyard))]
+                             ;; Spell-based selection: use cast mode's destination (e.g., :exile for flashback)
+                             (let [spell-obj (queries/get-object db-after-remaining spell-id)
+                                   cast-mode (:object/cast-mode spell-obj)
+                                   destination (or (:mode/on-resolve cast-mode) :graveyard)]
+                               (zones/move-to-zone db-after-remaining spell-id destination)))]
               (-> db
                   (assoc :game/db db-final)
                   (dissoc :game/pending-selection)))))
@@ -1422,10 +1670,23 @@
           pending (:game/pending-mode-selection db)
           object-id (:object-id pending)]
       (if (and pending object-id mode)
-        (-> db
-            (assoc :game/db (rules/cast-spell-mode game-db :player-1 object-id mode))
-            (dissoc :game/selected-card)
-            (dissoc :game/pending-mode-selection))
+        ;; Check for targeting requirements
+        (let [obj (queries/get-object game-db object-id)
+              card (:object/card obj)
+              targeting-reqs (targeting/get-targeting-requirements card)]
+          (if (seq targeting-reqs)
+            ;; Has targeting - prompt for targets before casting
+            (let [first-req (first targeting-reqs)
+                  selection (build-cast-time-target-selection game-db :player-1 object-id mode first-req)]
+              (-> db
+                  (assoc :game/pending-selection selection)
+                  (dissoc :game/selected-card)
+                  (dissoc :game/pending-mode-selection)))
+            ;; No targeting - cast immediately
+            (-> db
+                (assoc :game/db (rules/cast-spell-mode game-db :player-1 object-id mode))
+                (dissoc :game/selected-card)
+                (dissoc :game/pending-mode-selection))))
         db))))
 
 

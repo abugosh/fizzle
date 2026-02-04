@@ -8,7 +8,8 @@
   (:require
     [datascript.core :as d]
     [fizzle.db.queries :as q]
-    [fizzle.engine.effects :as effects]))
+    [fizzle.engine.effects :as effects]
+    [fizzle.engine.grants :as grants]))
 
 
 (defn create-trigger
@@ -237,6 +238,17 @@
   [db trigger]
   (let [active-player (:trigger/controller trigger)]
     (untap-all-permanents db active-player)))
+
+
+(defmethod resolve-trigger :expire-grants
+  [db _trigger]
+  "Expire all grants that have reached their expiration turn/phase.
+
+   Called during cleanup phase to remove 'until end of turn' effects.
+   Uses current turn from game state and :cleanup phase."
+  (let [game-state (q/get-game-state db)
+        current-turn (:game/turn game-state)]
+    (grants/expire-grants db current-turn :cleanup)))
 
 
 (defn remove-trigger

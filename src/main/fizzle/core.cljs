@@ -498,6 +498,186 @@
         "Confirm"]]]]))
 
 
+(defn- ability-player-target-modal
+  "Modal for selecting a player as target for an activated ability (e.g., Cephalid Coliseum).
+   Uses ::confirm-ability-target event instead of ::confirm-player-target-selection."
+  [selection]
+  (let [selected-target (:selection/selected-target selection)
+        valid? (some? selected-target)]
+    [:div {:style {:position "fixed"
+                   :top 0
+                   :left 0
+                   :right 0
+                   :bottom 0
+                   :background "rgba(0, 0, 0, 0.8)"
+                   :display "flex"
+                   :align-items "center"
+                   :justify-content "center"
+                   :z-index 1000}}
+     [:div {:style {:background "#1a1a2a"
+                    :border "2px solid #4A9BD9"
+                    :border-radius "12px"
+                    :padding "24px"
+                    :max-width "400px"
+                    :width "90%"
+                    :text-align "center"}}
+      ;; Header
+      [:h2 {:style {:color "#eee"
+                    :margin "0 0 16px 0"
+                    :font-size "18px"}}
+       "Choose target player"]
+      ;; Player buttons
+      [:div {:style {:display "flex"
+                     :justify-content "center"
+                     :margin-bottom "20px"}}
+       [player-target-button :player-1 "You" (= selected-target :player-1)]
+       [player-target-button :opponent "Opponent" (= selected-target :opponent)]]
+      ;; Confirm button
+      [:div {:style {:display "flex"
+                     :justify-content "center"}}
+       [:button {:style {:padding "10px 32px"
+                         :border "none"
+                         :border-radius "4px"
+                         :cursor (if valid? "pointer" "not-allowed")
+                         :background (if valid? "#2a6a2a" "#333")
+                         :color (if valid? "#fff" "#666")
+                         :font-size "14px"
+                         :font-weight "bold"}
+                 :disabled (not valid?)
+                 :on-click #(rf/dispatch [::events/confirm-ability-target selected-target])}
+        "Confirm"]]]]))
+
+
+(defn- cast-time-player-target-modal
+  "Modal for selecting a player as target when casting a spell (e.g., Deep Analysis).
+   Uses ::confirm-cast-time-target event."
+  [selection]
+  (let [selected-target (:selection/selected-target selection)
+        valid? (some? selected-target)]
+    [:div {:style {:position "fixed"
+                   :top 0
+                   :left 0
+                   :right 0
+                   :bottom 0
+                   :background "rgba(0, 0, 0, 0.8)"
+                   :display "flex"
+                   :align-items "center"
+                   :justify-content "center"
+                   :z-index 1000}}
+     [:div {:style {:background "#1a1a2a"
+                    :border "2px solid #4A9BD9"
+                    :border-radius "12px"
+                    :padding "24px"
+                    :max-width "400px"
+                    :width "90%"
+                    :text-align "center"}}
+      ;; Header
+      [:h2 {:style {:color "#eee"
+                    :margin "0 0 16px 0"
+                    :font-size "18px"}}
+       "Choose target player"]
+      ;; Player buttons
+      [:div {:style {:display "flex"
+                     :justify-content "center"
+                     :margin-bottom "20px"}}
+       [player-target-button :player-1 "You" (= selected-target :player-1)]
+       [player-target-button :opponent "Opponent" (= selected-target :opponent)]]
+      ;; Confirm button
+      [:div {:style {:display "flex"
+                     :justify-content "center"}}
+       [:button {:style {:padding "10px 32px"
+                         :border "none"
+                         :border-radius "4px"
+                         :cursor (if valid? "pointer" "not-allowed")
+                         :background (if valid? "#2a6a2a" "#333")
+                         :color (if valid? "#fff" "#666")
+                         :font-size "14px"
+                         :font-weight "bold"}
+                 :disabled (not valid?)
+                 :on-click #(rf/dispatch [::events/confirm-cast-time-target selected-target])}
+        "Confirm"]]]]))
+
+
+(defn- cast-time-object-target-modal
+  "Modal for selecting an object as target when casting a spell (e.g., Recoup targeting graveyard sorcery).
+   Uses ::confirm-cast-time-target event."
+  [selection cards]
+  (let [selected-target (:selection/selected-target selection)
+        target-req (:selection/target-requirement selection)
+        zone-name (name (or (:target/zone target-req) :graveyard))
+        valid? (some? selected-target)]
+    [:div {:style {:position "fixed"
+                   :top 0
+                   :left 0
+                   :right 0
+                   :bottom 0
+                   :background "rgba(0, 0, 0, 0.8)"
+                   :display "flex"
+                   :align-items "center"
+                   :justify-content "center"
+                   :z-index 1000}}
+     [:div {:style {:background "#1a1a2a"
+                    :border "2px solid #4A9BD9"
+                    :border-radius "12px"
+                    :padding "24px"
+                    :max-width "600px"
+                    :width "90%"}}
+      ;; Header
+      [:h2 {:style {:color "#eee"
+                    :margin "0 0 8px 0"
+                    :font-size "18px"}}
+       (str "Choose target from " zone-name)]
+      ;; Instructions
+      [:p {:style {:color (if valid? "#5CB85C" "#F0AD4E")
+                   :margin "0 0 16px 0"
+                   :font-size "14px"}}
+       (if valid?
+         "1 card selected"
+         "Select a card")]
+      ;; Card grid
+      [:div {:style {:display "flex"
+                     :flex-wrap "wrap"
+                     :gap "10px"
+                     :margin-bottom "20px"
+                     :min-height "60px"}}
+       (if (seq cards)
+         (for [obj cards]
+           (let [card-name (get-in obj [:object/card :card/name])
+                 object-id (:object/id obj)
+                 is-selected? (= object-id selected-target)]
+             ^{:key object-id}
+             [:div {:style {:border (if is-selected?
+                                      "3px solid #4A9BD9"
+                                      "2px solid #555")
+                            :border-radius "6px"
+                            :padding "10px 14px"
+                            :cursor "pointer"
+                            :background (if is-selected? "#1a3a5a" "#1a1a2a")
+                            :color "#eee"
+                            :min-width "90px"
+                            :text-align "center"
+                            :user-select "none"
+                            :transition "all 0.1s ease"}
+                    :on-click #(rf/dispatch [::events/select-cast-time-object-target object-id])}
+              card-name]))
+         [:div {:style {:color "#666"}}
+          "No valid targets"])]
+      ;; Confirm button
+      [:div {:style {:display "flex"
+                     :justify-content "flex-end"}}
+       [:button {:style {:padding "8px 20px"
+                         :border "none"
+                         :border-radius "4px"
+                         :cursor (if valid? "pointer" "not-allowed")
+                         :background (if valid? "#2a6a2a" "#333")
+                         :color (if valid? "#fff" "#666")
+                         :font-size "14px"
+                         :font-weight "bold"}
+                 :disabled (not valid?)
+                 :on-click #(rf/dispatch [::events/confirm-cast-time-target selected-target])}
+        "Confirm"]]]]))
+
+
 (defn- card-selection-modal
   "Modal for selecting cards (discard or tutor)."
   [selection cards]
@@ -695,19 +875,34 @@
 (defn- selection-modal
   "Modal overlay for player selection.
    Shows when :game/pending-selection exists.
-   Handles discard, tutor, scry, and player-target effects."
+   Handles discard, tutor, scry, player-target effects, ability targeting, and cast-time targeting."
   []
   (let [selection @(rf/subscribe [::subs/pending-selection])
         cards @(rf/subscribe [::subs/selection-cards])]
     (when selection
       (let [selection-type (:selection/type selection)
-            effect-type (:selection/effect-type selection)]
+            effect-type (:selection/effect-type selection)
+            ;; For ability/cast-time targeting, check if target is a player
+            target-req (:selection/target-requirement selection)
+            targets-player? (= :player (:target/type target-req))]
         (cond
           ;; Scry selection (has :selection/type :scry)
           (= selection-type :scry)
           [scry-modal selection]
 
-          ;; Player target selection
+          ;; Cast-time targeting a player (e.g., Deep Analysis when casting)
+          (and (= selection-type :cast-time-targeting) targets-player?)
+          [cast-time-player-target-modal selection]
+
+          ;; Cast-time targeting an object (e.g., Recoup targeting graveyard sorcery)
+          (and (= selection-type :cast-time-targeting) (not targets-player?))
+          [cast-time-object-target-modal selection cards]
+
+          ;; Ability targeting a player (e.g., Cephalid Coliseum threshold)
+          (and (= selection-type :ability-targeting) targets-player?)
+          [ability-player-target-modal selection]
+
+          ;; Player target selection (for spell effects during resolution)
           (= effect-type :player-target)
           [player-target-modal selection]
 
@@ -749,7 +944,7 @@
                   :pay-life (str "Pay " (:cost/amount cost) " life")
                   :return-lands (str "Return " (:cost/count cost) " " (name (:cost/subtype cost)) "s")
                   :sacrifice (str "Sacrifice " (:cost/count cost) " " (name (:cost/subtype cost)))
-                  (str "Additional cost"))))
+                  "Additional cost")))
          (str/join ", "))))
 
 

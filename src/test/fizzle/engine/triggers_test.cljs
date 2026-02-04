@@ -4,6 +4,7 @@
     [datascript.core :as d]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
+    [fizzle.engine.grants :as grants]
     [fizzle.engine.triggers :as triggers]
     [fizzle.engine.zones :as zones]))
 
@@ -260,3 +261,97 @@
       ;; Stack should be empty (no copies created)
       (is (= 0 (count (q/get-stack-items result-db)))
           "No spell copies should be created when source is missing"))))
+
+
+;; === :expire-grants trigger tests ===
+
+(defn add-card-to-zone
+  "Add a card and create an object in specified zone.
+   Returns [db object-id] tuple."
+  [db player-id card zone]
+  (let [conn (d/conn-from-db db)
+        player-eid (q/get-player-eid db player-id)]
+    (when-not (d/q '[:find ?e .
+                     :in $ ?cid
+                     :where [?e :card/id ?cid]]
+                   @conn (:card/id card))
+      (d/transact! conn [card]))
+    (let [card-eid (d/q '[:find ?e .
+                          :in $ ?cid
+                          :where [?e :card/id ?cid]]
+                        @conn (:card/id card))
+          obj-id (random-uuid)
+          obj {:object/id obj-id
+               :object/card card-eid
+               :object/zone zone
+               :object/owner player-eid
+               :object/controller player-eid
+               :object/tapped false}]
+      (d/transact! conn [obj])
+      [@conn obj-id])))
+
+
+(def test-sorcery
+  {:card/id :test-sorcery-triggers
+   :card/name "Test Sorcery"
+   :card/cmc 2
+   :card/mana-cost {:colorless 1 :black 1}
+   :card/colors #{:black}
+   :card/types #{:sorcery}
+   :card/text "Test sorcery for triggers."
+   :card/effects []})
+
+
+(deftest test-resolve-trigger-expire-grants
+  (testing "resolve-trigger :expire-grants removes expired grants"
+    (let [db (init-game-state)
+          ;; Set game to turn 1
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          db (d/db-with db [[:db/add game-eid :game/turn 1]])
+          ;; Add a card with a grant that expires at turn 1 cleanup
+          [db obj-id] (add-card-to-zone db :player-1 test-sorcery :graveyard)
+          grant {:grant/id (random-uuid)
+                 :grant/type :alternate-cost
+                 :grant/source (random-uuid)
+                 :grant/expires {:expires/turn 1 :expires/phase :cleanup}
+                 :grant/data {:alternate/id :granted-flashback}}
+          db (grants/add-grant db obj-id grant)
+          ;; Verify grant exists
+          _ (is (= 1 (count (grants/get-grants db obj-id)))
+                "Grant should exist before expire-grants trigger")
+          ;; Create and resolve :expire-grants trigger
+          trigger {:trigger/id (random-uuid)
+                   :trigger/type :expire-grants
+                   :trigger/source :game-rule
+                   :trigger/controller :player-1
+                   :trigger/data {}}
+          db' (triggers/resolve-trigger db trigger)]
+      ;; Grant should be removed
+      (is (= 0 (count (grants/get-grants db' obj-id)))
+          "Expired grant should be removed after :expire-grants trigger"))))
+
+
+(deftest test-resolve-trigger-expire-grants-preserves-non-expired
+  (testing "resolve-trigger :expire-grants preserves grants not yet expired"
+    (let [db (init-game-state)
+          ;; Set game to turn 1
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          db (d/db-with db [[:db/add game-eid :game/turn 1]])
+          ;; Add a card with a grant that expires at turn 2 cleanup (not yet)
+          [db obj-id] (add-card-to-zone db :player-1 test-sorcery :graveyard)
+          grant {:grant/id (random-uuid)
+                 :grant/type :alternate-cost
+                 :grant/source (random-uuid)
+                 :grant/expires {:expires/turn 2 :expires/phase :cleanup}
+                 :grant/data {:alternate/id :granted-flashback}}
+          db (grants/add-grant db obj-id grant)
+          ;; Create and resolve :expire-grants trigger at turn 1
+          trigger {:trigger/id (random-uuid)
+                   :trigger/type :expire-grants
+                   :trigger/source :game-rule
+                   :trigger/controller :player-1
+                   :trigger/data {}}
+          db' (triggers/resolve-trigger db trigger)]
+      ;; Grant should still exist (expires turn 2, we're on turn 1)
+      (is (= 1 (count (grants/get-grants db' obj-id)))
+          "Non-expired grant should be preserved"))))

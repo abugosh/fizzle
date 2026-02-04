@@ -165,6 +165,7 @@
 ;; Returns the cards available for selection based on selection type.
 ;; For :discard -> hand cards
 ;; For :tutor -> library cards filtered to candidates
+;; For :cast-time-targeting -> objects from valid-targets
 (rf/reg-sub
   ::selection-cards
   :<- [::game-db]
@@ -172,19 +173,30 @@
   (fn [[game-db selection] _]
     (when (and game-db selection)
       (let [player-id (:selection/player-id selection)
+            selection-type (:selection/type selection)
             effect-type (:selection/effect-type selection)
             zone (:selection/zone selection)]
-        (case effect-type
-          :tutor
-          ;; For tutor, get library and filter to candidates
+        (cond
+          ;; Cast-time targeting with object targets (e.g., Recoup targeting graveyard sorcery)
+          (and (= selection-type :cast-time-targeting)
+               (= :object (get-in selection [:selection/target-requirement :target/type])))
+          (let [valid-target-ids (set (:selection/valid-targets selection))]
+            (->> valid-target-ids
+                 (map #(queries/get-object game-db %))
+                 (filterv some?)))
+
+          ;; Tutor: library cards filtered to candidates
+          (= effect-type :tutor)
           (let [candidates (:selection/candidates selection)
                 library (queries/get-objects-in-zone game-db player-id :library)]
             (filterv #(contains? candidates (:object/id %)) library))
 
-          :discard
+          ;; Discard: hand cards
+          (= effect-type :discard)
           (queries/get-hand game-db player-id)
 
           ;; Default: use the zone from selection
+          :else
           (queries/get-objects-in-zone game-db player-id (or zone :hand)))))))
 
 

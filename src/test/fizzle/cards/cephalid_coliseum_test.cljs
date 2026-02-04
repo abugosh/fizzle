@@ -22,6 +22,7 @@
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.abilities :as abilities]
+    [fizzle.engine.targeting :as targeting]
     [fizzle.events.game :as game]))
 
 
@@ -323,7 +324,7 @@
 
 
 (deftest test-coliseum-threshold-sacrifices-land
-  (testing "Activating threshold ability sacrifices the land"
+  (testing "Activating threshold ability sacrifices the land (after target confirmation)"
     (let [db (create-test-db)
           [db' obj-id] (add-land-to-battlefield db :cephalid-coliseum :player-1)
           ;; Add 7 cards to graveyard
@@ -338,10 +339,18 @@
           _ (is (= :battlefield (get-object-zone db'''' obj-id))
                 "Precondition: Coliseum on battlefield")
           ;; Activate threshold ability (index 1 = second ability)
-          result (game/activate-ability db'''' :player-1 obj-id 1)]
-      ;; After activation, land should be in graveyard (sacrifice is paid as cost)
-      (is (= :graveyard (get-object-zone (:db result) obj-id))
-          "Coliseum should be in graveyard after threshold activation"))))
+          ;; Now returns pending selection for targeting
+          result (game/activate-ability db'''' :player-1 obj-id 1)
+          selection (:pending-selection result)
+          ;; Coliseum should still be on battlefield (costs not paid yet)
+          _ (is (= :battlefield (get-object-zone (:db result) obj-id))
+                "Coliseum should still be on battlefield before target confirmed")
+          ;; Confirm target selection (targeting self)
+          selection-with-target (assoc selection :selection/selected-target :player-1)
+          final-result (game/confirm-ability-target (:db result) selection-with-target)]
+      ;; After confirmation, land should be in graveyard (sacrifice paid as cost)
+      (is (= :graveyard (get-object-zone (:db final-result) obj-id))
+          "Coliseum should be in graveyard after target confirmation"))))
 
 
 (deftest test-coliseum-threshold-draws-three-cards
@@ -374,7 +383,7 @@
 ;; === Edge Case Tests ===
 
 (deftest test-coliseum-threshold-targeting-self
-  (testing "Threshold ability can be activated and puts ability on stack"
+  (testing "Threshold ability activation pauses for targeting, then puts ability on stack"
     (let [db (create-test-db)
           [db' obj-id] (add-land-to-battlefield db :cephalid-coliseum :player-1)
           ;; Add 7 cards to graveyard
@@ -387,12 +396,21 @@
                                                :red 0 :green 0 :colorless 0})
           [db'''' _] (add-cards-to-library db''' [:island :island :island :swamp] :player-1)
           ;; Activate threshold ability (index 1 = second ability)
+          ;; Now returns pending selection for targeting
           result (game/activate-ability db'''' :player-1 obj-id 1)
-          ;; Check that ability was put on stack
-          stack-items (q/get-stack-items (:db result))]
+          selection (:pending-selection result)
+          ;; Stack should be empty (waiting for target)
+          initial-stack (q/get-stack-items (:db result))
+          _ (is (empty? initial-stack)
+                "Stack should be empty before target selected")
+          ;; Confirm target selection (targeting self)
+          selection-with-target (assoc selection :selection/selected-target :player-1)
+          final-result (game/confirm-ability-target (:db result) selection-with-target)
+          ;; Check that ability was put on stack after target confirmation
+          stack-items (q/get-stack-items (:db final-result))]
       ;; Should have an ability trigger on stack
       (is (= 1 (count stack-items))
-          "Should have ability on stack")
+          "Should have ability on stack after target confirmed")
       (is (= :activated-ability (:trigger/type (first stack-items)))
           "Stack item should be an activated ability"))))
 
@@ -425,3 +443,111 @@
           "Life should NOT change from graveyard activation")
       (is (= :graveyard (get-object-zone db'' obj-id))
           "Coliseum should remain in graveyard"))))
+
+
+;; === Cast-Time Ability Targeting Tests ===
+
+(deftest test-threshold-ability-has-targeting-requirement
+  (testing "Threshold ability has :ability/targeting for player targeting"
+    (let [threshold-ability (second (:card/abilities coliseum/cephalid-coliseum))
+          targeting-reqs (targeting/get-targeting-requirements threshold-ability)]
+      (is (= 1 (count targeting-reqs))
+          "Threshold ability should have exactly 1 targeting requirement")
+      (is (= :player (:target/type (first targeting-reqs)))
+          "Target type should be :player")
+      (is (= :player (:target/id (first targeting-reqs)))
+          "Target id should be :player")
+      (is (true? (:target/required (first targeting-reqs)))
+          "Target should be required"))))
+
+
+(deftest test-threshold-activation-prompts-for-target
+  (testing "Activating threshold ability returns pending selection instead of immediate stack"
+    (let [db (create-test-db)
+          [db' obj-id] (add-land-to-battlefield db :cephalid-coliseum :player-1)
+          ;; Add 7 cards to graveyard
+          [db'' _] (add-cards-to-graveyard db'
+                                           [:dark-ritual :dark-ritual :cabal-ritual
+                                            :brain-freeze :island :swamp :lotus-petal]
+                                           :player-1)
+          ;; Add blue mana
+          db''' (set-mana-pool db'' :player-1 {:white 0 :blue 1 :black 0
+                                               :red 0 :green 0 :colorless 0})
+          ;; Activate threshold ability
+          result (game/activate-ability db''' :player-1 obj-id 1)
+          selection (:pending-selection result)]
+      ;; Should return pending selection
+      (is (some? selection)
+          "Should have pending selection for target")
+      (is (= :ability-targeting (:selection/type selection))
+          "Selection type should be :ability-targeting")
+      (is (= :player-1 (:selection/player-id selection))
+          "Selection should track activating player")
+      (is (= obj-id (:selection/object-id selection))
+          "Selection should track source object")
+      (is (= 1 (:selection/ability-index selection))
+          "Selection should track ability index")
+      ;; Stack should be empty (waiting for target)
+      (is (empty? (q/get-stack-items (:db result)))
+          "Stack should be empty before target confirmed")
+      ;; Costs should NOT be paid yet
+      (is (= :battlefield (get-object-zone (:db result) obj-id))
+          "Land should still be on battlefield (not sacrificed yet)"))))
+
+
+(deftest test-threshold-target-stored-in-trigger
+  (testing "Confirmed ability target is stored in trigger context"
+    (let [db (create-test-db)
+          [db' obj-id] (add-land-to-battlefield db :cephalid-coliseum :player-1)
+          ;; Add 7 cards to graveyard
+          [db'' _] (add-cards-to-graveyard db'
+                                           [:dark-ritual :dark-ritual :cabal-ritual
+                                            :brain-freeze :island :swamp :lotus-petal]
+                                           :player-1)
+          ;; Add blue mana and cards to library
+          db''' (set-mana-pool db'' :player-1 {:white 0 :blue 1 :black 0
+                                               :red 0 :green 0 :colorless 0})
+          [db'''' _] (add-cards-to-library db''' [:island :island :island] :player-1)
+          ;; Activate and get selection
+          result (game/activate-ability db'''' :player-1 obj-id 1)
+          selection (:pending-selection result)
+          ;; Confirm with target
+          selection-with-target (assoc selection :selection/selected-target :player-1)
+          final-result (game/confirm-ability-target (:db result) selection-with-target)
+          ;; Get the trigger from stack
+          stack-items (q/get-stack-items (:db final-result))
+          trigger (first stack-items)
+          trigger-targets (get-in trigger [:trigger/data :targets])]
+      ;; Should have stored target
+      (is (= {:player :player-1} trigger-targets)
+          "Trigger data should contain stored target"))))
+
+
+(deftest test-threshold-activation-cancelled-preserves-state
+  (testing "Cancelled target selection does not activate ability"
+    (let [db (create-test-db)
+          [db' obj-id] (add-land-to-battlefield db :cephalid-coliseum :player-1)
+          ;; Add 7 cards to graveyard
+          [db'' _] (add-cards-to-graveyard db'
+                                           [:dark-ritual :dark-ritual :cabal-ritual
+                                            :brain-freeze :island :swamp :lotus-petal]
+                                           :player-1)
+          ;; Add blue mana
+          db''' (set-mana-pool db'' :player-1 {:white 0 :blue 1 :black 0
+                                               :red 0 :green 0 :colorless 0})
+          initial-mana (q/get-mana-pool db''' :player-1)
+          ;; Activate and get selection
+          result (game/activate-ability db''' :player-1 obj-id 1)
+          selection (:pending-selection result)
+          ;; Cancel by confirming with nil target
+          selection-cancelled (assoc selection :selection/selected-target nil)
+          final-result (game/confirm-ability-target (:db result) selection-cancelled)]
+      ;; Land should still be on battlefield (not sacrificed)
+      (is (= :battlefield (get-object-zone (:db final-result) obj-id))
+          "Land should still be on battlefield after cancellation")
+      ;; Mana pool should be unchanged
+      (is (= initial-mana (q/get-mana-pool (:db final-result) :player-1))
+          "Mana pool should be unchanged after cancellation")
+      ;; Stack should be empty
+      (is (empty? (q/get-stack-items (:db final-result)))
+          "Stack should be empty after cancellation"))))

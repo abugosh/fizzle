@@ -8,7 +8,9 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.conditions :as conditions]
     [fizzle.engine.effects :as effects]
+    [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
+    [fizzle.engine.targeting :as targeting]
     [fizzle.engine.triggers :as triggers]
     [fizzle.engine.zones :as zones]))
 
@@ -41,10 +43,18 @@
 
 
 (defn- get-alternate-modes
-  "Returns alternate casting modes that are valid for the card's current zone."
-  [card current-zone]
-  (let [alternates (or (:card/alternate-costs card) [])]
-    (->> alternates
+  "Returns alternate casting modes that are valid for the card's current zone.
+   Includes both card-defined alternate costs and granted alternate costs."
+  [card current-zone object-grants]
+  (let [;; Card-level alternate costs
+        card-alternates (or (:card/alternate-costs card) [])
+        ;; Granted alternate costs (from :object/grants)
+        granted-alternates (->> object-grants
+                                (filter #(= :alternate-cost (:grant/type %)))
+                                (map :grant/data))
+        ;; Combine both
+        all-alternates (concat card-alternates granted-alternates)]
+    (->> all-alternates
          (filter #(= current-zone (:alternate/zone %)))
          (map alternate-to-mode))))
 
@@ -53,18 +63,21 @@
   "Returns all valid casting modes for a card based on its current zone.
    Each mode is a map with :mode/id, :mode/mana-cost, :mode/additional-costs, :mode/on-resolve.
 
+   Includes both card-defined alternate costs and granted alternate costs.
+
    - Card in hand: returns primary mode + any alternates with :alternate/zone :hand
    - Card in graveyard: returns only alternates with :alternate/zone :graveyard (e.g. flashback)
    - Card elsewhere: returns empty (can't cast)"
   [db _player-id object-id]
   (if-let [obj (q/get-object db object-id)]
     (let [card (:object/card obj)
-          current-zone (:object/zone obj)]
+          current-zone (:object/zone obj)
+          object-grants (grants/get-grants db object-id)]
       (case current-zone
         :hand (let [primary (get-primary-mode card)
-                    alternates (get-alternate-modes card :hand)]
+                    alternates (get-alternate-modes card :hand object-grants)]
                 (into [primary] alternates))
-        :graveyard (vec (get-alternate-modes card :graveyard))
+        :graveyard (vec (get-alternate-modes card :graveyard object-grants))
         ;; Other zones: can't cast
         []))
     []))
@@ -131,11 +144,17 @@
    - The card is in the mode's required zone
    - Player can pay the mode's mana cost
    - Player can pay all additional costs
+   - Valid targets exist for all required targeting
 
    Returns false if object doesn't exist or no modes are castable."
   [db player-id object-id]
-  (let [modes (get-casting-modes db player-id object-id)]
-    (boolean (some #(can-cast-mode? db player-id object-id %) modes))))
+  (if-let [obj (q/get-object db object-id)]
+    (let [card (:object/card obj)
+          modes (get-casting-modes db player-id object-id)
+          has-mode (boolean (some #(can-cast-mode? db player-id object-id %) modes))
+          has-targets (targeting/has-valid-targets? db player-id card)]
+      (and has-mode has-targets))
+    false))
 
 
 (defn get-castable-cards
@@ -303,7 +322,7 @@
                           ;; Default: graveyard
                           :else :graveyard)]
         (as-> db db'
-              (reduce (fn [d effect] (effects/execute-effect d player-id effect))
+              (reduce (fn [d effect] (effects/execute-effect d player-id effect object-id))
                       db'
                       (or effects-list []))
               (zones/move-to-zone db' object-id destination))))))
