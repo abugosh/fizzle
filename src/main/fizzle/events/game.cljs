@@ -31,29 +31,45 @@
 
 (defn make-test-deck
   "Create a test deck as a vector of card-ids.
-   Mix of storm staples: rituals, lands, acceleration, card filtering.
-   Returns shuffled vector of 60 card-ids."
+   Iggy Pop storm deck - mix of rituals, lands, acceleration, card filtering.
+   Returns shuffled vector of 60 card-ids.
+
+   Target list (some cards not yet implemented, using substitutes):
+   - Flash of Insight, Ill-Gotten Gains, Orim's Chant, Ray of Revelation
+     are substituted with Merchant Scroll until implemented."
   []
   (shuffle
     (into []
           (concat
-            (repeat 6 :dark-ritual)
-            (repeat 6 :cabal-ritual)
+            ;; Rituals (8)
+            (repeat 4 :dark-ritual)
+            (repeat 4 :cabal-ritual)
+            ;; Win condition (4)
             (repeat 4 :brain-freeze)
-            (repeat 4 :city-of-brass)
+            ;; Lands (12)
+            (repeat 3 :city-of-brass)
             (repeat 4 :gemstone-mine)
-            (repeat 4 :polluted-delta)
-            (repeat 4 :underground-river)
+            (repeat 3 :polluted-delta)
+            (repeat 1 :underground-river)
             (repeat 2 :cephalid-coliseum)
             (repeat 2 :island)
+            (repeat 1 :swamp)
+            ;; Mana acceleration (8)
             (repeat 4 :lotus-petal)
             (repeat 4 :lions-eye-diamond)
-            (repeat 4 :careful-study)
-            (repeat 4 :mental-note)
-            (repeat 2 :opt)
-            (repeat 2 :merchant-scroll)
-            (repeat 2 :deep-analysis)
-            (repeat 2 :recoup)))))
+            ;; Card filtering (9)
+            (repeat 2 :careful-study)
+            (repeat 3 :mental-note)
+            (repeat 4 :opt)
+            ;; Tutors (4)
+            (repeat 4 :intuition)
+            ;; Flashback / Card advantage (4)
+            (repeat 3 :deep-analysis)
+            (repeat 1 :recoup)
+            ;; Substitutes for unimplemented cards (7)
+            ;; TODO: Replace with Flash of Insight (1), Ill-Gotten Gains (4),
+            ;;       Orim's Chant (1), Ray of Revelation (1)
+            (repeat 7 :merchant-scroll)))))
 
 
 (defn init-game-state
