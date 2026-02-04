@@ -1370,17 +1370,29 @@
 (rf/reg-event-db
   ::toggle-selection
   (fn [db [_ object-id]]
-    (let [selected (get-in db [:game/pending-selection :selection/selected] #{})
-          max-count (get-in db [:game/pending-selection :selection/count] 0)
-          effect-type (get-in db [:game/pending-selection :selection/effect-type])
+    (let [selection (get db :game/pending-selection)
+          selected (get selection :selection/selected #{})
+          selection-type (get selection :selection/type)
+          effect-type (get selection :selection/effect-type)
+          ;; Max count depends on selection type
+          max-count (cond
+                      ;; Pile choice uses :hand-count
+                      (= selection-type :pile-choice)
+                      (get selection :selection/hand-count 1)
+                      ;; Multi-select tutors use :select-count
+                      (get selection :selection/select-count)
+                      (get selection :selection/select-count)
+                      ;; Default to :count
+                      :else
+                      (get selection :selection/count 0))
           currently-selected? (contains? selected object-id)
           new-selected (cond
                          ;; Deselecting current selection
                          currently-selected?
                          (disj selected object-id)
 
-                         ;; For tutors (max 1): replace current selection
-                         (and (= effect-type :tutor) (= max-count 1))
+                         ;; For single-select tutors (max 1): replace current selection
+                         (and (= effect-type :tutor) (= max-count 1) (not= selection-type :pile-choice))
                          #{object-id}
 
                          ;; Under limit: add to selection

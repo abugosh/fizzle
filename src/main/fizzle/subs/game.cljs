@@ -177,6 +177,13 @@
             effect-type (:selection/effect-type selection)
             zone (:selection/zone selection)]
         (cond
+          ;; Pile choice: cards from candidates (still in library)
+          (= selection-type :pile-choice)
+          (let [candidates (:selection/candidates selection)]
+            (->> candidates
+                 (map #(queries/get-object game-db %))
+                 (filterv some?)))
+
           ;; Cast-time targeting with object targets (e.g., Recoup targeting graveyard sorcery)
           (and (= selection-type :cast-time-targeting)
                (= :object (get-in selection [:selection/target-requirement :target/type])))

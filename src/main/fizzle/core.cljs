@@ -894,6 +894,77 @@
        "Confirm"]]]))
 
 
+(defn- pile-choice-modal
+  "Modal for pile choice selection (Intuition-style).
+   Player chooses which card(s) go to hand, rest go to graveyard."
+  [selection cards]
+  (let [selected (:selection/selected selection)
+        hand-count (:selection/hand-count selection)
+        current-count (count selected)
+        valid? (= current-count hand-count)]
+    [:div {:style {:position "fixed"
+                   :top 0
+                   :left 0
+                   :right 0
+                   :bottom 0
+                   :background "rgba(0, 0, 0, 0.8)"
+                   :display "flex"
+                   :align-items "center"
+                   :justify-content "center"
+                   :z-index 1000}}
+     [:div {:style {:background "#1a1a2a"
+                    :border "2px solid #4A9BD9"
+                    :border-radius "12px"
+                    :padding "24px"
+                    :max-width "600px"
+                    :width "90%"}}
+      ;; Header
+      [:h2 {:style {:color "#eee"
+                    :margin "0 0 8px 0"
+                    :font-size "18px"}}
+       "Choose card for hand"]
+      ;; Instructions
+      [:p {:style {:color (if valid? "#5CB85C" "#F0AD4E")
+                   :margin "0 0 16px 0"
+                   :font-size "14px"}}
+       (str current-count " / " hand-count " selected for hand (rest go to graveyard)")]
+      ;; Card grid
+      [:div {:style {:display "flex"
+                     :flex-wrap "wrap"
+                     :gap "10px"
+                     :margin-bottom "20px"
+                     :min-height "60px"}}
+       (for [obj cards]
+         ^{:key (:object/id obj)}
+         [selection-card-view obj (contains? selected (:object/id obj))])]
+      ;; Buttons
+      [:div {:style {:display "flex"
+                     :justify-content "flex-end"
+                     :gap "12px"}}
+       ;; Random button
+       [:button {:style {:padding "8px 20px"
+                         :border "1px solid #555"
+                         :border-radius "4px"
+                         :cursor "pointer"
+                         :background "#333"
+                         :color "#ccc"
+                         :font-size "14px"}
+                 :on-click #(rf/dispatch [::events/select-random-pile-choice])}
+        "Random"]
+       ;; Confirm button
+       [:button {:style {:padding "8px 20px"
+                         :border "none"
+                         :border-radius "4px"
+                         :cursor (if valid? "pointer" "not-allowed")
+                         :background (if valid? "#2a6a2a" "#333")
+                         :color (if valid? "#fff" "#666")
+                         :font-size "14px"
+                         :font-weight "bold"}
+                 :disabled (not valid?)
+                 :on-click #(rf/dispatch [::events/confirm-pile-choice-selection])}
+        "Confirm"]]]]))
+
+
 (defn- selection-modal
   "Modal overlay for player selection.
    Shows when :game/pending-selection exists.
@@ -911,6 +982,10 @@
           ;; Scry selection (has :selection/type :scry)
           (= selection-type :scry)
           [scry-modal selection]
+
+          ;; Pile choice selection (Intuition-style: choose which cards go to hand)
+          (= selection-type :pile-choice)
+          [pile-choice-modal selection cards]
 
           ;; Cast-time targeting a player (e.g., Deep Analysis when casting)
           (and (= selection-type :cast-time-targeting) targets-player?)
