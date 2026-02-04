@@ -38,9 +38,9 @@
    :object/tapped     {}  ; Boolean
    :object/counters   {}  ; {:charge 3 :loyalty 4}
    :object/position   {}  ; Position in zone (for library ordering)
-   :object/targets    {:db/cardinality :db.cardinality/many
-                       :db/valueType :db.type/ref}  ; Targets chosen on cast
+   :object/targets    {}  ; Map of target-ref keyword → target-id (UUID or player keyword)
    :object/is-copy    {}  ; Boolean, marks spell copies (for storm, etc.)
+   :object/grants     {}  ; Vector of grant maps (temporary abilities/costs)
 
    ;; === Players ===
    :player/id              {:db/unique :db.unique/identity}
