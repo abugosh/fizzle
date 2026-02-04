@@ -878,6 +878,126 @@
       (is (= db db')))))
 
 
+;; === Test helpers for discard-hand ===
+
+(defn add-hand-cards
+  "Add cards to a player's hand.
+   Takes a count of cards to add (all referencing Dark Ritual card def)."
+  [db player-id count]
+  (let [conn (d/conn-from-db db)
+        player-eid (q/get-player-eid db player-id)]
+    (doseq [_ (range count)]
+      (let [card-eid (d/q '[:find ?e .
+                            :where [?e :card/id :dark-ritual]]
+                          @conn)]
+        (d/transact! conn [{:object/id (random-uuid)
+                            :object/card card-eid
+                            :object/zone :hand
+                            :object/owner player-eid
+                            :object/controller player-eid
+                            :object/tapped false}])))
+    @conn))
+
+
+;; === execute-effect :discard-hand tests ===
+
+(deftest test-discard-hand-moves-all-cards-to-graveyard
+  (testing ":discard-hand moves all cards from hand to graveyard"
+    ;; Catches: not moving all cards
+    ;; Note: init-game-state creates 1 Dark Ritual in hand
+    (let [db (-> (init-game-state)
+                 (add-hand-cards :player-1 4))
+          initial-hand-size (count-zone db :player-1 :hand)  ; Should be 5 (1 + 4)
+          effect {:effect/type :discard-hand}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 0 (count-zone db' :player-1 :hand))
+          "Hand should be empty after discard-hand")
+      (is (= initial-hand-size (count-zone db' :player-1 :graveyard))
+          "All cards should be in graveyard"))))
+
+
+(deftest test-discard-hand-empty-hand-is-noop
+  (testing ":discard-hand with empty hand is no-op, no crash"
+    ;; Catches: empty hand crash
+    ;; Note: init-game-state creates 1 card in hand, so we test with opponent who has none
+    (let [db (-> (init-game-state)
+                 (add-opponent))  ; opponent has no cards
+          initial-gy-size (count-zone db :player-2 :graveyard)
+          effect {:effect/type :discard-hand
+                  :effect/target :opponent}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Should be no-op - no crash, graveyard unchanged
+      (is (= 0 (count-zone db' :player-2 :hand)))
+      (is (= initial-gy-size (count-zone db' :player-2 :graveyard))))))
+
+
+(deftest test-discard-hand-targets-opponent
+  (testing ":discard-hand with :effect/target :opponent discards opponent's hand"
+    ;; Catches: wrong target
+    ;; Note: init-game-state creates 1 card in player-1's hand
+    (let [db (-> (init-game-state)
+                 (add-opponent)
+                 (add-hand-cards :player-1 2)
+                 (add-hand-cards :player-2 3))
+          caster-initial-hand (count-zone db :player-1 :hand)  ; 1 + 2 = 3
+          effect {:effect/type :discard-hand
+                  :effect/target :opponent}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Caster's hand unchanged
+      (is (= caster-initial-hand (count-zone db' :player-1 :hand))
+          "Caster's hand should be unchanged")
+      ;; Opponent's hand discarded
+      (is (= 0 (count-zone db' :player-2 :hand))
+          "Opponent's hand should be empty")
+      (is (= 3 (count-zone db' :player-2 :graveyard))
+          "Opponent's cards should be in graveyard"))))
+
+
+(deftest test-discard-hand-defaults-to-caster
+  (testing ":discard-hand with no :effect/target defaults to caster"
+    ;; Catches: missing default
+    ;; Note: init-game-state creates 1 card in player-1's hand
+    (let [db (-> (init-game-state)
+                 (add-opponent)
+                 (add-hand-cards :player-1 3)
+                 (add-hand-cards :player-2 2))
+          caster-initial-hand (count-zone db :player-1 :hand)  ; 1 + 3 = 4
+          effect {:effect/type :discard-hand
+                  ;; no :effect/target - should default to caster
+                  }
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Caster's hand discarded (default target)
+      (is (= 0 (count-zone db' :player-1 :hand))
+          "Caster's hand should be discarded")
+      (is (= caster-initial-hand (count-zone db' :player-1 :graveyard))
+          "Caster's cards should be in graveyard")
+      ;; Opponent's hand unchanged
+      (is (= 2 (count-zone db' :player-2 :hand))
+          "Opponent's hand should be unchanged"))))
+
+
+(deftest test-discard-hand-with-self-target
+  (testing ":discard-hand with :effect/target :self discards caster's hand"
+    ;; Catches: :self keyword not handled
+    ;; Note: init-game-state creates 1 card in player-1's hand
+    (let [db (-> (init-game-state)
+                 (add-opponent)
+                 (add-hand-cards :player-1 3)
+                 (add-hand-cards :player-2 2))
+          caster-initial-hand (count-zone db :player-1 :hand)  ; 1 + 3 = 4
+          effect {:effect/type :discard-hand
+                  :effect/target :self}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Caster's hand discarded (explicit :self target)
+      (is (= 0 (count-zone db' :player-1 :hand))
+          "Caster's hand should be discarded")
+      (is (= caster-initial-hand (count-zone db' :player-1 :graveyard))
+          "Caster's cards should be in graveyard")
+      ;; Opponent's hand unchanged
+      (is (= 2 (count-zone db' :player-2 :hand))
+          "Opponent's hand should be unchanged"))))
+
+
 ;; === Additional corner case tests ===
 
 (deftest test-draw-extremely-large-amount

@@ -317,6 +317,33 @@
       db)))  ; Object doesn't exist - no-op
 
 
+(defmethod execute-effect-impl :discard-hand
+  ;; Discard a player's entire hand to their graveyard.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/target - Target player (:self, :opponent, or player-id)
+  ;;                    Defaults to caster if not specified.
+  ;;
+  ;; This is a mandatory discard (no player choice) - all cards in hand
+  ;; are moved to graveyard.
+  ;;
+  ;; Handles edge cases:
+  ;;   - Empty hand: returns db unchanged (no-op)
+  ;;   - Invalid player: returns db unchanged (no-op)
+  ;;   - :self target: resolves to caster's player-id
+  [db player-id effect _object-id]
+  (let [target (get effect :effect/target player-id)
+        target-player (cond
+                        (= target :opponent) (q/get-opponent-id db player-id)
+                        (= target :self) player-id
+                        :else target)
+        hand-cards (q/get-hand db target-player)]
+    (reduce (fn [db' obj]
+              (zones/move-to-zone db' (:object/id obj) :graveyard))
+            db
+            (or hand-cards []))))
+
+
 (defmethod execute-effect-impl :sacrifice
   ;; Sacrifice a permanent - move it to the graveyard.
   ;;
