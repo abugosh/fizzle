@@ -998,6 +998,142 @@
           "Opponent's hand should be unchanged"))))
 
 
+;; === Test helpers for return-from-graveyard ===
+
+(defn add-graveyard-cards
+  "Add cards to a player's graveyard.
+   Takes a count of cards to add (all referencing Dark Ritual card def).
+   Returns [db added-object-ids] tuple."
+  [db player-id count]
+  (let [conn (d/conn-from-db db)
+        player-eid (q/get-player-eid db player-id)
+        object-ids (atom [])]
+    (doseq [_ (range count)]
+      (let [card-eid (d/q '[:find ?e .
+                            :where [?e :card/id :dark-ritual]]
+                          @conn)
+            obj-id (random-uuid)]
+        (d/transact! conn [{:object/id obj-id
+                            :object/card card-eid
+                            :object/zone :graveyard
+                            :object/owner player-eid
+                            :object/controller player-eid
+                            :object/tapped false}])
+        (swap! object-ids conj obj-id)))
+    [@conn @object-ids]))
+
+
+;; === execute-effect :return-from-graveyard tests ===
+
+(deftest test-return-from-graveyard-player-selection-returns-db-unchanged
+  (testing ":return-from-graveyard with :selection :player returns db unchanged (UI handles)"
+    ;; Catches: effect incorrectly modifies db instead of deferring to UI
+    (let [[db _gy-ids] (add-graveyard-cards (init-game-state) :player-1 3)
+          effect {:effect/type :return-from-graveyard
+                  :effect/count 3
+                  :effect/selection :player}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; db should be unchanged - player selection happens at app-db level
+      (is (= 3 (count-zone db' :player-1 :graveyard))
+          "Graveyard should be unchanged (UI handles selection)")
+      (is (= db db')
+          "db should be identical (no modifications for player selection)"))))
+
+
+(deftest test-return-from-graveyard-random-selects-up-to-count
+  (testing ":return-from-graveyard with :selection :random moves up to count cards to hand"
+    ;; Catches: random selection ignores count limit
+    (let [[db _gy-ids] (add-graveyard-cards (init-game-state) :player-1 5)
+          initial-hand-size (count-zone db :player-1 :hand)
+          effect {:effect/type :return-from-graveyard
+                  :effect/count 3
+                  :effect/selection :random}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Should move exactly 3 cards from graveyard to hand
+      (is (= 2 (count-zone db' :player-1 :graveyard))
+          "Graveyard should have 2 cards remaining")
+      (is (= (+ initial-hand-size 3) (count-zone db' :player-1 :hand))
+          "Hand should have 3 more cards"))))
+
+
+(deftest test-return-from-graveyard-random-empty-graveyard-is-noop
+  (testing ":return-from-graveyard with empty graveyard is no-op, no crash"
+    ;; Catches: nil pointer on empty graveyard
+    (let [db (init-game-state) ; no graveyard cards
+          initial-hand-size (count-zone db :player-1 :hand)
+          effect {:effect/type :return-from-graveyard
+                  :effect/count 3
+                  :effect/selection :random}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Should be no-op - no crash
+      (is (= 0 (count-zone db' :player-1 :graveyard))
+          "Graveyard should still be empty")
+      (is (= initial-hand-size (count-zone db' :player-1 :hand))
+          "Hand should be unchanged"))))
+
+
+(deftest test-return-from-graveyard-random-fewer-than-count-returns-all
+  (testing ":return-from-graveyard returns all available when graveyard has fewer than count"
+    ;; Catches: crashes when fewer cards available than requested
+    (let [[db _gy-ids] (add-graveyard-cards (init-game-state) :player-1 2) ; only 2 cards
+          initial-hand-size (count-zone db :player-1 :hand)
+          effect {:effect/type :return-from-graveyard
+                  :effect/count 5 ; requesting more than available
+                  :effect/selection :random}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Should move all 2 available cards (no crash)
+      (is (= 0 (count-zone db' :player-1 :graveyard))
+          "Graveyard should be empty")
+      (is (= (+ initial-hand-size 2) (count-zone db' :player-1 :hand))
+          "Hand should have all 2 cards"))))
+
+
+(deftest test-return-from-graveyard-targets-opponent
+  (testing ":return-from-graveyard with :effect/target :opponent affects opponent's graveyard"
+    ;; Catches: :opponent target not resolved to actual player-id
+    (let [db (-> (init-game-state)
+                 (add-opponent))
+          [db _gy-ids] (add-graveyard-cards db :player-2 4)
+          caster-initial-gy (count-zone db :player-1 :graveyard)
+          effect {:effect/type :return-from-graveyard
+                  :effect/count 2
+                  :effect/target :opponent
+                  :effect/selection :random}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Caster's graveyard unchanged
+      (is (= caster-initial-gy (count-zone db' :player-1 :graveyard))
+          "Caster's graveyard should be unchanged")
+      ;; Opponent's graveyard reduced
+      (is (= 2 (count-zone db' :player-2 :graveyard))
+          "Opponent's graveyard should have 2 cards remaining")
+      ;; Opponent's hand increased
+      (is (= 2 (count-zone db' :player-2 :hand))
+          "Opponent's hand should have 2 cards"))))
+
+
+(deftest test-return-from-graveyard-with-self-target
+  (testing ":return-from-graveyard with :effect/target :self resolves to caster"
+    ;; Catches: :self keyword passed directly to queries instead of resolving
+    (let [db (-> (init-game-state)
+                 (add-opponent))
+          [db _gy-ids] (add-graveyard-cards db :player-1 3)
+          [db _opp-ids] (add-graveyard-cards db :player-2 2)
+          initial-hand-size (count-zone db :player-1 :hand)
+          effect {:effect/type :return-from-graveyard
+                  :effect/count 2
+                  :effect/target :self
+                  :effect/selection :random}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Caster's graveyard affected
+      (is (= 1 (count-zone db' :player-1 :graveyard))
+          "Caster's graveyard should have 1 card remaining")
+      (is (= (+ initial-hand-size 2) (count-zone db' :player-1 :hand))
+          "Caster's hand should have 2 more cards")
+      ;; Opponent's graveyard unchanged
+      (is (= 2 (count-zone db' :player-2 :graveyard))
+          "Opponent's graveyard should be unchanged"))))
+
+
 ;; === Additional corner case tests ===
 
 (deftest test-draw-extremely-large-amount

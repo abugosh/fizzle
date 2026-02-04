@@ -344,6 +344,50 @@
             (or hand-cards []))))
 
 
+(defmethod execute-effect-impl :return-from-graveyard
+  ;; Return cards from a player's graveyard to their hand.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/target - Target player (:self, :opponent, or player-id)
+  ;;                    Defaults to caster if not specified.
+  ;;   :effect/count - Maximum cards to return (0-N)
+  ;;   :effect/selection - How to select cards:
+  ;;     :player - Player chooses (returns db unchanged, UI handles)
+  ;;     :random - Random selection (moves random cards to hand)
+  ;;
+  ;; For :selection :random:
+  ;;   Randomly selects up to :count cards from target's graveyard
+  ;;   and moves them to target's hand.
+  ;;
+  ;; For :selection :player (or default):
+  ;;   Returns db unchanged. Selection handled at app-db level via
+  ;;   re-frame events when player confirms their selection.
+  ;;
+  ;; Handles edge cases:
+  ;;   - Empty graveyard: returns db unchanged (no-op)
+  ;;   - Fewer cards than count: returns all available cards
+  ;;   - :self target: resolves to caster's player-id
+  ;;   - :opponent target: resolves via get-opponent-id
+  ;;   - count <= 0 or nil: returns db unchanged (no-op)
+  [db player-id effect _object-id]
+  (let [target (get effect :effect/target player-id)
+        target-player (cond
+                        (= target :opponent) (q/get-opponent-id db player-id)
+                        (= target :self) player-id
+                        :else target)
+        selection (get effect :effect/selection :player)
+        count-limit (get effect :effect/count 0)]
+    (case selection
+      :random (let [gy-cards (or (q/get-objects-in-zone db target-player :graveyard) [])
+                    selected (take count-limit (shuffle gy-cards))]
+                (reduce (fn [db' obj]
+                          (zones/move-to-zone db' (:object/id obj) :hand))
+                        db
+                        selected))
+      ;; :player and default - return unchanged (UI handles)
+      db)))
+
+
 (defmethod execute-effect-impl :sacrifice
   ;; Sacrifice a permanent - move it to the graveyard.
   ;;
