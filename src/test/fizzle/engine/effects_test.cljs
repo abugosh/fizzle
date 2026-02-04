@@ -707,6 +707,142 @@
       (is (= :battlefield (get-object-zone db' object-id))))))
 
 
+;; === execute-effect :grant-flashback tests ===
+
+(defn add-card-entity
+  "Add a card definition to the database.
+   Returns [card-eid db]."
+  [db card]
+  (let [conn (d/conn-from-db db)]
+    (when-not (d/q '[:find ?e .
+                     :in $ ?cid
+                     :where [?e :card/id ?cid]]
+                   @conn (:card/id card))
+      (d/transact! conn [card]))
+    (let [card-eid (d/q '[:find ?e .
+                          :in $ ?cid
+                          :where [?e :card/id ?cid]]
+                        @conn (:card/id card))]
+      [card-eid @conn])))
+
+
+(defn add-object-with-card
+  "Add a card and create an object in specified zone.
+   Returns [obj-id db] tuple."
+  [db player-id card zone]
+  (let [[card-eid db'] (add-card-entity db card)
+        conn (d/conn-from-db db')
+        player-eid (q/get-player-eid @conn player-id)
+        obj-id (random-uuid)
+        obj {:object/id obj-id
+             :object/card card-eid
+             :object/zone zone
+             :object/owner player-eid
+             :object/controller player-eid
+             :object/tapped false}]
+    (d/transact! conn [obj])
+    [obj-id @conn]))
+
+
+(def test-target-sorcery
+  {:card/id :test-target-sorcery
+   :card/name "Test Target Sorcery"
+   :card/cmc 4
+   :card/mana-cost {:colorless 2 :black 2}
+   :card/colors #{:black}
+   :card/types #{:sorcery}
+   :card/text "Test sorcery for grant-flashback effect."
+   :card/effects []})
+
+
+(def test-recoup-like-spell
+  {:card/id :test-recoup-like
+   :card/name "Test Recoup-like"
+   :card/cmc 2
+   :card/mana-cost {:colorless 1 :red 1}
+   :card/colors #{:red}
+   :card/types #{:sorcery}
+   :card/text "Grant flashback to target sorcery."
+   :card/targeting [{:target/id :graveyard-sorcery
+                     :target/type :object
+                     :target/zone :graveyard
+                     :target/controller :self
+                     :target/criteria {:card/types #{:sorcery}}
+                     :target/required true}]
+   :card/effects [{:effect/type :grant-flashback
+                   :effect/target-ref :graveyard-sorcery}]})
+
+
+(deftest test-grant-flashback-effect
+  (testing ":grant-flashback effect grants flashback to target sorcery"
+    (let [db (init-game-state)
+          ;; Add target sorcery to graveyard
+          [target-id db] (add-object-with-card db :player-1 test-target-sorcery :graveyard)
+          ;; Add recoup-like spell to stack with stored target
+          [spell-id db] (add-object-with-card db :player-1 test-recoup-like-spell :stack)
+          ;; Store the target on the spell object
+          spell-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db spell-id)
+          db (d/db-with db [[:db/add spell-eid :object/targets {:graveyard-sorcery target-id}]])
+          ;; Set game turn so we can verify expiration
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          db (d/db-with db [[:db/add game-eid :game/turn 1]])
+          ;; Execute the grant-flashback effect
+          effect {:effect/type :grant-flashback
+                  :effect/target-ref :graveyard-sorcery}
+          db' (fx/execute-effect db :player-1 effect spell-id)]
+      ;; Target should now have a grant
+      (let [grants (:object/grants (q/get-object db' target-id))]
+        (is (= 1 (count grants))
+            "Target should have one grant")
+        (is (= :alternate-cost (:grant/type (first grants)))
+            "Grant type should be :alternate-cost")
+        (is (= spell-id (:grant/source (first grants)))
+            "Grant source should be the casting spell")
+        (is (= 1 (get-in (first grants) [:grant/expires :expires/turn]))
+            "Grant should expire on current turn")
+        (is (= :cleanup (get-in (first grants) [:grant/expires :expires/phase]))
+            "Grant should expire at cleanup phase")
+        (is (= {:colorless 2 :black 2} (get-in (first grants) [:grant/data :alternate/mana-cost]))
+            "Grant mana cost should match target's mana cost")
+        (is (= :graveyard (get-in (first grants) [:grant/data :alternate/zone]))
+            "Grant should be usable from graveyard")
+        (is (= :exile (get-in (first grants) [:grant/data :alternate/on-resolve]))
+            "Grant should exile on resolve")))))
+
+
+(deftest test-grant-flashback-effect-invalid-target
+  (testing ":grant-flashback effect is no-op when target not found"
+    (let [db (init-game-state)
+          ;; Add recoup-like spell to stack with non-existent target
+          [spell-id db] (add-object-with-card db :player-1 test-recoup-like-spell :stack)
+          spell-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db spell-id)
+          fake-target-id (random-uuid)
+          db (d/db-with db [[:db/add spell-eid :object/targets {:graveyard-sorcery fake-target-id}]])
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          db (d/db-with db [[:db/add game-eid :game/turn 1]])
+          effect {:effect/type :grant-flashback
+                  :effect/target-ref :graveyard-sorcery}
+          db' (fx/execute-effect db :player-1 effect spell-id)]
+      ;; Should return db unchanged (no crash)
+      (is (= db db')
+          "Should be no-op when target doesn't exist"))))
+
+
+(deftest test-grant-flashback-effect-no-stored-target
+  (testing ":grant-flashback effect is no-op when no stored target"
+    (let [db (init-game-state)
+          ;; Add recoup-like spell to stack without storing targets
+          [spell-id db] (add-object-with-card db :player-1 test-recoup-like-spell :stack)
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          db (d/db-with db [[:db/add game-eid :game/turn 1]])
+          effect {:effect/type :grant-flashback
+                  :effect/target-ref :graveyard-sorcery}
+          db' (fx/execute-effect db :player-1 effect spell-id)]
+      ;; Should return db unchanged (no crash)
+      (is (= db db')
+          "Should be no-op when no stored target"))))
+
+
 ;; === Additional corner case tests ===
 
 (deftest test-draw-extremely-large-amount

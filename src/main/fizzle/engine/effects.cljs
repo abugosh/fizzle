@@ -6,6 +6,7 @@
   (:require
     [datascript.core :as d]
     [fizzle.db.queries :as q]
+    [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.zones :as zones]))
 
@@ -62,16 +63,17 @@
      db - Datascript database value
      player-id - The player who controls this effect
      effect - Map with :effect/type and effect-specific keys
+     object-id - The object that is the source of this effect (may be nil)
 
    Returns:
      New db with effect applied.
 
    Unknown effect types return db unchanged (no-op)."
-  (fn [_db _player-id effect] (:effect/type effect)))
+  (fn [_db _player-id effect _object-id] (:effect/type effect)))
 
 
 (defmethod execute-effect-impl :default
-  [db _player-id _effect]
+  [db _player-id _effect _object-id]
   ;; Unknown effect types are no-ops
   db)
 
@@ -81,18 +83,28 @@
    If :effect/condition exists and is not met, returns db unchanged.
    If no condition or condition met, dispatches to execute-effect-impl.
 
+   Arguments:
+     db - Datascript database value
+     player-id - The player who controls this effect
+     effect - Map with :effect/type and effect-specific keys
+     object-id - (Optional) The object that is the source of this effect.
+                 Used by effects like :grant-flashback that need to read
+                 stored targets from the casting object.
+
    Note: :self targets MUST be resolved to object-id by caller before
    calling this function. See events/game.cljs play-land for pattern."
-  [db player-id effect]
-  (if-let [condition (:effect/condition effect)]
-    (if (check-condition db player-id effect condition)
-      (execute-effect-impl db player-id effect)
-      db)
-    (execute-effect-impl db player-id effect)))
+  ([db player-id effect]
+   (execute-effect db player-id effect nil))
+  ([db player-id effect object-id]
+   (if-let [condition (:effect/condition effect)]
+     (if (check-condition db player-id effect condition)
+       (execute-effect-impl db player-id effect object-id)
+       db)
+     (execute-effect-impl db player-id effect object-id))))
 
 
 (defmethod execute-effect-impl :add-mana
-  [db player-id effect]
+  [db player-id effect _object-id]
   (mana/add-mana db player-id (:effect/mana effect)))
 
 
@@ -107,7 +119,7 @@
   ;; Handles edge cases:
   ;;   - Empty library: returns db unchanged (no-op)
   ;;   - Partial library: mills all available cards (no crash)
-  [db player-id effect]
+  [db player-id effect _object-id]
   (let [target (get effect :effect/target player-id)
         target-player (if (= target :opponent)
                         (q/get-opponent-id db player-id)
@@ -141,7 +153,7 @@
   ;;   - Invalid player: no-op (returns db unchanged)
   ;;   - Life can go negative (no clamping at 0)
   ;;   - Life reaching 0 or below sets :game/loss-condition :life-zero
-  [db player-id effect]
+  [db player-id effect _object-id]
   (let [amount (get effect :effect/amount 0)
         target (get effect :effect/target player-id)]
     ;; Guard: amount <= 0 is no-op
@@ -170,7 +182,7 @@
   ;;   - Amount <= 0: no-op (negative amount is NOT treated as lose)
   ;;   - Invalid player: no-op (returns db unchanged)
   ;;   - No maximum life cap
-  [db player-id effect]
+  [db player-id effect _object-id]
   (let [amount (get effect :effect/amount 0)
         target (get effect :effect/target player-id)]
     ;; Guard: amount <= 0 is no-op
@@ -201,7 +213,7 @@
   ;; Note: For Phase 1.5, behaves identically to :lose-life.
   ;; Kept separate for future damage prevention implementation.
   ;; Damage can be prevented; life loss cannot (MTG rules).
-  [db _player-id effect]
+  [db _player-id effect _object-id]
   (let [amount (get effect :effect/amount 0)
         target (:effect/target effect)]
     ;; Guard: amount <= 0 is no-op
@@ -230,7 +242,7 @@
   ;;   - Nil/missing counters: initializes to provided counters
   ;;   - Existing counters: merges, incrementing same types
   ;;   - Invalid target: no-op (returns db unchanged)
-  [db _player-id effect]
+  [db _player-id effect _object-id]
   (let [target-id (:effect/target effect)
         counters-to-add (:effect/counters effect)]
     (if-let [obj-eid (d/q '[:find ?e .
@@ -260,7 +272,7 @@
   ;;   - Partial library: draws all available, then sets loss condition
   ;;   - Draw 0 or negative: no-op, no loss condition
   ;;   - Invalid player: no-op (returns db unchanged)
-  [db player-id effect]
+  [db player-id effect _object-id]
   (let [amount (get effect :effect/amount 1)
         target (get effect :effect/target player-id)]
     ;; Guard: draw 0 or negative is no-op
@@ -292,7 +304,7 @@
   ;; Handles edge cases:
   ;;   - Invalid target: no-op (returns db unchanged)
   ;;   - Object not on battlefield: still moves to graveyard (zones handles it)
-  [db _player-id effect]
+  [db _player-id effect _object-id]
   (let [target-id (:effect/target effect)]
     (if (d/q '[:find ?e .
                :in $ ?oid
@@ -322,7 +334,7 @@
   ;; Handles edge cases:
   ;;   - :selection :player: Returns db unchanged (UI handles selection)
   ;;   - Invalid player: no-op (returns db unchanged)
-  [db _player-id effect]
+  [db _player-id effect _object-id]
   (let [selection (get effect :effect/selection :player)]
     (case selection
       ;; Player selection - return unchanged, UI will handle
@@ -345,7 +357,7 @@
   ;;
   ;; Selection is always required (anti-pattern: NO auto-select for tutors).
   ;; Player must always have fail-to-find option (rules: hidden information).
-  [db _player-id _effect]
+  [db _player-id _effect _object-id]
   ;; Return unchanged - selection handled at app-db level
   db)
 
@@ -368,8 +380,55 @@
   ;;   - amount <= 0: No-op (returns db unchanged, no selection needed)
   ;;   - amount > library size: Scry available cards only (handled in selection setup)
   ;;   - missing amount: Defaults to 0 (no-op)
-  [db _player-id effect]
+  [db _player-id effect _object-id]
   (let [amount (or (:effect/amount effect) 0)]
     (if (<= amount 0)
       db  ; No-op for scry 0, negative, or missing amount
       db))) ; Return unchanged - selection handled at app-db level
+
+
+(defmethod execute-effect-impl :grant-flashback
+  ;; Grant flashback to a target card.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/target-ref - The target reference keyword (e.g., :graveyard-sorcery)
+  ;;                        Used to look up the target from :object/targets on the
+  ;;                        casting object.
+  ;;
+  ;; This effect:
+  ;;   1. Gets the target from :object/targets on the casting object (object-id)
+  ;;   2. Gets the target card's mana cost
+  ;;   3. Creates a grant with :alternate-cost type
+  ;;   4. Adds the grant to the target object via grants/add-grant
+  ;;
+  ;; The grant expires at cleanup phase of the current turn ("until end of turn").
+  ;;
+  ;; Handles edge cases:
+  ;;   - object-id nil: no-op (returns db unchanged)
+  ;;   - No stored targets: no-op
+  ;;   - Target doesn't exist: no-op
+  [db _player-id effect object-id]
+  (if-not object-id
+    db  ; No source object - no-op
+    (let [source-obj (q/get-object db object-id)
+          target-ref (:effect/target-ref effect)
+          stored-targets (:object/targets source-obj)
+          target-id (get stored-targets target-ref)]
+      (if-not target-id
+        db  ; No stored target for this ref - no-op
+        (if-let [target-obj (q/get-object db target-id)]
+          (let [target-card (:object/card target-obj)
+                target-mana-cost (:card/mana-cost target-card)
+                game-state (q/get-game-state db)
+                current-turn (or (:game/turn game-state) 1)
+                grant {:grant/id (random-uuid)
+                       :grant/type :alternate-cost
+                       :grant/source object-id
+                       :grant/expires {:expires/turn current-turn
+                                       :expires/phase :cleanup}
+                       :grant/data {:alternate/id :granted-flashback
+                                    :alternate/zone :graveyard
+                                    :alternate/mana-cost target-mana-cost
+                                    :alternate/on-resolve :exile}}]
+            (grants/add-grant db target-id grant))
+          db)))))
