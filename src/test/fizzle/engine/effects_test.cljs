@@ -843,6 +843,41 @@
           "Should be no-op when no stored target"))))
 
 
+;; === execute-effect :exile-self tests ===
+
+(deftest test-exile-self-moves-spell-to-exile-zone
+  (testing ":exile-self effect moves source object to exile zone"
+    ;; Catches: effect doesn't move to correct zone
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          ;; Verify starting zone is battlefield
+          _ (is (= :battlefield (get-object-zone db object-id)))
+          effect {:effect/type :exile-self}
+          db' (fx/execute-effect db :player-1 effect object-id)]
+      ;; Object should now be in exile zone
+      (is (= :exile (get-object-zone db' object-id))))))
+
+
+(deftest test-exile-self-with-nil-object-id-returns-db-unchanged
+  (testing ":exile-self effect with nil object-id returns db unchanged"
+    ;; Catches: nil pointer exception if object-id not guarded
+    (let [db (init-game-state)
+          effect {:effect/type :exile-self}
+          db' (fx/execute-effect db :player-1 effect nil)]
+      ;; Should be no-op, no crash
+      (is (= db db')))))
+
+
+(deftest test-exile-self-with-nonexistent-object-returns-db-unchanged
+  (testing ":exile-self effect with nonexistent object-id returns db unchanged"
+    ;; Catches: missing guard clause for object existence
+    (let [db (init-game-state)
+          fake-object-id (random-uuid)
+          effect {:effect/type :exile-self}
+          db' (fx/execute-effect db :player-1 effect fake-object-id)]
+      ;; Should be no-op, no crash
+      (is (= db db')))))
+
+
 ;; === Additional corner case tests ===
 
 (deftest test-draw-extremely-large-amount

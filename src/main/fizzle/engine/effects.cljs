@@ -294,6 +294,29 @@
         db))))
 
 
+(defmethod execute-effect-impl :exile-self
+  ;; Exile the source object (the spell/permanent that produced this effect).
+  ;;
+  ;; Effect keys:
+  ;;   None required - uses object-id parameter as the target.
+  ;;
+  ;; Used by cards like Ill-Gotten Gains that exile themselves as part
+  ;; of their resolution (instead of going to graveyard).
+  ;;
+  ;; Handles edge cases:
+  ;;   - Nil object-id: no-op (returns db unchanged)
+  ;;   - Nonexistent object: no-op (returns db unchanged)
+  [db _player-id _effect object-id]
+  (if-not object-id
+    db  ; No source object - no-op
+    (if (d/q '[:find ?e .
+               :in $ ?oid
+               :where [?e :object/id ?oid]]
+             db object-id)
+      (zones/move-to-zone db object-id :exile)
+      db)))  ; Object doesn't exist - no-op
+
+
 (defmethod execute-effect-impl :sacrifice
   ;; Sacrifice a permanent - move it to the graveyard.
   ;;
