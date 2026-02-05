@@ -2,6 +2,7 @@
   "Tests for game initialization - player library and starting hand."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
+    [datascript.db :as ds-db]
     [fizzle.db.queries :as q]
     [fizzle.events.game :as game]))
 
@@ -117,3 +118,24 @@
       ;; After drawing 7, 60 - 7 = 53 remain
       (is (= 53 (count library))
           "Library should have 53 cards after initial draw"))))
+
+
+;; === Game State Initialization Validation Tests ===
+
+(deftest test-init-game-state-returns-non-nil-db
+  ;; Bug caught: Crash on nil db when game state not properly initialized
+  (testing "init-game-state returns valid, non-nil game db"
+    (let [app-db (game/init-game-state)
+          game-db (:game/db app-db)]
+      ;; The game db must never be nil
+      (is (some? game-db)
+          "Game db must not be nil after initialization")
+      ;; The game db must be a datascript db
+      (is (instance? ds-db/DB game-db)
+          "Game db must be a datascript database")
+      ;; Essential player state must exist
+      (is (some? (q/get-player-eid game-db :player-1))
+          "Player 1 must exist in initialized db")
+      ;; Game state entity must exist
+      (is (some? (first (q/get-game-state game-db)))
+          "Game state must exist in initialized db"))))

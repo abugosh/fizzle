@@ -222,6 +222,27 @@
       (is (= initial-pool (q/get-mana-pool db' :player-1))))))
 
 
+(deftest test-add-mana-negative-amount
+  (testing "add-mana with negative value: documents current behavior"
+    ;; Corner case: negative mana amounts in effect.
+    ;; Current behavior: merge-with + allows negative values, which subtract.
+    ;; This test documents the behavior - not necessarily desired, but known.
+    ;; Bug it catches: unexpected negative mana pool values.
+    (let [db (init-game-state)
+          ;; First add some mana so we have a baseline
+          db (fx/execute-effect db :player-1 {:effect/type :add-mana
+                                              :effect/mana {:black 5}})
+          _ (is (= 5 (:black (q/get-mana-pool db :player-1))))
+          ;; Now try to add negative mana
+          effect {:effect/type :add-mana
+                  :effect/mana {:black -3}}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Document current behavior: negative add works like subtraction
+      ;; Pool was 5, adding -3 gives 2
+      (is (= 2 (:black (q/get-mana-pool db' :player-1)))
+          "Current behavior: negative mana in add-mana subtracts from pool"))))
+
+
 ;; === execute-effect :draw tests ===
 
 (defn get-loss-condition

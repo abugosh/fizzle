@@ -183,3 +183,36 @@
           db' (mana/pay-mana db :player-1 {:colorless 2})]
       (is (= 0 (:black (q/get-mana-pool db' :player-1))))
       (is (= 0 (:blue (q/get-mana-pool db' :player-1)))))))
+
+
+;; === Corner case tests ===
+
+(deftest test-mana-pool-large-values
+  (testing "mana pool handles large values without overflow"
+    ;; Corner case: very large mana pool values.
+    ;; Bug it catches: integer overflow in ClojureScript (JS numbers are 64-bit floats,
+    ;; but large integers can lose precision above 2^53).
+    ;; 1,000,000 is well within safe range. Tests that basic operations work.
+    (let [db (init-game-state)
+          db' (mana/add-mana db :player-1 {:black 1000000})]
+      (is (= 1000000 (:black (q/get-mana-pool db' :player-1)))
+          "Large mana values should be stored correctly"))))
+
+
+(deftest test-pay-mana-without-can-pay
+  (testing "pay-mana when pool is insufficient: documents current behavior"
+    ;; Corner case: calling pay-mana without checking can-pay? first.
+    ;; Current behavior: pool goes negative (no validation in pay-mana).
+    ;; This is documented in the docstring as caller responsibility.
+    ;; Bug it catches: documents behavior so callers know to use can-pay?.
+    (let [db (init-game-state)
+          ;; Pool starts at 0 for all colors
+          _ (is (= 0 (:black (q/get-mana-pool db :player-1))))
+          ;; Call pay-mana without having the mana (violates contract)
+          db' (mana/pay-mana db :player-1 {:black 3})]
+      ;; Document current behavior: pool goes negative
+      (is (= -3 (:black (q/get-mana-pool db' :player-1)))
+          "Current behavior: pay-mana allows negative pool (no internal validation)")
+      ;; This is why callers MUST use can-pay? before pay-mana
+      (is (false? (mana/can-pay? db :player-1 {:black 3}))
+          "can-pay? correctly returns false for insufficient mana"))))

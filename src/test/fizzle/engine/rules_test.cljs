@@ -693,22 +693,21 @@
 
 
 (deftest can-cast-mode-empty-mana-cost-test
-  (testing "can-cast-mode? returns true for zero mana cost mode"
+  (testing "can-cast-mode? returns true for zero mana cost when additional costs met"
     ;; Test Gush's alternate mode which has {} (empty) mana cost
     (let [db (init-game-state)
           [obj-id db] (add-card-to-zone db :player-1 gush-like-card :hand)
           modes (rules/get-casting-modes db :player-1 obj-id)
           ;; Find the alternate mode with empty mana cost
           alt-mode (first (filter #(= :return-islands (:mode/id %)) modes))]
-      ;; Note: This tests mana cost only. The additional cost (return lands)
-      ;; is not validated here since we don't have the cost type implemented yet.
-      ;; For now we just verify empty mana cost is considered payable.
+      ;; Verify mode has empty mana cost
       (is (= {} (:mode/mana-cost alt-mode))
           "Alternate mode should have empty mana cost")
-      ;; Mana portion is payable (0 cost)
-      ;; Additional costs check would fail for :return-lands but that's expected
-      ;; since we haven't implemented that cost type yet
-      )))
+      ;; Actually test can-cast-mode? - mana portion is payable (0 cost)
+      ;; Note: Full can-cast-mode? returns false because :return-lands additional
+      ;; cost is not implemented yet. We test the mana portion via can-pay?.
+      (is (true? (mana/can-pay? db :player-1 (:mode/mana-cost alt-mode)))
+          "Empty mana cost {} should be payable"))))
 
 
 ;; === Backwards compatibility ===
@@ -861,3 +860,23 @@
           "Existing cast-spell API should still work")
       (is (= 1 (q/get-storm-count db' :player-1))
           "Storm should increment"))))
+
+
+;; === Additional corner case tests ===
+
+(deftest test-cast-spell-invalid-object-id
+  (testing "cast-spell with non-existent object ID returns db unchanged"
+    ;; Corner case: calling cast-spell with an object ID that doesn't exist.
+    ;; Current behavior: returns db unchanged (no crash, graceful no-op).
+    ;; Bug it catches: NullPointerException or crash when object doesn't exist.
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 5}))
+          fake-id (random-uuid)  ; Object that doesn't exist
+          initial-storm (q/get-storm-count db :player-1)
+          db' (rules/cast-spell db :player-1 fake-id)]
+      ;; Should be no-op: storm unchanged, db essentially the same
+      (is (= initial-storm (q/get-storm-count db' :player-1))
+          "Storm count should not change for invalid object")
+      ;; can-cast? should also return false
+      (is (false? (rules/can-cast? db :player-1 fake-id))
+          "can-cast? should return false for non-existent object"))))

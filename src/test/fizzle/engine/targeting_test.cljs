@@ -383,3 +383,25 @@
           db (d/db-with db [[:db/add obj-eid :object/targets {:player :player-1}]])]
       (is (targeting/all-targets-legal? db obj-id)
           "Player target should always be legal"))))
+
+
+;; === Target Zone Validation Tests ===
+
+(deftest test-target-wrong-zone-rejected
+  ;; Bug caught: Accepting targets from any zone instead of specified zone
+  (testing "Targeting rejects objects in wrong zone"
+    (let [db (init-game-state)
+          ;; Add sorcery to LIBRARY (not graveyard where targeting expects it)
+          [obj-id db] (add-card-to-zone db :player-1 test-sorcery :library)
+          ;; Target requirement expects graveyard
+          target-req {:target/id :graveyard-sorcery
+                      :target/type :object
+                      :target/zone :graveyard  ; Expects graveyard
+                      :target/controller :self
+                      :target/criteria {:card/types #{:sorcery}}}]
+      ;; Object should NOT be found as valid target (wrong zone)
+      (is (= [] (targeting/find-valid-targets db :player-1 target-req))
+          "Object in wrong zone should not be found as valid target")
+      ;; target-still-legal? should return false for object in wrong zone
+      (is (false? (targeting/target-still-legal? db obj-id target-req))
+          "Object in wrong zone should not be legal target"))))

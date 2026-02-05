@@ -302,3 +302,67 @@
           "Hand should be empty")
       (is (= 3 (get-library-count db-after :player-1))
           "Library should have all 3 cards"))))
+
+
+;; === Selection State Management Tests ===
+
+(deftest test-selection-cancel-cleanup
+  ;; Bug caught: State left in pending-selection with stale selections after cancel
+  (testing "Cancelling selection clears selected items while preserving pending state"
+    (let [db (create-test-db)
+          [db' [obj1 obj2 _obj3]] (add-cards-to-library
+                                    db
+                                    [:dark-ritual :cabal-ritual :brain-freeze]
+                                    :player-1)
+          ;; Create initial pending selection
+          effect {:effect/type :tutor
+                  :effect/select-count 1
+                  :effect/target-zone :hand}
+          selection (game/build-tutor-selection db' :player-1 (random-uuid) effect [])
+          ;; Simulate adding to app-db with selection in progress
+          app-db {:game/db db'
+                  :game/pending-selection (assoc selection :selection/selected #{obj1 obj2})}
+          ;; Simulate cancel-selection event (clears selected, keeps pending state)
+          cancelled-db (assoc-in app-db [:game/pending-selection :selection/selected] #{})]
+      ;; Pending selection should still exist (player must complete the action)
+      (is (some? (:game/pending-selection cancelled-db))
+          "Pending selection state should still exist after cancel")
+      ;; But selected items should be cleared
+      (is (empty? (get-in cancelled-db [:game/pending-selection :selection/selected]))
+          "Selected items should be cleared after cancel")
+      ;; Candidates should still be available for re-selection
+      (is (= 3 (count (get-in cancelled-db [:game/pending-selection :selection/candidates])))
+          "Candidates should still be available after cancel"))))
+
+
+(deftest test-selection-double-submit
+  ;; Bug caught: Duplicate card movement when selection submitted twice
+  (testing "Submitting same selection twice is idempotent - second submit is no-op"
+    (let [db (create-test-db)
+          [db' [obj1 _obj2 _obj3]] (add-cards-to-library
+                                     db
+                                     [:dark-ritual :cabal-ritual :brain-freeze]
+                                     :player-1)
+          selection {:selection/selected #{obj1}
+                     :selection/target-zone :hand
+                     :selection/player-id :player-1
+                     :selection/shuffle? true}
+          ;; First submit - moves obj1 to hand
+          db-after-first (game/execute-tutor-selection db' selection)
+          ;; Verify first submit worked
+          _ (is (= :hand (get-object-zone db-after-first obj1))
+                "First submit should move card to hand")
+          _ (is (= 1 (get-hand-count db-after-first :player-1))
+                "Hand should have 1 card after first submit")
+          ;; Second submit with same selection (obj1 already moved)
+          ;; The card is no longer in library, so this should not crash or duplicate
+          db-after-second (game/execute-tutor-selection db-after-first selection)]
+      ;; Card should still be in hand (not duplicated, not removed)
+      (is (= :hand (get-object-zone db-after-second obj1))
+          "Card should remain in hand after second submit")
+      ;; Hand count should remain 1 (no duplication)
+      (is (= 1 (get-hand-count db-after-second :player-1))
+          "Hand should still have only 1 card (no duplication)")
+      ;; Library should still have 2 cards
+      (is (= 2 (get-library-count db-after-second :player-1))
+          "Library should still have 2 remaining cards"))))

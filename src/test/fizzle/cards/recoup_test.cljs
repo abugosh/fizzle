@@ -515,3 +515,25 @@
           "Careful Study should have casting modes from graveyard")
       (is (some #(= :granted-flashback (:mode/id %)) modes)
           "One mode should be :granted-flashback"))))
+
+
+;; === Flashback Zone Restriction Tests ===
+
+(deftest test-flashback-from-exile-blocked
+  ;; Bug caught: Allowing flashback from wrong zone (exile instead of graveyard)
+  (testing "Flashback only works from graveyard, not exile"
+    (let [db (create-test-db)
+          ;; Add Recoup directly to EXILE (not graveyard)
+          [db recoup-id] (add-card-to-zone db :recoup :exile :player-1)
+          ;; Add a sorcery target in graveyard (required for Recoup)
+          [db _sorcery-id] (add-cards-to-graveyard db [:careful-study] :player-1)
+          ;; Add mana to pay flashback cost {3}{R}
+          db (set-mana-pool db :player-1 {:colorless 3 :red 1})
+          ;; Get casting modes - should be empty since card is in exile
+          modes (rules/get-casting-modes db :player-1 recoup-id)]
+      ;; Flashback should NOT be available from exile
+      (is (empty? modes)
+          "No casting modes should be available from exile")
+      ;; Verify can-cast? also returns false
+      (is (false? (rules/can-cast? db :player-1 recoup-id))
+          "Flashback should not work from exile zone"))))

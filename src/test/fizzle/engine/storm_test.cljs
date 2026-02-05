@@ -499,3 +499,110 @@
           "Storm spell should be above non-storm spell")
       (is (< storm-pos trigger-order)
           "Storm trigger should be above storm spell"))))
+
+
+;; === High storm count corner case ===
+
+(defn init-high-storm-state
+  "Create game state with high storm count for performance testing.
+   Sets up storm count at 20 (simulating 20 spells already cast).
+   Returns db with Brain Freeze in hand ready to cast."
+  []
+  (let [conn (d/create-conn schema)]
+    ;; Transact Brain Freeze card
+    (d/transact! conn [brain-freeze-spell])
+
+    ;; Transact player with high storm count already
+    (d/transact! conn [{:player/id :player-1
+                        :player/name "Player"
+                        :player/life 20
+                        :player/mana-pool {:white 0 :blue 10 :black 10
+                                           :red 0 :green 0 :colorless 10}
+                        :player/storm-count 20  ; Already cast 20 spells
+                        :player/land-plays-left 1}])
+
+    ;; Transact opponent with library
+    (d/transact! conn [{:player/id :player-2
+                        :player/name "Opponent"
+                        :player/life 20
+                        :player/mana-pool {:white 0 :blue 0 :black 0
+                                           :red 0 :green 0 :colorless 0}
+                        :player/storm-count 0
+                        :player/land-plays-left 1
+                        :player/is-opponent true}])
+
+    ;; Get entity IDs
+    (let [player1-eid (d/q '[:find ?e .
+                             :where [?e :player/id :player-1]]
+                           @conn)
+          player2-eid (d/q '[:find ?e .
+                             :where [?e :player/id :player-2]]
+                           @conn)
+          brain-freeze-eid (d/q '[:find ?e .
+                                  :where [?e :card/id :brain-freeze]]
+                                @conn)]
+
+      ;; Create Brain Freeze in hand
+      (d/transact! conn [{:object/id :brain-freeze-obj
+                          :object/card brain-freeze-eid
+                          :object/zone :hand
+                          :object/owner player1-eid
+                          :object/controller player1-eid
+                          :object/tapped false}])
+
+      ;; Create 70 cards in opponent's library (enough for 21 x 3 = 63 mills)
+      (doseq [i (range 70)]
+        (d/transact! conn [{:object/id (keyword (str "library-card-" i))
+                            :object/card brain-freeze-eid
+                            :object/zone :library
+                            :object/owner player2-eid
+                            :object/controller player2-eid
+                            :object/position i
+                            :object/tapped false}]))
+
+      ;; Transact game state
+      (d/transact! conn [{:game/id :game-1
+                          :game/turn 1
+                          :game/phase :main1
+                          :game/active-player player1-eid
+                          :game/priority player1-eid}]))
+
+    @conn))
+
+
+(deftest test-storm-high-count
+  (testing "Storm with 20+ copies completes without timeout or performance issue"
+    ;; Corner case: high storm counts (20+) should work without issues.
+    ;; Bug it catches: performance regression, memory issues, stack overflow.
+    ;; Note: This is a behavior test, not a strict performance benchmark.
+    (let [db (init-high-storm-state)
+          ;; Verify initial state
+          _ (is (= 20 (q/get-storm-count db :player-1))
+                "Storm count should start at 20")
+          _ (is (= 70 (count-zone db :player-2 :library))
+                "Opponent should have 70 cards in library")
+
+          ;; Cast Brain Freeze (storm count becomes 21)
+          db (rules/cast-spell db :player-1 :brain-freeze-obj)
+          _ (is (= 21 (q/get-storm-count db :player-1))
+                "Storm count should be 21 after casting")
+
+          ;; Get and resolve storm trigger (creates 20 copies)
+          stack-items (q/get-stack-items db)
+          storm-trigger (first (filter #(= :storm (:trigger/type %)) stack-items))
+          _ (is (some? storm-trigger) "Storm trigger should exist")
+
+          ;; Resolve storm trigger - this is the performance-critical part
+          db (triggers/resolve-trigger db storm-trigger)
+
+          ;; Count copies created
+          stack-objects (q/get-objects-in-zone db :player-1 :stack)
+          copies (filter :object/is-copy stack-objects)]
+
+      ;; Verify 20 copies were created (storm count - 1 = 20)
+      (is (= 20 (count copies))
+          "Should create 20 storm copies")
+
+      ;; Verify original + copies = 21 on stack
+      (is (= 21 (count stack-objects))
+          "Should have 21 objects on stack (original + 20 copies)"))))
