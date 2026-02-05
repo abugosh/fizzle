@@ -136,11 +136,29 @@
     (and mana-payable additional-payable)))
 
 
+(defn has-restriction?
+  "Check if a player has an active restriction of the given type.
+   Returns true if restriction exists, false otherwise.
+
+   Used by can-cast? to enforce player restrictions like 'cannot cast spells'.
+
+   Edge cases:
+   - Non-existent player: returns false (no grants)
+   - Multiple matching grants: returns true (finds first match)
+   - Different restriction type: returns false (specific matching)"
+  [db player-id restriction-type]
+  (let [restriction-grants (grants/get-player-grants-by-type db player-id :restriction)]
+    (boolean
+      (some #(= restriction-type (get-in % [:grant/data :restriction/type]))
+            restriction-grants))))
+
+
 (defn can-cast?
   "Check if a player can cast a card.
 
    Checks if ANY valid casting mode is castable.
    A mode is valid if:
+   - Player does not have :cannot-cast-spells restriction
    - The card is in the mode's required zone
    - Player can pay the mode's mana cost
    - Player can pay all additional costs
@@ -148,13 +166,16 @@
 
    Returns false if object doesn't exist or no modes are castable."
   [db player-id object-id]
-  (if-let [obj (q/get-object db object-id)]
-    (let [card (:object/card obj)
-          modes (get-casting-modes db player-id object-id)
-          has-mode (boolean (some #(can-cast-mode? db player-id object-id %) modes))
-          has-targets (targeting/has-valid-targets? db player-id card)]
-      (and has-mode has-targets))
-    false))
+  ;; Check player restrictions FIRST (before any other checks)
+  (if (has-restriction? db player-id :cannot-cast-spells)
+    false
+    (if-let [obj (q/get-object db object-id)]
+      (let [card (:object/card obj)
+            modes (get-casting-modes db player-id object-id)
+            has-mode (boolean (some #(can-cast-mode? db player-id object-id %) modes))
+            has-targets (targeting/has-valid-targets? db player-id card)]
+        (and has-mode has-targets))
+      false)))
 
 
 (defn get-castable-cards

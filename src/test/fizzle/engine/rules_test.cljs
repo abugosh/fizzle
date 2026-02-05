@@ -5,6 +5,7 @@
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
+    [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.zones :as zones]))
@@ -880,3 +881,133 @@
       ;; can-cast? should also return false
       (is (false? (rules/can-cast? db :player-1 fake-id))
           "can-cast? should return false for non-existent object"))))
+
+
+;; =====================================================
+;; Player Restriction Tests (cannot-cast-spells)
+;; =====================================================
+
+(defn add-player-restriction
+  "Add a restriction grant to a player for testing.
+   Creates grant expiring at turn 99 (effectively permanent for tests)."
+  [db player-id restriction-type]
+  (let [grant {:grant/id (random-uuid)
+               :grant/type :restriction
+               :grant/source nil
+               :grant/expires {:expires/turn 99 :expires/phase :cleanup}
+               :grant/data {:restriction/type restriction-type}}]
+    (grants/add-player-grant db player-id grant)))
+
+
+(defn add-player-restriction-with-expiry
+  "Add a restriction grant with specific expiry for testing."
+  [db player-id restriction-type turn phase]
+  (let [grant {:grant/id (random-uuid)
+               :grant/type :restriction
+               :grant/source nil
+               :grant/expires {:expires/turn turn :expires/phase phase}
+               :grant/data {:restriction/type restriction-type}}]
+    (grants/add-player-grant db player-id grant)))
+
+
+(defn add-opponent
+  "Add a second player to the game state."
+  [db]
+  (let [conn (d/conn-from-db db)]
+    (d/transact! conn [{:player/id :player-2
+                        :player/life 20
+                        :player/storm-count 0
+                        :player/mana-pool {}}])
+    @conn))
+
+
+(deftest cannot-cast-with-restriction-test
+  (testing "player with :cannot-cast-spells restriction cannot cast any spell"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1})
+                 (add-player-restriction :player-1 :cannot-cast-spells))
+          hand (q/get-hand db :player-1)
+          object-id (:object/id (first hand))]
+      (is (not (rules/can-cast? db :player-1 object-id))
+          "Should not be able to cast Dark Ritual with restriction"))))
+
+
+(deftest can-cast-without-restriction-test
+  (testing "player without restriction can cast spells normally"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1}))
+          hand (q/get-hand db :player-1)
+          object-id (:object/id (first hand))]
+      (is (rules/can-cast? db :player-1 object-id)
+          "Should be able to cast Dark Ritual without restriction"))))
+
+
+(deftest restriction-on-opponent-doesnt-affect-player-test
+  (testing "restriction on opponent doesn't prevent player from casting"
+    (let [db (-> (init-game-state)
+                 (add-opponent)
+                 (mana/add-mana :player-1 {:black 1})
+                 (add-player-restriction :player-2 :cannot-cast-spells))
+          hand (q/get-hand db :player-1)
+          object-id (:object/id (first hand))]
+      (is (rules/can-cast? db :player-1 object-id)
+          "Player 1 should still be able to cast"))))
+
+
+(deftest has-restriction-different-type-test
+  (testing "has-restriction? returns false when restriction is different type"
+    (let [db (-> (init-game-state)
+                 (add-player-restriction :player-1 :cannot-attack))]
+      (is (not (rules/has-restriction? db :player-1 :cannot-cast-spells))
+          "Should not find :cannot-cast-spells when only :cannot-attack exists"))))
+
+
+(deftest has-restriction-multiple-grants-test
+  (testing "has-restriction? returns true when multiple restriction grants exist"
+    (let [db (-> (init-game-state)
+                 (add-player-restriction :player-1 :cannot-cast-spells)
+                 (add-player-restriction :player-1 :cannot-cast-spells))]
+      (is (rules/has-restriction? db :player-1 :cannot-cast-spells)
+          "Should find restriction among multiple grants"))))
+
+
+(deftest different-restriction-allows-casting-test
+  (testing "different restriction type doesn't prevent casting"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1})
+                 (add-player-restriction :player-1 :cannot-attack))]
+      ;; Player has :cannot-attack but NOT :cannot-cast-spells
+      (let [hand (q/get-hand db :player-1)
+            object-id (:object/id (first hand))]
+        (is (rules/can-cast? db :player-1 object-id)
+            "Should be able to cast when only :cannot-attack restriction exists")))))
+
+
+(deftest expired-restriction-allows-casting-test
+  (testing "after restriction expires, player can cast again"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1})
+                 (add-player-restriction-with-expiry :player-1 :cannot-cast-spells 1 :cleanup))
+          ;; Expire grants (turn 2, cleanup phase - later than expiry)
+          db' (grants/expire-grants db 2 :cleanup)
+          hand (q/get-hand db' :player-1)
+          object-id (:object/id (first hand))]
+      (is (rules/can-cast? db' :player-1 object-id)
+          "Should be able to cast after restriction expires"))))
+
+
+(deftest has-restriction-non-existent-player-test
+  (testing "has-restriction? returns false for non-existent player"
+    (let [db (init-game-state)]
+      (is (not (rules/has-restriction? db :player-99 :cannot-cast-spells))
+          "Should return false for player that doesn't exist"))))
+
+
+(deftest get-castable-cards-respects-restriction-test
+  (testing "get-castable-cards returns empty when player has restriction"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1})
+                 (add-player-restriction :player-1 :cannot-cast-spells))
+          castable (rules/get-castable-cards db :player-1)]
+      (is (empty? castable)
+          "Should return empty when player has cannot-cast-spells restriction"))))
