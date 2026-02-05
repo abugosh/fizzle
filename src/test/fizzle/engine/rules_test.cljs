@@ -1011,3 +1011,189 @@
           castable (rules/get-castable-cards db :player-1)]
       (is (empty? castable)
           "Should return empty when player has cannot-cast-spells restriction"))))
+
+
+;; =====================================================
+;; Kicker Casting Modes Tests
+;; =====================================================
+
+(def kicker-test-card
+  "Card with kicker for testing kicker modes."
+  {:card/id :test-kicker-spell
+   :card/name "Test Kicker Spell"
+   :card/cmc 1
+   :card/mana-cost {:white 1}
+   :card/colors #{:white}
+   :card/types #{:instant}
+   :card/text "Kicker {W}. If kicked, draw a card."
+   :card/kicker {:white 1}
+   :card/effects [{:effect/type :mill :effect/count 1}]
+   :card/kicked-effects [{:effect/type :mill :effect/count 1}
+                         {:effect/type :draw :effect/count 1}]})
+
+
+(def kicker-flashback-card
+  "Card with both kicker and flashback for testing independence."
+  {:card/id :kicker-flashback-test
+   :card/name "Test Kicker Flashback"
+   :card/cmc 1
+   :card/mana-cost {:white 1}
+   :card/colors #{:white}
+   :card/types #{:instant}
+   :card/text "Kicker {W}. Flashback {W}{W}."
+   :card/kicker {:white 1}
+   :card/effects [{:effect/type :mill :effect/count 1}]
+   :card/kicked-effects [{:effect/type :mill :effect/count 1}
+                         {:effect/type :draw :effect/count 1}]
+   :card/alternate-costs [{:alternate/id :flashback
+                           :alternate/zone :graveyard
+                           :alternate/mana-cost {:white 2}
+                           :alternate/additional-costs []
+                           :alternate/on-resolve :exile}]})
+
+
+;; Note: Datascript doesn't allow nil values, so we can't test :card/kicker nil directly.
+;; The test nil-kicker-cost-test will test a card without the :card/kicker key at all,
+;; which is the practical equivalent.
+
+
+(def kicker-no-effects-card
+  "Card with kicker but no :card/kicked-effects."
+  {:card/id :kicker-no-effects-test
+   :card/name "Kicker No Effects Test"
+   :card/cmc 1
+   :card/mana-cost {:red 1}
+   :card/colors #{:red}
+   :card/types #{:instant}
+   :card/text "Kicker {R}. No special kicked effects."
+   :card/kicker {:red 1}
+   :card/effects [{:effect/type :mill :effect/count 1}]})
+
+
+(deftest kicker-returns-two-modes-test
+  (testing "Cards with kicker return both primary and kicked modes"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 kicker-test-card :hand)
+          modes (rules/get-casting-modes db :player-1 obj-id)]
+      (is (= 2 (count modes))
+          "Should return exactly two modes (primary + kicked)")
+      (is (some #(= :primary (:mode/id %)) modes)
+          "Should include primary mode")
+      (is (some #(= :kicked (:mode/id %)) modes)
+          "Should include kicked mode"))))
+
+
+(deftest kicked-mode-has-combined-cost-test
+  (testing "Kicked mode has base cost + kicker cost combined"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 kicker-test-card :hand)
+          modes (rules/get-casting-modes db :player-1 obj-id)
+          kicked-mode (first (filter #(= :kicked (:mode/id %)) modes))]
+      (is (= {:white 2} (:mode/mana-cost kicked-mode))
+          "Kicked mode cost should be {W} + {W} = {WW}"))))
+
+
+(deftest kicked-mode-includes-effects-test
+  (testing "Kicked mode includes :mode/effects from card/kicked-effects"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 kicker-test-card :hand)
+          modes (rules/get-casting-modes db :player-1 obj-id)
+          kicked-mode (first (filter #(= :kicked (:mode/id %)) modes))]
+      (is (= (:card/kicked-effects kicker-test-card)
+             (:mode/effects kicked-mode))
+          "Kicked mode should have :mode/effects matching card's kicked-effects"))))
+
+
+(deftest primary-mode-no-effects-test
+  (testing "Primary mode does not have :mode/effects"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 kicker-test-card :hand)
+          modes (rules/get-casting-modes db :player-1 obj-id)
+          primary-mode (first (filter #(= :primary (:mode/id %)) modes))]
+      (is (nil? (:mode/effects primary-mode))
+          "Primary mode should not have :mode/effects"))))
+
+
+(deftest no-kicker-single-mode-test
+  (testing "Cards without kicker return only primary mode"
+    (let [db (init-game-state)
+          hand (q/get-hand db :player-1)
+          ritual (first hand)  ; Dark Ritual has no kicker
+          modes (rules/get-casting-modes db :player-1 (:object/id ritual))]
+      (is (= 1 (count modes))
+          "Cards without kicker should return only one mode")
+      (is (= :primary (:mode/id (first modes)))
+          "The single mode should be :primary"))))
+
+
+(deftest kicker-not-from-graveyard-test
+  (testing "Kicker mode is not available when card is in graveyard"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 kicker-test-card :graveyard)
+          modes (rules/get-casting-modes db :player-1 obj-id)]
+      (is (= 0 (count modes))
+          "Kicker card in graveyard (without flashback) should have no modes"))))
+
+
+(deftest get-active-effects-uses-mode-effects-test
+  (testing "Resolution uses mode effects when kicked"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 kicker-test-card :hand)
+          db (mana/add-mana db :player-1 {:white 2})
+          modes (rules/get-casting-modes db :player-1 obj-id)
+          kicked-mode (first (filter #(= :kicked (:mode/id %)) modes))
+          ;; Cast with kicked mode
+          db-cast (rules/cast-spell-mode db :player-1 obj-id kicked-mode)
+          ;; Check the object has cast mode stored
+          obj (q/get-object db-cast obj-id)]
+      (is (= :kicked (:mode/id (:object/cast-mode obj)))
+          "Object should have kicked mode stored")
+      (is (some? (:mode/effects (:object/cast-mode obj)))
+          "Stored mode should have effects"))))
+
+
+(deftest kicker-with-flashback-independent-test
+  (testing "Kicker and flashback work independently"
+    (let [db (init-game-state)
+          ;; Test from hand: should have primary + kicked + flashback (3 modes? No - flashback is from graveyard)
+          ;; From hand: primary + kicked
+          [obj-id db] (add-card-to-zone db :player-1 kicker-flashback-card :hand)
+          hand-modes (rules/get-casting-modes db :player-1 obj-id)]
+      (is (= 2 (count hand-modes))
+          "From hand: should have primary and kicked modes")
+      (is (some #(= :primary (:mode/id %)) hand-modes)
+          "Should include primary mode from hand")
+      (is (some #(= :kicked (:mode/id %)) hand-modes)
+          "Should include kicked mode from hand")
+      ;; Now test from graveyard: should only have flashback (no kicked from graveyard)
+      (let [[gy-obj-id db'] (add-card-to-zone db :player-1 kicker-flashback-card :graveyard)
+            gy-modes (rules/get-casting-modes db' :player-1 gy-obj-id)]
+        (is (= 1 (count gy-modes))
+            "From graveyard: should only have flashback mode")
+        (is (= :flashback (:mode/id (first gy-modes)))
+            "Should be flashback mode, not kicked")))))
+
+
+(deftest nil-kicker-cost-test
+  (testing "Card without :card/kicker key returns only primary mode"
+    ;; Use Dark Ritual which has no :card/kicker key (equivalent to nil)
+    (let [db (init-game-state)
+          hand (q/get-hand db :player-1)
+          ritual (first hand)  ; Dark Ritual has no :card/kicker
+          modes (rules/get-casting-modes db :player-1 (:object/id ritual))]
+      (is (= 1 (count modes))
+          "Card without kicker key should return only primary mode")
+      (is (= :primary (:mode/id (first modes)))
+          "Should be primary mode"))))
+
+
+(deftest empty-kicked-effects-test
+  (testing "Card with kicker but no kicked-effects has empty mode effects"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 kicker-no-effects-card :hand)
+          modes (rules/get-casting-modes db :player-1 obj-id)
+          kicked-mode (first (filter #(= :kicked (:mode/id %)) modes))]
+      (is (= 2 (count modes))
+          "Should have both primary and kicked modes")
+      (is (= [] (:mode/effects kicked-mode))
+          "Kicked mode should have empty effects when card has no kicked-effects"))))

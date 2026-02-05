@@ -1124,7 +1124,7 @@
       {:db db :pending-selection nil}  ; No-op if spell not on stack
       (let [card (:object/card obj)
             stored-targets (:object/targets obj)
-            effects-list (or (rules/get-active-effects db player-id card) [])
+            effects-list (or (rules/get-active-effects db player-id card object-id) [])
             selection-idx (find-selection-effect-index effects-list)
             ;; Check if stored targets can satisfy the selection effect
             has-stored-player-target (and stored-targets

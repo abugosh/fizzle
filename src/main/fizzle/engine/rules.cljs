@@ -19,6 +19,13 @@
 ;; Alternate Casting Modes
 ;; =====================================================
 
+(defn- merge-mana-costs
+  "Merge two mana costs by adding values for each color.
+   Used for combining base cost with kicker cost."
+  [cost1 cost2]
+  (merge-with + (or cost1 {}) (or cost2 {})))
+
+
 (defn- get-primary-mode
   "Returns the primary casting mode for a card.
    Primary mode is: cast from hand with the card's mana cost."
@@ -30,6 +37,21 @@
    :mode/on-resolve (if (some #{:instant :sorcery} (:card/types card))
                       :graveyard
                       :battlefield)})
+
+
+(defn- get-kicked-mode
+  "Returns the kicked casting mode for a card with kicker, or nil if no kicker.
+   Kicked mode combines base cost with kicker cost and uses kicked effects."
+  [card]
+  (when (:card/kicker card)
+    {:mode/id :kicked
+     :mode/zone :hand
+     :mode/mana-cost (merge-mana-costs (:card/mana-cost card) (:card/kicker card))
+     :mode/additional-costs []
+     :mode/effects (or (:card/kicked-effects card) [])
+     :mode/on-resolve (if (some #{:instant :sorcery} (:card/types card))
+                        :graveyard
+                        :battlefield)}))
 
 
 (defn- alternate-to-mode
@@ -75,8 +97,11 @@
           object-grants (grants/get-grants db object-id)]
       (case current-zone
         :hand (let [primary (get-primary-mode card)
+                    kicked (get-kicked-mode card)
                     alternates (get-alternate-modes card :hand object-grants)]
-                (into [primary] alternates))
+                (cond-> [primary]
+                  kicked (conj kicked)
+                  true (into alternates)))
         :graveyard (vec (get-alternate-modes card :graveyard object-grants))
         ;; Other zones: can't cast
         []))
@@ -289,18 +314,29 @@
 
 
 (defn get-active-effects
-  "Select which effects to use based on card conditions.
+  "Select which effects to use based on cast mode and card conditions.
+
+   Priority order:
+   1. Mode effects (:mode/effects on cast mode) - used for kicked spells
+   2. Conditional effects (e.g., threshold) - checked at resolution time
+   3. Default effects (:card/effects)
 
    Cards may have:
    - :card/effects - Default effects (always used if no condition matches)
    - :card/conditional-effects - Map of condition keyword to effects list
      e.g., {:threshold [{:effect/type :add-mana :effect/mana {:black 5}}]}
-
-   Condition checking is done at resolution time (not cast time)."
-  [db player-id card]
-  (let [default-effects (:card/effects card)
+   - :card/kicked-effects - Effects when cast with kicker (stored in mode)"
+  [db player-id card object-id]
+  (let [obj (q/get-object db object-id)
+        cast-mode (:object/cast-mode obj)
+        mode-effects (:mode/effects cast-mode)
+        default-effects (:card/effects card)
         conditional-effects (:card/conditional-effects card)]
     (cond
+      ;; Use mode effects if present (kicked spells)
+      (seq mode-effects)
+      mode-effects
+
       ;; Check threshold condition if card has it
       (and (:threshold conditional-effects)
            (conditions/threshold? db player-id))
@@ -332,7 +368,7 @@
       db  ; No-op if spell not on stack
       (let [card (:object/card obj)
             card-types (:card/types card)
-            effects-list (get-active-effects db player-id card)
+            effects-list (get-active-effects db player-id card object-id)
             cast-mode (:object/cast-mode obj)
             mode-destination (:mode/on-resolve cast-mode)
             destination (cond
