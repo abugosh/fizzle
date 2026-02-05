@@ -216,3 +216,89 @@
       ;; This is why callers MUST use can-pay? before pay-mana
       (is (false? (mana/can-pay? db :player-1 {:black 3}))
           "can-pay? correctly returns false for insufficient mana"))))
+
+
+;; === X cost tests ===
+
+(deftest can-pay-x-cost-always-true-test
+  ;; X can always be 0, so any X cost is payable (for the X portion)
+  ;; Bug it catches: X costs rejected when they should always be valid
+  (testing "can-pay? returns true for X cost even with empty pool"
+    (let [db (init-game-state)]
+      ;; {:x 1 :blue 1} requires 1 blue, but X portion is always payable
+      ;; With empty pool, should return false (can't pay blue)
+      (is (false? (mana/can-pay? db :player-1 {:x 1 :blue 1}))
+          "Still need to pay colored portion")))
+  (testing "can-pay? returns true when colored portion is met"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:blue 1}))]
+      ;; Has 1 blue, X can be 0, so this is payable
+      (is (true? (mana/can-pay? db :player-1 {:x 1 :blue 1}))
+          "X portion ignored, colored portion met"))))
+
+
+(deftest pay-mana-x-value-zero-test
+  ;; When X=0, only pay the non-X portion
+  ;; Bug it catches: X=0 not handled correctly, pays wrong amount
+  (testing "pay-mana with x-value=0 pays only fixed costs"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:blue 2}))
+          ;; Cost: X + 1 colorless + 1 blue, with X=0 -> just 1 colorless + 1 blue
+          db' (mana/pay-mana db :player-1 {:x 1 :colorless 1 :blue 1} 0)]
+      ;; Should pay 1 colorless (from blue) + 1 blue = 2 blue total
+      (is (= 0 (:blue (q/get-mana-pool db' :player-1)))
+          "Paid 2 mana (1 colorless from blue, 1 blue)"))))
+
+
+(deftest pay-mana-x-value-converts-to-colorless-test
+  ;; {:x 1 :colorless 1 :blue 1} with x-value=3 -> {:colorless 4 :blue 1}
+  ;; Bug it catches: X not converted to colorless correctly
+  (testing "pay-mana resolves X to colorless mana"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 5 :blue 1}))
+          ;; Cost: X(3) + 1 colorless + 1 blue = 4 colorless + 1 blue
+          db' (mana/pay-mana db :player-1 {:x 1 :colorless 1 :blue 1} 3)]
+      ;; Should pay 4 generic from black, 1 from blue
+      (is (= 1 (:black (q/get-mana-pool db' :player-1)))
+          "4 black spent on generic (X=3 + 1 colorless)")
+      (is (= 0 (:blue (q/get-mana-pool db' :player-1)))
+          "1 blue spent on blue requirement"))))
+
+
+(deftest pay-mana-x-value-nil-defaults-zero-test
+  ;; Backwards compatibility: omitting x-value treats X as 0
+  ;; Bug it catches: nil x-value causes error or wrong behavior
+  (testing "pay-mana without x-value treats X as 0"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:blue 2}))
+          ;; No x-value arg provided - should default to 0
+          db' (mana/pay-mana db :player-1 {:x 1 :blue 1})]
+      ;; X=0, so just pay 1 blue
+      (is (= 1 (:blue (q/get-mana-pool db' :player-1)))
+          "Only paid 1 blue (X defaulted to 0)"))))
+
+
+(deftest pay-mana-no-x-key-unchanged-test
+  ;; Backwards compatibility: costs without :x work exactly as before
+  ;; Bug it catches: adding X support breaks existing non-X costs
+  (testing "pay-mana without :x key works unchanged (backwards compat)"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 3 :blue 1}))
+          ;; Standard cost with no X - should work exactly as before
+          db' (mana/pay-mana db :player-1 {:colorless 1 :black 1})]
+      (is (= 1 (:black (q/get-mana-pool db' :player-1)))
+          "1 black for colored, 1 black for generic")
+      (is (= 1 (:blue (q/get-mana-pool db' :player-1)))
+          "Blue untouched"))))
+
+
+(deftest pay-mana-multiple-x-multiplies-test
+  ;; Future-proofing: {:x 2} means "2X" (e.g., XX cost like Blaze)
+  ;; Bug it catches: multiple X not multiplied correctly
+  (testing "pay-mana with {:x 2} multiplies x-value by 2"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 6}))
+          ;; XX cost where X=3 -> 6 colorless total
+          db' (mana/pay-mana db :player-1 {:x 2} 3)]
+      (is (= 0 (:black (q/get-mana-pool db' :player-1)))
+          "Paid 6 mana (2 * 3 from XX)"))))

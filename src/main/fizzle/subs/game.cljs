@@ -210,6 +210,20 @@
           (= effect-type :discard)
           (queries/get-hand game-db player-id)
 
+          ;; Exile-cards cost: cards from candidates (graveyard filtered by criteria)
+          (= effect-type :exile-cards-cost)
+          (let [candidates (:selection/candidates selection)]
+            (->> candidates
+                 (map #(queries/get-object game-db %))
+                 (filterv some?)))
+
+          ;; Peek-and-select: top N cards from library
+          (= effect-type :peek-and-select)
+          (let [candidates (:selection/candidates selection)]
+            (->> candidates
+                 (map #(queries/get-object game-db %))
+                 (filterv some?)))
+
           ;; Default: use the zone from selection
           :else
           (queries/get-objects-in-zone game-db player-id (or zone :hand)))))))

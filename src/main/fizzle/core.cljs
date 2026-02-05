@@ -1120,6 +1120,250 @@
         "Confirm"]]]]))
 
 
+(defn- exile-cards-selection-modal
+  "Modal for selecting cards to exile for an additional cost (e.g., Flash of Insight flashback).
+   Player must select at least 1 card. The count of selected cards becomes X."
+  [selection cards]
+  (let [selected (:selection/selected selection)
+        current-count (count selected)
+        valid? (pos? current-count)]
+    [:div {:style {:position "fixed"
+                   :top 0
+                   :left 0
+                   :right 0
+                   :bottom 0
+                   :background "rgba(0, 0, 0, 0.8)"
+                   :display "flex"
+                   :align-items "center"
+                   :justify-content "center"
+                   :z-index 1000}}
+     [:div {:style {:background "#1a1a2a"
+                    :border "2px solid #6a4a8a"
+                    :border-radius "12px"
+                    :padding "24px"
+                    :max-width "600px"
+                    :width "90%"}}
+      ;; Header
+      [:h2 {:style {:color "#eee"
+                    :margin "0 0 8px 0"
+                    :font-size "18px"}}
+       "Select cards to exile (Flashback cost)"]
+      ;; Instructions
+      [:p {:style {:color "#5CB85C"
+                   :margin "0 0 16px 0"
+                   :font-size "14px"}}
+       (str "Select blue cards to exile. X = " current-count " (select at least 1)")]
+      ;; Card grid
+      [:div {:style {:display "flex"
+                     :flex-wrap "wrap"
+                     :gap "10px"
+                     :margin-bottom "20px"
+                     :min-height "60px"}}
+       (if (seq cards)
+         (for [obj cards]
+           ^{:key (:object/id obj)}
+           [:div {:style {:cursor "pointer"}
+                  :on-click #(rf/dispatch [::events/toggle-exile-card-selection (:object/id obj)])}
+            [selection-card-view obj (contains? selected (:object/id obj))]])
+         [:div {:style {:color "#666"}}
+          "No eligible cards"])]
+      ;; Buttons
+      [:div {:style {:display "flex"
+                     :justify-content "flex-end"
+                     :gap "12px"}}
+       [:button {:style {:padding "8px 20px"
+                         :border "1px solid #555"
+                         :border-radius "4px"
+                         :cursor "pointer"
+                         :background "#333"
+                         :color "#ccc"
+                         :font-size "14px"}
+                 :on-click #(rf/dispatch [::events/cancel-exile-cards-selection])}
+        "Cancel"]
+       [:button {:style {:padding "8px 20px"
+                         :border "none"
+                         :border-radius "4px"
+                         :cursor (if valid? "pointer" "not-allowed")
+                         :background (if valid? "#6a4a8a" "#333")
+                         :color (if valid? "#fff" "#666")
+                         :font-size "14px"
+                         :font-weight "bold"}
+                 :disabled (not valid?)
+                 :on-click #(rf/dispatch [::events/confirm-exile-cards-selection])}
+        (str "Exile " current-count " cards")]]]]))
+
+
+(defn- peek-selection-modal
+  "Modal for peek-and-select effect (e.g., Flash of Insight).
+   Player sees top X cards and selects up to N for hand."
+  [selection cards]
+  (let [selected (:selection/selected selection)
+        select-count (:selection/select-count selection)
+        current-count (count selected)
+        valid? (<= current-count select-count)]
+    [:div {:style {:position "fixed"
+                   :top 0
+                   :left 0
+                   :right 0
+                   :bottom 0
+                   :background "rgba(0, 0, 0, 0.8)"
+                   :display "flex"
+                   :align-items "center"
+                   :justify-content "center"
+                   :z-index 1000}}
+     [:div {:style {:background "#1a1a2a"
+                    :border "2px solid #6a4a8a"
+                    :border-radius "12px"
+                    :padding "24px"
+                    :max-width "600px"
+                    :width "90%"}}
+      ;; Header
+      [:h2 {:style {:color "#eee"
+                    :margin "0 0 8px 0"
+                    :font-size "18px"}}
+       "Look at the top cards of your library"]
+      ;; Instructions
+      [:p {:style {:color "#5CB85C"
+                   :margin "0 0 16px 0"
+                   :font-size "14px"}}
+       (str "Select up to " select-count " card(s) for your hand (" current-count " selected). "
+            "Remaining cards go to bottom of library.")]
+      ;; Card grid
+      [:div {:style {:display "flex"
+                     :flex-wrap "wrap"
+                     :gap "10px"
+                     :margin-bottom "20px"
+                     :min-height "60px"}}
+       (if (seq cards)
+         (for [obj cards]
+           ^{:key (:object/id obj)}
+           [:div {:style {:cursor "pointer"}
+                  :on-click #(rf/dispatch [::events/toggle-peek-card-selection (:object/id obj)])}
+            [selection-card-view obj (contains? selected (:object/id obj))]])
+         [:div {:style {:color "#666"}}
+          "No cards to peek"])]
+      ;; Buttons
+      [:div {:style {:display "flex"
+                     :justify-content "flex-end"
+                     :gap "12px"}}
+       [:button {:style {:padding "8px 20px"
+                         :border "1px solid #555"
+                         :border-radius "4px"
+                         :cursor "pointer"
+                         :background "#333"
+                         :color "#ccc"
+                         :font-size "14px"}
+                 :on-click #(rf/dispatch [::events/cancel-selection])}
+        "Clear"]
+       [:button {:style {:padding "8px 20px"
+                         :border "none"
+                         :border-radius "4px"
+                         :cursor (if valid? "pointer" "not-allowed")
+                         :background (if valid? "#6a4a8a" "#333")
+                         :color (if valid? "#fff" "#666")
+                         :font-size "14px"
+                         :font-weight "bold"}
+                 :disabled (not valid?)
+                 :on-click #(rf/dispatch [::events/confirm-peek-selection])}
+        "Confirm"]]]]))
+
+
+(defn- x-mana-selection-modal
+  "Modal for selecting X value for a spell with X in its mana cost.
+   Player chooses X from 0 to max-x."
+  [selection]
+  (let [selected-x (or (:selection/selected-x selection) 0)
+        max-x (or (:selection/max-x selection) 0)
+        mode (:selection/mode selection)
+        mana-cost (:mode/mana-cost mode)
+        ;; Calculate total cost with current X
+        fixed-colorless (get mana-cost :colorless 0)
+        total-colorless (+ fixed-colorless selected-x)]
+    [:div {:style {:position "fixed"
+                   :top 0
+                   :left 0
+                   :right 0
+                   :bottom 0
+                   :background "rgba(0, 0, 0, 0.8)"
+                   :display "flex"
+                   :align-items "center"
+                   :justify-content "center"
+                   :z-index 1000}}
+     [:div {:style {:background "#1a1a2a"
+                    :border "2px solid #6a4a8a"
+                    :border-radius "12px"
+                    :padding "24px"
+                    :max-width "400px"
+                    :width "90%"}}
+      ;; Header
+      [:h2 {:style {:color "#eee"
+                    :margin "0 0 8px 0"
+                    :font-size "18px"}}
+       "Choose X value"]
+      ;; Instructions
+      [:p {:style {:color "#5CB85C"
+                   :margin "0 0 16px 0"
+                   :font-size "14px"}}
+       (str "Total cost: {" total-colorless "}{U} (X = " selected-x ", max " max-x ")")]
+      ;; X selector
+      [:div {:style {:display "flex"
+                     :align-items "center"
+                     :justify-content "center"
+                     :gap "20px"
+                     :margin-bottom "20px"}}
+       [:button {:style {:width "40px"
+                         :height "40px"
+                         :border "1px solid #555"
+                         :border-radius "4px"
+                         :cursor (if (pos? selected-x) "pointer" "not-allowed")
+                         :background (if (pos? selected-x) "#444" "#222")
+                         :color "#fff"
+                         :font-size "20px"}
+                 :disabled (not (pos? selected-x))
+                 :on-click #(rf/dispatch [::events/decrement-x-value])}
+        "-"]
+       [:div {:style {:font-size "32px"
+                      :color "#fff"
+                      :font-weight "bold"
+                      :min-width "60px"
+                      :text-align "center"}}
+        (str "X = " selected-x)]
+       [:button {:style {:width "40px"
+                         :height "40px"
+                         :border "1px solid #555"
+                         :border-radius "4px"
+                         :cursor (if (< selected-x max-x) "pointer" "not-allowed")
+                         :background (if (< selected-x max-x) "#444" "#222")
+                         :color "#fff"
+                         :font-size "20px"}
+                 :disabled (not (< selected-x max-x))
+                 :on-click #(rf/dispatch [::events/increment-x-value])}
+        "+"]]
+      ;; Buttons
+      [:div {:style {:display "flex"
+                     :justify-content "flex-end"
+                     :gap "12px"}}
+       [:button {:style {:padding "8px 20px"
+                         :border "1px solid #555"
+                         :border-radius "4px"
+                         :cursor "pointer"
+                         :background "#333"
+                         :color "#ccc"
+                         :font-size "14px"}
+                 :on-click #(rf/dispatch [::events/cancel-x-mana-selection])}
+        "Cancel"]
+       [:button {:style {:padding "8px 20px"
+                         :border "none"
+                         :border-radius "4px"
+                         :cursor "pointer"
+                         :background "#6a4a8a"
+                         :color "#fff"
+                         :font-size "14px"
+                         :font-weight "bold"}
+                 :on-click #(rf/dispatch [::events/confirm-x-mana-selection])}
+        "Cast"]]]]))
+
+
 (defn- selection-modal
   "Modal overlay for player selection.
    Shows when :game/pending-selection exists.
@@ -1165,6 +1409,18 @@
           ;; Graveyard return selection (Ill-Gotten Gains style)
           (= selection-type :graveyard-return)
           [graveyard-selection-modal selection cards]
+
+          ;; Exile cards cost selection (Flash of Insight flashback)
+          (= effect-type :exile-cards-cost)
+          [exile-cards-selection-modal selection cards]
+
+          ;; X mana cost selection (spells with X in cost)
+          (= effect-type :x-mana-cost)
+          [x-mana-selection-modal selection]
+
+          ;; Peek-and-select selection (Flash of Insight effect)
+          (= effect-type :peek-and-select)
+          [peek-selection-modal selection cards]
 
           ;; Card selection (discard, tutor)
           :else

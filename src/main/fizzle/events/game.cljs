@@ -29,6 +29,15 @@
 (declare confirm-cast-time-target)
 
 
+;; Forward declarations for X cost selection
+(declare has-exile-cards-x-cost?)
+(declare get-exile-cards-x-cost)
+(declare build-exile-cards-selection)
+(declare has-mana-x-cost?)
+(declare build-x-mana-selection)
+(declare execute-peek-selection)
+
+
 (defn make-test-deck
   "Create a test deck as a vector of card-ids.
    Iggy Pop storm deck - mix of rituals, lands, acceleration, card filtering.
@@ -168,6 +177,48 @@
              (when (not= currently-selected object-id) object-id)))))
 
 
+(defn- initiate-cast-with-mode
+  "Start casting a spell with a specific mode.
+   Checks for X costs and targeting before actually casting.
+   Returns updated app-db."
+  [app-db game-db player-id object-id mode]
+  (let [obj (queries/get-object game-db object-id)
+        card (:object/card obj)
+        targeting-reqs (targeting/get-targeting-requirements card)]
+    (cond
+      ;; Check for exile-cards X cost (flashback with exile)
+      (has-exile-cards-x-cost? mode)
+      (let [exile-cost (get-exile-cards-x-cost mode)
+            selection (build-exile-cards-selection game-db player-id object-id mode exile-cost)]
+        (if selection
+          (-> app-db
+              (assoc :game/pending-selection selection)
+              (dissoc :game/selected-card))
+          ;; No valid cards to exile - can't cast (shouldn't happen if can-cast-mode? passed)
+          app-db))
+
+      ;; Check for X mana cost (normal cast with X)
+      (has-mana-x-cost? mode)
+      (let [selection (build-x-mana-selection game-db player-id object-id mode)]
+        (-> app-db
+            (assoc :game/pending-selection selection)
+            (dissoc :game/selected-card)))
+
+      ;; Check for targeting requirements
+      (seq targeting-reqs)
+      (let [first-req (first targeting-reqs)
+            selection (build-cast-time-target-selection game-db player-id object-id mode first-req)]
+        (-> app-db
+            (assoc :game/pending-selection selection)
+            (dissoc :game/selected-card)))
+
+      ;; No X costs or targeting: cast immediately
+      :else
+      (-> app-db
+          (assoc :game/db (rules/cast-spell-mode game-db player-id object-id mode))
+          (dissoc :game/selected-card)))))
+
+
 (rf/reg-event-db
   ::cast-spell
   (fn [db _]
@@ -175,36 +226,21 @@
           selected (:game/selected-card db)]
       (if (and selected (rules/can-cast? game-db :player-1 selected))
         (let [modes (rules/get-casting-modes game-db :player-1 selected)
-              castable-modes (filterv #(rules/can-cast-mode? game-db :player-1 selected %) modes)
-              ;; Check for targeting requirements
-              obj (queries/get-object game-db selected)
-              card (:object/card obj)
-              targeting-reqs (targeting/get-targeting-requirements card)]
+              castable-modes (filterv #(rules/can-cast-mode? game-db :player-1 selected %) modes)]
           (cond
             ;; No castable modes - shouldn't happen if can-cast? passed
             (empty? castable-modes)
             db
 
-            ;; Multiple modes: show selector first (targeting checked after mode selection)
+            ;; Multiple modes: show selector first (X costs/targeting checked after mode selection)
             (> (count castable-modes) 1)
             (assoc db :game/pending-mode-selection
                    {:object-id selected
                     :modes castable-modes})
 
-            ;; Single mode with targeting: prompt for targets
-            (and (= 1 (count castable-modes)) (seq targeting-reqs))
-            (let [mode (first castable-modes)
-                  first-req (first targeting-reqs)
-                  selection (build-cast-time-target-selection game-db :player-1 selected mode first-req)]
-              (-> db
-                  (assoc :game/pending-selection selection)
-                  (dissoc :game/selected-card)))
-
-            ;; Single mode without targeting: cast immediately
+            ;; Single mode: check for X costs, targeting, then cast
             :else
-            (-> db
-                (assoc :game/db (rules/cast-spell-mode game-db :player-1 selected (first castable-modes)))
-                (dissoc :game/selected-card))))
+            (initiate-cast-with-mode db game-db :player-1 selected (first castable-modes))))
         db))))
 
 
@@ -1050,7 +1086,7 @@
      player-id - Player performing the peek
      object-id - Spell-id for cleanup after selection confirmed
      effect - The :peek-and-select effect map with:
-       :effect/count - Number of cards to peek (default 0)
+       :effect/count - Number of cards to peek (default 0), or :x to use spell's X value
        :effect/select-count - Number to select for hand (default 1)
        :effect/selected-zone - Zone for selected cards (default :hand)
        :effect/remainder-zone - Zone for non-selected (default :bottom-of-library)
@@ -1059,7 +1095,11 @@
 
    Anti-pattern: NO auto-select even with 1 card. Player must choose or fail-to-find."
   [db player-id object-id effect effects-after]
-  (let [peek-count (or (:effect/count effect) 0)]
+  (let [effect-count (:effect/count effect)
+        ;; Resolve :x from spell's stored X value
+        peek-count (if (= effect-count :x)
+                     (or (:object/x-value (queries/get-object db object-id)) 0)
+                     (or effect-count 0))]
     (when (pos? peek-count)
       (let [library-cards (queries/get-top-n-library db player-id peek-count)]
         (when (seq library-cards)
@@ -1080,6 +1120,99 @@
              :selection/selected-zone (or (:effect/selected-zone effect) :hand)
              :selection/remainder-zone (or (:effect/remainder-zone effect) :bottom-of-library)
              :selection/shuffle-remainder? (:effect/shuffle-remainder? effect)}))))))
+
+
+;; =====================================================
+;; X Cost Selection Helpers
+;; =====================================================
+
+(defn- has-exile-cards-x-cost?
+  "Check if mode has an :exile-cards additional cost with :cost/count :x"
+  [mode]
+  (some (fn [cost]
+          (and (= :exile-cards (:cost/type cost))
+               (= :x (:cost/count cost))))
+        (:mode/additional-costs mode)))
+
+
+(defn- get-exile-cards-x-cost
+  "Get the :exile-cards additional cost with :cost/count :x from a mode"
+  [mode]
+  (first (filter (fn [cost]
+                   (and (= :exile-cards (:cost/type cost))
+                        (= :x (:cost/count cost))))
+                 (:mode/additional-costs mode))))
+
+
+(defn- has-mana-x-cost?
+  "Check if mode has :x true in its mana cost"
+  [mode]
+  (true? (get-in mode [:mode/mana-cost :x])))
+
+
+(defn build-exile-cards-selection
+  "Build pending selection for exile-cards additional cost with :x count.
+   Player selects which cards to exile (1 or more), and the count becomes X.
+
+   Arguments:
+     db - Datascript game database
+     player-id - Player casting the spell
+     object-id - Spell being cast
+     mode - Casting mode with :exile-cards cost
+     exile-cost - The :exile-cards cost map
+
+   Returns selection state for choosing cards to exile."
+  [db player-id object-id mode exile-cost]
+  (let [zone (:cost/zone exile-cost)
+        criteria (:cost/criteria exile-cost)
+        ;; Get available cards matching criteria
+        available (queries/query-zone-by-criteria db player-id zone criteria)
+        ;; Exclude the spell being cast (can't exile itself)
+        candidates (filterv #(not= object-id (:object/id %)) available)
+        candidate-ids (set (map :object/id candidates))]
+    (when (seq candidate-ids)
+      {:selection/zone zone
+       :selection/effect-type :exile-cards-cost
+       :selection/candidates candidate-ids
+       :selection/select-count 1  ; Minimum 1, but can select more
+       :selection/exact? false    ; Can select any number >= 1
+       :selection/allow-fail-to-find false  ; Must select at least 1
+       :selection/selected #{}
+       :selection/player-id player-id
+       :selection/spell-id object-id
+       :selection/mode mode       ; Store mode for casting after selection
+       :selection/exile-cost exile-cost})))
+
+
+(defn build-x-mana-selection
+  "Build pending selection for X mana cost.
+   Player selects how much to pay for X.
+
+   Arguments:
+     db - Datascript game database
+     player-id - Player casting the spell
+     object-id - Spell being cast
+     mode - Casting mode with X in mana cost
+
+   Returns selection state for choosing X value."
+  [db player-id object-id mode]
+  (let [pool (queries/get-mana-pool db player-id)
+        mana-cost (:mode/mana-cost mode)
+        ;; Fixed costs (non-X portion)
+        fixed-colorless (get mana-cost :colorless 0)
+        fixed-colored (dissoc mana-cost :colorless :x)
+        ;; Calculate remaining mana after paying fixed costs
+        pool-after-colored (merge-with - pool fixed-colored)
+        total-remaining (max 0 (- (reduce + 0 (vals pool-after-colored)) fixed-colorless))
+        ;; Max X is what's left after paying fixed costs
+        max-x total-remaining]
+    {:selection/zone :mana-pool
+     :selection/effect-type :x-mana-cost
+     :selection/player-id player-id
+     :selection/spell-id object-id
+     :selection/mode mode
+     :selection/max-x max-x
+     :selection/selected-x 0}))  ; Default to 0, player increments
 
 
 (defn- build-discard-selection
@@ -1266,6 +1399,11 @@
                                     (= effect-type :return-from-graveyard)
                                     (build-graveyard-selection db-after-before player-id object-id
                                                                selection-effect effects-after)
+
+                                    ;; Peek-and-select effect (Flash of Insight)
+                                    (= effect-type :peek-and-select)
+                                    (build-peek-selection db-after-before player-id object-id
+                                                          selection-effect effects-after)
 
                                     ;; Default for unknown selection types
                                     :else
@@ -1580,6 +1718,63 @@
     ;; Cancel clears selection but keeps the pending state
     ;; Player must still make a valid selection
     (assoc-in db [:game/pending-selection :selection/selected] #{})))
+
+
+;; === Peek-and-Select Selection ===
+;; For :peek-and-select effects (e.g., Flash of Insight)
+
+(rf/reg-event-db
+  ::toggle-peek-card-selection
+  (fn [db [_ card-id]]
+    (let [selection (:game/pending-selection db)
+          current-selected (or (:selection/selected selection) #{})
+          select-count (:selection/select-count selection)]
+      (if (contains? current-selected card-id)
+        ;; Remove from selection
+        (assoc-in db [:game/pending-selection :selection/selected]
+                  (disj current-selected card-id))
+        ;; Add to selection (if not at max)
+        (if (< (count current-selected) select-count)
+          (assoc-in db [:game/pending-selection :selection/selected]
+                    (conj current-selected card-id))
+          db)))))
+
+
+(rf/reg-event-db
+  ::confirm-peek-selection
+  (fn [db _]
+    (let [selection (:game/pending-selection db)
+          selected (:selection/selected selection)
+          candidates (:selection/candidates selection)
+          select-count (:selection/select-count selection)
+          spell-id (:selection/spell-id selection)
+          remaining-effects (:selection/remaining-effects selection)
+          player-id (:selection/player-id selection)
+          game-db (:game/db db)
+          ;; Validate: selected cards are from candidates, count <= select-count
+          valid-selection? (and (<= (count selected) select-count)
+                                (every? #(contains? candidates %) selected))]
+      (if valid-selection?
+        (let [;; Execute peek selection - moves cards to hand/bottom
+              db-after-peek (execute-peek-selection game-db selection)
+              ;; Execute remaining effects
+              db-after-remaining (reduce (fn [d effect]
+                                           (effects/execute-effect d player-id effect))
+                                         db-after-peek
+                                         (or remaining-effects []))
+              ;; Move spell to appropriate zone (graveyard or exile for flashback)
+              spell-obj (queries/get-object db-after-remaining spell-id)
+              current-zone (:object/zone spell-obj)
+              db-final (if (= current-zone :stack)
+                         (let [cast-mode (:object/cast-mode spell-obj)
+                               destination (or (:mode/on-resolve cast-mode) :graveyard)]
+                           (zones/move-to-zone db-after-remaining spell-id destination))
+                         db-after-remaining)]
+          (-> db
+              (assoc :game/db db-final)
+              (dissoc :game/pending-selection)))
+        ;; Invalid selection - do nothing
+        db))))
 
 
 ;; === Graveyard Selection ===
@@ -2071,23 +2266,9 @@
           pending (:game/pending-mode-selection db)
           object-id (:object-id pending)]
       (if (and pending object-id mode)
-        ;; Check for targeting requirements
-        (let [obj (queries/get-object game-db object-id)
-              card (:object/card obj)
-              targeting-reqs (targeting/get-targeting-requirements card)]
-          (if (seq targeting-reqs)
-            ;; Has targeting - prompt for targets before casting
-            (let [first-req (first targeting-reqs)
-                  selection (build-cast-time-target-selection game-db :player-1 object-id mode first-req)]
-              (-> db
-                  (assoc :game/pending-selection selection)
-                  (dissoc :game/selected-card)
-                  (dissoc :game/pending-mode-selection)))
-            ;; No targeting - cast immediately
-            (-> db
-                (assoc :game/db (rules/cast-spell-mode game-db :player-1 object-id mode))
-                (dissoc :game/selected-card)
-                (dissoc :game/pending-mode-selection))))
+        ;; Use initiate-cast-with-mode to handle X costs, targeting, and casting
+        (-> (initiate-cast-with-mode db game-db :player-1 object-id mode)
+            (dissoc :game/pending-mode-selection))
         db))))
 
 
@@ -2095,6 +2276,116 @@
   ::cancel-mode-selection
   (fn [db _]
     (dissoc db :game/pending-mode-selection)))
+
+
+;; === X Cost Selection System ===
+;; For spells with X in mana cost or exile-cards additional cost with :x count
+
+(rf/reg-event-db
+  ::toggle-exile-card-selection
+  (fn [db [_ card-id]]
+    (let [selection (:game/pending-selection db)
+          current-selected (or (:selection/selected selection) #{})]
+      (if (contains? current-selected card-id)
+        (assoc-in db [:game/pending-selection :selection/selected]
+                  (disj current-selected card-id))
+        (assoc-in db [:game/pending-selection :selection/selected]
+                  (conj current-selected card-id))))))
+
+
+(rf/reg-event-db
+  ::confirm-exile-cards-selection
+  (fn [db _]
+    (let [selection (:game/pending-selection db)
+          selected (:selection/selected selection)
+          selected-count (count selected)]
+      (if (pos? selected-count)
+        ;; Have at least 1 card selected - proceed with casting
+        (let [game-db (:game/db db)
+              player-id (:selection/player-id selection)
+              object-id (:selection/spell-id selection)
+              mode (:selection/mode selection)
+              ;; Exile the selected cards
+              db-after-exile (reduce (fn [d card-id]
+                                       (zones/move-to-zone d card-id :exile))
+                                     game-db
+                                     selected)
+              ;; Store X value on the spell object
+              obj-eid (d/q '[:find ?e .
+                             :in $ ?oid
+                             :where [?e :object/id ?oid]]
+                           db-after-exile object-id)
+              db-with-x (d/db-with db-after-exile
+                                   [[:db/add obj-eid :object/x-value selected-count]])
+              ;; Now cast the spell with the mode
+              db-after-cast (rules/cast-spell-mode db-with-x player-id object-id mode)]
+          (-> db
+              (assoc :game/db db-after-cast)
+              (dissoc :game/pending-selection)
+              (dissoc :game/selected-card)))
+        ;; No cards selected - can't proceed
+        db))))
+
+
+(rf/reg-event-db
+  ::cancel-exile-cards-selection
+  (fn [db _]
+    (dissoc db :game/pending-selection)))
+
+
+(rf/reg-event-db
+  ::increment-x-value
+  (fn [db _]
+    (let [selection (:game/pending-selection db)
+          current-x (or (:selection/selected-x selection) 0)
+          max-x (or (:selection/max-x selection) 0)]
+      (if (< current-x max-x)
+        (assoc-in db [:game/pending-selection :selection/selected-x] (inc current-x))
+        db))))
+
+
+(rf/reg-event-db
+  ::decrement-x-value
+  (fn [db _]
+    (let [selection (:game/pending-selection db)
+          current-x (or (:selection/selected-x selection) 0)]
+      (if (pos? current-x)
+        (assoc-in db [:game/pending-selection :selection/selected-x] (dec current-x))
+        db))))
+
+
+(rf/reg-event-db
+  ::confirm-x-mana-selection
+  (fn [db _]
+    (let [selection (:game/pending-selection db)
+          x-value (:selection/selected-x selection)
+          game-db (:game/db db)
+          player-id (:selection/player-id selection)
+          object-id (:selection/spell-id selection)
+          mode (:selection/mode selection)
+          ;; Store X value on the spell object
+          obj-eid (d/q '[:find ?e .
+                         :in $ ?oid
+                         :where [?e :object/id ?oid]]
+                       game-db object-id)
+          db-with-x (d/db-with game-db
+                               [[:db/add obj-eid :object/x-value x-value]])
+          ;; Cast the spell - pay-mana needs the x-value
+          ;; We need to modify cast-spell-mode to use the stored X, or pass it
+          ;; For now, update the mode's mana cost with resolved X
+          resolved-mana-cost (mana/resolve-x-cost (:mode/mana-cost mode) x-value)
+          mode-with-resolved-cost (assoc mode :mode/mana-cost resolved-mana-cost)
+          db-after-cast (rules/cast-spell-mode db-with-x player-id object-id mode-with-resolved-cost)]
+      (-> db
+          (assoc :game/db db-after-cast)
+          (dissoc :game/pending-selection)
+          (dissoc :game/selected-card)))))
+
+
+(rf/reg-event-db
+  ::cancel-x-mana-selection
+  (fn [db _]
+    (dissoc db :game/pending-selection)))
 
 
 ;; === Cast-Time Targeting System ===
