@@ -35,8 +35,8 @@
    Returns shuffled vector of 60 card-ids.
 
    Target list (some cards not yet implemented, using substitutes):
-   - Flash of Insight, Ill-Gotten Gains, Orim's Chant, Ray of Revelation
-     are substituted with Merchant Scroll until implemented."
+   - Flash of Insight, Ray of Revelation are substituted with
+     Merchant Scroll until implemented."
   []
   (shuffle
     (into []
@@ -68,10 +68,11 @@
             (repeat 1 :recoup)
             ;; Graveyard recursion (4)
             (repeat 4 :ill-gotten-gains)
-            ;; Substitutes for unimplemented cards (3)
-            ;; TODO: Replace with Flash of Insight (1), Orim's Chant (1),
-            ;;       Ray of Revelation (1)
-            (repeat 3 :merchant-scroll)))))
+            ;; Protection (1)
+            (repeat 1 :orims-chant)
+            ;; Substitutes for unimplemented cards (2)
+            ;; TODO: Replace with Flash of Insight (1), Ray of Revelation (1)
+            (repeat 2 :merchant-scroll)))))
 
 
 (defn init-game-state

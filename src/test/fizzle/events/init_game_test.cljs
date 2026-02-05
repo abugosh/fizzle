@@ -95,10 +95,13 @@
       ;; Graveyard recursion (4)
       (is (= 4 (get card-counts :ill-gotten-gains))
           "Should have 4 Ill-Gotten Gains in deck")
-      ;; Substitutes for unimplemented cards (3)
-      ;; TODO: Replace with Flash of Insight, Orim's Chant, Ray of Revelation
-      (is (= 3 (get card-counts :merchant-scroll))
-          "Should have 3 Merchant Scrolls (substitutes) in deck"))))
+      ;; Protection (1)
+      (is (= 1 (get card-counts :orims-chant))
+          "Should have 1 Orim's Chant in deck")
+      ;; Substitutes for unimplemented cards (2)
+      ;; TODO: Replace with Flash of Insight, Ray of Revelation
+      (is (= 2 (get card-counts :merchant-scroll))
+          "Should have 2 Merchant Scrolls (substitutes) in deck"))))
 
 
 ;; === Starting hand tests ===
