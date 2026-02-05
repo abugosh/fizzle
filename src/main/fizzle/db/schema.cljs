@@ -41,6 +41,8 @@
    :object/targets    {}  ; Map of target-ref keyword → target-id (UUID or player keyword)
    :object/is-copy    {}  ; Boolean, marks spell copies (for storm, etc.)
    :object/grants     {}  ; Vector of grant maps (temporary abilities/costs)
+   :object/x-value    {}  ; Integer, value of X for spells with X in cost
+   :object/cast-mode  {}  ; Map storing the casting mode used (for flashback, etc.)
 
    ;; === Players ===
    :player/id              {:db/unique :db.unique/identity}
