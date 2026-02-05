@@ -1363,3 +1363,111 @@
           grant (first (grants/get-player-grants db' :player-2))]
       (is (= 1 (get-in grant [:grant/expires :expires/turn]))
           "Should default to turn 1"))))
+
+
+;; === Test helpers for :destroy effect ===
+
+(defn add-spell-on-stack-with-targets
+  "Add a spell object on the stack with stored targets.
+   Returns [object-id updated-db] tuple."
+  [db player-id targets-map]
+  (let [conn (d/conn-from-db db)
+        player-eid (q/get-player-eid db player-id)
+        card-eid (d/q '[:find ?e .
+                        :where [?e :card/id :dark-ritual]]
+                      @conn)
+        object-id (random-uuid)]
+    (d/transact! conn [{:object/id object-id
+                        :object/card card-eid
+                        :object/zone :stack
+                        :object/owner player-eid
+                        :object/controller player-eid
+                        :object/targets targets-map
+                        :object/tapped false}])
+    [object-id @conn]))
+
+
+;; === execute-effect :destroy tests ===
+
+(deftest test-destroy-effect-moves-target-to-graveyard
+  (testing ":destroy moves target permanent from battlefield to graveyard"
+    ;; Catches: effect doesn't move target to correct zone
+    (let [[db target-id] (add-permanent (init-game-state) :player-1)
+          ;; Verify starting zone is battlefield
+          _ (is (= :battlefield (get-object-zone db target-id)))
+          ;; Create spell with stored target
+          [spell-id db] (add-spell-on-stack-with-targets db :player-1 {:target-enchantment target-id})
+          effect {:effect/type :destroy
+                  :effect/target-ref :target-enchantment}
+          db' (fx/execute-effect db :player-1 effect spell-id)]
+      ;; Target should now be in graveyard
+      (is (= :graveyard (get-object-zone db' target-id))
+          "Target should be moved to graveyard"))))
+
+
+(deftest test-destroy-effect-uses-owner-graveyard-not-controller
+  (testing ":destroy moves target to OWNER's graveyard, not controller's"
+    ;; Catches: using controller's graveyard instead of owner's
+    ;; This matters for stolen permanents (Control Magic effects)
+    (let [db (-> (init-game-state)
+                 (add-opponent))
+          ;; Add permanent owned by player-1
+          [db target-id] (add-permanent db :player-1)
+          ;; Verify it's on battlefield
+          _ (is (= :battlefield (get-object-zone db target-id)))
+          ;; Create spell targeting this permanent (cast by player-2, but target is player-1's)
+          [spell-id db] (add-spell-on-stack-with-targets db :player-2 {:target-enchantment target-id})
+          effect {:effect/type :destroy
+                  :effect/target-ref :target-enchantment}
+          ;; Player-2 casts the destroy effect
+          db' (fx/execute-effect db :player-2 effect spell-id)]
+      ;; Target goes to owner's (player-1's) graveyard
+      (is (= :graveyard (get-object-zone db' target-id))
+          "Target should be in graveyard")
+      ;; Verify it's in player-1's graveyard (owner), not player-2's
+      (is (= 1 (count-zone db' :player-1 :graveyard))
+          "Owner's graveyard should have the destroyed permanent")
+      (is (= 0 (count-zone db' :player-2 :graveyard))
+          "Caster's graveyard should be empty (not owner)"))))
+
+
+(deftest test-destroy-effect-nil-object-id-is-noop
+  (testing ":destroy with nil object-id returns db unchanged"
+    ;; Catches: nil pointer exception if object-id not guarded
+    (let [[db target-id] (add-permanent (init-game-state) :player-1)
+          effect {:effect/type :destroy
+                  :effect/target-ref :target-enchantment}
+          ;; Pass nil as object-id (no source spell)
+          db' (fx/execute-effect db :player-1 effect nil)]
+      ;; Should be no-op, target still on battlefield
+      (is (= :battlefield (get-object-zone db' target-id))
+          "Target should still be on battlefield"))))
+
+
+(deftest test-destroy-effect-missing-target-ref-is-noop
+  (testing ":destroy with missing target-ref in stored targets returns db unchanged"
+    ;; Catches: missing guard for nonexistent target-ref key
+    (let [[db target-id] (add-permanent (init-game-state) :player-1)
+          ;; Create spell with different target-ref than effect expects
+          [spell-id db] (add-spell-on-stack-with-targets db :player-1 {:some-other-target target-id})
+          effect {:effect/type :destroy
+                  :effect/target-ref :target-enchantment}  ; Looking for :target-enchantment, not found
+          db' (fx/execute-effect db :player-1 effect spell-id)]
+      ;; Should be no-op, target still on battlefield
+      (is (= :battlefield (get-object-zone db' target-id))
+          "Target should still be on battlefield"))))
+
+
+(deftest test-destroy-effect-missing-target-object-is-noop
+  (testing ":destroy with nonexistent target object returns db unchanged"
+    ;; Catches: missing guard for target object that no longer exists
+    (let [db (init-game-state)
+          fake-target-id (random-uuid)  ; Non-existent object
+          ;; Create spell with target pointing to non-existent object
+          [spell-id db] (add-spell-on-stack-with-targets db :player-1 {:target-enchantment fake-target-id})
+          effect {:effect/type :destroy
+                  :effect/target-ref :target-enchantment}
+          db' (fx/execute-effect db :player-1 effect spell-id)]
+      ;; Should be no-op, no crash
+      (is (= db db')
+          "db should be unchanged when target doesn't exist"))))

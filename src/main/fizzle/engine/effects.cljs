@@ -409,6 +409,35 @@
       db)))
 
 
+(defmethod execute-effect-impl :destroy
+  ;; Destroy target permanent - move it to owner's graveyard.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/target-ref - Target reference keyword to look up from
+  ;;                        :object/targets on the casting object.
+  ;;
+  ;; Handles edge cases:
+  ;;   - object-id nil: no-op (returns db unchanged)
+  ;;   - No stored target for target-ref: no-op
+  ;;   - Target object doesn't exist: no-op
+  ;;
+  ;; Note: Goes to OWNER's graveyard, not controller's. This matters
+  ;; for stolen permanents (Control Magic effects). The zones system
+  ;; handles this correctly since zones are queried by :object/owner.
+  [db _player-id effect object-id]
+  (if-not object-id
+    db  ; No source object - no-op
+    (let [source-obj (q/get-object db object-id)
+          target-ref (:effect/target-ref effect)
+          stored-targets (:object/targets source-obj)
+          target-id (get stored-targets target-ref)]
+      (if-not target-id
+        db  ; No stored target for this ref - no-op
+        (if-let [_target-obj (q/get-object db target-id)]
+          (zones/move-to-zone db target-id :graveyard)
+          db)))))  ; Target doesn't exist - no-op
+
+
 (defmethod execute-effect-impl :discard
   ;; Discard cards from a player's hand to their graveyard.
   ;;
