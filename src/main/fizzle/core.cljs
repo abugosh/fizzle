@@ -411,24 +411,27 @@
 ;; Modal overlay for selecting cards (e.g., Careful Study discard)
 
 (defn- selection-card-view
-  "A card in the selection modal, showing selected state."
-  [obj selected?]
-  (let [card-name (get-in obj [:object/card :card/name])
-        object-id (:object/id obj)]
-    [:div {:style {:border (if selected?
-                             "3px solid #4A9BD9"
-                             "2px solid #555")
-                   :border-radius "6px"
-                   :padding "10px 14px"
-                   :cursor "pointer"
-                   :background (if selected? "#1a3a5a" "#1a1a2a")
-                   :color "#eee"
-                   :min-width "90px"
-                   :text-align "center"
-                   :user-select "none"
-                   :transition "all 0.1s ease"}
-           :on-click #(rf/dispatch [::events/toggle-selection object-id])}
-     card-name]))
+  "A card in the selection modal, showing selected state.
+   Optionally accepts a custom toggle-event to dispatch instead of the default."
+  ([obj selected?]
+   (selection-card-view obj selected? nil))
+  ([obj selected? toggle-event]
+   (let [card-name (get-in obj [:object/card :card/name])
+         object-id (:object/id obj)]
+     [:div {:style {:border (if selected?
+                              "3px solid #4A9BD9"
+                              "2px solid #555")
+                    :border-radius "6px"
+                    :padding "10px 14px"
+                    :cursor "pointer"
+                    :background (if selected? "#1a3a5a" "#1a1a2a")
+                    :color "#eee"
+                    :min-width "90px"
+                    :text-align "center"
+                    :user-select "none"
+                    :transition "all 0.1s ease"}
+            :on-click #(rf/dispatch [(or toggle-event ::events/toggle-selection) object-id])}
+      card-name])))
 
 
 (defn- player-target-button
@@ -1162,9 +1165,8 @@
        (if (seq cards)
          (for [obj cards]
            ^{:key (:object/id obj)}
-           [:div {:style {:cursor "pointer"}
-                  :on-click #(rf/dispatch [::events/toggle-exile-card-selection (:object/id obj)])}
-            [selection-card-view obj (contains? selected (:object/id obj))]])
+           [selection-card-view obj (contains? selected (:object/id obj))
+            ::events/toggle-exile-card-selection])
          [:div {:style {:color "#666"}}
           "No eligible cards"])]
       ;; Buttons
@@ -1237,9 +1239,8 @@
        (if (seq cards)
          (for [obj cards]
            ^{:key (:object/id obj)}
-           [:div {:style {:cursor "pointer"}
-                  :on-click #(rf/dispatch [::events/toggle-peek-card-selection (:object/id obj)])}
-            [selection-card-view obj (contains? selected (:object/id obj))]])
+           [selection-card-view obj (contains? selected (:object/id obj))
+            ::events/toggle-peek-card-selection])
          [:div {:style {:color "#666"}}
           "No cards to peek"])]
       ;; Buttons
