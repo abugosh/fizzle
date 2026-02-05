@@ -63,5 +63,10 @@
         (let [obj-eid (d/q '[:find ?e .
                              :in $ ?oid
                              :where [?e :object/id ?oid]]
-                           db object-id)]
-          (d/db-with db [[:db/add obj-eid :object/zone new-zone]]))))))
+                           db object-id)
+              ;; Reset tapped state when leaving battlefield (card loses memory of being tapped)
+              txs (if (= current-zone :battlefield)
+                    [[:db/add obj-eid :object/zone new-zone]
+                     [:db/add obj-eid :object/tapped false]]
+                    [[:db/add obj-eid :object/zone new-zone]])]
+          (d/db-with db txs))))))

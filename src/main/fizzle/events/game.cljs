@@ -66,10 +66,12 @@
             ;; Flashback / Card advantage (4)
             (repeat 3 :deep-analysis)
             (repeat 1 :recoup)
-            ;; Substitutes for unimplemented cards (7)
-            ;; TODO: Replace with Flash of Insight (1), Ill-Gotten Gains (4),
-            ;;       Orim's Chant (1), Ray of Revelation (1)
-            (repeat 7 :merchant-scroll)))))
+            ;; Graveyard recursion (4)
+            (repeat 4 :ill-gotten-gains)
+            ;; Substitutes for unimplemented cards (3)
+            ;; TODO: Replace with Flash of Insight (1), Orim's Chant (1),
+            ;;       Ray of Revelation (1)
+            (repeat 3 :merchant-scroll)))))
 
 
 (defn init-game-state
@@ -1177,9 +1179,9 @@
                 selection-effect (nth effects-list selection-idx)
                 effects-after (subvec (vec effects-list) (inc selection-idx))
                 effect-type (:effect/type selection-effect)
-                ;; Execute effects before selection
+                ;; Execute effects before selection (pass object-id for effects like :exile-self)
                 db-after-before (reduce (fn [d effect]
-                                          (effects/execute-effect d player-id effect))
+                                          (effects/execute-effect d player-id effect object-id))
                                         db
                                         effects-before)
                 ;; Build selection state based on effect type or target type
@@ -1474,14 +1476,19 @@
                                          db-after-effect
                                          (or remaining-effects []))
               ;; Clean up source: move spell to destination OR remove trigger from stack
+              ;; BUT only if the spell is still on the stack (effects like :exile-self may have moved it)
               db-final (if (= source-type :trigger)
                          ;; Trigger-based selection (activated ability): remove trigger
                          (triggers/remove-trigger db-after-remaining trigger-id)
                          ;; Spell-based selection: use cast mode's destination (e.g., :exile for flashback)
                          (let [spell-obj (queries/get-object db-after-remaining spell-id)
-                               cast-mode (:object/cast-mode spell-obj)
-                               destination (or (:mode/on-resolve cast-mode) :graveyard)]
-                           (zones/move-to-zone db-after-remaining spell-id destination)))]
+                               current-zone (:object/zone spell-obj)]
+                           ;; Only move if still on stack (effects like :exile-self may have already moved it)
+                           (if (= current-zone :stack)
+                             (let [cast-mode (:object/cast-mode spell-obj)
+                                   destination (or (:mode/on-resolve cast-mode) :graveyard)]
+                               (zones/move-to-zone db-after-remaining spell-id destination))
+                             db-after-remaining)))]
           (-> db
               (assoc :game/db db-final)
               (dissoc :game/pending-selection)))
@@ -1528,12 +1535,17 @@
                                          db-after-effect
                                          (or remaining-effects []))
               ;; Clean up source: move spell to destination OR remove trigger
+              ;; BUT only if the spell is still on the stack (effects like :exile-self may have moved it)
               db-final (if (= source-type :trigger)
                          (triggers/remove-trigger db-after-remaining trigger-id)
                          (let [spell-obj (queries/get-object db-after-remaining spell-id)
-                               cast-mode (:object/cast-mode spell-obj)
-                               destination (or (:mode/on-resolve cast-mode) :graveyard)]
-                           (zones/move-to-zone db-after-remaining spell-id destination)))]
+                               current-zone (:object/zone spell-obj)]
+                           ;; Only move if still on stack (effects like :exile-self may have already moved it)
+                           (if (= current-zone :stack)
+                             (let [cast-mode (:object/cast-mode spell-obj)
+                                   destination (or (:mode/on-resolve cast-mode) :graveyard)]
+                               (zones/move-to-zone db-after-remaining spell-id destination))
+                             db-after-remaining)))]
           (-> db
               (assoc :game/db db-final)
               (dissoc :game/pending-selection)))
@@ -1663,14 +1675,19 @@
                                            db-after-tutor
                                            (or remaining-effects []))
                 ;; Clean up source: move spell to destination OR remove trigger from stack
+                ;; BUT only if the spell is still on the stack (effects like :exile-self may have moved it)
                 db-final (if (= source-type :trigger)
                            ;; Trigger-based selection (activated ability): remove trigger
                            (triggers/remove-trigger db-after-remaining trigger-id)
                            ;; Spell-based selection: use cast mode's destination (e.g., :exile for flashback)
                            (let [spell-obj (queries/get-object db-after-remaining spell-id)
-                                 cast-mode (:object/cast-mode spell-obj)
-                                 destination (or (:mode/on-resolve cast-mode) :graveyard)]
-                             (zones/move-to-zone db-after-remaining spell-id destination)))]
+                                 current-zone (:object/zone spell-obj)]
+                             ;; Only move if still on stack (effects like :exile-self may have already moved it)
+                             (if (= current-zone :stack)
+                               (let [cast-mode (:object/cast-mode spell-obj)
+                                     destination (or (:mode/on-resolve cast-mode) :graveyard)]
+                                 (zones/move-to-zone db-after-remaining spell-id destination))
+                               db-after-remaining)))]
             (-> db
                 (assoc :game/db db-final)
                 (dissoc :game/pending-selection))))
@@ -1712,10 +1729,14 @@
                                        db-after-shuffle
                                        (or remaining-effects []))
               ;; Move spell to graveyard (or exile for flashback)
+              ;; BUT only if the spell is still on the stack (effects like :exile-self may have moved it)
               spell-obj (queries/get-object db-after-effects spell-id)
-              cast-mode (:object/cast-mode spell-obj)
-              destination (or (:mode/on-resolve cast-mode) :graveyard)
-              db-final (zones/move-to-zone db-after-effects spell-id destination)]
+              current-zone (:object/zone spell-obj)
+              db-final (if (= current-zone :stack)
+                         (let [cast-mode (:object/cast-mode spell-obj)
+                               destination (or (:mode/on-resolve cast-mode) :graveyard)]
+                           (zones/move-to-zone db-after-effects spell-id destination))
+                         db-after-effects)]
           (-> db
               (assoc :game/db db-final)
               (dissoc :game/pending-selection)))

@@ -91,10 +91,13 @@
           "Should have 3 Deep Analysis in deck")
       (is (= 1 (get card-counts :recoup))
           "Should have 1 Recoup in deck")
-      ;; Substitutes for unimplemented cards (7)
-      ;; TODO: Replace with Flash of Insight, Ill-Gotten Gains, Orim's Chant, Ray of Revelation
-      (is (= 7 (get card-counts :merchant-scroll))
-          "Should have 7 Merchant Scrolls (substitutes) in deck"))))
+      ;; Graveyard recursion (4)
+      (is (= 4 (get card-counts :ill-gotten-gains))
+          "Should have 4 Ill-Gotten Gains in deck")
+      ;; Substitutes for unimplemented cards (3)
+      ;; TODO: Replace with Flash of Insight, Orim's Chant, Ray of Revelation
+      (is (= 3 (get card-counts :merchant-scroll))
+          "Should have 3 Merchant Scrolls (substitutes) in deck"))))
 
 
 ;; === Starting hand tests ===

@@ -6,6 +6,7 @@
   (:require
     [fizzle.cards.cephalid-coliseum :as cephalid-coliseum]
     [fizzle.cards.deep-analysis :as deep-analysis]
+    [fizzle.cards.ill-gotten-gains :as ill-gotten-gains]
     [fizzle.cards.recoup :as recoup]))
 
 
@@ -340,4 +341,5 @@
   [dark-ritual brain-freeze cabal-ritual city-of-brass city-of-traitors
    gemstone-mine island swamp underground-river lotus-petal lions-eye-diamond
    careful-study mental-note opt merchant-scroll intuition polluted-delta
-   deep-analysis/deep-analysis cephalid-coliseum/cephalid-coliseum recoup/recoup])
+   deep-analysis/deep-analysis cephalid-coliseum/cephalid-coliseum recoup/recoup
+   ill-gotten-gains/ill-gotten-gains])

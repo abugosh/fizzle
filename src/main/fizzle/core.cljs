@@ -965,10 +965,85 @@
         "Confirm"]]]]))
 
 
+(defn- graveyard-selection-modal
+  "Modal for returning cards from graveyard to hand (Ill-Gotten Gains style).
+   Player can select 0 to max-count cards (not exact count like discard)."
+  [selection cards]
+  (let [selected (:selection/selected selection)
+        max-count (:selection/count selection)
+        current-count (count selected)
+        ;; Valid if 0 to max-count cards selected
+        valid? (<= current-count max-count)]
+    [:div {:style {:position "fixed"
+                   :top 0
+                   :left 0
+                   :right 0
+                   :bottom 0
+                   :background "rgba(0, 0, 0, 0.8)"
+                   :display "flex"
+                   :align-items "center"
+                   :justify-content "center"
+                   :z-index 1000}}
+     [:div {:style {:background "#1a1a2a"
+                    :border "2px solid #6a4a8a"
+                    :border-radius "12px"
+                    :padding "24px"
+                    :max-width "600px"
+                    :width "90%"}}
+      ;; Header
+      [:h2 {:style {:color "#eee"
+                    :margin "0 0 8px 0"
+                    :font-size "18px"}}
+       "Return cards from graveyard to hand"]
+      ;; Instructions
+      [:p {:style {:color "#5CB85C"
+                   :margin "0 0 16px 0"
+                   :font-size "14px"}}
+       (str "Select up to " max-count " cards (" current-count " selected)")]
+      ;; Card grid
+      [:div {:style {:display "flex"
+                     :flex-wrap "wrap"
+                     :gap "10px"
+                     :margin-bottom "20px"
+                     :min-height "60px"}}
+       (if (seq cards)
+         (for [obj cards]
+           ^{:key (:object/id obj)}
+           [selection-card-view obj (contains? selected (:object/id obj))])
+         [:div {:style {:color "#666"}}
+          "No cards in graveyard"])]
+      ;; Buttons
+      [:div {:style {:display "flex"
+                     :justify-content "flex-end"
+                     :gap "12px"}}
+       ;; Clear button
+       [:button {:style {:padding "8px 20px"
+                         :border "1px solid #555"
+                         :border-radius "4px"
+                         :cursor "pointer"
+                         :background "#333"
+                         :color "#ccc"
+                         :font-size "14px"}
+                 :on-click #(rf/dispatch [::events/cancel-selection])}
+        "Clear"]
+       ;; Confirm button (always valid since 0 is allowed)
+       [:button {:style {:padding "8px 20px"
+                         :border "none"
+                         :border-radius "4px"
+                         :cursor (if valid? "pointer" "not-allowed")
+                         :background (if valid? "#6a4a8a" "#333")
+                         :color (if valid? "#fff" "#666")
+                         :font-size "14px"
+                         :font-weight "bold"}
+                 :disabled (not valid?)
+                 :on-click #(rf/dispatch [::events/confirm-graveyard-selection])}
+        "Confirm"]]]]))
+
+
 (defn- selection-modal
   "Modal overlay for player selection.
    Shows when :game/pending-selection exists.
-   Handles discard, tutor, scry, player-target effects, ability targeting, and cast-time targeting."
+   Handles discard, tutor, scry, graveyard-return, player-target effects, ability targeting, and cast-time targeting."
   []
   (let [selection @(rf/subscribe [::subs/pending-selection])
         cards @(rf/subscribe [::subs/selection-cards])]
@@ -1002,6 +1077,10 @@
           ;; Player target selection (for spell effects during resolution)
           (= effect-type :player-target)
           [player-target-modal selection]
+
+          ;; Graveyard return selection (Ill-Gotten Gains style)
+          (= selection-type :graveyard-return)
+          [graveyard-selection-modal selection cards]
 
           ;; Card selection (discard, tutor)
           :else
