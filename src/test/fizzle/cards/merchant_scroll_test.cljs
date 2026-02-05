@@ -17,7 +17,6 @@
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
-    [fizzle.engine.effects :as effects]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.zones :as zones]
     [fizzle.events.game :as game]))
@@ -125,6 +124,31 @@
     (into {} (map (fn [obj] [(:object/id obj) (:object/position obj)]) lib-cards))))
 
 
+;; === Helper Sanity Check Tests ===
+
+(deftest test-helper-add-card-to-zone-works
+  (testing "Sanity check: add-card-to-zone helper adds card to correct zone"
+    (let [db (create-test-db)
+          [db' obj-id] (add-card-to-zone db :dark-ritual :hand :player-1)]
+      (is (= :hand (get-object-zone db' obj-id))
+          "add-card-to-zone should put card in specified zone"))))
+
+
+(deftest test-helper-add-cards-to-library-works
+  (testing "Sanity check: add-cards-to-library helper adds cards with positions"
+    (let [db (create-test-db)
+          [db' obj-ids] (add-cards-to-library db [:dark-ritual :brain-freeze] :player-1)]
+      (is (= 2 (count obj-ids))
+          "Should return correct number of object IDs")
+      (is (= 2 (get-library-count db' :player-1))
+          "Library should have correct count")
+      (let [positions (get-library-positions db' :player-1)]
+        (is (= 0 (get positions (first obj-ids)))
+            "First card should be at position 0")
+        (is (= 1 (get positions (second obj-ids)))
+            "Second card should be at position 1")))))
+
+
 ;; === query-library-by-criteria Tests ===
 
 (deftest test-query-library-single-match
@@ -206,22 +230,10 @@
 
 ;; === shuffle-library Tests ===
 
-(deftest test-shuffle-library-changes-positions
-  (testing "shuffle-library randomizes card positions"
-    (let [db (create-test-db)
-          ;; Add 10 cards to make shuffle obvious
-          [db' obj-ids] (add-cards-to-library db
-                                              (repeat 10 :dark-ritual)
-                                              :player-1)
-          _positions-before (get-library-positions db' :player-1)
-          db-after (zones/shuffle-library db' :player-1)
-          positions-after (get-library-positions db-after :player-1)]
-      ;; With 10 cards, probability of same order is 1/10! = negligible
-      ;; But test may occasionally fail - that's acceptable for shuffle tests
-      (is (= (count obj-ids) (count positions-after))
-          "Shuffle should preserve all cards")
-      (is (= (set (vals positions-after)) (set (range 10)))
-          "Positions should be 0-9 after shuffle"))))
+;; Note: test-shuffle-library-changes-positions was deleted.
+;; It captured _positions-before but never compared to positions-after.
+;; The shuffle implementation is trivial and tested indirectly by other tests.
+;; Edge cases (empty library, single card) are covered by adjacent tests.
 
 
 (deftest test-shuffle-empty-library
@@ -243,22 +255,10 @@
           "Single card should have position 0 after shuffle"))))
 
 
-;; === :tutor Effect Tests ===
-
-(deftest test-tutor-effect-returns-db-unchanged
-  (testing ":tutor effect returns db unchanged (selection handled at app-db level)"
-    (let [db (create-test-db)
-          [db' _] (add-cards-to-library db [:brain-freeze] :player-1)
-          db-after (effects/execute-effect db' :player-1
-                                           {:effect/type :tutor
-                                            :effect/criteria {:card/types #{:instant}
-                                                              :card/colors #{:blue}}
-                                            :effect/target-zone :hand
-                                            :effect/shuffle? true})]
-      ;; Tutor effect itself is a no-op - selection happens in resolve-spell-with-selection
-      (is (= db' db-after)
-          "Tutor effect should return db unchanged"))))
-
+;; Note: test-tutor-effect-returns-db-unchanged was deleted.
+;; It tested an implementation detail (that the effect returns db unchanged)
+;; rather than behavior. The actual tutor behavior is tested through
+;; resolve-spell-with-selection tests in the "Tutor Selection System Tests" section.
 
 ;; === Tutor Selection System Tests ===
 
@@ -289,13 +289,12 @@
             "Should have 2 candidates (Brain Freeze and Mental Note)")))))
 
 
-(deftest test-tutor-fail-to-find-shuffles
-  (testing "Selecting nothing (fail-to-find) shuffles library without moving card"
+(deftest test-tutor-fail-to-find-preserves-cards
+  (testing "Selecting nothing (fail-to-find) preserves library and hand contents"
     (let [db (create-test-db)
           [db' _obj-ids] (add-cards-to-library db
                                                [:brain-freeze :dark-ritual :mental-note]
                                                :player-1)
-          _positions-before (get-library-positions db' :player-1)
           hand-before (get-hand-count db' :player-1)
           ;; Simulate confirming empty selection (fail-to-find)
           selection {:selection/zone :library
@@ -312,10 +311,7 @@
           "Hand should not gain cards on fail-to-find")
       ;; Library still has same count
       (is (= 3 (get-library-count db-after :player-1))
-          "Library count should not change")
-      ;; Positions should be shuffled (may rarely be same order)
-      ;; Note: This is probabilistic - with 3 cards, 1/6 chance of same order
-      )))
+          "Library count should not change"))))
 
 
 (deftest test-tutor-card-to-hand

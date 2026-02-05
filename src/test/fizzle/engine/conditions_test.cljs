@@ -4,7 +4,8 @@
     [datascript.core :as d]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
-    [fizzle.engine.conditions :as conditions]))
+    [fizzle.engine.conditions :as conditions]
+    [fizzle.engine.zones :as zones]))
 
 
 ;; === Test helper ===
@@ -83,3 +84,19 @@
       (is (false? (conditions/threshold? db :player-1)))
       ;; Opponent should have threshold
       (is (true? (conditions/threshold? db :player-2))))))
+
+
+(deftest test-threshold-boundary-regression
+  (testing "threshold? changes from true to false when card removed from graveyard"
+    (let [db-7 (-> (init-game-state)
+                   (add-cards-to-graveyard :player-1 7))
+          ;; Verify precondition: should have threshold with 7 cards
+          _ (is (true? (conditions/threshold? db-7 :player-1))
+                "Precondition: should have threshold with 7 cards")
+          ;; Remove 1 card by moving to exile
+          gy-card (first (q/get-objects-in-zone db-7 :player-1 :graveyard))
+          db-6 (zones/move-to-zone db-7 (:object/id gy-card) :exile)]
+      (is (= 6 (count (q/get-objects-in-zone db-6 :player-1 :graveyard)))
+          "Should have 6 cards after removal")
+      (is (false? (conditions/threshold? db-6 :player-1))
+          "Should lose threshold when dropping below 7"))))

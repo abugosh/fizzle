@@ -51,6 +51,7 @@
           hand (q/get-hand db :player-1)
           object-id (:object/id (first hand))
           db' (zones/move-to-zone db object-id :hand)]
+      (is (= db db') "Same-zone move should be exact no-op")
       (is (= :hand (:object/zone (q/get-object db' object-id))))
       (is (= 1 (count (q/get-hand db' :player-1)))))))
 
