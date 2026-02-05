@@ -516,6 +516,32 @@
       db))) ; Return unchanged - selection handled at app-db level
 
 
+(defmethod execute-effect-impl :peek-and-select
+  ;; Look at top N cards of library, select some for hand, rest to bottom.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/count - Number of cards to peek (default 0)
+  ;;   :effect/select-count - Number to select for hand (default 1)
+  ;;   :effect/selected-zone - Zone for selected cards (default :hand)
+  ;;   :effect/remainder-zone - Zone for non-selected (default :bottom-of-library)
+  ;;   :effect/shuffle-remainder? - Whether to shuffle remainder (default false)
+  ;;
+  ;; This effect returns db UNCHANGED. The actual peek-and-select happens at
+  ;; the app-db level via re-frame events when the player confirms their selection.
+  ;; The calling code checks for :peek-and-select effect type and sets up
+  ;; pending selection with the top N cards revealed.
+  ;;
+  ;; Anti-pattern: NO auto-select even with 1 card (player must choose/fail-to-find).
+  ;;
+  ;; Edge cases:
+  ;;   - count <= 0: No-op (returns db unchanged, no selection needed)
+  ;;   - count > library size: Peek available cards only (handled in selection setup)
+  ;;   - missing count: Defaults to 0 (no-op)
+  [db _player-id _effect _object-id]
+  ;; Return unchanged - selection handled at app-db level
+  db)
+
+
 (defmethod execute-effect-impl :grant-flashback
   ;; Grant flashback to a target card.
   ;;

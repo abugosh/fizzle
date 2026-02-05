@@ -1043,6 +1043,48 @@
            :selection/remaining-effects (vec effects-after)})))))
 
 
+(defn build-peek-selection
+  "Build pending selection state for a peek-and-select effect.
+   Reveals top N cards from library for player to select some for hand.
+   Returns nil if library is empty or count <= 0 (no selection needed).
+
+   Arguments:
+     db - Datascript game database
+     player-id - Player performing the peek
+     object-id - Spell-id for cleanup after selection confirmed
+     effect - The :peek-and-select effect map with:
+       :effect/count - Number of cards to peek (default 0)
+       :effect/select-count - Number to select for hand (default 1)
+       :effect/selected-zone - Zone for selected cards (default :hand)
+       :effect/remainder-zone - Zone for non-selected (default :bottom-of-library)
+       :effect/shuffle-remainder? - Whether to shuffle remainder (default false)
+     effects-after - Remaining effects to execute after selection
+
+   Anti-pattern: NO auto-select even with 1 card. Player must choose or fail-to-find."
+  [db player-id object-id effect effects-after]
+  (let [peek-count (or (:effect/count effect) 0)]
+    (when (pos? peek-count)
+      (let [library-cards (queries/get-top-n-library db player-id peek-count)]
+        (when (seq library-cards)
+          (let [candidate-ids (set library-cards)
+                select-count (or (:effect/select-count effect) 1)
+                ;; Actual count is min of requested and available
+                actual-select-count (min select-count (count candidate-ids))]
+            {:selection/zone :peek  ; Distinct from :library (tutor)
+             :selection/effect-type :peek-and-select
+             :selection/candidates candidate-ids
+             :selection/select-count actual-select-count
+             :selection/exact? false  ; Can select fewer (fail-to-find)
+             :selection/allow-fail-to-find true
+             :selection/selected #{}
+             :selection/player-id player-id
+             :selection/spell-id object-id
+             :selection/remaining-effects (vec effects-after)
+             :selection/selected-zone (or (:effect/selected-zone effect) :hand)
+             :selection/remainder-zone (or (:effect/remainder-zone effect) :bottom-of-library)
+             :selection/shuffle-remainder? (:effect/shuffle-remainder? effect)}))))))
+
+
 (defn- build-discard-selection
   "Build pending selection state for a discard effect."
   [player-id object-id discard-effect effects-after]
@@ -1645,6 +1687,60 @@
         (if should-shuffle?
           (zones/shuffle-library db-after-tapped player-id)
           db-after-tapped)))))
+
+
+(defn execute-peek-selection
+  "Execute peek selection - move selected to hand, rest to bottom of library.
+   Pure function: (db, selection) -> db
+
+   Arguments:
+     db - Datascript game database (not app-db)
+     selection - Peek selection state with:
+       :selection/selected - Set of object-ids going to hand
+       :selection/candidates - Set of all object-ids that were peeked
+       :selection/selected-zone - Zone for selected cards (typically :hand)
+       :selection/remainder-zone - Zone for non-selected (typically :bottom-of-library)
+       :selection/shuffle-remainder? - Whether to randomize remainder order
+       :selection/player-id - Player performing the peek
+
+   Handles:
+     - Empty selection (fail-to-find): All candidates go to bottom
+     - Cards selected: Selected go to hand, rest go to bottom
+     - Remainder shuffling: If shuffle-remainder? true, randomize bottom order"
+  [db selection]
+  (let [selected (:selection/selected selection)
+        candidates (:selection/candidates selection)
+        remainder (clojure.set/difference candidates selected)
+        selected-zone (or (:selection/selected-zone selection) :hand)
+        player-id (:selection/player-id selection)
+        shuffle-remainder? (:selection/shuffle-remainder? selection)
+        ;; Move selected cards to hand
+        db-after-selected (reduce (fn [d card-id]
+                                    (zones/move-to-zone d card-id selected-zone))
+                                  db
+                                  selected)
+        ;; Get max position in library to put remainder at bottom
+        ;; Cards in library after removing selected ones
+        library-objs (queries/get-objects-in-zone db-after-selected player-id :library)
+        max-pos (if (seq library-objs)
+                  (apply max (map :object/position library-objs))
+                  -1)
+        ;; Order remainder cards (shuffle if requested, otherwise keep original order)
+        remainder-seq (if shuffle-remainder?
+                        (shuffle (seq remainder))
+                        (seq remainder))
+        ;; Assign new positions to remainder cards starting after max-pos
+        db-after-remainder (reduce-kv
+                             (fn [d idx card-id]
+                               (let [obj-eid (d/q '[:find ?e .
+                                                    :in $ ?oid
+                                                    :where [?e :object/id ?oid]]
+                                                  d card-id)
+                                     new-pos (+ max-pos 1 idx)]
+                                 (d/db-with d [[:db/add obj-eid :object/position new-pos]])))
+                             db-after-selected
+                             (vec remainder-seq))]
+    db-after-remainder))
 
 
 (defn execute-pile-choice
