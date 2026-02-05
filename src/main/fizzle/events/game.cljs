@@ -965,6 +965,8 @@
    - :tutor - player searches library for matching card
    - :scry with amount > 0 - player arranges top N cards
    - :effect/target :any-player - player chooses a target player
+   - :peek-and-select - player chooses from top N cards (Flash of Insight)
+   - :return-from-graveyard with :selection :player - player chooses cards to return
    Returns nil if no selection effect found."
   [effects]
   (first (keep-indexed (fn [i effect]
@@ -972,7 +974,9 @@
                                    (= :tutor (:effect/type effect))
                                    (and (= :scry (:effect/type effect))
                                         (pos? (or (:effect/amount effect) 0)))
-                                   (= :any-player (:effect/target effect)))
+                                   (= :any-player (:effect/target effect))
+                                   (= :peek-and-select (:effect/type effect))
+                                   (= :return-from-graveyard (:effect/type effect)))
                            i))
                        effects)))
 
