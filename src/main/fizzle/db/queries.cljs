@@ -194,6 +194,46 @@
       (get-in obj [:object/card :card/name]))))
 
 
+(defn- matches-criteria?
+  "Check if an object's card matches the given criteria.
+   Criteria map supports:
+     :card/types    - Set of types, object must have ALL (AND)
+     :card/colors   - Set of colors, object must have ANY (OR - blue OR white)
+     :card/subtypes - Set of subtypes, object must have ANY (OR)"
+  [obj criteria]
+  (let [card (:object/card obj)
+        card-types (set (or (:card/types card) #{}))
+        card-colors (set (or (:card/colors card) #{}))
+        card-subtypes (set (or (:card/subtypes card) #{}))]
+    (and
+      ;; All required types must be present (AND logic)
+      (every? card-types (get criteria :card/types #{}))
+      ;; At least one required color (OR logic) - empty criteria = matches all
+      (or (empty? (get criteria :card/colors #{}))
+          (some card-colors (get criteria :card/colors #{})))
+      ;; At least one required subtype (OR logic)
+      (or (empty? (get criteria :card/subtypes #{}))
+          (some card-subtypes (get criteria :card/subtypes #{}))))))
+
+
+(defn query-zone-by-criteria
+  "Return objects in a zone matching criteria.
+   Pure function: (db, player-id, zone, criteria) -> vector
+
+   Criteria map supports:
+     :card/types    - Set of types, object must have ALL (AND)
+     :card/colors   - Set of colors, object must have ANY (OR - blue OR white)
+     :card/subtypes - Set of subtypes, object must have ANY (OR)
+
+   Returns vector of objects with card data, or [] if no matches.
+   Returns nil if player doesn't exist."
+  [db player-id zone criteria]
+  (let [player-eid (get-player-eid db player-id)]
+    (when player-eid
+      (let [zone-objs (get-objects-in-zone db player-id zone)]
+        (filterv #(matches-criteria? % criteria) zone-objs)))))
+
+
 (defn query-library-by-criteria
   "Return objects in library matching criteria.
    Pure function: (db, player-id, criteria) -> vector
@@ -206,22 +246,4 @@
    Returns vector of objects with card data, or [] if no matches.
    Returns nil if player doesn't exist."
   [db player-id criteria]
-  (let [player-eid (get-player-eid db player-id)]
-    (when player-eid
-      (let [library-objs (get-objects-in-zone db player-id :library)]
-        (filterv
-          (fn [obj]
-            (let [card (:object/card obj)
-                  card-types (set (or (:card/types card) #{}))
-                  card-colors (set (or (:card/colors card) #{}))
-                  card-subtypes (set (or (:card/subtypes card) #{}))]
-              (and
-                ;; All required types must be present (AND logic)
-                (every? card-types (get criteria :card/types #{}))
-                ;; At least one required color (OR logic) - empty criteria = matches all
-                (or (empty? (get criteria :card/colors #{}))
-                    (some card-colors (get criteria :card/colors #{})))
-                ;; At least one required subtype (OR logic)
-                (or (empty? (get criteria :card/subtypes #{}))
-                    (some card-subtypes (get criteria :card/subtypes #{}))))))
-          library-objs)))))
+  (query-zone-by-criteria db player-id :library criteria))

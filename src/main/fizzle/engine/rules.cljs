@@ -120,6 +120,32 @@
                                         :where [?p :player/life ?life]]
                                       db controller-eid)]
                 (>= (or current-life 0) (:cost/amount cost)))
+
+    :exile-cards (if-let [obj (q/get-object db object-id)]
+                   (let [;; Controller ref needs lookup to get player-id
+                         controller-eid (:db/id (:object/controller obj))
+                         controller-id (d/q '[:find ?pid .
+                                              :in $ ?e
+                                              :where [?e :player/id ?pid]]
+                                            db controller-eid)
+                         zone (:cost/zone cost)          ; e.g., :graveyard
+                         criteria (:cost/criteria cost)  ; e.g., {:card/colors #{:blue}}
+                         required (:cost/count cost)     ; integer or :x
+                         all-available (q/query-zone-by-criteria db controller-id zone criteria)
+                         ;; Exclude the spell being cast from available cards
+                         ;; (can't exile the card you're casting)
+                         available (filterv #(not= object-id (:object/id %)) all-available)
+                         available-count (count available)]
+                     (cond
+                       ;; For :x cost, need at least 1 card (X >= 1)
+                       (= required :x) (pos? available-count)
+                       ;; For count=0, vacuously true (no cards needed)
+                       (zero? required) true
+                       ;; For fixed count, need at least that many
+                       :else (>= available-count required)))
+                   ;; Object not found
+                   false)
+
     ;; For unimplemented cost types, return false
     ;; This ensures we don't accidentally allow casting when costs can't be validated
     false))
@@ -127,7 +153,11 @@
 
 (defn- pay-additional-cost
   "Pay a single additional cost. Returns updated db.
-   Precondition: cost has been validated with can-pay-additional-cost?"
+   Precondition: cost has been validated with can-pay-additional-cost?
+
+   Note: Some costs like :exile-cards require player selection and are
+   handled at the event layer. This function returns db unchanged for those,
+   and the actual payment happens after player confirms selection."
   [db _player-id object-id cost]
   (case (:cost/type cost)
     :pay-life (let [obj (q/get-object db object-id)
@@ -138,6 +168,11 @@
                                       db controller-eid)
                     new-life (- current-life (:cost/amount cost))]
                 (d/db-with db [[:db/add controller-eid :player/life new-life]]))
+
+    ;; :exile-cards requires player selection - handled at event layer
+    ;; Return db unchanged here; actual exile happens after selection confirmed
+    :exile-cards db
+
     ;; Unknown cost type - return db unchanged (validated in can-pay)
     db))
 
