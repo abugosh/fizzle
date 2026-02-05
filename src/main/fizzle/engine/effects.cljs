@@ -526,3 +526,44 @@
                                     :alternate/on-resolve :exile}}]
             (grants/add-grant db target-id grant))
           db)))))
+
+
+(defmethod execute-effect-impl :add-restriction
+  ;; Add a restriction grant to a target player.
+  ;;
+  ;; Effect keys:
+  ;;   :restriction/type - Type of restriction (:cannot-cast-spells, :cannot-attack)
+  ;;   :effect/target - Target player resolution:
+  ;;       :targeted-player - Look up :player in source object's :object/targets
+  ;;       :self - Use player-id (effect controller)
+  ;;       :opponent - Use opponent of player-id
+  ;;       keyword - Direct player ID
+  ;;
+  ;; Grant expires at end of current turn (cleanup phase).
+  ;;
+  ;; Handles edge cases:
+  ;;   - Invalid target: no-op (returns db unchanged)
+  ;;   - Missing source object: falls back to player-id as target for :targeted-player
+  ;;   - Missing game turn: defaults to turn 1
+  [db player-id effect source-object-id]
+  (let [;; Resolve target player
+        target-raw (:effect/target effect)
+        source-obj (when source-object-id (q/get-object db source-object-id))
+        target-player (case target-raw
+                        :targeted-player (get-in source-obj [:object/targets :player] player-id)
+                        :self player-id
+                        :opponent (q/get-opponent-id db player-id)
+                        ;; Default: use as-is or fall back to player-id
+                        (or target-raw player-id))
+        ;; Get current turn for expiration
+        game (q/get-game-state db)
+        current-turn (or (:game/turn game) 1)]
+    ;; Guard: invalid player is no-op
+    (if (q/get-player-eid db target-player)
+      (let [grant {:grant/id (random-uuid)
+                   :grant/type :restriction
+                   :grant/source source-object-id
+                   :grant/expires {:expires/turn current-turn :expires/phase :cleanup}
+                   :grant/data {:restriction/type (:restriction/type effect)}}]
+        (grants/add-player-grant db target-player grant))
+      db)))

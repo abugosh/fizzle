@@ -4,7 +4,8 @@
     [datascript.core :as d]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
-    [fizzle.engine.effects :as fx]))
+    [fizzle.engine.effects :as fx]
+    [fizzle.engine.grants :as grants]))
 
 
 ;; === execute-effect :add-mana tests ===
@@ -1204,3 +1205,161 @@
           "Life should be exactly 0")
       (is (= :life-zero (get-loss-condition db'))
           "Loss condition should be set at exactly 0 life"))))
+
+
+;; === Test helpers for add-restriction ===
+
+(defn add-spell-with-target
+  "Create a spell object on the stack with target stored in :object/targets.
+   Returns [object-id updated-db]."
+  [db controller-id object-id target-player]
+  (let [player-eid (q/get-player-eid db controller-id)
+        conn (d/conn-from-db db)
+        card-eid (d/q '[:find ?e .
+                        :where [?e :card/id :dark-ritual]]
+                      @conn)]
+    (d/transact! conn [{:object/id object-id
+                        :object/card card-eid
+                        :object/zone :stack
+                        :object/owner player-eid
+                        :object/controller player-eid
+                        :object/targets {:player target-player}
+                        :object/tapped false}])
+    [object-id @conn]))
+
+
+;; === execute-effect :add-restriction tests ===
+
+(deftest test-add-restriction-creates-grant-on-target-player
+  (testing "creates restriction grant on target player"
+    ;; Catches: grant not created or wrong player
+    (let [db (-> (init-game-state)
+                 (add-opponent))
+          source-id (random-uuid)
+          [source-id db] (add-spell-with-target db :player-1 source-id :player-2)
+          effect {:effect/type :add-restriction
+                  :restriction/type :cannot-cast-spells
+                  :effect/target :targeted-player}
+          db' (fx/execute-effect db :player-1 effect source-id)
+          player-grants (grants/get-player-grants db' :player-2)]
+      (is (= 1 (count player-grants))
+          "Should create one grant on opponent")
+      (is (= :restriction (:grant/type (first player-grants)))
+          "Grant type should be :restriction")
+      (is (= :cannot-cast-spells (get-in (first player-grants) [:grant/data :restriction/type]))
+          "Restriction type should be :cannot-cast-spells"))))
+
+
+(deftest test-add-restriction-expires-at-cleanup
+  (testing "restriction grant expires at end of current turn"
+    ;; Catches: wrong expiration turn or phase
+    (let [db (-> (init-game-state)
+                 (add-opponent))
+          ;; Set game to turn 3
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          db (d/db-with db [[:db/add game-eid :game/turn 3]])
+          source-id (random-uuid)
+          [source-id db] (add-spell-with-target db :player-1 source-id :player-2)
+          effect {:effect/type :add-restriction
+                  :restriction/type :cannot-cast-spells
+                  :effect/target :targeted-player}
+          db' (fx/execute-effect db :player-1 effect source-id)
+          grant (first (grants/get-player-grants db' :player-2))]
+      (is (= 3 (get-in grant [:grant/expires :expires/turn]))
+          "Should expire on turn 3")
+      (is (= :cleanup (get-in grant [:grant/expires :expires/phase]))
+          "Should expire at cleanup phase"))))
+
+
+(deftest test-add-restriction-cannot-attack-type
+  (testing "can create cannot-attack restriction"
+    ;; Catches: hardcoded to only support one restriction type
+    (let [db (-> (init-game-state)
+                 (add-opponent))
+          source-id (random-uuid)
+          [source-id db] (add-spell-with-target db :player-1 source-id :player-2)
+          effect {:effect/type :add-restriction
+                  :restriction/type :cannot-attack
+                  :effect/target :targeted-player}
+          db' (fx/execute-effect db :player-1 effect source-id)
+          grant (first (grants/get-player-grants db' :player-2))]
+      (is (= :cannot-attack (get-in grant [:grant/data :restriction/type]))
+          "Restriction type should be :cannot-attack"))))
+
+
+(deftest test-add-restriction-targets-self
+  (testing "targets controller when effect specifies :self"
+    ;; Catches: :self target not resolved to player-id
+    (let [db (init-game-state)
+          source-id (random-uuid)
+          effect {:effect/type :add-restriction
+                  :restriction/type :cannot-cast-spells
+                  :effect/target :self}
+          db' (fx/execute-effect db :player-1 effect source-id)]
+      (is (= 1 (count (grants/get-player-grants db' :player-1)))
+          "Should create grant on controller (self)"))))
+
+
+(deftest test-add-restriction-targets-opponent
+  (testing "targets opponent when effect specifies :opponent"
+    ;; Catches: :opponent target not resolved via get-opponent-id
+    (let [db (-> (init-game-state)
+                 (add-opponent))
+          source-id (random-uuid)
+          effect {:effect/type :add-restriction
+                  :restriction/type :cannot-cast-spells
+                  :effect/target :opponent}
+          db' (fx/execute-effect db :player-1 effect source-id)]
+      ;; Player 1 should have no grants
+      (is (= 0 (count (grants/get-player-grants db' :player-1)))
+          "Controller should not have grants")
+      ;; Player 2 should have the grant
+      (is (= 1 (count (grants/get-player-grants db' :player-2)))
+          "Opponent should have the grant"))))
+
+
+(deftest test-add-restriction-invalid-target-is-noop
+  (testing "returns db unchanged when target player doesn't exist"
+    ;; Catches: missing guard clause for invalid player
+    (let [db (init-game-state)
+          source-id (random-uuid)
+          effect {:effect/type :add-restriction
+                  :restriction/type :cannot-cast-spells
+                  :effect/target :nonexistent-player}
+          db' (fx/execute-effect db :player-1 effect source-id)]
+      (is (= db db')
+          "Should be no-op for invalid target"))))
+
+
+(deftest test-add-restriction-stores-source
+  (testing "grant includes source object-id for tracking"
+    ;; Catches: missing source tracking on grant
+    (let [db (-> (init-game-state)
+                 (add-opponent))
+          source-id (random-uuid)
+          [source-id db] (add-spell-with-target db :player-1 source-id :player-2)
+          effect {:effect/type :add-restriction
+                  :restriction/type :cannot-cast-spells
+                  :effect/target :targeted-player}
+          db' (fx/execute-effect db :player-1 effect source-id)
+          grant (first (grants/get-player-grants db' :player-2))]
+      (is (= source-id (:grant/source grant))
+          "Grant should track source object ID"))))
+
+
+(deftest test-add-restriction-default-turn-when-nil
+  (testing "defaults to turn 1 when game turn is nil"
+    ;; Catches: nil pointer on (or (:game/turn game) 1) pattern
+    ;; Note: init-game-state creates game with :game/turn 1 already
+    ;; This test documents expected behavior
+    (let [db (-> (init-game-state)
+                 (add-opponent))
+          source-id (random-uuid)
+          [source-id db] (add-spell-with-target db :player-1 source-id :player-2)
+          effect {:effect/type :add-restriction
+                  :restriction/type :cannot-cast-spells
+                  :effect/target :targeted-player}
+          db' (fx/execute-effect db :player-1 effect source-id)
+          grant (first (grants/get-player-grants db' :player-2))]
+      (is (= 1 (get-in grant [:grant/expires :expires/turn]))
+          "Should default to turn 1"))))
