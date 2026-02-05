@@ -8,7 +8,9 @@
     [fizzle.cards.deep-analysis :as deep-analysis]
     [fizzle.cards.ill-gotten-gains :as ill-gotten-gains]
     [fizzle.cards.orims-chant :as orims-chant]
-    [fizzle.cards.recoup :as recoup]))
+    [fizzle.cards.ray-of-revelation :as ray-of-revelation]
+    [fizzle.cards.recoup :as recoup]
+    [fizzle.cards.seal-of-cleansing :as seal-of-cleansing]))
 
 
 ;; Dark Ritual - The foundation of black storm
@@ -343,4 +345,5 @@
    gemstone-mine island swamp underground-river lotus-petal lions-eye-diamond
    careful-study mental-note opt merchant-scroll intuition polluted-delta
    deep-analysis/deep-analysis cephalid-coliseum/cephalid-coliseum recoup/recoup
-   ill-gotten-gains/ill-gotten-gains orims-chant/orims-chant])
+   ill-gotten-gains/ill-gotten-gains orims-chant/orims-chant
+   ray-of-revelation/ray-of-revelation seal-of-cleansing/seal-of-cleansing])

@@ -98,10 +98,11 @@
       ;; Protection (1)
       (is (= 1 (get card-counts :orims-chant))
           "Should have 1 Orim's Chant in deck")
-      ;; Substitutes for unimplemented cards (2)
-      ;; TODO: Replace with Flash of Insight, Ray of Revelation
-      (is (= 2 (get card-counts :merchant-scroll))
-          "Should have 2 Merchant Scrolls (substitutes) in deck"))))
+      ;; Enchantment interaction (2)
+      (is (= 1 (get card-counts :ray-of-revelation))
+          "Should have 1 Ray of Revelation in deck")
+      (is (= 1 (get card-counts :seal-of-cleansing))
+          "Should have 1 Seal of Cleansing in deck"))))
 
 
 ;; === Starting hand tests ===

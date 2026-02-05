@@ -23,12 +23,18 @@
 
 
 (defn- matches-criteria?
-  "Check if an object's card matches the targeting criteria."
+  "Check if an object's card matches the targeting criteria.
+   For :card/types, uses OR logic: object matches if it has ANY of the specified types.
+   E.g., {:card/types #{:artifact :enchantment}} matches artifacts OR enchantments."
   [obj criteria]
   (let [card (:object/card obj)
-        card-types (set (or (:card/types card) #{}))]
-    ;; All required types must be present (AND logic)
-    (every? card-types (get criteria :card/types #{}))))
+        card-types (set (or (:card/types card) #{}))
+        required-types (get criteria :card/types #{})]
+    ;; OR logic: object matches if any required type is in card's types
+    ;; This matches MTG: 'target artifact or enchantment' means either type
+    (if (empty? required-types)
+      true  ; No type restriction
+      (some card-types required-types))))
 
 
 (defn find-valid-targets

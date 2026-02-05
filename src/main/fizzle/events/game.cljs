@@ -70,9 +70,9 @@
             (repeat 4 :ill-gotten-gains)
             ;; Protection (1)
             (repeat 1 :orims-chant)
-            ;; Substitutes for unimplemented cards (2)
-            ;; TODO: Replace with Flash of Insight (1), Ray of Revelation (1)
-            (repeat 2 :merchant-scroll)))))
+            ;; Enchantment interaction (2)
+            (repeat 1 :ray-of-revelation)
+            (repeat 1 :seal-of-cleansing)))))
 
 
 (defn init-game-state
@@ -885,6 +885,22 @@
         db))))
 
 
+(rf/reg-event-db
+  ::select-ability-object-target
+  (fn [db [_ object-id]]
+    (let [selection (:game/pending-selection db)
+          valid-targets (set (:selection/valid-targets selection))]
+      (if (contains? valid-targets object-id)
+        ;; Toggle selection: if already selected, deselect; otherwise select
+        (let [currently-selected (:selection/selected-target selection)
+              new-selection (if (= currently-selected object-id)
+                              nil
+                              object-id)]
+          (assoc-in db [:game/pending-selection :selection/selected-target] new-selection))
+        ;; Invalid target - ignore
+        db))))
+
+
 ;; === Selection System ===
 ;; For effects that require player selection (e.g., Careful Study discard)
 ;;
@@ -1352,12 +1368,34 @@
             {:db db-final
              :pending-selection nil})))
 
-      ;; No selection effect - resolve normally and remove trigger
+      ;; No selection effect - resolve with stored targets if present
       (nil? selection-idx)
-      {:db (-> db
-               (triggers/resolve-trigger trigger)
-               (triggers/remove-trigger trigger-id))
-       :pending-selection nil}
+      (let [;; Execute effects, resolving :effect/target-ref from stored-targets
+            db-after-effects (reduce
+                               (fn [d effect]
+                                 (let [;; Resolve target-ref from stored targets
+                                       target-ref (:effect/target-ref effect)
+                                       resolved-target (when target-ref
+                                                         (get stored-targets target-ref))
+                                       ;; Also handle :self and :controller targets
+                                       resolved-effect (cond
+                                                         ;; Has target-ref with stored target - resolve to actual target
+                                                         resolved-target
+                                                         (assoc effect :effect/target resolved-target)
+
+                                                         (= :self (:effect/target effect))
+                                                         (assoc effect :effect/target source-id)
+
+                                                         (= :controller (:effect/target effect))
+                                                         (assoc effect :effect/target controller)
+
+                                                         :else effect)]
+                                   (effects/execute-effect d controller resolved-effect source-id)))
+                               db
+                               effects-list)
+            db-final (triggers/remove-trigger db-after-effects trigger-id)]
+        {:db db-final
+         :pending-selection nil})
 
       ;; Has selection effect without stored targets - pause for selection
       :else

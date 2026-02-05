@@ -192,6 +192,14 @@
                  (map #(queries/get-object game-db %))
                  (filterv some?)))
 
+          ;; Ability targeting with object targets (e.g., Seal of Cleansing)
+          (and (= selection-type :ability-targeting)
+               (= :object (get-in selection [:selection/target-requirement :target/type])))
+          (let [valid-target-ids (set (:selection/valid-targets selection))]
+            (->> valid-target-ids
+                 (map #(queries/get-object game-db %))
+                 (filterv some?)))
+
           ;; Tutor: library cards filtered to candidates
           (= effect-type :tutor)
           (let [candidates (:selection/candidates selection)

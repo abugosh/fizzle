@@ -413,29 +413,35 @@
   ;; Destroy target permanent - move it to owner's graveyard.
   ;;
   ;; Effect keys:
+  ;;   :effect/target - Direct target object-id (used by activated abilities)
   ;;   :effect/target-ref - Target reference keyword to look up from
   ;;                        :object/targets on the casting object.
   ;;
+  ;; Target resolution order:
+  ;;   1. :effect/target (direct) - pre-resolved by caller
+  ;;   2. :effect/target-ref (lookup) - from source object's stored targets
+  ;;
   ;; Handles edge cases:
-  ;;   - object-id nil: no-op (returns db unchanged)
-  ;;   - No stored target for target-ref: no-op
+  ;;   - No target found: no-op (returns db unchanged)
   ;;   - Target object doesn't exist: no-op
   ;;
   ;; Note: Goes to OWNER's graveyard, not controller's. This matters
   ;; for stolen permanents (Control Magic effects). The zones system
   ;; handles this correctly since zones are queried by :object/owner.
   [db _player-id effect object-id]
-  (if-not object-id
-    db  ; No source object - no-op
-    (let [source-obj (q/get-object db object-id)
-          target-ref (:effect/target-ref effect)
-          stored-targets (:object/targets source-obj)
-          target-id (get stored-targets target-ref)]
-      (if-not target-id
-        db  ; No stored target for this ref - no-op
-        (if-let [_target-obj (q/get-object db target-id)]
-          (zones/move-to-zone db target-id :graveyard)
-          db)))))  ; Target doesn't exist - no-op
+  (let [;; First check for direct target, then fall back to target-ref lookup
+        direct-target (:effect/target effect)
+        target-ref (:effect/target-ref effect)
+        target-id (or direct-target
+                      (when (and object-id target-ref)
+                        (let [source-obj (q/get-object db object-id)
+                              stored-targets (:object/targets source-obj)]
+                          (get stored-targets target-ref))))]
+    (if-not target-id
+      db  ; No target found - no-op
+      (if-let [_target-obj (q/get-object db target-id)]
+        (zones/move-to-zone db target-id :graveyard)
+        db))))  ; Target doesn't exist - no-op
 
 
 (defmethod execute-effect-impl :discard
