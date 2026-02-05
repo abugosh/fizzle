@@ -48,6 +48,20 @@
       [obj-id @conn])))
 
 
+(defn add-player
+  "Add a player to the db with default attributes.
+   Returns updated db."
+  [db player-id]
+  (let [conn (d/conn-from-db db)]
+    (d/transact! conn [{:player/id player-id
+                        :player/name (str "Player " player-id)
+                        :player/life 20
+                        :player/mana-pool {:white 0 :blue 0 :black 0 :red 0 :green 0 :colorless 0}
+                        :player/storm-count 0
+                        :player/land-plays-left 1}])
+    @conn))
+
+
 (def test-sorcery
   {:card/id :test-sorcery
    :card/name "Test Sorcery"
@@ -415,3 +429,144 @@
       ;; Card should still be castable
       (is (rules/can-cast? db' :player-1 obj-id)
           "Card should still be castable"))))
+
+
+;; =====================================================
+;; Player Grant Tests
+;; =====================================================
+;; Player grants extend the grants system to player entities.
+;; This enables restrictions like "can't cast spells" from Orim's Chant.
+
+(deftest add-player-grant-test
+  (testing "adds grant to player with no existing grants"
+    (let [db (init-game-state)
+          test-grant {:grant/id (random-uuid)
+                      :grant/type :restriction
+                      :grant/source (random-uuid)
+                      :grant/expires {:expires/turn 1 :expires/phase :cleanup}
+                      :grant/data {:restriction/type :cannot-cast-spells}}
+          db' (grants/add-player-grant db :player-1 test-grant)]
+      (is (= 1 (count (grants/get-player-grants db' :player-1)))
+          "Player should have one grant")
+      (is (= :restriction (:grant/type (first (grants/get-player-grants db' :player-1))))
+          "Grant type should be :restriction"))))
+
+
+(deftest get-player-grants-by-type-test
+  (testing "filters grants by type"
+    (let [db (init-game-state)
+          db' (-> db
+                  (grants/add-player-grant :player-1 {:grant/id (random-uuid)
+                                                       :grant/type :restriction
+                                                       :grant/source (random-uuid)
+                                                       :grant/expires {:expires/turn 1 :expires/phase :cleanup}
+                                                       :grant/data {}})
+                  (grants/add-player-grant :player-1 {:grant/id (random-uuid)
+                                                       :grant/type :alternate-cost
+                                                       :grant/source (random-uuid)
+                                                       :grant/expires {:expires/turn 1 :expires/phase :cleanup}
+                                                       :grant/data {}}))]
+      (is (= 1 (count (grants/get-player-grants-by-type db' :player-1 :restriction)))
+          "Should return only restriction grants")
+      (is (= 1 (count (grants/get-player-grants-by-type db' :player-1 :alternate-cost)))
+          "Should return only alternate-cost grants"))))
+
+
+(deftest remove-player-grant-test
+  (testing "removes specific grant by id"
+    (let [db (init-game-state)
+          grant-id (random-uuid)
+          db' (-> db
+                  (grants/add-player-grant :player-1 {:grant/id grant-id
+                                                       :grant/type :restriction
+                                                       :grant/source (random-uuid)
+                                                       :grant/expires {:expires/turn 1 :expires/phase :cleanup}
+                                                       :grant/data {}})
+                  (grants/remove-player-grant :player-1 grant-id))]
+      (is (= 0 (count (grants/get-player-grants db' :player-1)))
+          "Grant should be removed"))))
+
+
+(deftest expire-grants-includes-players-test
+  (testing "expired player grants removed at cleanup"
+    (let [db (init-game-state)
+          expired-grant {:grant/id (random-uuid)
+                         :grant/type :restriction
+                         :grant/source (random-uuid)
+                         :grant/expires {:expires/turn 1 :expires/phase :cleanup}
+                         :grant/data {:restriction/type :cannot-cast-spells}}
+          db' (-> db
+                  (grants/add-player-grant :player-1 expired-grant)
+                  ;; Expire at turn 1, cleanup (should remove)
+                  (grants/expire-grants 1 :cleanup))]
+      (is (= 0 (count (grants/get-player-grants db' :player-1)))
+          "Player grant should be expired"))))
+
+
+(deftest non-expired-player-grants-preserved-test
+  (testing "player grants expiring later are not removed"
+    (let [db (init-game-state)
+          future-grant {:grant/id (random-uuid)
+                        :grant/type :restriction
+                        :grant/source (random-uuid)
+                        :grant/expires {:expires/turn 5 :expires/phase :cleanup}
+                        :grant/data {:restriction/type :cannot-cast-spells}}
+          db' (-> db
+                  (grants/add-player-grant :player-1 future-grant)
+                  ;; Expire at turn 2 (should NOT remove turn 5 grant)
+                  (grants/expire-grants 2 :cleanup))]
+      (is (= 1 (count (grants/get-player-grants db' :player-1)))
+          "Player grant should not be expired (expires turn 5)"))))
+
+
+(deftest independent-player-grants-test
+  (testing "grants on one player don't affect another"
+    (let [db (-> (init-game-state)
+                 (add-player :opponent))
+          db' (-> db
+                  (grants/add-player-grant :player-1 {:grant/id (random-uuid)
+                                                       :grant/type :restriction
+                                                       :grant/source (random-uuid)
+                                                       :grant/expires {:expires/turn 1 :expires/phase :cleanup}
+                                                       :grant/data {}})
+                  (grants/add-player-grant :opponent {:grant/id (random-uuid)
+                                                       :grant/type :restriction
+                                                       :grant/source (random-uuid)
+                                                       :grant/expires {:expires/turn 1 :expires/phase :cleanup}
+                                                       :grant/data {}}))]
+      (is (= 1 (count (grants/get-player-grants db' :player-1)))
+          "Player 1 should have one grant")
+      (is (= 1 (count (grants/get-player-grants db' :opponent)))
+          "Opponent should have one grant"))))
+
+
+(deftest get-player-grants-empty-test
+  (testing "player with no grants returns empty vector"
+    (let [db (init-game-state)]
+      (is (= [] (grants/get-player-grants db :player-1))
+          "Player without grants should return empty vector"))))
+
+
+(deftest expire-grants-handles-both-objects-and-players-test
+  (testing "expire-grants removes expired grants from both objects and players"
+    (let [db (init-game-state)
+          ;; Add object with grant
+          [obj-id db] (add-card-to-zone db :player-1 test-sorcery :graveyard)
+          expired-object-grant {:grant/id (random-uuid)
+                                :grant/type :alternate-cost
+                                :grant/source (random-uuid)
+                                :grant/expires {:expires/turn 1 :expires/phase :cleanup}
+                                :grant/data {:alternate/id :flashback}}
+          expired-player-grant {:grant/id (random-uuid)
+                                :grant/type :restriction
+                                :grant/source (random-uuid)
+                                :grant/expires {:expires/turn 1 :expires/phase :cleanup}
+                                :grant/data {:restriction/type :cannot-cast-spells}}
+          db' (-> db
+                  (grants/add-grant obj-id expired-object-grant)
+                  (grants/add-player-grant :player-1 expired-player-grant)
+                  (grants/expire-grants 1 :cleanup))]
+      (is (= 0 (count (grants/get-grants db' obj-id)))
+          "Object grant should be expired")
+      (is (= 0 (count (grants/get-player-grants db' :player-1)))
+          "Player grant should be expired"))))
