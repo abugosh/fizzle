@@ -98,11 +98,12 @@
       ;; Protection (1)
       (is (= 1 (get card-counts :orims-chant))
           "Should have 1 Orim's Chant in deck")
-      ;; Enchantment interaction (2)
+      ;; Enchantment interaction (1)
       (is (= 1 (get card-counts :ray-of-revelation))
           "Should have 1 Ray of Revelation in deck")
-      (is (= 1 (get card-counts :seal-of-cleansing))
-          "Should have 1 Seal of Cleansing in deck"))))
+      ;; Card selection (1)
+      (is (= 1 (get card-counts :flash-of-insight))
+          "Should have 1 Flash of Insight in deck"))))
 
 
 ;; === Starting hand tests ===

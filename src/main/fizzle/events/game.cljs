@@ -32,11 +32,7 @@
 (defn make-test-deck
   "Create a test deck as a vector of card-ids.
    Iggy Pop storm deck - mix of rituals, lands, acceleration, card filtering.
-   Returns shuffled vector of 60 card-ids.
-
-   Target list (some cards not yet implemented, using substitutes):
-   - Flash of Insight, Ray of Revelation are substituted with
-     Merchant Scroll until implemented."
+   Returns shuffled vector of 60 card-ids."
   []
   (shuffle
     (into []
@@ -70,9 +66,10 @@
             (repeat 4 :ill-gotten-gains)
             ;; Protection (1)
             (repeat 1 :orims-chant)
-            ;; Enchantment interaction (2)
+            ;; Enchantment interaction (1)
             (repeat 1 :ray-of-revelation)
-            (repeat 1 :seal-of-cleansing)))))
+            ;; Card selection (1)
+            (repeat 1 :flash-of-insight)))))
 
 
 (defn init-game-state
