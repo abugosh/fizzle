@@ -50,6 +50,7 @@
    :player/storm-count     {}  ; Number of spells cast this turn
    :player/land-plays-left {}  ; Land plays remaining this turn
    :player/is-opponent     {}  ; Boolean, for bot players
+   :player/grants          {}  ; Vector of grant maps (temporary restrictions/effects)
 
    ;; === Game State (singleton) ===
    :game/id            {:db/unique :db.unique/identity}

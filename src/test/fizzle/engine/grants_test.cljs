@@ -457,15 +457,15 @@
     (let [db (init-game-state)
           db' (-> db
                   (grants/add-player-grant :player-1 {:grant/id (random-uuid)
-                                                       :grant/type :restriction
-                                                       :grant/source (random-uuid)
-                                                       :grant/expires {:expires/turn 1 :expires/phase :cleanup}
-                                                       :grant/data {}})
+                                                      :grant/type :restriction
+                                                      :grant/source (random-uuid)
+                                                      :grant/expires {:expires/turn 1 :expires/phase :cleanup}
+                                                      :grant/data {}})
                   (grants/add-player-grant :player-1 {:grant/id (random-uuid)
-                                                       :grant/type :alternate-cost
-                                                       :grant/source (random-uuid)
-                                                       :grant/expires {:expires/turn 1 :expires/phase :cleanup}
-                                                       :grant/data {}}))]
+                                                      :grant/type :alternate-cost
+                                                      :grant/source (random-uuid)
+                                                      :grant/expires {:expires/turn 1 :expires/phase :cleanup}
+                                                      :grant/data {}}))]
       (is (= 1 (count (grants/get-player-grants-by-type db' :player-1 :restriction)))
           "Should return only restriction grants")
       (is (= 1 (count (grants/get-player-grants-by-type db' :player-1 :alternate-cost)))
@@ -478,10 +478,10 @@
           grant-id (random-uuid)
           db' (-> db
                   (grants/add-player-grant :player-1 {:grant/id grant-id
-                                                       :grant/type :restriction
-                                                       :grant/source (random-uuid)
-                                                       :grant/expires {:expires/turn 1 :expires/phase :cleanup}
-                                                       :grant/data {}})
+                                                      :grant/type :restriction
+                                                      :grant/source (random-uuid)
+                                                      :grant/expires {:expires/turn 1 :expires/phase :cleanup}
+                                                      :grant/data {}})
                   (grants/remove-player-grant :player-1 grant-id))]
       (is (= 0 (count (grants/get-player-grants db' :player-1)))
           "Grant should be removed"))))
@@ -525,15 +525,15 @@
                  (add-player :opponent))
           db' (-> db
                   (grants/add-player-grant :player-1 {:grant/id (random-uuid)
-                                                       :grant/type :restriction
-                                                       :grant/source (random-uuid)
-                                                       :grant/expires {:expires/turn 1 :expires/phase :cleanup}
-                                                       :grant/data {}})
+                                                      :grant/type :restriction
+                                                      :grant/source (random-uuid)
+                                                      :grant/expires {:expires/turn 1 :expires/phase :cleanup}
+                                                      :grant/data {}})
                   (grants/add-player-grant :opponent {:grant/id (random-uuid)
-                                                       :grant/type :restriction
-                                                       :grant/source (random-uuid)
-                                                       :grant/expires {:expires/turn 1 :expires/phase :cleanup}
-                                                       :grant/data {}}))]
+                                                      :grant/type :restriction
+                                                      :grant/source (random-uuid)
+                                                      :grant/expires {:expires/turn 1 :expires/phase :cleanup}
+                                                      :grant/data {}}))]
       (is (= 1 (count (grants/get-player-grants db' :player-1)))
           "Player 1 should have one grant")
       (is (= 1 (count (grants/get-player-grants db' :opponent)))
