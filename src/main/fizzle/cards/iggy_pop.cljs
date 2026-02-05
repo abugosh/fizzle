@@ -6,6 +6,7 @@
   (:require
     [fizzle.cards.cephalid-coliseum :as cephalid-coliseum]
     [fizzle.cards.deep-analysis :as deep-analysis]
+    [fizzle.cards.flash-of-insight :as flash-of-insight]
     [fizzle.cards.ill-gotten-gains :as ill-gotten-gains]
     [fizzle.cards.orims-chant :as orims-chant]
     [fizzle.cards.ray-of-revelation :as ray-of-revelation]
@@ -346,4 +347,5 @@
    careful-study mental-note opt merchant-scroll intuition polluted-delta
    deep-analysis/deep-analysis cephalid-coliseum/cephalid-coliseum recoup/recoup
    ill-gotten-gains/ill-gotten-gains orims-chant/orims-chant
-   ray-of-revelation/ray-of-revelation seal-of-cleansing/seal-of-cleansing])
+   ray-of-revelation/ray-of-revelation seal-of-cleansing/seal-of-cleansing
+   flash-of-insight/flash-of-insight])
