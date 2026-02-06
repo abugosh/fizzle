@@ -70,3 +70,18 @@
                      [:db/add obj-eid :object/tapped false]]
                     [[:db/add obj-eid :object/zone new-zone]])]
           (d/db-with db txs))))))
+
+
+(defn remove-object
+  "Remove a game object entirely from the database.
+   Used for spell copies that cease to exist when leaving the stack (per MTG rules).
+   Pure function: (db, object-id) -> db
+
+   Returns db unchanged if object doesn't exist."
+  [db object-id]
+  (if-let [obj-eid (d/q '[:find ?e .
+                          :in $ ?oid
+                          :where [?e :object/id ?oid]]
+                        db object-id)]
+    (d/db-with db [[:db.fn/retractEntity obj-eid]])
+    db))

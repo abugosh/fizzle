@@ -213,12 +213,41 @@
             restriction-grants))))
 
 
+(defn- instant-speed?
+  "Check if a card can be cast at instant speed.
+   Returns true for instants and cards with flash keyword."
+  [card]
+  (let [types (:card/types card)
+        keywords (:card/keywords card)]
+    (or (contains? (set types) :instant)
+        (and (set? keywords) (contains? keywords :flash))
+        (and (sequential? keywords) (some #{:flash} keywords)))))
+
+
+(defn- sorcery-speed-ok?
+  "Check if sorcery-speed timing requirements are met.
+   Sorcery speed requires: main phase (main1 or main2) and empty stack."
+  [db]
+  (let [game-state (q/get-game-state db)
+        phase (:game/phase game-state)
+        ;; Stack is empty when no triggers and no objects on stack
+        triggers (q/get-stack-items db)
+        stack-objects (d/q '[:find [?e ...]
+                             :where [?e :object/zone :stack]]
+                           db)]
+    (boolean
+      (and (#{:main1 :main2} phase)
+           (empty? triggers)
+           (empty? stack-objects)))))
+
+
 (defn can-cast?
   "Check if a player can cast a card.
 
    Checks if ANY valid casting mode is castable.
    A mode is valid if:
    - Player does not have :cannot-cast-spells restriction
+   - Timing is correct (sorcery-speed cards need main phase + empty stack)
    - The card is in the mode's required zone
    - Player can pay the mode's mana cost
    - Player can pay all additional costs
@@ -231,10 +260,13 @@
     false
     (if-let [obj (q/get-object db object-id)]
       (let [card (:object/card obj)
+            ;; Check timing: non-instant cards require sorcery speed
+            timing-ok (or (instant-speed? card)
+                          (sorcery-speed-ok? db))
             modes (get-casting-modes db player-id object-id)
             has-mode (boolean (some #(can-cast-mode? db player-id object-id %) modes))
             has-targets (targeting/has-valid-targets? db player-id card)]
-        (and has-mode has-targets))
+        (and timing-ok has-mode has-targets))
       false)))
 
 
@@ -395,6 +427,7 @@
    - Verifies spell is on stack (no-op if not)
    - Checks conditions and selects appropriate effects
    - Executes all selected effects
+   - Copies cease to exist when leaving the stack (removed from db)
    - Uses mode's :mode/on-resolve if present (e.g., :exile for flashback)
    - Otherwise: permanents to battlefield, instants/sorceries to graveyard"
   [db player-id object-id]
@@ -403,26 +436,28 @@
       db  ; No-op if spell not on stack
       (let [card (:object/card obj)
             card-types (:card/types card)
+            is-copy (:object/is-copy obj)
             effects-list (get-active-effects db player-id card object-id)
-            cast-mode (:object/cast-mode obj)
-            mode-destination (:mode/on-resolve cast-mode)
-            destination (cond
-                          ;; Use mode's destination if specified
-                          mode-destination mode-destination
-                          ;; Permanents go to battlefield
-                          (permanent-type? card-types) :battlefield
-                          ;; Default: graveyard
-                          :else :graveyard)]
-        (as-> db db'
-              (reduce (fn [d effect] (effects/execute-effect d player-id effect object-id))
-                      db'
-                      (or effects-list []))
-              (zones/move-to-zone db' object-id destination))))))
+            db-after-effects (reduce (fn [d effect] (effects/execute-effect d player-id effect object-id))
+                                     db
+                                     (or effects-list []))]
+        (if is-copy
+          ;; Copies cease to exist when leaving the stack (per MTG rules)
+          (zones/remove-object db-after-effects object-id)
+          ;; Non-copies go to their destination zone
+          (let [cast-mode (:object/cast-mode obj)
+                mode-destination (:mode/on-resolve cast-mode)
+                destination (cond
+                              mode-destination mode-destination
+                              (permanent-type? card-types) :battlefield
+                              :else :graveyard)]
+            (zones/move-to-zone db-after-effects object-id destination)))))))
 
 
 (defn move-spell-off-stack
   "Remove a spell from stack without resolving (counter, fizzle).
 
+   Copies cease to exist when leaving the stack (removed from db).
    Uses cast mode's :mode/on-resolve for destination if present.
    Otherwise sends to graveyard.
 
@@ -433,7 +468,10 @@
   (let [obj (q/get-object db object-id)]
     (if (not= :stack (:object/zone obj))
       db  ; No-op if not on stack
-      (let [cast-mode (:object/cast-mode obj)
-            mode-destination (:mode/on-resolve cast-mode)
-            destination (or mode-destination :graveyard)]
-        (zones/move-to-zone db object-id destination)))))
+      (if (:object/is-copy obj)
+        ;; Copies cease to exist when leaving the stack
+        (zones/remove-object db object-id)
+        (let [cast-mode (:object/cast-mode obj)
+              mode-destination (:mode/on-resolve cast-mode)
+              destination (or mode-destination :graveyard)]
+          (zones/move-to-zone db object-id destination))))))

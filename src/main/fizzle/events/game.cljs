@@ -875,6 +875,9 @@
     (let [game-db (:game/db db)
           result (activate-ability game-db :player-1 object-id ability-index)]
       (cond-> (assoc db :game/db (:db result))
+        ;; Clear selected card after activation (sacrifice may move it to graveyard,
+        ;; and stale selection causes it to appear highlighted there)
+        true (dissoc :game/selected-card)
         (:pending-selection result) (assoc :game/pending-selection (:pending-selection result))))))
 
 

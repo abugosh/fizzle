@@ -501,6 +501,56 @@
           "Storm trigger should be above storm spell"))))
 
 
+;; === Storm copy resolution tests ===
+
+(deftest test-storm-copies-cease-to-exist-after-resolution
+  (testing "Storm copies cease to exist when leaving the stack (not sent to graveyard)"
+    (let [db (init-storm-combo-state)
+          ;; Cast ritual + Brain Freeze (storm count = 2 before BF, creates 1 copy)
+          db (-> db
+                 (rules/cast-spell :player-1 :ritual-1)
+                 (rules/cast-spell :player-1 :brain-freeze-1))
+          ;; Resolve storm trigger (creates 1 copy)
+          stack-items (q/get-stack-items db)
+          storm-trigger (first (filter #(= :storm (:trigger/type %)) stack-items))
+          db (triggers/resolve-trigger db storm-trigger)
+          db (triggers/remove-trigger db (:trigger/id storm-trigger))
+          ;; Find the copy on the stack
+          stack-objects (q/get-objects-in-zone db :player-1 :stack)
+          copy (first (filter :object/is-copy stack-objects))
+          copy-id (:object/id copy)
+          _ (is (some? copy) "Precondition: copy exists on stack")
+          ;; Count graveyard objects owned by player 1 before resolving copy
+          gy-before (count-zone db :player-1 :graveyard)
+          ;; Resolve the copy
+          db (rules/resolve-spell db :player-1 copy-id)
+          ;; The copy should NOT be in the graveyard
+          gy-after (count-zone db :player-1 :graveyard)]
+      ;; Copy should not be in graveyard (it ceases to exist per MTG rules)
+      (is (= gy-before gy-after)
+          "Storm copy should NOT go to graveyard - copies cease to exist")
+      ;; Copy should not be findable anywhere
+      (is (nil? (q/get-object db copy-id))
+          "Storm copy should be completely removed from the database"))))
+
+
+(deftest test-original-spell-still-goes-to-graveyard
+  (testing "Non-copy spells still go to graveyard after resolution"
+    (let [db (init-storm-combo-state)
+          ;; Cast Brain Freeze (no storm copies, storm count = 0)
+          db (rules/cast-spell db :player-1 :brain-freeze-1)
+          ;; Remove storm trigger (0 copies created)
+          stack-items (q/get-stack-items db)
+          storm-trigger (first (filter #(= :storm (:trigger/type %)) stack-items))
+          db (triggers/resolve-trigger db storm-trigger)
+          db (triggers/remove-trigger db (:trigger/id storm-trigger))
+          ;; Resolve original Brain Freeze
+          db (rules/resolve-spell db :player-1 :brain-freeze-1)]
+      ;; Original spell should be in graveyard
+      (is (= :graveyard (:object/zone (q/get-object db :brain-freeze-1)))
+          "Original (non-copy) spell should go to graveyard after resolution"))))
+
+
 ;; === High storm count corner case ===
 
 (defn init-high-storm-state

@@ -463,6 +463,151 @@
 
 
 ;; =====================================================
+;; Sorcery-Speed Timing Tests
+;; =====================================================
+
+(defn set-phase
+  "Change the game phase in the db. Returns updated db."
+  [db new-phase]
+  (let [game-eid (d/q '[:find ?e .
+                        :where [?e :game/id _]]
+                      db)]
+    (d/db-with db [[:db/add game-eid :game/phase new-phase]])))
+
+
+(defn add-sorcery-to-hand
+  "Add a sorcery card to player's hand. Returns [obj-id db]."
+  [db player-id]
+  (let [conn (d/conn-from-db db)
+        sorcery-card {:card/id :test-sorcery
+                      :card/name "Test Sorcery"
+                      :card/cmc 0
+                      :card/mana-cost {}
+                      :card/colors #{}
+                      :card/types #{:sorcery}
+                      :card/text "Test"
+                      :card/effects []}]
+    (d/transact! conn [sorcery-card])
+    (let [player-eid (q/get-player-eid @conn player-id)
+          card-eid (d/q '[:find ?e .
+                          :in $ ?cid
+                          :where [?e :card/id ?cid]]
+                        @conn :test-sorcery)
+          obj-id (random-uuid)]
+      (d/transact! conn [{:object/id obj-id
+                          :object/card card-eid
+                          :object/zone :hand
+                          :object/owner player-eid
+                          :object/controller player-eid
+                          :object/tapped false}])
+      [obj-id @conn])))
+
+
+(deftest test-sorcery-castable-during-main-phase
+  (testing "Sorcery can be cast during main phase with empty stack"
+    (let [db (init-game-state)
+          [obj-id db] (add-sorcery-to-hand db :player-1)]
+      ;; Phase is :main1, stack is empty
+      (is (true? (rules/can-cast? db :player-1 obj-id))
+          "Sorcery should be castable during main phase with empty stack"))))
+
+
+(deftest test-sorcery-not-castable-during-combat
+  (testing "Sorcery cannot be cast during combat phase"
+    (let [db (init-game-state)
+          [obj-id db] (add-sorcery-to-hand db :player-1)
+          db (set-phase db :combat)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Sorcery should NOT be castable during combat phase"))))
+
+
+(deftest test-sorcery-not-castable-during-upkeep
+  (testing "Sorcery cannot be cast during upkeep"
+    (let [db (init-game-state)
+          [obj-id db] (add-sorcery-to-hand db :player-1)
+          db (set-phase db :upkeep)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Sorcery should NOT be castable during upkeep"))))
+
+
+(deftest test-sorcery-not-castable-with-stack-items
+  (testing "Sorcery cannot be cast when there are items on the stack"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1}))
+          hand (q/get-hand db :player-1)
+          ritual (first hand)
+          ;; Cast ritual to put it on stack
+          db (rules/cast-spell db :player-1 (:object/id ritual))
+          ;; Now add a sorcery to hand
+          [sorcery-id db] (add-sorcery-to-hand db :player-1)]
+      ;; Stack has the ritual on it
+      (is (pos? (count (q/get-objects-in-zone db :player-1 :stack)))
+          "Precondition: stack is not empty")
+      (is (false? (rules/can-cast? db :player-1 sorcery-id))
+          "Sorcery should NOT be castable when stack has items"))))
+
+
+(deftest test-instant-castable-during-combat
+  (testing "Instant can be cast during any phase"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1})
+                 (set-phase :combat))
+          hand (q/get-hand db :player-1)
+          ritual (first hand)]  ; Dark Ritual is an instant
+      (is (true? (rules/can-cast? db :player-1 (:object/id ritual)))
+          "Instant should be castable during combat"))))
+
+
+(deftest test-instant-castable-with-stack-items
+  (testing "Instant can be cast when stack has items"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 2}))
+          ;; Add a second instant to hand
+          conn (d/conn-from-db db)
+          player-eid (q/get-player-eid @conn :player-1)
+          card-eid (d/q '[:find ?e .
+                          :where [?e :card/id :dark-ritual]]
+                        @conn)
+          _ (d/transact! conn [{:object/id :second-ritual
+                                :object/card card-eid
+                                :object/zone :hand
+                                :object/owner player-eid
+                                :object/controller player-eid
+                                :object/tapped false}])
+          db @conn
+          ;; Cast first ritual (stack not empty)
+          hand (q/get-hand db :player-1)
+          first-ritual (first hand)
+          db (rules/cast-spell db :player-1 (:object/id first-ritual))]
+      ;; Stack has the first ritual
+      (is (pos? (count (q/get-objects-in-zone db :player-1 :stack)))
+          "Precondition: stack is not empty")
+      (is (true? (rules/can-cast? db :player-1 :second-ritual))
+          "Instant should be castable even with items on stack"))))
+
+
+(deftest test-artifact-not-castable-during-combat
+  (testing "Artifact cannot be cast during combat phase (requires sorcery speed)"
+    (let [db (init-game-state)
+          conn (d/conn-from-db db)
+          _ (d/transact! conn [cards/lotus-petal])
+          db @conn
+          [obj-id db] (add-artifact-to-hand db :player-1 :lotus-petal)
+          db (set-phase db :combat)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Artifact should NOT be castable during combat phase"))))
+
+
+(deftest test-sorcery-castable-during-main2
+  (testing "Sorcery can be cast during main phase 2"
+    (let [db (init-game-state)
+          [obj-id db] (add-sorcery-to-hand db :player-1)
+          db (set-phase db :main2)]
+      (is (true? (rules/can-cast? db :player-1 obj-id))
+          "Sorcery should be castable during main phase 2"))))
+
+
+;; =====================================================
 ;; Alternate Casting Modes Tests
 ;; =====================================================
 
