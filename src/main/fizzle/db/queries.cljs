@@ -139,6 +139,13 @@
        (vec)))
 
 
+(defn stack-empty?
+  "Check if the stack has no items (no triggers and no spells)."
+  [db player-id]
+  (and (empty? (get-stack-items db))
+       (empty? (get-objects-in-zone db player-id :stack))))
+
+
 ;; === Library Queries ===
 
 (defn get-top-n-library
@@ -172,6 +179,18 @@
          [?p :player/is-opponent true]
          [(not= ?pid ?my-pid)]]
        db player-id))
+
+
+(defn get-max-hand-size
+  "Get the maximum hand size for a player.
+   Returns 7 (MTG default) if :player/max-hand-size is not set."
+  [db player-id]
+  (or (d/q '[:find ?max .
+             :in $ ?pid
+             :where [?e :player/id ?pid]
+             [?e :player/max-hand-size ?max]]
+           db player-id)
+      7))
 
 
 (defn get-life-total

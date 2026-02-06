@@ -11,13 +11,12 @@
     [datascript.core :as d]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
-    [fizzle.engine.events :as game-events]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
-    [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.engine.trigger-registry :as registry]
-    [fizzle.engine.turn-based :as turn-based]))
+    [fizzle.engine.turn-based :as turn-based]
+    [fizzle.events.game :as game]))
 
 
 ;; === Test Helpers ===
@@ -366,11 +365,11 @@
 
 
 (deftest cleanup-phase-expires-grants-integration-test
-  (testing "Cleanup phase event dispatches trigger that expires grants"
+  (testing "Cleanup begin-cleanup expires grants (hand under max, no discard needed)"
     (turn-based/register-turn-based-actions!)
     (let [db (init-game-state)
-          ;; Set game to turn 1
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          ;; Start at main1 for pre-cleanup castability check
           db (d/db-with db [[:db/add game-eid :game/turn 1]])
           ;; Add a card with a grant that expires at turn 1 cleanup
           [obj-id db] (add-card-to-zone db :player-1 test-sorcery :graveyard)
@@ -385,29 +384,33 @@
           db (grants/add-grant db obj-id grant)
           ;; Add mana so the card would be castable
           db (mana/add-mana db :player-1 {:colorless 1 :black 1})
-          ;; Verify grant exists and card is castable before cleanup
+          ;; Verify grant exists and card is castable at main phase
           _ (is (= 1 (count (grants/get-grants db obj-id)))
                 "Grant should exist before cleanup")
           _ (is (rules/can-cast? db :player-1 obj-id)
                 "Card should be castable via granted flashback before cleanup")
-          ;; Dispatch cleanup phase event
-          event (game-events/phase-entered-event :cleanup 1 :player-1)
-          db' (dispatch/dispatch-event db event)]
+          ;; Move to cleanup phase, then run begin-cleanup
+          db (d/db-with db [[:db/add game-eid :game/phase :cleanup]])
+          result (game/begin-cleanup db :player-1)
+          db' (:db result)]
       ;; Grant should be removed
       (is (= 0 (count (grants/get-grants db' obj-id)))
           "Grant should be expired after cleanup phase")
-      ;; Card should no longer be castable from graveyard
-      (is (not (rules/can-cast? db' :player-1 obj-id))
-          "Card should not be castable after grant expires"))))
+      ;; Card should no longer be castable (grant expired)
+      ;; Move back to main1 to check castability without phase restriction
+      (let [db-main (d/db-with db' [[:db/add game-eid :game/phase :main1]])]
+        (is (not (rules/can-cast? db-main :player-1 obj-id))
+            "Card should not be castable after grant expires")))))
 
 
 (deftest cleanup-phase-preserves-future-grants-integration-test
   (testing "Cleanup phase preserves grants that expire on future turns"
     (turn-based/register-turn-based-actions!)
     (let [db (init-game-state)
-          ;; Set game to turn 1
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
-          db (d/db-with db [[:db/add game-eid :game/turn 1]])
+          ;; Set game to turn 1 at cleanup phase
+          db (d/db-with db [[:db/add game-eid :game/turn 1]
+                            [:db/add game-eid :game/phase :cleanup]])
           ;; Add a card with a grant that expires at turn 2 cleanup (not yet)
           [obj-id db] (add-card-to-zone db :player-1 test-sorcery :graveyard)
           grant {:grant/id (random-uuid)
@@ -420,15 +423,16 @@
                               :alternate/on-resolve :exile}}
           db (grants/add-grant db obj-id grant)
           db (mana/add-mana db :player-1 {:colorless 1 :black 1})
-          ;; Dispatch cleanup phase event for turn 1
-          event (game-events/phase-entered-event :cleanup 1 :player-1)
-          db' (dispatch/dispatch-event db event)]
+          ;; Use begin-cleanup (grant expiration now handled by advance-phase handler)
+          result (game/begin-cleanup db :player-1)
+          db' (:db result)]
       ;; Grant should still exist (expires turn 2)
       (is (= 1 (count (grants/get-grants db' obj-id)))
           "Grant should still exist (expires on turn 2)")
-      ;; Card should still be castable
-      (is (rules/can-cast? db' :player-1 obj-id)
-          "Card should still be castable"))))
+      ;; Card should still be castable at main phase (check without cleanup phase restriction)
+      (let [db-main (d/db-with db' [[:db/add game-eid :game/phase :main1]])]
+        (is (rules/can-cast? db-main :player-1 obj-id)
+            "Card should still be castable (grant not expired)")))))
 
 
 ;; =====================================================

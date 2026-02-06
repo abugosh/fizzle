@@ -8,6 +8,7 @@
     [fizzle.engine.abilities :as abilities]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.events :as game-events]
+    [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.state-based :as state-based]
@@ -24,6 +25,10 @@
 (declare resolve-spell-with-selection)
 (declare resolve-activated-ability-with-selection)
 (declare find-selection-effect-index)
+
+
+;; Forward declaration for cleanup repeat cycle
+(declare begin-cleanup)
 (declare build-tutor-selection)
 (declare build-cast-time-target-selection)
 (declare confirm-cast-time-target)
@@ -101,7 +106,8 @@
                         :player/mana-pool {:white 0 :blue 0 :black 0
                                            :red 0 :green 0 :colorless 0}
                         :player/storm-count 0
-                        :player/land-plays-left 1}])
+                        :player/land-plays-left 1
+                        :player/max-hand-size 7}])
     ;; Transact opponent (needed for Brain Freeze mill effect)
     (d/transact! conn [{:player/id :opponent
                         :player/name "Opponent"
@@ -301,6 +307,25 @@
       :else db)))
 
 
+(defn maybe-continue-cleanup
+  "After stack resolution during cleanup, check if cleanup should restart.
+   If stack is now empty, phase is :cleanup, and no pending selection,
+   re-runs begin-cleanup to recheck hand size and re-expire grants.
+   Pure function: (app-db) -> app-db"
+  [app-db]
+  (let [game-db (:game/db app-db)]
+    (if (and (= :cleanup (:game/phase (queries/get-game-state game-db)))
+             (queries/stack-empty? game-db :player-1)
+             (not (:game/pending-selection app-db)))
+      (let [result (begin-cleanup game-db :player-1)]
+        (if (:pending-selection result)
+          (-> app-db
+              (assoc :game/db (:db result))
+              (assoc :game/pending-selection (:pending-selection result)))
+          (assoc app-db :game/db (:db result))))
+      app-db)))
+
+
 (rf/reg-event-db
   ::resolve-top
   (fn [db _]
@@ -328,7 +353,8 @@
             (-> db
                 (assoc :game/db (:db result))
                 (assoc :game/pending-selection (:pending-selection result)))
-            (assoc db :game/db (:db result))))
+            (maybe-continue-cleanup
+              (assoc db :game/db (:db result)))))
 
         ;; Resolve activated ability trigger with selection handling
         (and resolve-trigger? (= :activated-ability (:trigger/type top-trigger)))
@@ -337,11 +363,13 @@
             (-> db
                 (assoc :game/db (:db result))
                 (assoc :game/pending-selection (:pending-selection result)))
-            (assoc db :game/db (:db result))))
+            (maybe-continue-cleanup
+              (assoc db :game/db (:db result)))))
 
         ;; Resolve other triggers normally
         resolve-trigger?
-        (assoc db :game/db (resolve-top-of-stack game-db :player-1))
+        (maybe-continue-cleanup
+          (assoc db :game/db (resolve-top-of-stack game-db :player-1)))
 
         ;; Empty stack
         :else db))))
@@ -368,19 +396,22 @@
   "Advance to the next phase, clear mana pool, and dispatch phase-entered event.
    Pure function: (db, player-id) -> db
 
+   Returns db unchanged if the stack is non-empty.
    At cleanup phase, stays at cleanup (user must call start-turn for new turn).
    Dispatches :phase-entered event to fire turn-based actions (draw, etc.)."
   [db player-id]
-  (let [game-state (queries/get-game-state db)
-        game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
-        current-phase (:game/phase game-state)
-        new-phase (next-phase current-phase)
-        turn (:game/turn game-state)]
-    (-> db
-        (mana/empty-pool player-id)
-        (d/db-with [[:db/add game-eid :game/phase new-phase]])
-        ;; Dispatch phase-entered event to fire turn-based actions
-        (dispatch/dispatch-event (game-events/phase-entered-event new-phase turn player-id)))))
+  (if-not (queries/stack-empty? db player-id)
+    db
+    (let [game-state (queries/get-game-state db)
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          current-phase (:game/phase game-state)
+          new-phase (next-phase current-phase)
+          turn (:game/turn game-state)]
+      (-> db
+          (mana/empty-pool player-id)
+          (d/db-with [[:db/add game-eid :game/phase new-phase]])
+          ;; Dispatch phase-entered event to fire turn-based actions
+          (dispatch/dispatch-event (game-events/phase-entered-event new-phase turn player-id))))))
 
 
 (defn untap-all-permanents
@@ -406,37 +437,117 @@
    reset storm count and land plays to 1, clear mana pool.
    Pure function: (db, player-id) -> db
 
+   Returns db unchanged if the stack is non-empty.
    Note: Untap happens via :untap-step trigger when phase changes to :untap.
    This dispatches the :phase-entered event to fire the turn-based action."
   [db player-id]
-  (let [game-state (queries/get-game-state db)
-        game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
-        player-eid (queries/get-player-eid db player-id)
-        current-turn (or (:game/turn game-state) 0)
-        new-turn (inc current-turn)]
-    (-> db
-        ;; REMOVED: (untap-all-permanents player-id) - now via trigger
-        (mana/empty-pool player-id)
-        (d/db-with [[:db/add game-eid :game/turn new-turn]
-                    [:db/add game-eid :game/phase :untap]
-                    [:db/add player-eid :player/storm-count 0]
-                    [:db/add player-eid :player/land-plays-left 1]])
-        ;; Dispatch untap phase event to fire turn-based actions
-        (dispatch/dispatch-event (game-events/phase-entered-event :untap new-turn player-id)))))
+  (if-not (queries/stack-empty? db player-id)
+    db
+    (let [game-state (queries/get-game-state db)
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          player-eid (queries/get-player-eid db player-id)
+          current-turn (or (:game/turn game-state) 0)
+          new-turn (inc current-turn)]
+      (-> db
+          ;; REMOVED: (untap-all-permanents player-id) - now via trigger
+          (mana/empty-pool player-id)
+          (d/db-with [[:db/add game-eid :game/turn new-turn]
+                      [:db/add game-eid :game/phase :untap]
+                      [:db/add player-eid :player/storm-count 0]
+                      [:db/add player-eid :player/land-plays-left 1]])
+          ;; Dispatch untap phase event to fire turn-based actions
+          (dispatch/dispatch-event (game-events/phase-entered-event :untap new-turn player-id))))))
+
+
+;; === Cleanup Step (MTG Rule 514) ===
+;; Cleanup is a multi-step process:
+;;   1. Discard to hand size (514.1) - interactive, may require player selection
+;;   2. Expire grants / "until end of turn" effects (514.2)
+;; Grant expiration is NOT an auto-trigger; it's called explicitly after discard.
+
+(defn- build-cleanup-discard-selection
+  "Build pending selection state for cleanup discard-to-hand-size."
+  [player-id discard-count]
+  {:selection/zone :hand
+   :selection/count discard-count
+   :selection/player-id player-id
+   :selection/selected #{}
+   :selection/effect-type :cleanup-discard})
+
+
+(defn begin-cleanup
+  "Begin the cleanup step on a db already at :cleanup phase.
+   Checks hand size against max and either:
+   - Returns {:db db'} if no discard needed (grants already expired)
+   - Returns {:db db' :pending-selection selection} if discard needed
+
+   Caller is responsible for advancing phase to :cleanup first.
+   Grant expiration is only done if no discard is needed;
+   otherwise it happens after discard confirmation.
+
+   Pure function: (db, player-id) -> {:db db, :pending-selection ...}"
+  [db player-id]
+  (let [hand (queries/get-hand db player-id)
+        hand-count (count hand)
+        max-hand-size (queries/get-max-hand-size db player-id)
+        discard-count (- hand-count max-hand-size)]
+    (if (pos? discard-count)
+      ;; Need to discard - don't expire grants yet (Rule 514.1 before 514.2)
+      {:db db
+       :pending-selection (build-cleanup-discard-selection player-id discard-count)}
+      ;; No discard needed - expire grants immediately (Rule 514.2)
+      (let [game-state (queries/get-game-state db)
+            current-turn (:game/turn game-state)]
+        {:db (grants/expire-grants db current-turn :cleanup)}))))
+
+
+(defn complete-cleanup-discard
+  "Complete the cleanup discard step: move selected cards to graveyard,
+   then expire grants.
+   Pure function: (db, player-id, selected-ids) -> {:db db}"
+  [db _player-id selected-ids]
+  (let [;; Move selected cards to graveyard
+        db-after-discard (reduce (fn [d obj-id]
+                                   (zones/move-to-zone d obj-id :graveyard))
+                                 db
+                                 selected-ids)
+        ;; Now expire grants (Rule 514.2 - after discard)
+        game-state (queries/get-game-state db-after-discard)
+        current-turn (:game/turn game-state)]
+    {:db (grants/expire-grants db-after-discard current-turn :cleanup)}))
 
 
 (rf/reg-event-db
   ::advance-phase
   (fn [db _]
     (let [game-db (:game/db db)]
-      (assoc db :game/db (advance-phase game-db :player-1)))))
+      ;; Block advance if pending selection exists (e.g., cleanup discard in progress)
+      (if (:game/pending-selection db)
+        db
+        (let [game-state (queries/get-game-state game-db)
+              current-phase (:game/phase game-state)
+              new-phase (next-phase current-phase)]
+          (if (= new-phase :cleanup)
+            ;; Special cleanup handling: advance phase first, then begin cleanup
+            (let [advanced-db (advance-phase game-db :player-1)
+                  result (begin-cleanup advanced-db :player-1)]
+              (if (:pending-selection result)
+                (-> db
+                    (assoc :game/db (:db result))
+                    (assoc :game/pending-selection (:pending-selection result)))
+                (assoc db :game/db (:db result))))
+            ;; Normal phase advancement
+            (assoc db :game/db (advance-phase game-db :player-1))))))))
 
 
 (rf/reg-event-db
   ::start-turn
   (fn [db _]
     (let [game-db (:game/db db)]
-      (assoc db :game/db (start-turn game-db :player-1)))))
+      ;; Block start-turn if pending selection exists (e.g., cleanup discard)
+      (if (:game/pending-selection db)
+        db
+        (assoc db :game/db (start-turn game-db :player-1))))))
 
 
 ;; === Play Land ===
@@ -1684,37 +1795,45 @@
           player-id (:selection/player-id selection)]
       (if (= (count selected) count-required)
         ;; Valid selection - execute the effect on selected cards
-        (let [game-db (:game/db db)
-              ;; Move selected cards based on effect type
-              db-after-effect (case effect-type
-                                :discard (reduce (fn [gdb obj-id]
-                                                   (zones/move-to-zone gdb obj-id :graveyard))
-                                                 game-db
-                                                 selected)
-                                ;; Default: no-op
-                                game-db)
-              ;; Execute remaining effects
-              db-after-remaining (reduce (fn [d effect]
-                                           (effects/execute-effect d player-id effect))
-                                         db-after-effect
-                                         (or remaining-effects []))
-              ;; Clean up source: move spell to destination OR remove trigger from stack
-              ;; BUT only if the spell is still on the stack (effects like :exile-self may have moved it)
-              db-final (if (= source-type :trigger)
-                         ;; Trigger-based selection (activated ability): remove trigger
-                         (triggers/remove-trigger db-after-remaining trigger-id)
-                         ;; Spell-based selection: use cast mode's destination (e.g., :exile for flashback)
-                         (let [spell-obj (queries/get-object db-after-remaining spell-id)
-                               current-zone (:object/zone spell-obj)]
-                           ;; Only move if still on stack (effects like :exile-self may have already moved it)
-                           (if (= current-zone :stack)
-                             (let [cast-mode (:object/cast-mode spell-obj)
-                                   destination (or (:mode/on-resolve cast-mode) :graveyard)]
-                               (zones/move-to-zone db-after-remaining spell-id destination))
-                             db-after-remaining)))]
-          (-> db
-              (assoc :game/db db-final)
-              (dissoc :game/pending-selection)))
+        (if (= effect-type :cleanup-discard)
+          ;; Cleanup discard: move cards to graveyard, expire grants, no spell cleanup
+          (let [game-db (:game/db db)
+                result (complete-cleanup-discard game-db player-id selected)]
+            (-> db
+                (assoc :game/db (:db result))
+                (dissoc :game/pending-selection)))
+          ;; Normal selection (spell/trigger based)
+          (let [game-db (:game/db db)
+                ;; Move selected cards based on effect type
+                db-after-effect (case effect-type
+                                  :discard (reduce (fn [gdb obj-id]
+                                                     (zones/move-to-zone gdb obj-id :graveyard))
+                                                   game-db
+                                                   selected)
+                                  ;; Default: no-op
+                                  game-db)
+                ;; Execute remaining effects
+                db-after-remaining (reduce (fn [d effect]
+                                             (effects/execute-effect d player-id effect))
+                                           db-after-effect
+                                           (or remaining-effects []))
+                ;; Clean up source: move spell to destination OR remove trigger from stack
+                ;; BUT only if the spell is still on the stack (effects like :exile-self may have moved it)
+                db-final (if (= source-type :trigger)
+                           ;; Trigger-based selection (activated ability): remove trigger
+                           (triggers/remove-trigger db-after-remaining trigger-id)
+                           ;; Spell-based selection: use cast mode's destination (e.g., :exile for flashback)
+                           (let [spell-obj (queries/get-object db-after-remaining spell-id)
+                                 current-zone (:object/zone spell-obj)]
+                             ;; Only move if still on stack (effects like :exile-self may have already moved it)
+                             (if (= current-zone :stack)
+                               (let [cast-mode (:object/cast-mode spell-obj)
+                                     destination (or (:mode/on-resolve cast-mode) :graveyard)]
+                                 (zones/move-to-zone db-after-remaining spell-id destination))
+                               db-after-remaining)))]
+            (-> db
+                (assoc :game/db db-final)
+                (dissoc :game/pending-selection))))
         ;; Invalid count - do nothing
         db))))
 

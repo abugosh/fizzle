@@ -51,6 +51,7 @@
    :player/mana-pool       {}  ; {:white 0 :blue 0 :black 0 :red 0 :green 0 :colorless 0}
    :player/storm-count     {}  ; Number of spells cast this turn
    :player/land-plays-left {}  ; Land plays remaining this turn
+   :player/max-hand-size   {}  ; Maximum hand size (default 7, some effects modify)
    :player/is-opponent     {}  ; Boolean, for bot players
    :player/grants          {}  ; Vector of grant maps (temporary restrictions/effects)
 

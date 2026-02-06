@@ -145,13 +145,12 @@
 ;; === Registration tests ===
 
 (deftest test-register-turn-based-actions
-  (testing "register-turn-based-actions! registers draw, untap, and cleanup triggers"
+  (testing "register-turn-based-actions! registers draw and untap triggers"
     (turn-based/register-turn-based-actions!)
     (let [all-triggers (registry/get-all-triggers)
           trigger-ids (set (map :trigger/id all-triggers))]
       (is (contains? trigger-ids :game-rule-draw))
-      (is (contains? trigger-ids :game-rule-untap))
-      (is (contains? trigger-ids :cleanup-expire-grants)))))
+      (is (contains? trigger-ids :game-rule-untap)))))
 
 
 (deftest test-draw-trigger-has-correct-filter
@@ -179,17 +178,13 @@
       (is (every? #(false? (:trigger/uses-stack? %)) all-triggers)))))
 
 
-(deftest test-cleanup-trigger-has-correct-filter
-  (testing "cleanup trigger has filter for cleanup phase"
+(deftest test-cleanup-grants-handled-by-advance-phase
+  (testing "cleanup grant expiration is handled by advance-phase handler, not auto-trigger"
     (turn-based/register-turn-based-actions!)
     (let [all-triggers (registry/get-all-triggers)
           cleanup-trigger (first (filter #(= :cleanup-expire-grants (:trigger/id %)) all-triggers))]
-      (is (some? cleanup-trigger)
-          "Cleanup trigger should be registered")
-      (is (= {:event/phase :cleanup} (:trigger/filter cleanup-trigger))
-          "Cleanup trigger should filter on :cleanup phase")
-      (is (= :expire-grants (:trigger/type cleanup-trigger))
-          "Cleanup trigger should have type :expire-grants"))))
+      (is (nil? cleanup-trigger)
+          "Cleanup expire-grants trigger should NOT be registered (handled by advance-phase)"))))
 
 
 ;; === Draw step tests ===

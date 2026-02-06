@@ -348,7 +348,9 @@
   []
   (let [current-phase (or @(rf/subscribe [::subs/current-phase]) :main1)
         current-turn (or @(rf/subscribe [::subs/current-turn]) 1)
-        at-cleanup? (= current-phase :cleanup)]
+        at-cleanup? (= current-phase :cleanup)
+        stack @(rf/subscribe [::subs/stack])
+        stack-active? (boolean (seq stack))]
     [:div {:style {:display "flex"
                    :align-items "center"
                    :gap "16px"
@@ -365,14 +367,17 @@
      [:button {:style {:padding "6px 14px"
                        :border "1px solid #555"
                        :border-radius "4px"
-                       :cursor "pointer"
-                       :background "#2a6a2a"
-                       :color "#fff"
+                       :cursor (if stack-active? "not-allowed" "pointer")
+                       :background (if stack-active? "#333" "#2a6a2a")
+                       :color (if stack-active? "#666" "#fff")
                        :font-size "13px"
-                       :font-weight "bold"}
-               :on-click #(rf/dispatch [(if at-cleanup?
-                                          ::events/start-turn
-                                          ::events/advance-phase)])}
+                       :font-weight "bold"
+                       :opacity (if stack-active? 0.5 1)}
+               :disabled stack-active?
+               :on-click #(when-not stack-active?
+                            (rf/dispatch [(if at-cleanup?
+                                            ::events/start-turn
+                                            ::events/advance-phase)]))}
       (if at-cleanup? "New Turn" "Next Phase")]]))
 
 
