@@ -256,7 +256,7 @@
           "Selection effect type should be :tutor")
       (is (= :library (get-in result [:pending-selection :selection/zone]))
           "Selection zone should be :library")
-      (is (true? (get-in result [:pending-selection :selection/allow-fail-to-find]))
+      (is (true? (get-in result [:pending-selection :selection/allow-fail-to-find?]))
           "Must allow fail-to-find option")
       ;; Candidates should be pre-filtered (only blue instants)
       (let [candidates (get-in result [:pending-selection :selection/candidates])]
@@ -279,7 +279,7 @@
                      :selection/spell-id (random-uuid)
                      :selection/target-zone :hand
                      :selection/effect-type :tutor
-                     :selection/allow-fail-to-find true}
+                     :selection/allow-fail-to-find? true}
           db-after (selection/execute-tutor-selection db' selection)]
       ;; Hand should not change
       (is (= hand-before (get-hand-count db-after :player-1))
@@ -304,7 +304,7 @@
                      :selection/spell-id (random-uuid)
                      :selection/target-zone :hand
                      :selection/effect-type :tutor
-                     :selection/allow-fail-to-find true}
+                     :selection/allow-fail-to-find? true}
           db-after (selection/execute-tutor-selection db' selection)]
       ;; Brain Freeze should be in hand
       (is (= :hand (get-object-zone db-after bf-id))
@@ -333,7 +333,7 @@
                      :selection/spell-id (random-uuid)
                      :selection/target-zone :hand
                      :selection/effect-type :tutor
-                     :selection/allow-fail-to-find true}
+                     :selection/allow-fail-to-find? true}
           db-after (selection/execute-tutor-selection db' selection)]
       ;; Brain Freeze should be in hand (moved before shuffle)
       (is (= :hand (get-object-zone db-after bf-id))
@@ -438,7 +438,7 @@
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
           result (selection/resolve-spell-with-selection db-after-cast :player-1 ms-id)]
       ;; Must have fail-to-find option (anti-pattern: NO auto-select)
-      (is (true? (get-in result [:pending-selection :selection/allow-fail-to-find]))
+      (is (true? (get-in result [:pending-selection :selection/allow-fail-to-find?]))
           "Must always allow fail-to-find")
       ;; Candidates include the valid target
       (is (= 1 (count (get-in result [:pending-selection :selection/candidates])))
@@ -462,7 +462,7 @@
       (is (empty? (get-in result [:pending-selection :selection/candidates]))
           "Should have no candidates in empty library")
       ;; Fail-to-find still allowed
-      (is (true? (get-in result [:pending-selection :selection/allow-fail-to-find]))
+      (is (true? (get-in result [:pending-selection :selection/allow-fail-to-find?]))
           "Must allow fail-to-find even with no candidates"))))
 
 
@@ -478,5 +478,5 @@
           "Should have pending selection")
       (is (empty? (get-in result [:pending-selection :selection/candidates]))
           "Should have no candidates (no blue instants)")
-      (is (true? (get-in result [:pending-selection :selection/allow-fail-to-find]))
+      (is (true? (get-in result [:pending-selection :selection/allow-fail-to-find?]))
           "Must allow fail-to-find when no matches"))))

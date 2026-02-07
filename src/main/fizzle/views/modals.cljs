@@ -234,7 +234,7 @@
         effect-type (:selection/effect-type selection)
         is-tutor? (= effect-type :tutor)
         is-multi-select? (and is-tutor? required-count (> required-count 1))
-        allow-fail-to-find? (:selection/allow-fail-to-find selection)
+        allow-fail-to-find? (:selection/allow-fail-to-find? selection)
         ;; Validation logic:
         ;; - Multi-select tutor: exactly select-count OR 0 if fail-to-find allowed
         ;; - Single-select tutor: 0 (fail-to-find) or 1 card

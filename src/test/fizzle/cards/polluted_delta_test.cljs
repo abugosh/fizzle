@@ -192,7 +192,7 @@
                      :selection/target-zone :battlefield
                      :selection/effect-type :tutor
                      :selection/enters-tapped true
-                     :selection/allow-fail-to-find true}
+                     :selection/allow-fail-to-find? true}
           db-after (selection/execute-tutor-selection db' selection)]
       ;; Island should be on battlefield
       (is (= :battlefield (get-object-zone db-after island-id))
@@ -217,7 +217,7 @@
                      :selection/target-zone :battlefield
                      :selection/effect-type :tutor
                      :selection/enters-tapped true
-                     :selection/allow-fail-to-find true}
+                     :selection/allow-fail-to-find? true}
           db-after (selection/execute-tutor-selection db' selection)]
       ;; Island should be tapped
       (is (true? (get-object-tapped db-after island-id))
@@ -236,7 +236,7 @@
                      :selection/target-zone :battlefield
                      :selection/effect-type :tutor
                      :selection/enters-tapped false  ; Not tapped
-                     :selection/allow-fail-to-find true}
+                     :selection/allow-fail-to-find? true}
           db-after (selection/execute-tutor-selection db' selection)]
       ;; Island should be untapped
       (is (false? (get-object-tapped db-after island-id))
@@ -255,7 +255,7 @@
                      :selection/target-zone :hand
                      :selection/effect-type :tutor
                      :selection/enters-tapped true  ; Should be ignored for hand
-                     :selection/allow-fail-to-find true}
+                     :selection/allow-fail-to-find? true}
           db-after (selection/execute-tutor-selection db' selection)]
       ;; Island should be in hand
       (is (= :hand (get-object-zone db-after island-id))
@@ -335,7 +335,7 @@
                      :selection/target-zone :battlefield
                      :selection/effect-type :tutor
                      :selection/enters-tapped true
-                     :selection/allow-fail-to-find true}
+                     :selection/allow-fail-to-find? true}
           db-after (selection/execute-tutor-selection db' selection)]
       ;; Library count unchanged
       (is (= library-before (get-library-count db-after :player-1))
@@ -362,7 +362,7 @@
                      :selection/effect-type :tutor
                      :selection/enters-tapped true
                      :selection/shuffle? true
-                     :selection/allow-fail-to-find true}
+                     :selection/allow-fail-to-find? true}
           db-after (selection/execute-tutor-selection db' selection)]
       ;; Island should be on battlefield
       (is (= :battlefield (get-object-zone db-after island-id))

@@ -155,7 +155,7 @@
                   :effect/count 3
                   :effect/select-count 1}
           result (selection/build-peek-selection db :player-1 (random-uuid) effect [])]
-      (is (true? (:selection/allow-fail-to-find result))
+      (is (true? (:selection/allow-fail-to-find? result))
           "Must allow player to select 0 cards"))))
 
 

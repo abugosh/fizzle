@@ -4,7 +4,7 @@
   Selection Types and Their Keys:
   ──────────────────────────────
   1. Tutor (:effect-type :tutor)
-     zone, select-count, exact?, shuffle?, allow-fail-to-find, candidates, target-zone
+     zone, select-count, exact?, shuffle?, allow-fail-to-find?, candidates, target-zone
 
   2. Discard (:effect-type :discard)
      zone :hand, select-count, player-id
@@ -171,7 +171,7 @@
      :selection/remaining-effects effects-after
      :selection/effect-type :tutor
      :selection/target-zone target-zone
-     :selection/allow-fail-to-find true  ; Always allow fail-to-find (anti-pattern: NO auto-select)
+     :selection/allow-fail-to-find? true  ; Always allow fail-to-find (anti-pattern: NO auto-select)
      :selection/candidates candidate-ids
      :selection/shuffle? (get tutor-effect :effect/shuffle? true)
      :selection/enters-tapped (:effect/enters-tapped tutor-effect)
@@ -280,7 +280,7 @@
              :selection/candidates candidate-ids
              :selection/select-count actual-select-count
              :selection/exact? false  ; Can select fewer (fail-to-find)
-             :selection/allow-fail-to-find true
+             :selection/allow-fail-to-find? true
              :selection/selected #{}
              :selection/player-id player-id
              :selection/spell-id object-id
@@ -316,7 +316,7 @@
        :selection/candidates candidate-ids
        :selection/select-count 1  ; Minimum 1, but can select more
        :selection/exact? false    ; Can select any number >= 1
-       :selection/allow-fail-to-find false  ; Must select at least 1
+       :selection/allow-fail-to-find? false  ; Must select at least 1
        :selection/selected #{}
        :selection/player-id player-id
        :selection/spell-id object-id

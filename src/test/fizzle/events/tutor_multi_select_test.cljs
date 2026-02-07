@@ -119,7 +119,7 @@
           "All library cards should be candidates")
       (is (= :player-1 (:selection/player-id result))
           "Player ID must be set")
-      (is (= true (:selection/allow-fail-to-find result))
+      (is (= true (:selection/allow-fail-to-find? result))
           "Fail-to-find must be allowed"))))
 
 
@@ -169,7 +169,7 @@
           "Selection count must be 0 when library is empty")
       (is (empty? (:selection/candidates result))
           "No candidates in empty library")
-      (is (= true (:selection/allow-fail-to-find result))
+      (is (= true (:selection/allow-fail-to-find? result))
           "Fail-to-find must be allowed with empty library"))))
 
 
