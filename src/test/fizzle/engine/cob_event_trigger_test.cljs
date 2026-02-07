@@ -16,11 +16,12 @@
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.events :as game-events]
+    [fizzle.engine.stack :as stack]
     [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.engine.trigger-registry :as registry]
-    [fizzle.engine.triggers :as triggers]
     [fizzle.engine.turn-based :as turn-based]
     [fizzle.engine.zones :as zones]
+    [fizzle.events.abilities :as ability-events]
     [fizzle.events.game :as game]))
 
 
@@ -186,13 +187,13 @@
           ;; Register trigger
           _ (register-cob-trigger! obj-id :player-1)
           ;; Activate mana ability (should dispatch event via dispatch-event)
-          db-after-tap (game/activate-mana-ability db' :player-1 obj-id :black)]
-      ;; Verify trigger is on the stack
-      (is (= 1 (count (q/get-stack-items db-after-tap)))
-          "One trigger should be on the stack after tapping CoB")
-      (let [stack-item (first (q/get-stack-items db-after-tap))]
-        (is (= :permanent-tapped (:trigger/type stack-item))
-            "Stack item should be a :permanent-tapped trigger")))))
+          db-after-tap (ability-events/activate-mana-ability db' :player-1 obj-id :black)]
+      ;; Verify stack-item is on the stack
+      (is (= 1 (count (stack/get-all-stack-items db-after-tap)))
+          "One stack-item should be on the stack after tapping CoB")
+      (let [item (stack/get-top-stack-item db-after-tap)]
+        (is (= :permanent-tapped (:stack-item/type item))
+            "Stack item should be a :permanent-tapped stack-item")))))
 
 
 (deftest test-cob-trigger-deals-damage
@@ -204,11 +205,11 @@
           ;; Register trigger
           _ (register-cob-trigger! obj-id :player-1)
           ;; Activate mana ability (trigger goes on stack)
-          db-after-tap (game/activate-mana-ability db' :player-1 obj-id :black)
+          db-after-tap (ability-events/activate-mana-ability db' :player-1 obj-id :black)
           _ (is (= 20 (q/get-life-total db-after-tap :player-1))
                 "Life unchanged before trigger resolves")
           ;; Resolve the trigger
-          db-after-resolve (game/resolve-top-trigger db-after-tap)]
+          db-after-resolve (game/resolve-top-of-stack db-after-tap :player-1)]
       (is (= 19 (q/get-life-total db-after-resolve :player-1))
           "Player should lose 1 life after trigger resolves"))))
 
@@ -220,11 +221,11 @@
           ;; Register trigger
           _ (register-cob-trigger! obj-id :player-1)
           ;; First tap
-          db-after-first-tap (game/activate-mana-ability db' :player-1 obj-id :black)
-          _ (is (= 1 (count (q/get-stack-items db-after-first-tap)))
+          db-after-first-tap (ability-events/activate-mana-ability db' :player-1 obj-id :black)
+          _ (is (= 1 (count (stack/get-all-stack-items db-after-first-tap)))
                 "One trigger on stack after first tap")
           ;; Resolve first trigger
-          db-after-first-resolve (game/resolve-top-trigger db-after-first-tap)
+          db-after-first-resolve (game/resolve-top-of-stack db-after-first-tap :player-1)
           _ (is (= 19 (q/get-life-total db-after-first-resolve :player-1))
                 "Player at 19 life after first trigger")
           ;; Untap the land manually
@@ -235,11 +236,11 @@
           db-untapped (d/db-with db-after-first-resolve
                                  [[:db/add obj-eid :object/tapped false]])
           ;; Second tap
-          db-after-second-tap (game/activate-mana-ability db-untapped :player-1 obj-id :blue)
-          _ (is (= 1 (count (q/get-stack-items db-after-second-tap)))
+          db-after-second-tap (ability-events/activate-mana-ability db-untapped :player-1 obj-id :blue)
+          _ (is (= 1 (count (stack/get-all-stack-items db-after-second-tap)))
                 "One trigger on stack after second tap")
           ;; Resolve second trigger
-          db-after-second-resolve (game/resolve-top-trigger db-after-second-tap)]
+          db-after-second-resolve (game/resolve-top-of-stack db-after-second-tap :player-1)]
       (is (= 18 (q/get-life-total db-after-second-resolve :player-1))
           "Player at 18 life after both triggers resolved (2 damage total)"))))
 
@@ -264,9 +265,9 @@
           _ (is (= (+ 2 initial-count) (count (registry/get-all-triggers)))
                 "Total triggers = initial + 2 CoB triggers")
           ;; Tap only the first CoB
-          db-after-tap (game/activate-mana-ability db'' :player-1 obj-id-1 :black)]
+          db-after-tap (ability-events/activate-mana-ability db'' :player-1 obj-id-1 :black)]
       ;; Only one trigger should fire (the tapped CoB's trigger)
-      (is (= 1 (count (q/get-stack-items db-after-tap)))
+      (is (= 1 (count (stack/get-all-stack-items db-after-tap)))
           "Only one trigger should be on stack (the tapped CoB's trigger)"))))
 
 
@@ -279,36 +280,36 @@
           ;; Register trigger
           _ (register-cob-trigger! obj-id :player-1)
           ;; Tap to create trigger on stack
-          db-after-tap (game/activate-mana-ability db' :player-1 obj-id :black)
-          _ (is (= 1 (count (q/get-stack-items db-after-tap)))
+          db-after-tap (ability-events/activate-mana-ability db' :player-1 obj-id :black)
+          _ (is (= 1 (count (stack/get-all-stack-items db-after-tap)))
                 "Trigger on stack")
           ;; Sacrifice CoB with trigger on stack (unregisters future triggers)
           db-after-sacrifice (zones/move-to-zone db-after-tap obj-id :graveyard)
           _ (is (= :graveyard (:object/zone (q/get-object db-after-sacrifice obj-id)))
                 "CoB is in graveyard")
           ;; Resolve trigger - should still deal damage even though source is gone
-          db-after-resolve (game/resolve-top-trigger db-after-sacrifice)]
+          db-after-resolve (game/resolve-top-of-stack db-after-sacrifice :player-1)]
       (is (= 19 (q/get-life-total db-after-resolve :player-1))
           "Trigger should still deal damage even if source is gone"))))
 
 
-;; === resolve-trigger :permanent-tapped tests ===
+;; === resolve stack-item :permanent-tapped tests ===
 
 (deftest test-resolve-trigger-permanent-tapped-deals-damage
-  (testing "resolve-trigger :permanent-tapped executes effect to deal damage"
+  (testing "resolving :permanent-tapped stack-item executes effect to deal damage"
     (let [db (create-test-db)
           initial-life (q/get-life-total db :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
-          ;; Create a trigger directly (simulating stack state)
-          trigger {:trigger/id (random-uuid)
-                   :trigger/type :permanent-tapped
-                   :trigger/source (random-uuid)  ; source doesn't matter for resolution
-                   :trigger/controller :player-1
-                   :trigger/data {:effects [{:effect/type :deal-damage
-                                             :effect/amount 1
-                                             :effect/target :controller}]}}
-          ;; Resolve the trigger
-          db-after-resolve (triggers/resolve-trigger db trigger)]
+          ;; Create a stack-item for the trigger
+          db-with-item (stack/create-stack-item db
+                                                {:stack-item/type :permanent-tapped
+                                                 :stack-item/source (random-uuid)
+                                                 :stack-item/controller :player-1
+                                                 :stack-item/effects [{:effect/type :deal-damage
+                                                                       :effect/amount 1
+                                                                       :effect/target :controller}]})
+          ;; Resolve via stack resolution
+          db-after-resolve (game/resolve-top-of-stack db-with-item :player-1)]
       (is (= 19 (q/get-life-total db-after-resolve :player-1))
           "Player should lose 1 life when :permanent-tapped trigger resolves"))))
 
@@ -334,7 +335,7 @@
           event (game-events/permanent-tapped-event obj-id :player-1)
           db-after-dispatch (dispatch/dispatch-event db event)]
       ;; Trigger should be on stack
-      (is (= 1 (count (q/get-stack-items db-after-dispatch)))
+      (is (= 1 (count (stack/get-all-stack-items db-after-dispatch)))
           "Trigger should be added to stack when matching event dispatched"))))
 
 
@@ -358,5 +359,5 @@
           event (game-events/permanent-tapped-event obj-id-2 :player-1)
           db-after-dispatch (dispatch/dispatch-event db event)]
       ;; No trigger should fire (filter doesn't match)
-      (is (= 0 (count (q/get-stack-items db-after-dispatch)))
+      (is (= 0 (count (stack/get-all-stack-items db-after-dispatch)))
           "Trigger should NOT fire for a different object"))))

@@ -405,3 +405,34 @@
       ;; target-still-legal? should return false for object in wrong zone
       (is (false? (targeting/target-still-legal? db obj-id target-req))
           "Object in wrong zone should not be legal target"))))
+
+
+;; =====================================================
+;; Corner Case Tests: :opponent player targeting
+;; =====================================================
+
+(deftest test-find-valid-targets-player-opponent-only
+  (testing "find-valid-targets with :opponent option returns only opponent"
+    (let [db (-> (init-game-state)
+                 (add-opponent))
+          target-req {:target/id :player
+                      :target/type :player
+                      :target/options [:opponent]}
+          targets (targeting/find-valid-targets db :player-1 target-req)]
+      (is (= 1 (count targets))
+          "Should return only one player (opponent)")
+      (is (= :player-2 (first targets))
+          "Should return opponent, not self"))))
+
+
+(deftest test-find-valid-targets-player-opponent-no-opponent
+  (testing "find-valid-targets with :opponent returns nil when no opponent exists"
+    (let [db (init-game-state)  ; No opponent added
+          target-req {:target/id :player
+                      :target/type :player
+                      :target/options [:opponent]}
+          targets (targeting/find-valid-targets db :player-1 target-req)]
+      ;; When no opponent exists, get-opponent-id returns nil
+      ;; find-valid-targets returns [nil] since the option matches
+      (is (= [nil] targets)
+          "Should return [nil] when no opponent exists"))))

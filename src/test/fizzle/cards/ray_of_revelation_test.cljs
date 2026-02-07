@@ -119,7 +119,7 @@
 
   (testing "Ray of Revelation is an instant"
     ;; Scryfall: Instant
-    (is (contains? (:card/types ray/ray-of-revelation) :instant)
+    (is (= #{:instant} (:card/types ray/ray-of-revelation))
         "Ray of Revelation should be an instant"))
 
   (testing "Ray of Revelation has correct cmc"
@@ -129,7 +129,7 @@
 
   (testing "Ray of Revelation is white"
     ;; Scryfall: ["W"]
-    (is (contains? (:card/colors ray/ray-of-revelation) :white)
+    (is (= #{:white} (:card/colors ray/ray-of-revelation))
         "Ray of Revelation should be white")))
 
 

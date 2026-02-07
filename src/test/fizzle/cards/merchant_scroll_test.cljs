@@ -19,7 +19,7 @@
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.zones :as zones]
-    [fizzle.events.game :as game]))
+    [fizzle.events.selection :as selection]))
 
 
 ;; === Test helpers ===
@@ -122,31 +122,6 @@
   [db player-id]
   (let [lib-cards (q/get-objects-in-zone db player-id :library)]
     (into {} (map (fn [obj] [(:object/id obj) (:object/position obj)]) lib-cards))))
-
-
-;; === Helper Sanity Check Tests ===
-
-(deftest test-helper-add-card-to-zone-works
-  (testing "Sanity check: add-card-to-zone helper adds card to correct zone"
-    (let [db (create-test-db)
-          [db' obj-id] (add-card-to-zone db :dark-ritual :hand :player-1)]
-      (is (= :hand (get-object-zone db' obj-id))
-          "add-card-to-zone should put card in specified zone"))))
-
-
-(deftest test-helper-add-cards-to-library-works
-  (testing "Sanity check: add-cards-to-library helper adds cards with positions"
-    (let [db (create-test-db)
-          [db' obj-ids] (add-cards-to-library db [:dark-ritual :brain-freeze] :player-1)]
-      (is (= 2 (count obj-ids))
-          "Should return correct number of object IDs")
-      (is (= 2 (get-library-count db' :player-1))
-          "Library should have correct count")
-      (let [positions (get-library-positions db' :player-1)]
-        (is (= 0 (get positions (first obj-ids)))
-            "First card should be at position 0")
-        (is (= 1 (get positions (second obj-ids)))
-            "Second card should be at position 1")))))
 
 
 ;; === query-library-by-criteria Tests ===
@@ -274,7 +249,7 @@
           _ (is (= :stack (get-object-zone db-after-cast ms-id))
                 "Merchant Scroll should be on stack")
           ;; Resolve with selection system
-          result (game/resolve-spell-with-selection db-after-cast :player-1 ms-id)]
+          result (selection/resolve-spell-with-selection db-after-cast :player-1 ms-id)]
       (is (some? (:pending-selection result))
           "Should return pending selection state")
       (is (= :tutor (get-in result [:pending-selection :selection/effect-type]))
@@ -298,14 +273,14 @@
           hand-before (get-hand-count db' :player-1)
           ;; Simulate confirming empty selection (fail-to-find)
           selection {:selection/zone :library
-                     :selection/count 1
+                     :selection/select-count 1
                      :selection/player-id :player-1
                      :selection/selected #{}  ; Empty = fail to find
                      :selection/spell-id (random-uuid)
                      :selection/target-zone :hand
                      :selection/effect-type :tutor
                      :selection/allow-fail-to-find true}
-          db-after (game/execute-tutor-selection db' selection)]
+          db-after (selection/execute-tutor-selection db' selection)]
       ;; Hand should not change
       (is (= hand-before (get-hand-count db-after :player-1))
           "Hand should not gain cards on fail-to-find")
@@ -323,14 +298,14 @@
           hand-before (get-hand-count db' :player-1)
           ;; Simulate selecting Brain Freeze
           selection {:selection/zone :library
-                     :selection/count 1
+                     :selection/select-count 1
                      :selection/player-id :player-1
                      :selection/selected #{bf-id}
                      :selection/spell-id (random-uuid)
                      :selection/target-zone :hand
                      :selection/effect-type :tutor
                      :selection/allow-fail-to-find true}
-          db-after (game/execute-tutor-selection db' selection)]
+          db-after (selection/execute-tutor-selection db' selection)]
       ;; Brain Freeze should be in hand
       (is (= :hand (get-object-zone db-after bf-id))
           "Selected card should move to hand")
@@ -352,14 +327,14 @@
                                                           :player-1)
           ;; Select Brain Freeze (which was at position 0)
           selection {:selection/zone :library
-                     :selection/count 1
+                     :selection/select-count 1
                      :selection/player-id :player-1
                      :selection/selected #{bf-id}
                      :selection/spell-id (random-uuid)
                      :selection/target-zone :hand
                      :selection/effect-type :tutor
                      :selection/allow-fail-to-find true}
-          db-after (game/execute-tutor-selection db' selection)]
+          db-after (selection/execute-tutor-selection db' selection)]
       ;; Brain Freeze should be in hand (moved before shuffle)
       (is (= :hand (get-object-zone db-after bf-id))
           "Selected card should be in hand")
@@ -376,7 +351,7 @@
 
 (deftest test-merchant-scroll-is-sorcery
   (testing "Merchant Scroll has :sorcery in types"
-    (is (contains? (:card/types cards/merchant-scroll) :sorcery)
+    (is (= #{:sorcery} (:card/types cards/merchant-scroll))
         "Merchant Scroll should be a sorcery")))
 
 
@@ -418,7 +393,7 @@
           ;; Cast
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
           ;; Resolve (triggers selection)
-          result (game/resolve-spell-with-selection db-after-cast :player-1 ms-id)
+          result (selection/resolve-spell-with-selection db-after-cast :player-1 ms-id)
           candidates (get-in result [:pending-selection :selection/candidates])]
       ;; Only Brain Freeze should be a candidate (blue instant)
       ;; Dark Ritual is black instant, Careful Study is blue sorcery
@@ -435,7 +410,7 @@
           [db' [_dr-id]] (add-cards-to-library db [:dark-ritual] :player-1)
           [db'' ms-id] (add-card-to-zone db' :merchant-scroll :hand :player-1)
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
-          result (game/resolve-spell-with-selection db-after-cast :player-1 ms-id)
+          result (selection/resolve-spell-with-selection db-after-cast :player-1 ms-id)
           candidates (get-in result [:pending-selection :selection/candidates])]
       (is (empty? candidates)
           "Dark Ritual (black instant) should not be a candidate"))))
@@ -448,7 +423,7 @@
           [db' [_cs-id]] (add-cards-to-library db [:careful-study] :player-1)
           [db'' ms-id] (add-card-to-zone db' :merchant-scroll :hand :player-1)
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
-          result (game/resolve-spell-with-selection db-after-cast :player-1 ms-id)
+          result (selection/resolve-spell-with-selection db-after-cast :player-1 ms-id)
           candidates (get-in result [:pending-selection :selection/candidates])]
       (is (empty? candidates)
           "Careful Study (blue sorcery) should not be a candidate"))))
@@ -461,7 +436,7 @@
           [db' [_bf-id]] (add-cards-to-library db [:brain-freeze] :player-1)
           [db'' ms-id] (add-card-to-zone db' :merchant-scroll :hand :player-1)
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
-          result (game/resolve-spell-with-selection db-after-cast :player-1 ms-id)]
+          result (selection/resolve-spell-with-selection db-after-cast :player-1 ms-id)]
       ;; Must have fail-to-find option (anti-pattern: NO auto-select)
       (is (true? (get-in result [:pending-selection :selection/allow-fail-to-find]))
           "Must always allow fail-to-find")
@@ -479,7 +454,7 @@
           ;; No cards in library
           [db' ms-id] (add-card-to-zone db :merchant-scroll :hand :player-1)
           db-after-cast (rules/cast-spell db' :player-1 ms-id)
-          result (game/resolve-spell-with-selection db-after-cast :player-1 ms-id)]
+          result (selection/resolve-spell-with-selection db-after-cast :player-1 ms-id)]
       ;; Should still have pending selection (for fail-to-find)
       (is (some? (:pending-selection result))
           "Should have pending selection even with empty library")
@@ -498,7 +473,7 @@
           [db' _] (add-cards-to-library db [:dark-ritual :careful-study :island] :player-1)
           [db'' ms-id] (add-card-to-zone db' :merchant-scroll :hand :player-1)
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
-          result (game/resolve-spell-with-selection db-after-cast :player-1 ms-id)]
+          result (selection/resolve-spell-with-selection db-after-cast :player-1 ms-id)]
       (is (some? (:pending-selection result))
           "Should have pending selection")
       (is (empty? (get-in result [:pending-selection :selection/candidates]))

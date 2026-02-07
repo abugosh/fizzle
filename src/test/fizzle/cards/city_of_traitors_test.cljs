@@ -18,9 +18,11 @@
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
+    [fizzle.engine.stack :as stack]
     [fizzle.engine.trigger-registry :as registry]
     [fizzle.engine.turn-based :as turn-based]
     [fizzle.engine.zones :as zones]
+    [fizzle.events.abilities :as ability-events]
     [fizzle.events.game :as game]))
 
 
@@ -116,7 +118,7 @@
           initial-mana (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:colorless initial-mana)) "Precondition: 0 colorless mana")
           ;; Activate mana ability (color param ignored for colorless)
-          db-after-tap (game/activate-mana-ability db' :player-1 obj-id :colorless)
+          db-after-tap (ability-events/activate-mana-ability db' :player-1 obj-id :colorless)
           final-mana (q/get-mana-pool db-after-tap :player-1)]
       (is (= 2 (:colorless final-mana))
           "City of Traitors should produce 2 colorless mana"))))
@@ -138,7 +140,7 @@
       (is (= :battlefield (:object/zone (q/get-object db-after-play obj-id)))
           "City of Traitors should be on battlefield after entering")
       ;; Verify no trigger on stack (exclude-self filter should prevent)
-      (is (= 0 (count (q/get-stack-items db-after-play)))
+      (is (= 0 (count (stack/get-all-stack-items db-after-play)))
           "No trigger should fire when CoT enters (exclude-self filter)"))))
 
 
@@ -157,10 +159,10 @@
           ;; Play the Island (should trigger CoT sacrifice)
           db-after-island (game/play-land db'' :player-1 island-id)]
       ;; Verify CoT trigger is on stack
-      (is (= 1 (count (q/get-stack-items db-after-island)))
+      (is (= 1 (count (stack/get-all-stack-items db-after-island)))
           "CoT sacrifice trigger should be on stack")
       ;; Resolve the trigger
-      (let [db-after-resolve (game/resolve-top-trigger db-after-island)]
+      (let [db-after-resolve (game/resolve-top-of-stack db-after-island :player-1)]
         ;; Verify CoT is now in graveyard
         (is (= :graveyard (:object/zone (q/get-object db-after-resolve cot-id)))
             "City of Traitors should be in graveyard after trigger resolves")
@@ -186,10 +188,10 @@
           [db'' cot-id-2] (add-land-to-hand db-after-cot1 :city-of-traitors :player-1)
           db-after-cot2 (game/play-land db'' :player-1 cot-id-2)]
       ;; First CoT's trigger should be on stack
-      (is (= 1 (count (q/get-stack-items db-after-cot2)))
+      (is (= 1 (count (stack/get-all-stack-items db-after-cot2)))
           "CoT #1 sacrifice trigger should be on stack when CoT #2 enters")
       ;; Resolve CoT #1's trigger
-      (let [db-after-resolve1 (game/resolve-top-trigger db-after-cot2)]
+      (let [db-after-resolve1 (game/resolve-top-of-stack db-after-cot2 :player-1)]
         (is (= :graveyard (:object/zone (q/get-object db-after-resolve1 cot-id-1)))
             "CoT #1 should be sacrificed")
         (is (= :battlefield (:object/zone (q/get-object db-after-resolve1 cot-id-2)))
@@ -197,10 +199,10 @@
         ;; Now play an Island - should trigger CoT #2
         (let [[db''' island-id] (add-land-to-hand db-after-resolve1 :island :player-1)
               db-after-island (game/play-land db''' :player-1 island-id)]
-          (is (= 1 (count (q/get-stack-items db-after-island)))
+          (is (= 1 (count (stack/get-all-stack-items db-after-island)))
               "CoT #2 sacrifice trigger should be on stack when Island enters")
           ;; Resolve CoT #2's trigger
-          (let [db-final (game/resolve-top-trigger db-after-island)]
+          (let [db-final (game/resolve-top-of-stack db-after-island :player-1)]
             (is (= :graveyard (:object/zone (q/get-object db-final cot-id-2)))
                 "CoT #2 should be sacrificed")))))))
 
@@ -217,13 +219,13 @@
           [db'' island-id] (add-land-to-hand db-after-cot :island :player-1)
           db-after-island (game/play-land db'' :player-1 island-id)]
       ;; Trigger should be on stack, not resolved yet
-      (is (= 1 (count (q/get-stack-items db-after-island)))
+      (is (= 1 (count (stack/get-all-stack-items db-after-island)))
           "Trigger should be on stack")
       ;; CoT should still be on battlefield (can tap for mana in response)
       (is (= :battlefield (:object/zone (q/get-object db-after-island cot-id)))
           "CoT should still be on battlefield with trigger on stack")
       ;; Can tap for mana before trigger resolves
-      (let [db-after-tap (game/activate-mana-ability db-after-island :player-1 cot-id :colorless)
+      (let [db-after-tap (ability-events/activate-mana-ability db-after-island :player-1 cot-id :colorless)
             final-mana (q/get-mana-pool db-after-tap :player-1)]
         (is (= 2 (:colorless final-mana))
             "Can tap CoT for mana with trigger on stack")))))
@@ -240,20 +242,20 @@
           ;; Add Island to hand and play (trigger goes on stack)
           [db'' island-id] (add-land-to-hand db-after-cot :island :player-1)
           db-after-island (game/play-land db'' :player-1 island-id)
-          _ (is (= 1 (count (q/get-stack-items db-after-island)))
+          _ (is (= 1 (count (stack/get-all-stack-items db-after-island)))
                 "Precondition: trigger on stack")
           ;; Manually sacrifice CoT (simulating response)
           db-after-sacrifice (zones/move-to-zone db-after-island cot-id :graveyard)
           _ (is (= :graveyard (:object/zone (q/get-object db-after-sacrifice cot-id)))
                 "Precondition: CoT in graveyard before trigger resolves")
           ;; Resolve the trigger - should handle gracefully
-          db-after-resolve (game/resolve-top-trigger db-after-sacrifice)
+          db-after-resolve (game/resolve-top-of-stack db-after-sacrifice :player-1)
           obj-after (q/get-object db-after-resolve cot-id)]
       ;; CoT still in graveyard (can't sacrifice again)
       (is (= :graveyard (:object/zone obj-after))
           "CoT should remain in graveyard")
       ;; No stack items (trigger resolved)
-      (is (= 0 (count (q/get-stack-items db-after-resolve)))
+      (is (= 0 (count (stack/get-all-stack-items db-after-resolve)))
           "Stack should be empty after trigger resolves"))))
 
 
@@ -278,5 +280,5 @@
           ;; Play the land
           db-after-play (game/play-land db' :player-1 island-id)]
       ;; A trigger should be on stack (proving event was dispatched)
-      (is (>= (count (q/get-stack-items db-after-play)) 1)
+      (is (>= (count (stack/get-all-stack-items db-after-play)) 1)
           ":land-entered event should be dispatched when land enters"))))

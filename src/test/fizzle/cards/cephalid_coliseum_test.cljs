@@ -22,8 +22,10 @@
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.abilities :as abilities]
+    [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
-    [fizzle.events.game :as game]))
+    [fizzle.events.abilities :as ability-events]
+    [fizzle.events.selection :as selection]))
 
 
 ;; === Test helpers ===
@@ -182,7 +184,7 @@
 
 (deftest test-cephalid-coliseum-is-land-type
   (testing "Cephalid Coliseum has :land in types"
-    (is (contains? (:card/types coliseum/cephalid-coliseum) :land)
+    (is (= #{:land} (:card/types coliseum/cephalid-coliseum))
         "Cephalid Coliseum should be a land")))
 
 
@@ -194,7 +196,7 @@
 
 (deftest test-cephalid-coliseum-has-threshold-keyword
   (testing "Cephalid Coliseum has :threshold keyword"
-    (is (contains? (:card/keywords coliseum/cephalid-coliseum) :threshold)
+    (is (= #{:threshold} (:card/keywords coliseum/cephalid-coliseum))
         "Cephalid Coliseum should have :threshold keyword")))
 
 
@@ -208,7 +210,7 @@
                 "Precondition: Coliseum starts on battlefield")
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:blue initial-pool)) "Precondition: blue mana is 0")
-          db'' (game/activate-mana-ability db' :player-1 obj-id nil)]
+          db'' (ability-events/activate-mana-ability db' :player-1 obj-id nil)]
       (is (= 1 (:blue (q/get-mana-pool db'' :player-1)))
           "Blue mana should be added to pool"))))
 
@@ -219,7 +221,7 @@
           [db' obj-id] (add-land-to-battlefield db :cephalid-coliseum :player-1)
           initial-life (q/get-life-total db' :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
-          db'' (game/activate-mana-ability db' :player-1 obj-id nil)]
+          db'' (ability-events/activate-mana-ability db' :player-1 obj-id nil)]
       (is (= 19 (q/get-life-total db'' :player-1))
           "Player should have taken 1 damage from Coliseum"))))
 
@@ -232,7 +234,7 @@
           initial-life (q/get-life-total db' :player-1)
           _ (is (= 0 (:blue initial-pool)) "Precondition: blue mana is 0")
           _ (is (= 20 initial-life) "Precondition: life is 20")
-          db'' (game/activate-mana-ability db' :player-1 obj-id nil)]
+          db'' (ability-events/activate-mana-ability db' :player-1 obj-id nil)]
       ;; Both should happen from single activation
       (is (= 1 (:blue (q/get-mana-pool db'' :player-1)))
           "Blue mana should be added")
@@ -255,7 +257,7 @@
           initial-pool (q/get-mana-pool db-tapped :player-1)
           _ (is (= 0 (:blue initial-pool)) "Precondition: blue mana is 0")
           ;; Try to activate mana ability on tapped land
-          db'' (game/activate-mana-ability db-tapped :player-1 obj-id nil)]
+          db'' (ability-events/activate-mana-ability db-tapped :player-1 obj-id nil)]
       (is (= 0 (:blue (q/get-mana-pool db'' :player-1)))
           "Mana should NOT be added (land was already tapped)"))))
 
@@ -340,14 +342,14 @@
                 "Precondition: Coliseum on battlefield")
           ;; Activate threshold ability (index 1 = second ability)
           ;; Now returns pending selection for targeting
-          result (game/activate-ability db'''' :player-1 obj-id 1)
+          result (ability-events/activate-ability db'''' :player-1 obj-id 1)
           selection (:pending-selection result)
           ;; Coliseum should still be on battlefield (costs not paid yet)
           _ (is (= :battlefield (get-object-zone (:db result) obj-id))
                 "Coliseum should still be on battlefield before target confirmed")
           ;; Confirm target selection (targeting self)
           selection-with-target (assoc selection :selection/selected-target :player-1)
-          final-result (game/confirm-ability-target (:db result) selection-with-target)]
+          final-result (ability-events/confirm-ability-target (:db result) selection-with-target)]
       ;; After confirmation, land should be in graveyard (sacrifice paid as cost)
       (is (= :graveyard (get-object-zone (:db final-result) obj-id))
           "Coliseum should be in graveyard after target confirmation"))))
@@ -397,21 +399,20 @@
           [db'''' _] (add-cards-to-library db''' [:island :island :island :swamp] :player-1)
           ;; Activate threshold ability (index 1 = second ability)
           ;; Now returns pending selection for targeting
-          result (game/activate-ability db'''' :player-1 obj-id 1)
+          result (ability-events/activate-ability db'''' :player-1 obj-id 1)
           selection (:pending-selection result)
           ;; Stack should be empty (waiting for target)
-          initial-stack (q/get-stack-items (:db result))
-          _ (is (empty? initial-stack)
+          _ (is (true? (stack/stack-empty? (:db result)))
                 "Stack should be empty before target selected")
           ;; Confirm target selection (targeting self)
           selection-with-target (assoc selection :selection/selected-target :player-1)
-          final-result (game/confirm-ability-target (:db result) selection-with-target)
+          final-result (ability-events/confirm-ability-target (:db result) selection-with-target)
           ;; Check that ability was put on stack after target confirmation
-          stack-items (q/get-stack-items (:db final-result))]
-      ;; Should have an ability trigger on stack
-      (is (= 1 (count stack-items))
-          "Should have ability on stack after target confirmed")
-      (is (= :activated-ability (:trigger/type (first stack-items)))
+          top-item (stack/get-top-stack-item (:db final-result))]
+      ;; Should have a stack-item on stack
+      (is (some? top-item)
+          "Should have stack-item on stack after target confirmed")
+      (is (= :activated-ability (:stack-item/type top-item))
           "Stack item should be an activated ability"))))
 
 
@@ -435,7 +436,7 @@
           initial-pool (q/get-mana-pool db' :player-1)
           initial-life (q/get-life-total db' :player-1)
           ;; Try to activate mana ability from graveyard
-          db'' (game/activate-mana-ability db' :player-1 obj-id nil)]
+          db'' (ability-events/activate-mana-ability db' :player-1 obj-id nil)]
       ;; Nothing should happen
       (is (= (:blue initial-pool) (:blue (q/get-mana-pool db'' :player-1)))
           "Mana should NOT be added from graveyard")
@@ -474,7 +475,7 @@
           db''' (set-mana-pool db'' :player-1 {:white 0 :blue 1 :black 0
                                                :red 0 :green 0 :colorless 0})
           ;; Activate threshold ability
-          result (game/activate-ability db''' :player-1 obj-id 1)
+          result (ability-events/activate-ability db''' :player-1 obj-id 1)
           selection (:pending-selection result)]
       ;; Should return pending selection
       (is (some? selection)
@@ -488,7 +489,7 @@
       (is (= 1 (:selection/ability-index selection))
           "Selection should track ability index")
       ;; Stack should be empty (waiting for target)
-      (is (empty? (q/get-stack-items (:db result)))
+      (is (true? (stack/stack-empty? (:db result)))
           "Stack should be empty before target confirmed")
       ;; Costs should NOT be paid yet
       (is (= :battlefield (get-object-zone (:db result) obj-id))
@@ -509,18 +510,17 @@
                                                :red 0 :green 0 :colorless 0})
           [db'''' _] (add-cards-to-library db''' [:island :island :island] :player-1)
           ;; Activate and get selection
-          result (game/activate-ability db'''' :player-1 obj-id 1)
+          result (ability-events/activate-ability db'''' :player-1 obj-id 1)
           selection (:pending-selection result)
           ;; Confirm with target
           selection-with-target (assoc selection :selection/selected-target :player-1)
-          final-result (game/confirm-ability-target (:db result) selection-with-target)
-          ;; Get the trigger from stack
-          stack-items (q/get-stack-items (:db final-result))
-          trigger (first stack-items)
-          trigger-targets (get-in trigger [:trigger/data :targets])]
+          final-result (ability-events/confirm-ability-target (:db result) selection-with-target)
+          ;; Get the stack-item from stack
+          item (stack/get-top-stack-item (:db final-result))
+          item-targets (:stack-item/targets item)]
       ;; Should have stored target
-      (is (= {:player :player-1} trigger-targets)
-          "Trigger data should contain stored target"))))
+      (is (= {:player :player-1} item-targets)
+          "Stack-item should contain stored target"))))
 
 
 (deftest test-threshold-activation-cancelled-preserves-state
@@ -537,11 +537,11 @@
                                                :red 0 :green 0 :colorless 0})
           initial-mana (q/get-mana-pool db''' :player-1)
           ;; Activate and get selection
-          result (game/activate-ability db''' :player-1 obj-id 1)
+          result (ability-events/activate-ability db''' :player-1 obj-id 1)
           selection (:pending-selection result)
           ;; Cancel by confirming with nil target
           selection-cancelled (assoc selection :selection/selected-target nil)
-          final-result (game/confirm-ability-target (:db result) selection-cancelled)]
+          final-result (ability-events/confirm-ability-target (:db result) selection-cancelled)]
       ;; Land should still be on battlefield (not sacrificed)
       (is (= :battlefield (get-object-zone (:db final-result) obj-id))
           "Land should still be on battlefield after cancellation")
@@ -549,5 +549,51 @@
       (is (= initial-mana (q/get-mana-pool (:db final-result) :player-1))
           "Mana pool should be unchanged after cancellation")
       ;; Stack should be empty
-      (is (empty? (q/get-stack-items (:db final-result)))
+      (is (true? (stack/stack-empty? (:db final-result)))
           "Stack should be empty after cancellation"))))
+
+
+;; === Threshold Resolution Integration Test ===
+
+(deftest test-coliseum-threshold-resolution-draws-and-discards
+  ;; Bug caught: threshold ability resolution broken
+  (testing "Activate threshold, confirm target, resolve stack item - draw 3, discard pending"
+    (let [db (create-test-db)
+          [db' obj-id] (add-land-to-battlefield db :cephalid-coliseum :player-1)
+          ;; Add 7 cards to graveyard for threshold
+          [db'' _] (add-cards-to-graveyard db'
+                                           [:dark-ritual :dark-ritual :cabal-ritual
+                                            :brain-freeze :island :swamp :lotus-petal]
+                                           :player-1)
+          ;; Add blue mana and 5 cards to library for drawing
+          db''' (set-mana-pool db'' :player-1 {:white 0 :blue 1 :black 0
+                                               :red 0 :green 0 :colorless 0})
+          [db'''' _lib-ids] (add-cards-to-library db''' [:island :swamp :dark-ritual
+                                                         :cabal-ritual :brain-freeze]
+                                                  :player-1)
+          initial-hand (get-hand-count db'''' :player-1)
+          _ (is (= 0 initial-hand) "Precondition: hand is empty")
+          ;; Activate threshold ability (index 1)
+          result (ability-events/activate-ability db'''' :player-1 obj-id 1)
+          selection (:pending-selection result)
+          _ (is (some? selection) "Should have pending target selection")
+          ;; Confirm target (self)
+          selection-with-target (assoc selection :selection/selected-target :player-1)
+          final-result (ability-events/confirm-ability-target (:db result) selection-with-target)
+          db-after-confirm (:db final-result)
+          ;; Stack should have the ability
+          top-item (stack/get-top-stack-item db-after-confirm)
+          _ (is (some? top-item) "Should have stack-item on stack")
+          ;; Resolve the stack item ability (pass full entity, not eid)
+          resolve-result (selection/resolve-stack-item-ability-with-selection
+                           db-after-confirm top-item)]
+      ;; After resolution, player should have drawn 3 cards
+      (is (= 3 (get-hand-count (:db resolve-result) :player-1))
+          "Player should have drawn 3 cards from threshold ability")
+      ;; Should have pending discard selection (discard 3)
+      (is (some? (:pending-selection resolve-result))
+          "Should have pending discard selection for 3 cards")
+      (is (= :discard (get-in resolve-result [:pending-selection :selection/effect-type]))
+          "Pending selection should be for discard")
+      (is (= 3 (get-in resolve-result [:pending-selection :selection/select-count]))
+          "Should require discarding 3 cards"))))

@@ -16,7 +16,7 @@
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.game :as game]))
+    [fizzle.events.selection :as selection]))
 
 
 ;; === Test helpers ===
@@ -113,7 +113,7 @@
 (deftest test-opt-is-instant-type
   ;; Bug caught: Wrong card type (e.g., sorcery instead of instant)
   (testing "Opt has :instant in types"
-    (is (contains? (:card/types cards/opt) :instant)
+    (is (= #{:instant} (:card/types cards/opt))
         "Opt should be an instant")))
 
 
@@ -160,7 +160,7 @@
           _ (is (= :stack (get-object-zone db-after-cast opt-id))
                 "Opt should be on stack after casting")
           ;; Resolve spell - should create scry selection
-          result (game/resolve-spell-with-selection db-after-cast :player-1 opt-id)]
+          result (selection/resolve-spell-with-selection db-after-cast :player-1 opt-id)]
       ;; Should have pending selection for scry
       (is (some? (:pending-selection result))
           "Should return pending selection state")
@@ -184,7 +184,7 @@
           [db'' opt-id] (add-card-to-zone db' :opt :hand :player-1)
           ;; Cast and resolve Opt
           db-after-cast (rules/cast-spell db'' :player-1 opt-id)
-          result (game/resolve-spell-with-selection db-after-cast :player-1 opt-id)
+          result (selection/resolve-spell-with-selection db-after-cast :player-1 opt-id)
           remaining-effects (get-in result [:pending-selection :selection/remaining-effects])]
       ;; Should have 1 remaining effect (draw)
       (is (= 1 (count remaining-effects))
@@ -211,7 +211,7 @@
           ;; Cast Opt
           db-after-cast (rules/cast-spell db'' :player-1 opt-id)
           ;; Resolve spell - creates scry selection
-          result (game/resolve-spell-with-selection db-after-cast :player-1 opt-id)
+          result (selection/resolve-spell-with-selection db-after-cast :player-1 opt-id)
           scry-selection (:pending-selection result)
           top-card (first (:selection/cards scry-selection))
           ;; Simulate scry choice: put card on bottom
@@ -223,7 +223,7 @@
           app-db {:game/db db-before-confirm
                   :game/pending-selection scry-state}
           ;; Confirm scry selection - should trigger draw
-          result-app-db (game/confirm-scry-selection app-db)
+          result-app-db (selection/confirm-scry-selection app-db)
           result-db (:game/db result-app-db)]
       ;; After scry + draw, hand should have 1 card (drew the top card after reorder)
       (is (= 1 (get-hand-count result-db :player-1))
@@ -245,7 +245,7 @@
           ;; Cast Opt
           db-after-cast (rules/cast-spell db' :player-1 opt-id)
           ;; Resolve spell - scry with empty library
-          result (game/resolve-spell-with-selection db-after-cast :player-1 opt-id)]
+          result (selection/resolve-spell-with-selection db-after-cast :player-1 opt-id)]
       ;; With empty library, scry selection is nil (no cards to scry)
       ;; But the effect should handle this gracefully
       ;; If no selection needed, spell resolves directly including draw

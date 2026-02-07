@@ -6,6 +6,7 @@
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
+    [fizzle.events.abilities :as ability-events]
     [fizzle.events.game :as game]))
 
 
@@ -107,7 +108,7 @@
                 "Precondition: Island starts untapped")
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:blue initial-pool)) "Precondition: blue mana is 0")
-          db'' (game/activate-mana-ability db' :player-1 obj-id :blue)]
+          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :blue)]
       (is (true? (get-object-tapped db'' obj-id))
           "Island should be tapped after activating mana ability")
       (is (= 1 (:blue (q/get-mana-pool db'' :player-1)))
@@ -124,7 +125,7 @@
                 "Precondition: Swamp starts untapped")
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
-          db'' (game/activate-mana-ability db' :player-1 obj-id :black)]
+          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :black)]
       (is (true? (get-object-tapped db'' obj-id))
           "Swamp should be tapped after activating mana ability")
       (is (= 1 (:black (q/get-mana-pool db'' :player-1)))
@@ -153,13 +154,13 @@
     (let [db (create-test-db)
           [db' obj-id] (add-land-to-battlefield db :island :player-1)
           ;; First tap produces mana
-          db-after-first-tap (game/activate-mana-ability db' :player-1 obj-id :blue)
+          db-after-first-tap (ability-events/activate-mana-ability db' :player-1 obj-id :blue)
           _ (is (= 1 (:blue (q/get-mana-pool db-after-first-tap :player-1)))
                 "Precondition: first tap adds mana")
           _ (is (true? (get-object-tapped db-after-first-tap obj-id))
                 "Precondition: land is tapped")
           ;; Second tap should fail (no additional mana)
-          db-after-second-tap (game/activate-mana-ability db-after-first-tap :player-1 obj-id :blue)]
+          db-after-second-tap (ability-events/activate-mana-ability db-after-first-tap :player-1 obj-id :blue)]
       (is (= 1 (:blue (q/get-mana-pool db-after-second-tap :player-1)))
           "Second tap should NOT add more mana")
       (is (true? (get-object-tapped db-after-second-tap obj-id))
@@ -176,7 +177,7 @@
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:blue initial-pool)) "Precondition: blue mana is 0")
           ;; Attempt to activate mana ability from hand
-          db'' (game/activate-mana-ability db' :player-1 obj-id :blue)]
+          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :blue)]
       (is (= 0 (:blue (q/get-mana-pool db'' :player-1)))
           "Mana should NOT be added (land not on battlefield)")
       (is (= :hand (get-object-zone db'' obj-id))

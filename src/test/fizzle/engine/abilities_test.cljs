@@ -185,3 +185,59 @@
       (is (some? db'))
       ;; Permanent should be tapped
       (is (= true (:object/tapped (q/get-object db' object-id)))))))
+
+
+;; =====================================================
+;; Corner Case Tests: threshold condition
+;; =====================================================
+
+(defn add-cards-to-graveyard
+  "Add n cards to player's graveyard. Returns db."
+  [db player-id n]
+  (let [conn (d/conn-from-db db)
+        player-eid (q/get-player-eid db player-id)
+        card-eid (d/q '[:find ?e .
+                        :where [?e :card/id :dark-ritual]]
+                      db)]
+    (doseq [_ (range n)]
+      (d/transact! conn [{:object/id (random-uuid)
+                          :object/card card-eid
+                          :object/zone :graveyard
+                          :object/owner player-eid
+                          :object/controller player-eid
+                          :object/tapped false}]))
+    @conn))
+
+
+(deftest test-can-activate-with-threshold-condition-met
+  (testing "can-activate? returns true when threshold condition is met (7+ cards in graveyard)"
+    (let [db (add-cards-to-graveyard (init-game-state) :player-1 7)
+          [db object-id] (add-permanent db :player-1)
+          ability {:ability/cost {:tap true}
+                   :ability/condition {:condition/type :threshold}
+                   :ability/effects [{:effect/type :add-mana :effect/mana {:black 1}}]}]
+      (is (true? (abilities/can-activate? db object-id ability :player-1))
+          "Should be activatable with threshold met"))))
+
+
+(deftest test-can-activate-with-threshold-condition-not-met
+  (testing "can-activate? returns false when threshold condition is not met (< 7 cards)"
+    (let [db (add-cards-to-graveyard (init-game-state) :player-1 5)
+          [db object-id] (add-permanent db :player-1)
+          ability {:ability/cost {:tap true}
+                   :ability/condition {:condition/type :threshold}
+                   :ability/effects [{:effect/type :add-mana :effect/mana {:black 1}}]}]
+      (is (false? (abilities/can-activate? db object-id ability :player-1))
+          "Should NOT be activatable without threshold"))))
+
+
+(deftest test-can-activate-2-arity-resolves-controller
+  (testing "can-activate? 2-arity resolves controller from object and checks condition"
+    (let [db (add-cards-to-graveyard (init-game-state) :player-1 7)
+          [db object-id] (add-permanent db :player-1)
+          ability {:ability/cost {:tap true}
+                   :ability/condition {:condition/type :threshold}
+                   :ability/effects []}]
+      ;; 2-arity: (db, object-id, ability) - should resolve controller internally
+      (is (true? (abilities/can-activate? db object-id ability))
+          "2-arity should resolve controller and check threshold"))))

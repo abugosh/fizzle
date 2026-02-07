@@ -17,7 +17,9 @@
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
-    [fizzle.events.game :as game]))
+    [fizzle.engine.stack :as stack]
+    [fizzle.events.abilities :as ability-events]
+    [fizzle.events.selection :as selection]))
 
 
 ;; === Test helpers ===
@@ -131,7 +133,7 @@
 
 (deftest test-polluted-delta-is-land
   (testing "Polluted Delta has :land in types"
-    (is (contains? (:card/types cards/polluted-delta) :land)
+    (is (= #{:land} (:card/types cards/polluted-delta))
         "Polluted Delta should be a land")))
 
 
@@ -183,7 +185,7 @@
           battlefield-before (get-battlefield-count db' :player-1)
           ;; Simulate tutor selection to battlefield
           selection {:selection/zone :library
-                     :selection/count 1
+                     :selection/select-count 1
                      :selection/player-id :player-1
                      :selection/selected #{island-id}
                      :selection/spell-id (random-uuid)
@@ -191,7 +193,7 @@
                      :selection/effect-type :tutor
                      :selection/enters-tapped true
                      :selection/allow-fail-to-find true}
-          db-after (game/execute-tutor-selection db' selection)]
+          db-after (selection/execute-tutor-selection db' selection)]
       ;; Island should be on battlefield
       (is (= :battlefield (get-object-zone db-after island-id))
           "Selected card should move to battlefield")
@@ -208,7 +210,7 @@
                 "Island should start untapped in library")
           ;; Simulate tutor selection to battlefield with enters-tapped
           selection {:selection/zone :library
-                     :selection/count 1
+                     :selection/select-count 1
                      :selection/player-id :player-1
                      :selection/selected #{island-id}
                      :selection/spell-id (random-uuid)
@@ -216,7 +218,7 @@
                      :selection/effect-type :tutor
                      :selection/enters-tapped true
                      :selection/allow-fail-to-find true}
-          db-after (game/execute-tutor-selection db' selection)]
+          db-after (selection/execute-tutor-selection db' selection)]
       ;; Island should be tapped
       (is (true? (get-object-tapped db-after island-id))
           "Fetched land should enter battlefield tapped"))))
@@ -227,7 +229,7 @@
     (let [[db' [island-id]] (add-cards-to-library (create-test-db) [:island] :player-1)
           ;; Simulate tutor to battlefield WITHOUT enters-tapped flag
           selection {:selection/zone :library
-                     :selection/count 1
+                     :selection/select-count 1
                      :selection/player-id :player-1
                      :selection/selected #{island-id}
                      :selection/spell-id (random-uuid)
@@ -235,7 +237,7 @@
                      :selection/effect-type :tutor
                      :selection/enters-tapped false  ; Not tapped
                      :selection/allow-fail-to-find true}
-          db-after (game/execute-tutor-selection db' selection)]
+          db-after (selection/execute-tutor-selection db' selection)]
       ;; Island should be untapped
       (is (false? (get-object-tapped db-after island-id))
           "Card should enter untapped when enters-tapped is false"))))
@@ -246,7 +248,7 @@
     (let [[db' [island-id]] (add-cards-to-library (create-test-db) [:island] :player-1)
           ;; Simulate tutor to HAND with enters-tapped (should be ignored)
           selection {:selection/zone :library
-                     :selection/count 1
+                     :selection/select-count 1
                      :selection/player-id :player-1
                      :selection/selected #{island-id}
                      :selection/spell-id (random-uuid)
@@ -254,7 +256,7 @@
                      :selection/effect-type :tutor
                      :selection/enters-tapped true  ; Should be ignored for hand
                      :selection/allow-fail-to-find true}
-          db-after (game/execute-tutor-selection db' selection)]
+          db-after (selection/execute-tutor-selection db' selection)]
       ;; Island should be in hand
       (is (= :hand (get-object-zone db-after island-id))
           "Card should go to hand")
@@ -326,7 +328,7 @@
           battlefield-before (get-battlefield-count db' :player-1)
           ;; Simulate fail-to-find selection
           selection {:selection/zone :library
-                     :selection/count 1
+                     :selection/select-count 1
                      :selection/player-id :player-1
                      :selection/selected #{}  ; Empty = fail to find
                      :selection/spell-id (random-uuid)
@@ -334,7 +336,7 @@
                      :selection/effect-type :tutor
                      :selection/enters-tapped true
                      :selection/allow-fail-to-find true}
-          db-after (game/execute-tutor-selection db' selection)]
+          db-after (selection/execute-tutor-selection db' selection)]
       ;; Library count unchanged
       (is (= library-before (get-library-count db-after :player-1))
           "Library count should not change on fail-to-find")
@@ -352,7 +354,7 @@
                                                            :dark-ritual :dark-ritual]
                                                           :player-1)
           selection {:selection/zone :library
-                     :selection/count 1
+                     :selection/select-count 1
                      :selection/player-id :player-1
                      :selection/selected #{island-id}
                      :selection/spell-id (random-uuid)
@@ -361,7 +363,7 @@
                      :selection/enters-tapped true
                      :selection/shuffle? true
                      :selection/allow-fail-to-find true}
-          db-after (game/execute-tutor-selection db' selection)]
+          db-after (selection/execute-tutor-selection db' selection)]
       ;; Island should be on battlefield
       (is (= :battlefield (get-object-zone db-after island-id))
           "Selected card should be on battlefield")
@@ -372,8 +374,8 @@
 
 ;; === Activated Ability Uses Stack Tests ===
 
-(deftest test-activate-ability-adds-trigger-to-stack
-  (testing "Activating Polluted Delta ability adds trigger to stack"
+(deftest test-activate-ability-adds-stack-item
+  (testing "Activating Polluted Delta ability adds stack-item to stack"
     (let [db (create-test-db)
           ;; Add Polluted Delta to battlefield and Island to library
           [db' delta-id] (add-card-to-zone db :polluted-delta :battlefield :player-1)
@@ -382,18 +384,18 @@
           player-eid (q/get-player-eid db'' :player-1)
           db-with-life (d/db-with db'' [[:db/add player-eid :player/life 20]])
           ;; Verify no stack items before
-          _ (is (= 0 (count (q/get-stack-items db-with-life)))
+          _ (is (true? (stack/stack-empty? db-with-life))
                 "Precondition: no items on stack")
           ;; Activate ability
-          result (game/activate-ability db-with-life :player-1 delta-id 0)
+          result (ability-events/activate-ability db-with-life :player-1 delta-id 0)
           db-after (:db result)]
-      ;; Should have trigger on stack
-      (is (= 1 (count (q/get-stack-items db-after)))
-          "Activated ability should create a trigger on stack")
-      ;; Trigger should be :activated-ability type
-      (let [trigger (first (q/get-stack-items db-after))]
-        (is (= :activated-ability (:trigger/type trigger))
-            "Trigger should have type :activated-ability")))))
+      ;; Should have a stack-item
+      (is (false? (stack/stack-empty? db-after))
+          "Activated ability should create a stack-item")
+      ;; Stack-item should be :activated-ability type
+      (let [item (stack/get-top-stack-item db-after)]
+        (is (= :activated-ability (:stack-item/type item))
+            "Stack-item should have type :activated-ability")))))
 
 
 (deftest test-sacrifice-cost-paid-on-activation-not-resolution
@@ -407,14 +409,14 @@
           _ (is (= :battlefield (get-object-zone db-with-life delta-id))
                 "Precondition: Delta on battlefield")
           ;; Activate ability (costs are paid immediately)
-          result (game/activate-ability db-with-life :player-1 delta-id 0)
+          result (ability-events/activate-ability db-with-life :player-1 delta-id 0)
           db-after (:db result)]
       ;; Delta should be in graveyard (sacrificed as cost)
       (is (= :graveyard (get-object-zone db-after delta-id))
           "Polluted Delta should be sacrificed immediately as cost")
-      ;; But trigger is still on stack (not yet resolved)
-      (is (= 1 (count (q/get-stack-items db-after)))
-          "Trigger should still be on stack awaiting resolution"))))
+      ;; But stack-item is still on stack (not yet resolved)
+      (is (false? (stack/stack-empty? db-after))
+          "Stack-item should still be on stack awaiting resolution"))))
 
 
 (deftest test-life-cost-paid-on-activation
@@ -428,7 +430,7 @@
           _ (is (= 20 (q/get-life-total db-with-life :player-1))
                 "Precondition: player has 20 life")
           ;; Activate ability
-          result (game/activate-ability db-with-life :player-1 delta-id 0)
+          result (ability-events/activate-ability db-with-life :player-1 delta-id 0)
           db-after (:db result)]
       ;; Life should be 19 (paid 1 as cost)
       (is (= 19 (q/get-life-total db-after :player-1))
@@ -445,19 +447,19 @@
           player-eid (q/get-player-eid db''' :player-1)
           db-with-life (d/db-with db''' [[:db/add player-eid :player/life 20]])
           ;; Activate Polluted Delta ability (puts trigger on stack)
-          result (game/activate-ability db-with-life :player-1 delta-id 0)
+          result (ability-events/activate-ability db-with-life :player-1 delta-id 0)
           db-after-activate (:db result)]
-      ;; Trigger is on stack
-      (is (= 1 (count (q/get-stack-items db-after-activate)))
-          "Trigger should be on stack")
+      ;; Stack-item is on stack
+      (is (false? (stack/stack-empty? db-after-activate))
+          "Stack-item should be on stack")
       ;; Can still tap City of Brass for mana (responding to ability on stack)
-      (let [db-after-tap (game/activate-mana-ability db-after-activate :player-1 cob-id :blue)
+      (let [db-after-tap (ability-events/activate-mana-ability db-after-activate :player-1 cob-id :blue)
             mana-pool (q/get-mana-pool db-after-tap :player-1)]
         (is (= 1 (:blue mana-pool))
             "Should be able to tap City of Brass while ability is on stack")
-        ;; Trigger still on stack
-        (is (= 1 (count (q/get-stack-items db-after-tap)))
-            "Trigger should remain on stack after tapping for mana")))))
+        ;; Stack-item still on stack
+        (is (false? (stack/stack-empty? db-after-tap))
+            "Stack-item should remain on stack after tapping for mana")))))
 
 
 (deftest test-mana-abilities-still-immediate
@@ -466,10 +468,10 @@
           ;; Add City of Brass to battlefield
           [db' cob-id] (add-card-to-zone db :city-of-brass :battlefield :player-1)
           ;; Verify no stack items
-          _ (is (= 0 (count (q/get-stack-items db')))
+          _ (is (true? (stack/stack-empty? db'))
                 "Precondition: no items on stack")
           ;; Activate mana ability
-          db-after-tap (game/activate-mana-ability db' :player-1 cob-id :blue)]
+          db-after-tap (ability-events/activate-mana-ability db' :player-1 cob-id :blue)]
       ;; Mana should be added immediately
       (is (= 1 (:blue (q/get-mana-pool db-after-tap :player-1)))
           "Mana should be added immediately")
@@ -477,3 +479,45 @@
       ;; (Note: City of Brass damage trigger goes on stack, but that's from the tapped event, not the mana ability)
       ;; Just verify we got mana - the key point is mana abilities don't use activate-ability
       )))
+
+
+;; === Full Stack Resolution Test ===
+
+(deftest test-polluted-delta-full-resolution-from-stack
+  ;; Bug caught: fetchland stack resolution broken
+  (testing "Activate, resolve from stack, verify land search selection created"
+    (let [db (create-test-db)
+          ;; Add Polluted Delta to battlefield
+          [db' delta-id] (add-card-to-zone db :polluted-delta :battlefield :player-1)
+          ;; Add Island and Swamp to library (valid targets)
+          [db'' [island-id swamp-id]] (add-cards-to-library db'
+                                                            [:island :swamp :dark-ritual]
+                                                            :player-1)
+          initial-life (q/get-life-total db'' :player-1)
+          _ (is (= 20 initial-life) "Precondition: player has 20 life")
+          ;; Activate ability (index 0 = only ability)
+          result (ability-events/activate-ability db'' :player-1 delta-id 0)
+          db-after-activate (:db result)
+          ;; Delta should be sacrificed (cost paid)
+          _ (is (= :graveyard (get-object-zone db-after-activate delta-id))
+                "Delta should be sacrificed as cost")
+          ;; Life should be 19 (paid 1 life)
+          _ (is (= 19 (q/get-life-total db-after-activate :player-1))
+                "Should have paid 1 life")
+          ;; Stack should have ability
+          top-item (stack/get-top-stack-item db-after-activate)
+          _ (is (some? top-item) "Should have stack-item")
+          ;; Resolve the stack item (pass full entity, not eid)
+          resolve-result (selection/resolve-stack-item-ability-with-selection
+                           db-after-activate top-item)]
+      ;; Should create tutor selection for library search
+      (is (some? (:pending-selection resolve-result))
+          "Should have pending tutor selection")
+      (is (= :tutor (get-in resolve-result [:pending-selection :selection/effect-type]))
+          "Selection should be tutor type")
+      ;; Candidates should include Island and Swamp (match criteria)
+      (let [candidates (:selection/candidates (:pending-selection resolve-result))]
+        (is (contains? candidates island-id)
+            "Island should be a valid candidate")
+        (is (contains? candidates swamp-id)
+            "Swamp should be a valid candidate")))))

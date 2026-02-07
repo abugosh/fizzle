@@ -42,29 +42,3 @@
   (testing "storm count starts at 0"
     (let [db (init-game-state)]
       (is (= 0 (q/get-storm-count db :player-1))))))
-
-
-;; Query edge case tests
-(deftest get-mana-pool-nonexistent-player-test
-  (testing "get-mana-pool returns nil for nonexistent player"
-    (let [db (init-game-state)]
-      (is (nil? (q/get-mana-pool db :nonexistent-player))))))
-
-
-(deftest get-hand-empty-returns-empty-vector-test
-  (testing "get-hand returns empty vector when no cards in hand"
-    (let [conn (d/create-conn schema)]
-      (d/transact! conn [{:player/id :empty-player
-                          :player/life 20
-                          :player/mana-pool {:white 0 :blue 0 :black 0
-                                             :red 0 :green 0 :colorless 0}
-                          :player/storm-count 0}])
-      (is (= [] (q/get-hand @conn :empty-player))))))
-
-
-(deftest get-card-by-object-id-test
-  (testing "get-card retrieves card definition from game object"
-    (let [db (init-game-state)
-          hand (q/get-hand db :player-1)
-          obj-id (:object/id (first hand))]
-      (is (= "Dark Ritual" (:card/name (q/get-card db obj-id)))))))

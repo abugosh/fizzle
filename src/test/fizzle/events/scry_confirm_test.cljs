@@ -12,7 +12,7 @@
     [datascript.core :as d]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
-    [fizzle.events.game :as game]))
+    [fizzle.events.selection :as selection]))
 
 
 ;; === Test helpers ===
@@ -87,7 +87,7 @@
                      :selection/spell-id spell-id
                      :selection/remaining-effects []}
           app-db (create-app-db-with-scry-selection db selection)
-          result-app-db (game/confirm-scry-selection app-db)
+          result-app-db (selection/confirm-scry-selection app-db)
           result-db (:game/db result-app-db)
           library-order (get-library-order result-db :player-1)]
       (is (= a (first library-order))
@@ -109,7 +109,7 @@
                      :selection/spell-id spell-id
                      :selection/remaining-effects []}
           app-db (create-app-db-with-scry-selection db selection)
-          result-app-db (game/confirm-scry-selection app-db)
+          result-app-db (selection/confirm-scry-selection app-db)
           result-db (:game/db result-app-db)
           library-order (get-library-order result-db :player-1)]
       (is (= a (last library-order))
@@ -131,7 +131,7 @@
                      :selection/spell-id spell-id
                      :selection/remaining-effects []}
           app-db (create-app-db-with-scry-selection db selection)
-          result-app-db (game/confirm-scry-selection app-db)
+          result-app-db (selection/confirm-scry-selection app-db)
           result-db (:game/db result-app-db)
           library-order (get-library-order result-db :player-1)]
       (is (= [a b c] library-order)
@@ -151,7 +151,7 @@
                      :selection/spell-id spell-id
                      :selection/remaining-effects []}
           app-db (create-app-db-with-scry-selection db selection)
-          result-app-db (game/confirm-scry-selection app-db)
+          result-app-db (selection/confirm-scry-selection app-db)
           result-db (:game/db result-app-db)
           library-order (get-library-order result-db :player-1)]
       (is (= [c a b] library-order)
@@ -171,7 +171,7 @@
                      :selection/spell-id spell-id
                      :selection/remaining-effects []}
           app-db (create-app-db-with-scry-selection db selection)
-          result-app-db (game/confirm-scry-selection app-db)
+          result-app-db (selection/confirm-scry-selection app-db)
           result-db (:game/db result-app-db)
           library-order (get-library-order result-db :player-1)]
       (is (= [b c a] library-order)
@@ -192,7 +192,7 @@
                      :selection/spell-id spell-id
                      :selection/remaining-effects [{:effect/type :draw :effect/amount 1}]}
           app-db (create-app-db-with-scry-selection db selection)
-          result-app-db (game/confirm-scry-selection app-db)
+          result-app-db (selection/confirm-scry-selection app-db)
           result-db (:game/db result-app-db)
           final-hand-count (count (q/get-objects-in-zone result-db :player-1 :hand))]
       (is (= (inc initial-hand-count) final-hand-count)
@@ -212,7 +212,7 @@
                      :selection/spell-id spell-id
                      :selection/remaining-effects []}
           app-db (create-app-db-with-scry-selection db selection)
-          result-app-db (game/confirm-scry-selection app-db)]
+          result-app-db (selection/confirm-scry-selection app-db)]
       (is (nil? (:game/pending-selection result-app-db))
           "Pending selection should be nil after confirm"))))
 
@@ -230,7 +230,7 @@
                      :selection/spell-id spell-id
                      :selection/remaining-effects []}
           app-db (create-app-db-with-scry-selection db selection)
-          result-app-db (game/confirm-scry-selection app-db)
+          result-app-db (selection/confirm-scry-selection app-db)
           result-db (:game/db result-app-db)
           spell-obj (q/get-object result-db spell-id)]
       (is (= :graveyard (:object/zone spell-obj))
@@ -242,6 +242,7 @@
   (testing "Empty piles allowed - unassigned cards stay in place"
     (let [[db [a _b _c]] (add-library-cards-with-ids (init-game-state) :player-1 3)
           [db spell-id] (add-spell-on-stack db :player-1)
+          original-order (get-library-order db :player-1)
           selection {:selection/type :scry
                      :selection/player-id :player-1
                      :selection/cards [a]  ; Card A revealed but not assigned
@@ -250,12 +251,12 @@
                      :selection/spell-id spell-id
                      :selection/remaining-effects []}
           app-db (create-app-db-with-scry-selection db selection)
-          result-app-db (game/confirm-scry-selection app-db)
+          result-app-db (selection/confirm-scry-selection app-db)
           result-db (:game/db result-app-db)
           library-order (get-library-order result-db :player-1)]
-      ;; Should not crash
-      (is (some? result-db)
-          "Should not crash with empty piles")
-      ;; Unassigned card stays at its original position
       (is (= a (first library-order))
-          "Unassigned card A should stay at top"))))
+          "Unassigned card A should stay at top")
+      (is (= 3 (count library-order))
+          "All 3 library cards should still be in library")
+      (is (= original-order library-order)
+          "Library order should be unchanged when no cards assigned to piles"))))

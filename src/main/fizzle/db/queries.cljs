@@ -98,52 +98,16 @@
        db))
 
 
-;; === Trigger Queries ===
-
-(defn get-trigger
-  "Get a trigger by its :trigger/id.
-   Returns trigger map or nil if not found."
-  [db trigger-id]
-  (d/q '[:find (pull ?t [*]) .
-         :in $ ?tid
-         :where [?t :trigger/id ?tid]]
-       db trigger-id))
-
-
-(defn get-next-stack-order
-  "Get the next stack order value.
-   Checks both trigger stack-orders and object positions on the stack
-   so they share a unified counter space.
-   Returns current max + 1, or 0 if stack is empty."
-  [db]
-  (let [trigger-max (d/q '[:find (max ?order) .
-                           :where [?t :trigger/stack-order ?order]]
-                         db)
-        object-max (d/q '[:find (max ?pos) .
-                          :where [?o :object/zone :stack]
-                          [?o :object/position ?pos]]
-                        db)
-        current-max (max (or trigger-max -1) (or object-max -1))]
-    (inc current-max)))
-
-
-(defn get-stack-items
-  "Get all items on the stack in LIFO order (most recent first).
-   Returns vector of trigger maps ordered by stack position.
-   Returns empty vector if stack is empty."
-  [db]
-  (->> (d/q '[:find [(pull ?t [*]) ...]
-              :where [?t :trigger/stack-order _]]
-            db)
-       (sort-by :trigger/stack-order >)
-       (vec)))
-
-
 (defn stack-empty?
-  "Check if the stack has no items (no triggers and no spells)."
-  [db player-id]
-  (and (empty? (get-stack-items db))
-       (empty? (get-objects-in-zone db player-id :stack))))
+  "Check if the stack has no items (no spells and no stack-items).
+   The stack is shared between all players (MTG Rules 117, 405)."
+  [db]
+  (and (nil? (d/q '[:find ?e .
+                    :where [?e :object/zone :stack]]
+                  db))
+       (nil? (d/q '[:find ?e .
+                    :where [?e :stack-item/position _]]
+                  db))))
 
 
 ;; === Library Queries ===
@@ -202,15 +166,6 @@
          :where [?e :player/id ?pid]
          [?e :player/life ?life]]
        db player-id))
-
-
-(defn get-trigger-source-card-name
-  "Get the card name from a trigger's source object.
-   Returns nil if trigger has no source or source object not found."
-  [db trigger]
-  (when-let [source-id (:trigger/source trigger)]
-    (when-let [obj (get-object db source-id)]
-      (get-in obj [:object/card :card/name]))))
 
 
 (defn- matches-criteria?

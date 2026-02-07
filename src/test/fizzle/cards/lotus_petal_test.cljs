@@ -6,7 +6,7 @@
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
-    [fizzle.events.game :as game]))
+    [fizzle.events.abilities :as ability-events]))
 
 
 ;; === Test helpers ===
@@ -91,7 +91,7 @@
                 "Precondition: Lotus Petal starts on battlefield")
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
-          db'' (game/activate-mana-ability db' :player-1 obj-id :black)]
+          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :black)]
       (is (= :graveyard (get-object-zone db'' obj-id))
           "Lotus Petal should be in graveyard after sacrifice")
       (is (= 1 (:black (q/get-mana-pool db'' :player-1)))
@@ -104,7 +104,7 @@
           [db' obj-id] (add-artifact-to-battlefield db :lotus-petal :player-1)
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:blue initial-pool)) "Precondition: blue mana is 0")
-          db'' (game/activate-mana-ability db' :player-1 obj-id :blue)]
+          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :blue)]
       (is (= :graveyard (get-object-zone db'' obj-id))
           "Lotus Petal should be in graveyard after sacrifice")
       (is (= 1 (:blue (q/get-mana-pool db'' :player-1)))
@@ -117,7 +117,7 @@
           [db' obj-id] (add-artifact-to-battlefield db :lotus-petal :player-1)
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:white initial-pool)) "Precondition: white mana is 0")
-          db'' (game/activate-mana-ability db' :player-1 obj-id :white)]
+          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :white)]
       (is (= :graveyard (get-object-zone db'' obj-id))
           "Lotus Petal should be in graveyard after sacrifice")
       (is (= 1 (:white (q/get-mana-pool db'' :player-1)))
@@ -130,7 +130,7 @@
           [db' obj-id] (add-artifact-to-battlefield db :lotus-petal :player-1)
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:red initial-pool)) "Precondition: red mana is 0")
-          db'' (game/activate-mana-ability db' :player-1 obj-id :red)]
+          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :red)]
       (is (= :graveyard (get-object-zone db'' obj-id))
           "Lotus Petal should be in graveyard after sacrifice")
       (is (= 1 (:red (q/get-mana-pool db'' :player-1)))
@@ -143,7 +143,7 @@
           [db' obj-id] (add-artifact-to-battlefield db :lotus-petal :player-1)
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:green initial-pool)) "Precondition: green mana is 0")
-          db'' (game/activate-mana-ability db' :player-1 obj-id :green)]
+          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :green)]
       (is (= :graveyard (get-object-zone db'' obj-id))
           "Lotus Petal should be in graveyard after sacrifice")
       (is (= 1 (:green (q/get-mana-pool db'' :player-1)))
@@ -161,7 +161,7 @@
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
           ;; Attempt to activate mana ability from graveyard
-          db'' (game/activate-mana-ability db' :player-1 obj-id :black)]
+          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :black)]
       (is (= 0 (:black (q/get-mana-pool db'' :player-1)))
           "Mana should NOT be added (card in graveyard)")
       (is (= :graveyard (get-object-zone db'' obj-id))
@@ -177,7 +177,7 @@
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
           ;; Attempt to activate mana ability from hand
-          db'' (game/activate-mana-ability db' :player-1 obj-id :black)]
+          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :black)]
       (is (= 0 (:black (q/get-mana-pool db'' :player-1)))
           "Mana should NOT be added (card not on battlefield)")
       (is (= :hand (get-object-zone db'' obj-id))

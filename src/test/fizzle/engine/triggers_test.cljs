@@ -4,354 +4,175 @@
     [datascript.core :as d]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
-    [fizzle.engine.grants :as grants]
-    [fizzle.engine.triggers :as triggers]
-    [fizzle.engine.zones :as zones]))
-
-
-;; === create-trigger tests ===
-
-(deftest test-create-trigger-unique-id
-  (testing "Each call to create-trigger returns unique :trigger/id"
-    (let [trigger1 (triggers/create-trigger :storm :source-1 :player-1 {})
-          trigger2 (triggers/create-trigger :storm :source-1 :player-1 {})
-          trigger3 (triggers/create-trigger :storm :source-1 :player-1 {})]
-      (is (uuid? (:trigger/id trigger1)))
-      (is (uuid? (:trigger/id trigger2)))
-      (is (uuid? (:trigger/id trigger3)))
-      (is (not= (:trigger/id trigger1) (:trigger/id trigger2)))
-      (is (not= (:trigger/id trigger2) (:trigger/id trigger3)))
-      (is (not= (:trigger/id trigger1) (:trigger/id trigger3))))))
-
-
-;; === add-trigger-to-stack tests ===
-
-(deftest test-add-trigger-to-stack-transacts
-  (testing "Trigger appears in db after add-trigger-to-stack"
-    (let [db (init-game-state)
-          trigger (triggers/create-trigger :storm :source-1 :player-1 {:count 2})
-          db' (triggers/add-trigger-to-stack db trigger)]
-      (is (some? (q/get-trigger db' (:trigger/id trigger))))
-      (is (= :storm (:trigger/type (q/get-trigger db' (:trigger/id trigger))))))))
-
-
-(deftest test-add-trigger-with-nil-source-fails
-  (testing "add-trigger-to-stack with nil source returns unchanged db"
-    (let [db (init-game-state)
-          ;; Create trigger with nil source (invalid)
-          trigger {:trigger/id (random-uuid)
-                   :trigger/type :storm
-                   :trigger/source nil
-                   :trigger/controller :player-1
-                   :trigger/data {}}
-          db' (triggers/add-trigger-to-stack db trigger)]
-      ;; Should return unchanged db - trigger should NOT be in db
-      (is (nil? (q/get-trigger db' (:trigger/id trigger)))))))
-
-
-;; === resolve-trigger tests ===
-
-(deftest test-resolve-trigger-default-noop
-  (testing "Unknown :trigger/type returns db unchanged"
-    (let [db (init-game-state)
-          trigger (triggers/create-trigger :unknown-type :source-1 :player-1 {})
-          db' (triggers/add-trigger-to-stack db trigger)
-          db'' (triggers/resolve-trigger db' trigger)]
-      ;; db should be unchanged (or at least not throw)
-      (is (= db' db'')))))
-
-
-;; === remove-trigger tests ===
-
-(deftest test-remove-trigger-retracts
-  (testing "Trigger not in db after remove-trigger"
-    (let [db (init-game-state)
-          trigger (triggers/create-trigger :storm :source-1 :player-1 {:count 1})
-          trigger-id (:trigger/id trigger)
-          db' (triggers/add-trigger-to-stack db trigger)
-          ;; Verify trigger is in db
-          _ (is (some? (q/get-trigger db' trigger-id)))
-          ;; Remove it
-          db'' (triggers/remove-trigger db' trigger-id)]
-      (is (nil? (q/get-trigger db'' trigger-id))))))
-
-
-;; === get-stack-items tests ===
-
-(deftest test-get-stack-items-empty
-  (testing "get-stack-items returns [] on empty stack"
-    (let [db (init-game-state)]
-      (is (= [] (q/get-stack-items db))))))
-
-
-(deftest test-get-stack-items-ordered
-  (testing "Triggers added later appear first (LIFO stack order)"
-    (let [db (init-game-state)
-          trigger1 (triggers/create-trigger :storm :source-1 :player-1 {:order 1})
-          trigger2 (triggers/create-trigger :storm :source-2 :player-1 {:order 2})
-          trigger3 (triggers/create-trigger :storm :source-3 :player-1 {:order 3})
-          db' (-> db
-                  (triggers/add-trigger-to-stack trigger1)
-                  (triggers/add-trigger-to-stack trigger2)
-                  (triggers/add-trigger-to-stack trigger3))
-          stack-items (q/get-stack-items db')]
-      ;; Last added should be first (LIFO)
-      (is (= 3 (count stack-items)))
-      ;; Verify order: trigger3 first, then trigger2, then trigger1
-      (is (= {:order 3} (:trigger/data (first stack-items))))
-      (is (= {:order 1} (:trigger/data (last stack-items)))))))
-
-
-;; === get-next-stack-order tests (unified counter) ===
-
-(deftest test-next-stack-order-considers-objects-on-stack
-  (testing "get-next-stack-order accounts for objects on the stack, not just triggers"
-    (let [db (init-game-state)
-          ;; Move the Dark Ritual to stack with a position
-          hand (q/get-hand db :player-1)
-          obj-id (:object/id (first hand))
-          db (zones/move-to-zone db obj-id :stack)
-          ;; Set position on the object
-          obj-eid (d/q '[:find ?e .
-                         :in $ ?oid
-                         :where [?e :object/id ?oid]]
-                       db obj-id)
-          db (d/db-with db [[:db/add obj-eid :object/position 5]])
-          ;; Next stack order should be 6 (one above object's position)
-          next-order (q/get-next-stack-order db)]
-      (is (= 6 next-order)
-          "Should return max object position + 1"))))
-
-
-(deftest test-next-stack-order-max-of-triggers-and-objects
-  (testing "get-next-stack-order returns max across both triggers and objects"
-    (let [db (init-game-state)
-          ;; Add a trigger with stack-order 3
-          trigger (triggers/create-trigger :storm :source-1 :player-1 {:count 1})
-          db (triggers/add-trigger-to-stack db trigger)
-          ;; Move object to stack with position 5 (higher than trigger)
-          hand (q/get-hand db :player-1)
-          obj-id (:object/id (first hand))
-          db (zones/move-to-zone db obj-id :stack)
-          obj-eid (d/q '[:find ?e .
-                         :in $ ?oid
-                         :where [?e :object/id ?oid]]
-                       db obj-id)
-          db (d/db-with db [[:db/add obj-eid :object/position 5]])]
-      (is (= 6 (q/get-next-stack-order db))
-          "Should return max of trigger order and object position + 1"))))
-
-
-;; === get-trigger tests ===
-
-(deftest test-get-trigger-not-found
-  (testing "get-trigger with invalid ID returns nil"
-    (let [db (init-game-state)
-          fake-id (random-uuid)]
-      (is (nil? (q/get-trigger db fake-id))))))
-
-
-;; === Test helpers for :becomes-tapped tests ===
-
-(defn add-permanent
-  "Add a permanent to the battlefield for testing.
-   Returns [db object-id] where object-id is the UUID of the created permanent."
-  ([db player-id]
-   (add-permanent db player-id nil))
-  ([db player-id card-triggers]
-   (add-permanent db player-id card-triggers false))
-  ([db player-id card-triggers tapped?]
-   (let [conn (d/conn-from-db db)
-         player-eid (q/get-player-eid db player-id)
-         ;; Create a test card with optional triggers
-         card-id (keyword (str "test-card-" (random-uuid)))
-         card-entity (cond-> {:card/id card-id
-                              :card/name "Test Card"
-                              :card/types #{:land}}
-                       card-triggers (assoc :card/triggers card-triggers))
-         _ (d/transact! conn [card-entity])
-         card-eid (d/q '[:find ?e .
-                         :in $ ?cid
-                         :where [?e :card/id ?cid]]
-                       @conn card-id)
-         object-id (random-uuid)
-         entity {:object/id object-id
-                 :object/card card-eid
-                 :object/zone :battlefield
-                 :object/owner player-eid
-                 :object/controller player-eid
-                 :object/tapped tapped?}]
-     (d/transact! conn [entity])
-     [@conn object-id])))
-
-
-(defn tap-permanent
-  "Set a permanent's tapped state. Returns new db."
-  [db object-id tapped?]
-  (let [obj-eid (d/q '[:find ?e .
-                       :in $ ?oid
-                       :where [?e :object/id ?oid]]
-                     db object-id)]
-    (d/db-with db [[:db/add obj-eid :object/tapped tapped?]])))
-
-
-;; === trigger/description tests ===
-
-(deftest test-create-trigger-with-description
-  (testing "create-trigger extracts description from data map"
-    (let [trigger (triggers/create-trigger
-                    :becomes-tapped
-                    :source-1
-                    :player-1
-                    {:effects [{:effect/type :deal-damage}]
-                     :description "deals 1 damage to you"})]
-      (is (= "deals 1 damage to you" (:trigger/description trigger)))
-      (is (= :becomes-tapped (:trigger/type trigger)))
-      (is (= :source-1 (:trigger/source trigger))))))
-
-
-(deftest test-create-trigger-without-description
-  (testing "create-trigger works without description (backwards compatible)"
-    (let [trigger (triggers/create-trigger
-                    :becomes-tapped
-                    :source-1
-                    :player-1
-                    {:effects [{:effect/type :deal-damage}]})]
-      (is (nil? (:trigger/description trigger)))
-      (is (= :becomes-tapped (:trigger/type trigger)))
-      (is (= :source-1 (:trigger/source trigger))))))
+    [fizzle.engine.mana :as mana]
+    [fizzle.engine.rules :as rules]
+    [fizzle.engine.stack :as stack]
+    [fizzle.engine.triggers :as triggers]))
 
 
 ;; === Corner case tests ===
 
 (deftest test-trigger-with-nil-controller-graceful
-  (testing "resolve-trigger with nil controller doesn't crash and returns db"
-    ;; Edge case: trigger was created with nil controller (shouldn't happen
-    ;; in normal flow, but defensive code should handle it)
+  (testing "resolve-trigger with nil controller doesn't crash and returns db unchanged"
     (let [db (init-game-state)
-          ;; Create trigger with nil controller
           trigger {:trigger/id (random-uuid)
                    :trigger/type :becomes-tapped
                    :trigger/source :some-source
-                   :trigger/controller nil  ; nil controller
+                   :trigger/controller nil
                    :trigger/data {:effects [{:effect/type :draw
                                              :effect/amount 1}]}}
-          ;; Resolve should not throw - effects handle nil player gracefully
           result-db (triggers/resolve-trigger db trigger)]
-      ;; Should return db unchanged (draw effect no-ops with nil target)
-      (is (some? result-db) "Should return a db value, not throw")
-      ;; Verify it's still a valid db by running a query
-      (is (some? (q/get-game-state result-db))
-          "Returned db should be queryable"))))
-
-
-(deftest test-storm-trigger-with-destroyed-source
-  (testing "resolve-trigger :storm returns unchanged db when source spell was exiled"
-    ;; Scenario: Storm trigger is on stack, but the source spell was exiled
-    ;; (e.g., by Tormod's Crypt in response)
-    (let [db (init-game-state)
-          ;; Create storm trigger referencing non-existent source
-          destroyed-source-id (random-uuid)
-          trigger (triggers/create-trigger :storm destroyed-source-id :player-1 {:count 5})
-          ;; Resolve should not crash and should return db unchanged
-          result-db (triggers/resolve-trigger db trigger)]
-      ;; Should return same db (no copies created since source doesn't exist)
       (is (= db result-db)
-          "Storm trigger should return unchanged db when source doesn't exist")
-      ;; Stack should be empty (no copies created)
-      (is (= 0 (count (q/get-stack-items result-db)))
-          "No spell copies should be created when source is missing"))))
+          "DB should be unchanged when trigger has nil controller"))))
 
 
-;; === :expire-grants trigger tests ===
+;; =====================================================
+;; Corner Case Tests: draw-step trigger
+;; =====================================================
 
-(defn add-card-to-zone
-  "Add a card and create an object in specified zone.
-   Returns [db object-id] tuple."
-  [db player-id card zone]
+(defn set-turn
+  "Set the game turn number. Returns updated db."
+  [db turn-number]
+  (let [game-eid (d/q '[:find ?e .
+                        :where [?e :game/id _]]
+                      db)]
+    (d/db-with db [[:db/add game-eid :game/turn turn-number]])))
+
+
+(defn add-cards-to-library
+  "Add n cards to library with positions. Returns db."
+  [db player-id n]
   (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)]
-    (when-not (d/q '[:find ?e .
-                     :in $ ?cid
-                     :where [?e :card/id ?cid]]
-                   @conn (:card/id card))
-      (d/transact! conn [card]))
-    (let [card-eid (d/q '[:find ?e .
-                          :in $ ?cid
-                          :where [?e :card/id ?cid]]
-                        @conn (:card/id card))
-          obj-id (random-uuid)
-          obj {:object/id obj-id
-               :object/card card-eid
-               :object/zone zone
-               :object/owner player-eid
-               :object/controller player-eid
-               :object/tapped false}]
-      (d/transact! conn [obj])
-      [@conn obj-id])))
+        player-eid (q/get-player-eid db player-id)
+        card-eid (d/q '[:find ?e .
+                        :where [?e :card/id :dark-ritual]]
+                      db)]
+    (doseq [i (range n)]
+      (d/transact! conn [{:object/id (random-uuid)
+                          :object/card card-eid
+                          :object/zone :library
+                          :object/owner player-eid
+                          :object/controller player-eid
+                          :object/tapped false
+                          :object/position i}]))
+    @conn))
 
 
-(def test-sorcery
-  {:card/id :test-sorcery-triggers
-   :card/name "Test Sorcery"
-   :card/cmc 2
-   :card/mana-cost {:colorless 1 :black 1}
-   :card/colors #{:black}
-   :card/types #{:sorcery}
-   :card/text "Test sorcery for triggers."
-   :card/effects []})
+(deftest test-resolve-trigger-draw-step-turn-1-skips
+  (testing "Draw step on turn 1 does not draw a card (MTG play/draw rule)"
+    (let [db (-> (init-game-state)
+                 (add-cards-to-library :player-1 5))
+          hand-before (count (q/get-hand db :player-1))
+          trigger {:trigger/type :draw-step
+                   :trigger/controller :player-1}
+          db' (triggers/resolve-trigger db trigger)
+          hand-after (count (q/get-hand db' :player-1))]
+      (is (= hand-before hand-after)
+          "Should not draw on turn 1"))))
 
 
-(deftest test-resolve-trigger-expire-grants
-  (testing "resolve-trigger :expire-grants removes expired grants"
+(deftest test-resolve-trigger-draw-step-turn-2-draws
+  (testing "Draw step on turn 2 draws one card"
+    (let [db (-> (init-game-state)
+                 (set-turn 2)
+                 (add-cards-to-library :player-1 5))
+          hand-before (count (q/get-hand db :player-1))
+          trigger {:trigger/type :draw-step
+                   :trigger/controller :player-1}
+          db' (triggers/resolve-trigger db trigger)
+          hand-after (count (q/get-hand db' :player-1))]
+      (is (= (inc hand-before) hand-after)
+          "Should draw exactly 1 card on turn 2"))))
+
+
+;; =====================================================
+;; Corner Case Tests: untap-step trigger
+;; =====================================================
+
+(defn add-tapped-permanent
+  "Add a tapped permanent to the battlefield. Returns [db object-id]."
+  [db player-id]
+  (let [conn (d/conn-from-db db)
+        player-eid (q/get-player-eid db player-id)
+        card-eid (d/q '[:find ?e .
+                        :where [?e :card/id :dark-ritual]]
+                      db)
+        obj-id (random-uuid)]
+    (d/transact! conn [{:object/id obj-id
+                        :object/card card-eid
+                        :object/zone :battlefield
+                        :object/owner player-eid
+                        :object/controller player-eid
+                        :object/tapped true}])
+    [@conn obj-id]))
+
+
+(deftest test-resolve-trigger-untap-step
+  (testing "Untap step untaps all tapped permanents"
     (let [db (init-game-state)
-          ;; Set game to turn 1
-          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
-          db (d/db-with db [[:db/add game-eid :game/turn 1]])
-          ;; Add a card with a grant that expires at turn 1 cleanup
-          [db obj-id] (add-card-to-zone db :player-1 test-sorcery :graveyard)
-          grant {:grant/id (random-uuid)
-                 :grant/type :alternate-cost
-                 :grant/source (random-uuid)
-                 :grant/expires {:expires/turn 1 :expires/phase :cleanup}
-                 :grant/data {:alternate/id :granted-flashback}}
-          db (grants/add-grant db obj-id grant)
-          ;; Verify grant exists
-          _ (is (= 1 (count (grants/get-grants db obj-id)))
-                "Grant should exist before expire-grants trigger")
-          ;; Create and resolve :expire-grants trigger
-          trigger {:trigger/id (random-uuid)
-                   :trigger/type :expire-grants
-                   :trigger/source :game-rule
-                   :trigger/controller :player-1
-                   :trigger/data {}}
+          [db obj-1] (add-tapped-permanent db :player-1)
+          [db obj-2] (add-tapped-permanent db :player-1)
+          ;; Verify tapped
+          _ (is (true? (:object/tapped (q/get-object db obj-1))))
+          _ (is (true? (:object/tapped (q/get-object db obj-2))))
+          trigger {:trigger/type :untap-step
+                   :trigger/controller :player-1}
           db' (triggers/resolve-trigger db trigger)]
-      ;; Grant should be removed
-      (is (= 0 (count (grants/get-grants db' obj-id)))
-          "Expired grant should be removed after :expire-grants trigger"))))
+      (is (false? (:object/tapped (q/get-object db' obj-1)))
+          "First permanent should be untapped")
+      (is (false? (:object/tapped (q/get-object db' obj-2)))
+          "Second permanent should be untapped"))))
 
 
-(deftest test-resolve-trigger-expire-grants-preserves-non-expired
-  (testing "resolve-trigger :expire-grants preserves grants not yet expired"
+(deftest test-resolve-trigger-untap-step-no-tapped-noop
+  (testing "Untap step with no tapped permanents is a no-op"
     (let [db (init-game-state)
-          ;; Set game to turn 1
-          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
-          db (d/db-with db [[:db/add game-eid :game/turn 1]])
-          ;; Add a card with a grant that expires at turn 2 cleanup (not yet)
-          [db obj-id] (add-card-to-zone db :player-1 test-sorcery :graveyard)
-          grant {:grant/id (random-uuid)
-                 :grant/type :alternate-cost
-                 :grant/source (random-uuid)
-                 :grant/expires {:expires/turn 2 :expires/phase :cleanup}
-                 :grant/data {:alternate/id :granted-flashback}}
-          db (grants/add-grant db obj-id grant)
-          ;; Create and resolve :expire-grants trigger at turn 1
-          trigger {:trigger/id (random-uuid)
-                   :trigger/type :expire-grants
-                   :trigger/source :game-rule
-                   :trigger/controller :player-1
-                   :trigger/data {}}
+          trigger {:trigger/type :untap-step
+                   :trigger/controller :player-1}
           db' (triggers/resolve-trigger db trigger)]
-      ;; Grant should still exist (expires turn 2, we're on turn 1)
-      (is (= 1 (count (grants/get-grants db' obj-id)))
-          "Non-expired grant should be preserved"))))
+      (is (= db db')
+          "DB should be unchanged when no permanents to untap"))))
+
+
+;; =====================================================
+;; Corner Case Tests: create-spell-copy
+;; =====================================================
+
+(deftest test-create-spell-copy-returns-valid-object
+  (testing "create-spell-copy creates a copy with is-copy flag on stack"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1}))
+          hand (q/get-hand db :player-1)
+          ritual (first hand)
+          obj-id (:object/id ritual)
+          db-cast (rules/cast-spell db :player-1 obj-id)
+          db-with-copy (triggers/create-spell-copy db-cast obj-id :player-1)
+          copy-objs (d/q '[:find [(pull ?e [* {:object/card [*]}]) ...]
+                           :where [?e :object/is-copy true]]
+                         db-with-copy)
+          copy (first copy-objs)]
+      (is (= 1 (count copy-objs))
+          "Should create exactly one copy")
+      (is (true? (:object/is-copy copy))
+          "Copy should have :object/is-copy true")
+      (is (= :stack (:object/zone copy))
+          "Copy should be on stack")
+      (is (= :dark-ritual (get-in copy [:object/card :card/id]))
+          "Copy should reference same card as original")
+      ;; Copy should have a stack-item
+      (let [copy-eid (:db/id copy)
+            si (stack/get-stack-item-by-object-ref db-with-copy copy-eid)]
+        (is (some? si) "Copy should have an associated stack-item")
+        (is (= :storm-copy (:stack-item/type si))
+            "Stack-item type should be :storm-copy")
+        (is (true? (:stack-item/is-copy si))
+            "Stack-item should be marked as copy")))))
+
+
+(deftest test-create-spell-copy-nonexistent-source
+  (testing "create-spell-copy with nonexistent source returns db unchanged"
+    (let [db (init-game-state)
+          fake-id (random-uuid)
+          db' (triggers/create-spell-copy db fake-id :player-1)]
+      (is (= db db')
+          "Should return db unchanged for nonexistent source"))))

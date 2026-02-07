@@ -64,8 +64,11 @@
                              :in $ ?oid
                              :where [?e :object/id ?oid]]
                            db object-id)
-              ;; Reset tapped state when leaving battlefield (card loses memory of being tapped)
-              txs (if (= current-zone :battlefield)
+              ;; Reset tapped state when entering or leaving battlefield
+              ;; Leaving: card loses memory of being tapped
+              ;; Entering: permanents enter untapped per MTG rule 110.6
+              txs (if (or (= current-zone :battlefield)
+                          (= new-zone :battlefield))
                     [[:db/add obj-eid :object/zone new-zone]
                      [:db/add obj-eid :object/tapped false]]
                     [[:db/add obj-eid :object/zone new-zone]])]

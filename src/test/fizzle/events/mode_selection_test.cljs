@@ -16,7 +16,8 @@
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
-    [fizzle.engine.rules :as rules]))
+    [fizzle.engine.rules :as rules]
+    [fizzle.events.game :as game]))
 
 
 ;; === Test Cards ===
@@ -96,23 +97,7 @@
           db (mana/add-mana db :player-1 {:colorless 1})
           app-db (-> (create-app-db db)
                      (assoc :game/selected-card obj-id))
-          ;; Invoke cast-spell event handler directly
-          handler (fn [db _]
-                    (let [game-db (:game/db db)
-                          selected (:game/selected-card db)]
-                      (if (and selected (rules/can-cast? game-db :player-1 selected))
-                        (let [modes (rules/get-casting-modes game-db :player-1 selected)]
-                          (if (= 1 (count modes))
-                            ;; Single mode: auto-cast
-                            (-> db
-                                (assoc :game/db (rules/cast-spell-mode game-db :player-1 selected (first modes)))
-                                (dissoc :game/selected-card))
-                            ;; Multiple modes: show selector
-                            (assoc db :game/pending-mode-selection
-                                   {:object-id selected
-                                    :modes modes})))
-                        db)))
-          result-db (handler app-db nil)]
+          result-db (game/cast-spell-handler app-db)]
       ;; Should NOT show mode selector
       (is (nil? (:game/pending-mode-selection result-db))
           "Single-mode card should not show mode selector")
@@ -135,23 +120,7 @@
           db (mana/add-mana db :player-1 {:colorless 4 :blue 1})
           app-db (-> (create-app-db db)
                      (assoc :game/selected-card obj-id))
-          ;; Invoke cast-spell event handler
-          handler (fn [db _]
-                    (let [game-db (:game/db db)
-                          selected (:game/selected-card db)]
-                      (if (and selected (rules/can-cast? game-db :player-1 selected))
-                        (let [modes (rules/get-casting-modes game-db :player-1 selected)]
-                          (if (= 1 (count modes))
-                            ;; Single mode: auto-cast
-                            (-> db
-                                (assoc :game/db (rules/cast-spell-mode game-db :player-1 selected (first modes)))
-                                (dissoc :game/selected-card))
-                            ;; Multiple modes: show selector
-                            (assoc db :game/pending-mode-selection
-                                   {:object-id selected
-                                    :modes modes})))
-                        db)))
-          result-db (handler app-db nil)]
+          result-db (game/cast-spell-handler app-db)]
       ;; SHOULD show mode selector
       (is (some? (:game/pending-mode-selection result-db))
           "Multi-mode card should show mode selector")
@@ -201,16 +170,7 @@
                   :game/selected-card obj-id
                   :game/pending-mode-selection {:object-id obj-id
                                                 :modes modes}}
-          ;; Select mode handler
-          handler (fn [db [_ mode]]
-                    (let [game-db (:game/db db)
-                          pending (:game/pending-mode-selection db)
-                          object-id (:object-id pending)]
-                      (-> db
-                          (assoc :game/db (rules/cast-spell-mode game-db :player-1 object-id mode))
-                          (dissoc :game/selected-card)
-                          (dissoc :game/pending-mode-selection))))
-          result-db (handler app-db [nil primary-mode])]
+          result-db (game/select-casting-mode-handler app-db primary-mode)]
       ;; Pending selection should be cleared
       (is (nil? (:game/pending-mode-selection result-db))
           "Pending mode selection should be cleared")
@@ -238,16 +198,7 @@
                   :game/selected-card obj-id
                   :game/pending-mode-selection {:object-id obj-id
                                                 :modes modes}}
-          ;; Select mode handler
-          handler (fn [db [_ mode]]
-                    (let [game-db (:game/db db)
-                          pending (:game/pending-mode-selection db)
-                          object-id (:object-id pending)]
-                      (-> db
-                          (assoc :game/db (rules/cast-spell-mode game-db :player-1 object-id mode))
-                          (dissoc :game/selected-card)
-                          (dissoc :game/pending-mode-selection))))
-          result-db (handler app-db [nil alternate-mode])
+          result-db (game/select-casting-mode-handler app-db alternate-mode)
           final-life (q/get-life-total (:game/db result-db) :player-1)]
       ;; Life should have been paid
       (is (= (- initial-life 2) final-life)
@@ -273,10 +224,7 @@
                   :game/selected-card obj-id
                   :game/pending-mode-selection {:object-id obj-id
                                                 :modes modes}}
-          ;; Cancel handler
-          handler (fn [db _]
-                    (dissoc db :game/pending-mode-selection))
-          result-db (handler app-db nil)]
+          result-db (game/cancel-mode-selection-handler app-db)]
       ;; Pending selection should be cleared
       (is (nil? (:game/pending-mode-selection result-db))
           "Pending mode selection should be cleared")
@@ -301,3 +249,39 @@
       ;; Should not be castable at all
       (is (false? (rules/can-cast? db :player-1 obj-id))
           "Card should not be castable with no mana and insufficient life"))))
+
+
+;; === Flashback Mode Tests ===
+
+(def test-flashback-card
+  "Card with flashback (alternate cost from graveyard)."
+  {:card/id :test-flashback
+   :card/name "Test Flashback"
+   :card/mana-cost {:colorless 3 :blue 1}
+   :card/cmc 4
+   :card/types #{:sorcery}
+   :card/colors #{:blue}
+   :card/effects [{:effect/type :draw :effect/amount 2}]
+   :card/alternate-costs [{:alternate/id :flashback
+                           :alternate/zone :graveyard
+                           :alternate/mana-cost {:colorless 1 :blue 1}
+                           :alternate/additional-costs [{:cost/type :pay-life :cost/amount 3}]
+                           :alternate/on-resolve :exile}]})
+
+
+(deftest flashback-mode-from-graveyard-test
+  ;; Bug caught: flashback mode missing from graveyard
+  (testing "Card in graveyard with flashback shows flashback mode"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 test-flashback-card :graveyard)
+          modes (rules/get-casting-modes db :player-1 obj-id)]
+      ;; Should have exactly the flashback mode (no primary mode from graveyard)
+      (is (= 1 (count modes))
+          "Should have exactly 1 mode from graveyard (flashback)")
+      (is (= :flashback (:mode/id (first modes)))
+          "Mode should be the flashback alternate")
+      ;; Flashback should be castable with sufficient mana and life
+      (let [db (mana/add-mana db :player-1 {:colorless 1 :blue 1})
+            castable (rules/can-cast-mode? db :player-1 obj-id (first modes))]
+        (is (true? castable)
+            "Flashback mode should be castable with correct mana and life")))))

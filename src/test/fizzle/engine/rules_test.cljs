@@ -8,6 +8,7 @@
     [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
+    [fizzle.engine.triggers]
     [fizzle.engine.zones :as zones]))
 
 
@@ -1342,3 +1343,93 @@
           "Should have both primary and kicked modes")
       (is (= [] (:mode/effects kicked-mode))
           "Kicked mode should have empty effects when card has no kicked-effects"))))
+
+
+;; =====================================================
+;; Corner Case Tests: move-spell-off-stack
+;; =====================================================
+
+(deftest test-move-spell-off-stack-goes-to-graveyard
+  (testing "move-spell-off-stack sends non-copy spell to graveyard"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1}))
+          hand (q/get-hand db :player-1)
+          ritual (first hand)
+          obj-id (:object/id ritual)
+          db-cast (rules/cast-spell db :player-1 obj-id)
+          db-off (rules/move-spell-off-stack db-cast :player-1 obj-id)]
+      (is (= :graveyard (:object/zone (q/get-object db-off obj-id)))
+          "Countered spell should go to graveyard")
+      (is (= 0 (count (q/get-objects-in-zone db-off :player-1 :stack)))
+          "Stack should be empty")
+      (is (= 1 (count (q/get-objects-in-zone db-off :player-1 :graveyard)))
+          "Graveyard should have the countered spell"))))
+
+
+(deftest test-move-spell-off-stack-flashback-goes-to-exile
+  (testing "move-spell-off-stack sends flashback spell to exile (not graveyard)"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 deep-analysis-card :graveyard)
+          db (mana/add-mana db :player-1 {:colorless 1 :blue 1})
+          modes (rules/get-casting-modes db :player-1 obj-id)
+          flashback-mode (first modes)
+          db-cast (rules/cast-spell-mode db :player-1 obj-id flashback-mode)
+          db-off (rules/move-spell-off-stack db-cast :player-1 obj-id)]
+      (is (= :exile (:object/zone (q/get-object db-off obj-id)))
+          "Countered flashback spell should go to exile, not graveyard"))))
+
+
+(deftest test-move-spell-off-stack-not-on-stack-noop
+  (testing "move-spell-off-stack is no-op when spell not on stack"
+    (let [db (init-game-state)
+          hand (q/get-hand db :player-1)
+          obj-id (:object/id (first hand))
+          db' (rules/move-spell-off-stack db :player-1 obj-id)]
+      (is (= :hand (:object/zone (q/get-object db' obj-id)))
+          "Spell in hand should stay in hand"))))
+
+
+;; =====================================================
+;; Corner Case Tests: resolve copy ceases to exist
+;; =====================================================
+
+(deftest test-resolve-copy-ceases-to-exist
+  (testing "Resolving a copy removes it from db entirely (not to graveyard)"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1}))
+          hand (q/get-hand db :player-1)
+          ritual (first hand)
+          obj-id (:object/id ritual)
+          db-cast (rules/cast-spell db :player-1 obj-id)
+          ;; Create a copy of the spell on the stack
+          db-with-copy (fizzle.engine.triggers/create-spell-copy db-cast obj-id :player-1)
+          ;; Find the copy
+          copy-objs (d/q '[:find [(pull ?e [*]) ...]
+                           :where [?e :object/is-copy true]]
+                         db-with-copy)
+          copy (first copy-objs)
+          copy-id (:object/id copy)
+          ;; Resolve the copy
+          db-resolved (rules/resolve-spell db-with-copy :player-1 copy-id)]
+      (is (nil? (q/get-object db-resolved copy-id))
+          "Copy should cease to exist (removed from db, not in graveyard)")
+      (is (= 0 (count (q/get-objects-in-zone db-resolved :player-1 :graveyard)))
+          "Graveyard should not contain the copy"))))
+
+
+(deftest test-move-copy-off-stack-ceases-to-exist
+  (testing "move-spell-off-stack on a copy removes it from db entirely"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1}))
+          hand (q/get-hand db :player-1)
+          ritual (first hand)
+          obj-id (:object/id ritual)
+          db-cast (rules/cast-spell db :player-1 obj-id)
+          db-with-copy (fizzle.engine.triggers/create-spell-copy db-cast obj-id :player-1)
+          copy-objs (d/q '[:find [(pull ?e [*]) ...]
+                           :where [?e :object/is-copy true]]
+                         db-with-copy)
+          copy-id (:object/id (first copy-objs))
+          db-off (rules/move-spell-off-stack db-with-copy :player-1 copy-id)]
+      (is (nil? (q/get-object db-off copy-id))
+          "Copy should cease to exist when countered"))))

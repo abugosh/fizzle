@@ -2,6 +2,7 @@
   (:require
     [fizzle.db.queries :as queries]
     [fizzle.engine.rules :as rules]
+    [fizzle.engine.stack :as stack]
     [fizzle.events.game :as events]
     [re-frame.core :as rf]))
 
@@ -38,17 +39,24 @@
   :<- [::game-db]
   (fn [game-db _]
     (when game-db
-      (let [triggers (queries/get-stack-items game-db)
-            enriched-triggers (mapv (fn [t]
-                                      (assoc t :trigger/card-name
-                                             (queries/get-trigger-source-card-name game-db t)))
-                                    triggers)
+      (let [stack-items (stack/get-all-stack-items game-db)
+            ;; Exclude stack-items with object-refs (spells/copies) — the game object already represents them
+            non-spell-items (remove :stack-item/object-ref stack-items)
+            ;; Enrich with source card name for display
+            enriched-items (mapv (fn [si]
+                                   (if-let [source-id (:stack-item/source si)]
+                                     (if-let [obj (queries/get-object game-db source-id)]
+                                       (assoc si :stack-item/card-name
+                                              (get-in obj [:object/card :card/name]))
+                                       si)
+                                     si))
+                                 non-spell-items)
             spells (queries/get-objects-in-zone game-db :player-1 :stack)
             order-key (fn [item]
-                        (or (:trigger/stack-order item)
+                        (or (:stack-item/position item)
                             (:object/position item)
                             0))]
-        (->> (concat enriched-triggers spells)
+        (->> (concat enriched-items spells)
              (sort-by order-key >)
              vec)))))
 

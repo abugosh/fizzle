@@ -54,12 +54,15 @@
 ;; === register-sba! tests ===
 
 (deftest test-register-sba
-  (testing "can register custom SBA check"
-    (let [called (atom false)
-          check-fn (fn [_db] (reset! called true) [])]
+  (testing "registered SBA check is invoked and its results returned"
+    (let [sentinel {:sba/type :test-custom :sba/target :player-1}
+          check-fn (fn [_db] [sentinel])]
       (sba/register-sba! :test-custom-sba check-fn)
-      (sba/check-all-sbas (init-game-state))
-      (is @called "Custom SBA check should be called"))))
+      (let [results (sba/check-all-sbas (init-game-state))]
+        ;; Clean up: replace with no-op to avoid polluting later tests
+        (sba/register-sba! :test-custom-sba (fn [_db] []))
+        (is (some #(= sentinel %) results)
+            "check-all-sbas should include results from registered SBA")))))
 
 
 ;; === check-all-sbas tests ===
@@ -105,3 +108,61 @@
           db-after (sba/check-and-execute-sbas db)
           zone-after (get-object-zone db-after obj-id)]
       (is (= :battlefield zone-after) "Object should still be on battlefield"))))
+
+
+;; === execute-sba :default tests ===
+
+(deftest test-execute-sba-default-returns-db-unchanged
+  (testing "execute-sba :default returns db unchanged for unknown SBA types"
+    (let [db (init-game-state)
+          sba {:sba/type :unknown-type :sba/target :some-target}
+          db' (sba/execute-sba db sba)]
+      (is (= db db')
+          "Default execute-sba should return db unchanged"))))
+
+
+;; === Cascading SBAs tests ===
+
+(deftest test-cascading-sbas
+  (testing "check-and-execute-sbas loops until no more SBAs fire"
+    ;; We register two SBAs that cascade:
+    ;; SBA-A fires first iteration, removes itself, but creates condition for SBA-B
+    ;; SBA-B fires second iteration
+    (let [iteration-counter (atom 0)
+          ;; Track which SBAs have fired to prevent infinite loops
+          a-fired (atom false)
+          b-fired (atom false)
+          ;; SBA-A: fires on first check, marks a-fired
+          sba-a-check (fn [_db]
+                        (if @a-fired
+                          []
+                          [{:sba/type :test-cascade-a :sba/target :player-1}]))
+          ;; SBA-B: fires only after A has fired
+          sba-b-check (fn [_db]
+                        (if (and @a-fired (not @b-fired))
+                          [{:sba/type :test-cascade-b :sba/target :player-1}]
+                          []))]
+      ;; Register SBA checks
+      (sba/register-sba! :test-cascade-a-check sba-a-check)
+      (sba/register-sba! :test-cascade-b-check sba-b-check)
+      ;; Register SBA executors
+      (defmethod sba/execute-sba :test-cascade-a [db _sba]
+        (reset! a-fired true)
+        (swap! iteration-counter inc)
+        db)
+      (defmethod sba/execute-sba :test-cascade-b [db _sba]
+        (reset! b-fired true)
+        (swap! iteration-counter inc)
+        db)
+      ;; Execute cascading SBAs
+      (let [db (init-game-state)]
+        (sba/check-and-execute-sbas db)
+        ;; Both SBAs should have fired
+        (is (true? @a-fired) "SBA-A should have fired")
+        (is (true? @b-fired) "SBA-B should have fired (cascading)")
+        (is (= 2 @iteration-counter) "Should have executed 2 SBAs across iterations"))
+      ;; Clean up
+      (sba/register-sba! :test-cascade-a-check (fn [_db] []))
+      (sba/register-sba! :test-cascade-b-check (fn [_db] []))
+      (remove-method sba/execute-sba :test-cascade-a)
+      (remove-method sba/execute-sba :test-cascade-b))))

@@ -2,6 +2,7 @@
   "Tests for game initialization - player library and starting hand."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
+    [datascript.core :as d]
     [datascript.db :as ds-db]
     [fizzle.db.queries :as q]
     [fizzle.events.game :as game]))
@@ -144,3 +145,33 @@
       ;; Game state entity must exist
       (is (some? (first (q/get-game-state game-db)))
           "Game state must exist in initialized db"))))
+
+
+(deftest test-init-game-state-structural-validation
+  ;; Bug caught: wrong initial game state values
+  (testing "init-game-state sets correct starting values per MTG rules"
+    (let [db (init-and-get-db)
+          game-state (q/get-game-state db)]
+      ;; Life totals
+      (is (= 20 (q/get-life-total db :player-1))
+          "Player should start at 20 life")
+      ;; Turn and phase
+      (is (= 1 (:game/turn game-state))
+          "Game should start on turn 1")
+      (is (= :main1 (:game/phase game-state))
+          "Game should start in main phase 1")
+      ;; Land plays
+      (let [player-eid (q/get-player-eid db :player-1)
+            land-plays (d/q '[:find ?plays .
+                              :in $ ?e
+                              :where [?e :player/land-plays-left ?plays]]
+                            db player-eid)]
+        (is (= 1 land-plays)
+            "Player should start with 1 land play"))
+      ;; Mana pool starts empty
+      (let [pool (q/get-mana-pool db :player-1)]
+        (is (every? zero? (vals pool))
+            "Mana pool should start with all zeros"))
+      ;; Storm count starts at 0
+      (is (= 0 (q/get-storm-count db :player-1))
+          "Storm count should start at 0"))))

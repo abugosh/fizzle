@@ -6,7 +6,7 @@
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
-    [fizzle.events.game :as game]))
+    [fizzle.events.abilities :as ability-events]))
 
 
 ;; === Test helpers ===
@@ -108,7 +108,7 @@
                 "Precondition: 3 cards in hand")
           initial-pool (q/get-mana-pool db'''' :player-1)
           _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
-          db-after (game/activate-mana-ability db'''' :player-1 led-id :black)]
+          db-after (ability-events/activate-mana-ability db'''' :player-1 led-id :black)]
       (is (= :graveyard (get-object-zone db-after led-id))
           "LED should be in graveyard after sacrifice")
       (is (= 3 (:black (q/get-mana-pool db-after :player-1)))
@@ -126,7 +126,7 @@
           [db'' _] (add-card-to-zone db' :dark-ritual :hand :player-1)
           initial-pool (q/get-mana-pool db'' :player-1)
           _ (is (= 0 (:blue initial-pool)) "Precondition: blue mana is 0")
-          db-after (game/activate-mana-ability db'' :player-1 led-id :blue)]
+          db-after (ability-events/activate-mana-ability db'' :player-1 led-id :blue)]
       (is (= :graveyard (get-object-zone db-after led-id))
           "LED should be in graveyard after sacrifice")
       (is (= 3 (:blue (q/get-mana-pool db-after :player-1)))
@@ -139,7 +139,7 @@
           [db' led-id] (add-artifact-to-battlefield db :lions-eye-diamond :player-1)
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:white initial-pool)) "Precondition: white mana is 0")
-          db-after (game/activate-mana-ability db' :player-1 led-id :white)]
+          db-after (ability-events/activate-mana-ability db' :player-1 led-id :white)]
       (is (= :graveyard (get-object-zone db-after led-id))
           "LED should be in graveyard after sacrifice")
       (is (= 3 (:white (q/get-mana-pool db-after :player-1)))
@@ -156,7 +156,7 @@
                 "Precondition: hand is empty")
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:red initial-pool)) "Precondition: red mana is 0")
-          db-after (game/activate-mana-ability db' :player-1 led-id :red)]
+          db-after (ability-events/activate-mana-ability db' :player-1 led-id :red)]
       (is (= :graveyard (get-object-zone db-after led-id))
           "LED should be in graveyard after sacrifice")
       (is (= 3 (:red (q/get-mana-pool db-after :player-1)))
@@ -171,7 +171,7 @@
                 "Precondition: LED is in graveyard")
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
-          db-after (game/activate-mana-ability db' :player-1 led-id :black)]
+          db-after (ability-events/activate-mana-ability db' :player-1 led-id :black)]
       (is (= 0 (:black (q/get-mana-pool db-after :player-1)))
           "Mana should NOT be added (card in graveyard)")
       (is (= :graveyard (get-object-zone db-after led-id))
@@ -186,7 +186,7 @@
                 "Precondition: LED is in hand")
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
-          db-after (game/activate-mana-ability db' :player-1 led-id :black)]
+          db-after (ability-events/activate-mana-ability db' :player-1 led-id :black)]
       (is (= 0 (:black (q/get-mana-pool db-after :player-1)))
           "Mana should NOT be added (card not on battlefield)")
       (is (= :hand (get-object-zone db-after led-id))
@@ -222,3 +222,26 @@
             "Ability should be a mana ability")
         (is (true? (get-in ability [:ability/cost :discard-hand]))
             "LED should require discarding hand as part of cost")))))
+
+
+(deftest test-led-cannot-activate-when-tapped
+  ;; Bug caught: LED activatable even when already tapped
+  (testing "LED that is already tapped cannot activate mana ability"
+    (let [db (create-test-db)
+          [db' led-id] (add-artifact-to-battlefield db :lions-eye-diamond :player-1)
+          ;; Manually tap the LED
+          obj-eid (d/q '[:find ?e . :in $ ?oid
+                         :where [?e :object/id ?oid]]
+                       db' led-id)
+          conn (d/conn-from-db db')
+          _ (d/transact! conn [[:db/add obj-eid :object/tapped true]])
+          db-tapped @conn
+          _ (is (true? (:object/tapped (q/get-object db-tapped led-id)))
+                "Precondition: LED is tapped")
+          initial-pool (q/get-mana-pool db-tapped :player-1)
+          _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
+          db-after (ability-events/activate-mana-ability db-tapped :player-1 led-id :black)]
+      (is (= 0 (:black (q/get-mana-pool db-after :player-1)))
+          "Mana should NOT be added (LED already tapped)")
+      (is (= :battlefield (get-object-zone db-after led-id))
+          "LED should remain on battlefield (not sacrificed)"))))

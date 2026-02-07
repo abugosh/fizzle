@@ -124,7 +124,7 @@
 
 (deftest test-mental-note-is-instant-type
   (testing "Mental Note has :instant in types"
-    (is (contains? (:card/types cards/mental-note) :instant)
+    (is (= #{:instant} (:card/types cards/mental-note))
         "Mental Note should be an instant")))
 
 

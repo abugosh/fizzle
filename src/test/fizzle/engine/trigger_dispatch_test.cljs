@@ -40,11 +40,10 @@
 
 
 (defn get-stack-items
-  "Get all trigger items on the stack."
+  "Get all stack-items on the stack (migrated from trigger entities)."
   [db]
   (d/q '[:find [(pull ?e [*]) ...]
-         :where [?e :trigger/id _]
-         [?e :trigger/stack-order _]]
+         :where [?e :stack-item/position _]]
        db))
 
 
@@ -148,8 +147,7 @@
           result (dispatch/dispatch-event db event)
           stack-items (get-stack-items result)]
       (is (= 1 (count stack-items))
-          "One trigger should be on stack")
-      (is (= :t1 (:trigger/id (first stack-items)))))))
+          "One trigger should be on stack"))))
 
 
 (deftest test-dispatch-event-default-uses-stack-true
@@ -196,8 +194,7 @@
           event {:event/type :phase-entered :event/phase :draw}
           result (dispatch/dispatch-event db event)
           stack-items (get-stack-items result)]
-      (is (= 1 (count stack-items)))
-      (is (= :t1 (:trigger/id (first stack-items)))))))
+      (is (= 1 (count stack-items))))))
 
 
 (deftest test-dispatch-event-multiple-triggers
@@ -216,9 +213,7 @@
 
 
 (deftest test-dispatch-event-order-immediate-before-stacked
-  (testing "immediate triggers execute before stacked triggers are added"
-    ;; This test verifies order by checking that both types process correctly
-    ;; We can't directly observe the order, but we verify both are handled
+  (testing "immediate triggers execute, stacked triggers go on stack"
     (let [source-id-1 (random-uuid)
           source-id-2 (random-uuid)
           immediate-trigger (make-trigger :t-immediate :phase-entered source-id-1 nil false)
@@ -229,10 +224,10 @@
           event {:event/type :phase-entered :event/phase :draw}
           result (dispatch/dispatch-event db event)
           stack-items (get-stack-items result)]
-      ;; Only the stacked trigger should be on stack
-      ;; Immediate trigger executed but doesn't add to stack
-      (is (= 1 (count stack-items)))
-      (is (= :t-stacked (:trigger/id (first stack-items)))))))
+      (is (= 1 (count stack-items))
+          "Only stacked trigger should be on stack")
+      (is (= source-id-2 (:stack-item/source (first stack-items)))
+          "Stack item should be from the stacked trigger, not the immediate one"))))
 
 
 (deftest test-dispatch-event-empty-registry

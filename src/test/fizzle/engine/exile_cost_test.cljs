@@ -170,38 +170,32 @@
 
 
 (deftest test-can-pay-exile-cost-insufficient-cards
-  (testing "can-pay returns false when not enough matching cards"
-    ;; Bug caught: allows casting with insufficient resources
+  (testing "can-pay returns false when no matching blue cards in graveyard"
     (let [db (init-game-state)
-          ;; Add only 1 blue card to graveyard
+          ;; No blue cards in graveyard - only the Flash of Insight itself
+          [obj-id db] (add-flash-of-insight-to-zone db :player-1 :graveyard)
+          db-with-mana (mana/add-mana db :player-1 {:colorless 1 :blue 1})
+          modes (rules/get-casting-modes db-with-mana :player-1 obj-id)]
+      (is (= 1 (count modes))
+          "Should have flashback mode")
+      ;; No blue cards to exile means flashback is not castable
+      (is (false? (rules/can-cast-mode? db-with-mana :player-1 obj-id (first modes)))
+          "Without blue cards to exile, flashback should not be castable"))))
+
+
+(deftest test-can-pay-exile-cost-zero-count
+  (testing "flashback with 1 blue card is castable (X=1 minimum)"
+    ;; With exactly 1 blue card, X=1 is the minimum viable flashback
+    ;; This verifies the exile cost validation accepts the minimum case
+    (let [db (init-game-state)
           db (add-n-blue-cards-to-graveyard db :player-1 1)
           [obj-id db] (add-flash-of-insight-to-zone db :player-1 :graveyard)
           db-with-mana (mana/add-mana db :player-1 {:colorless 1 :blue 1})
           modes (rules/get-casting-modes db-with-mana :player-1 obj-id)]
-      ;; With only 1 blue card and :x requiring at least 1, should be castable
-      ;; But if we test with cost requiring 3, it should fail
-      ;; For :x cost, can-pay should check at least 1 card exists
       (is (= 1 (count modes))
           "Should have flashback mode")
-      ;; This tests the minimum - with 1 card, X=1 should work
       (is (true? (rules/can-cast-mode? db-with-mana :player-1 obj-id (first modes)))
-          "With 1 blue card, X=1 flashback should be castable"))))
-
-
-(deftest test-can-pay-exile-cost-zero-count
-  (testing "can-pay returns true for count=0 (vacuously true)"
-    ;; Bug caught: crashes on X=0
-    ;; When X=0, no cards need to be exiled
-    (let [db (init-game-state)
-          [_obj-id db] (add-flash-of-insight-to-zone db :player-1 :graveyard)
-          ;; Empty graveyard, but X=0 should still be valid
-          db-with-mana (mana/add-mana db :player-1 {:colorless 1 :blue 1})]
-      ;; X=0 means look at 0 cards, no selection needed
-      ;; The mana cost alone should be payable
-      ;; For the actual flashback with :x, X=0 means exile 0 cards
-      ;; This is a corner case - the card text says "exile X" where X can be 0
-      (is (true? (mana/can-pay? db-with-mana :player-1 {:colorless 1 :blue 1}))
-          "Mana portion should be payable regardless of exile count"))))
+          "With 1 blue card and mana, flashback X=1 should be castable"))))
 
 
 (deftest test-can-pay-exile-cost-respects-color-criteria
@@ -242,15 +236,6 @@
 
 ;; Note: pay-additional-cost for :exile-cards requires player selection
 ;; These tests will verify the selection state is created correctly
-
-(deftest test-pay-exile-cost-creates-selection
-  (testing "pay-exile-cost creates selection state for player choice"
-    ;; Bug caught: auto-selects instead of prompting player
-    ;; This test verifies selection flow is created, not that cards are immediately exiled
-    ;; Full selection test deferred to Flash of Insight card integration tests
-    (is (true? true)
-        "Placeholder - full selection test via events layer")))
-
 
 ;; =====================================================
 ;; Integration tests

@@ -226,3 +226,29 @@
           [db' obj-id] (add-card-to-zone db :city-of-brass :hand :player-1)]
       (is (true? (game/can-play-land? db' :player-1 obj-id))
           "Should be able to play land during main2"))))
+
+
+(deftest test-play-land-fails-during-upkeep
+  ;; Bug caught: play-land only checked :combat, missed other non-main phases
+  (testing "play-land returns unchanged db during upkeep phase"
+    (let [db (-> (create-test-db)
+                 (set-phase :upkeep))
+          [db' obj-id] (add-card-to-zone db :city-of-brass :hand :player-1)
+          db'' (game/play-land db' :player-1 obj-id)]
+      (is (= :hand (get-object-zone db'' obj-id))
+          "Land should remain in hand during upkeep")
+      (is (= 1 (get-land-plays db'' :player-1))
+          "Land plays should not be decremented during upkeep"))))
+
+
+(deftest test-play-land-fails-during-end-step
+  ;; Bug caught: land playable during end step
+  (testing "play-land returns unchanged db during end phase"
+    (let [db (-> (create-test-db)
+                 (set-phase :end))
+          [db' obj-id] (add-card-to-zone db :city-of-brass :hand :player-1)
+          db'' (game/play-land db' :player-1 obj-id)]
+      (is (= :hand (get-object-zone db'' obj-id))
+          "Land should remain in hand during end step")
+      (is (= 1 (get-land-plays db'' :player-1))
+          "Land plays should not be decremented during end step"))))

@@ -4,6 +4,7 @@
    Handles both immediate (turn-based) and stacked (card) triggers.
    Order: immediate triggers first, then stacked triggers."
   (:require
+    [fizzle.engine.stack :as stack]
     [fizzle.engine.trigger-registry :as registry]
     [fizzle.engine.triggers :as triggers]))
 
@@ -82,9 +83,15 @@
           ;; Execute immediate triggers first (turn-based actions)
           ;; Immediate triggers use registry format (already have :trigger/type from turn-based)
           (reduce (fn [d t] (triggers/resolve-trigger d t)) db' (or immediate []))
-          ;; Add stacked triggers to stack (card triggers)
-          ;; Convert registry format to stack format
+          ;; Add stacked triggers to stack as stack-items (card triggers)
           (reduce (fn [d t]
-                    (triggers/add-trigger-to-stack d (registry-trigger->stack-trigger t)))
+                    (let [st (registry-trigger->stack-trigger t)]
+                      (stack/create-stack-item d
+                                               (cond-> {:stack-item/type (:trigger/type st)
+                                                        :stack-item/controller (:trigger/controller st)
+                                                        :stack-item/source (:trigger/source st)
+                                                        :stack-item/effects (get-in st [:trigger/data :effects] [])}
+                                                 (:trigger/description st)
+                                                 (assoc :stack-item/description (:trigger/description st))))))
                   db'
                   (or stacked [])))))

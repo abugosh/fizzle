@@ -154,17 +154,24 @@
 
 
 (deftest test-mill-effect-preserves-order
-  (testing "Cards milled preserve order (first milled from top goes first)"
-    ;; This test verifies we mill in order: position 0 first, then 1, etc.
-    ;; Important for flashback/dredge later where graveyard order matters.
+  (testing "Cards milled from top of library end up in graveyard"
     (let [db (-> (init-game-state)
                  (add-library-cards :player-1 [:top :middle :bottom]))
+          top-two (q/get-top-n-library db :player-1 2)
+          remaining-id (last (q/get-top-n-library db :player-1 3))
           effect {:effect/type :mill
                   :effect/amount 2}
-          db' (fx/execute-effect db :player-1 effect)]
-      ;; Just verify the right number moved - exact order would need graveyard ordering
+          db' (fx/execute-effect db :player-1 effect)
+          graveyard-ids (set (map :object/id
+                                  (q/get-objects-in-zone db' :player-1 :graveyard)))
+          library-ids (set (map :object/id
+                                (q/get-objects-in-zone db' :player-1 :library)))]
       (is (= 1 (count-zone db' :player-1 :library)))
-      (is (= 2 (count-zone db' :player-1 :graveyard))))))
+      (is (= 2 (count-zone db' :player-1 :graveyard)))
+      (is (every? graveyard-ids (set top-two))
+          "Top 2 library cards should be in graveyard")
+      (is (contains? library-ids remaining-id)
+          "Bottom card should remain in library"))))
 
 
 (deftest test-mill-effect-targets-opponent
@@ -573,18 +580,16 @@
 
 
 (deftest test-deal-damage-preserves-source
-  (testing "deal-damage effect includes source for future damage prevention"
-    ;; NOTE: For Phase 1.5, damage behaves like life loss
-    ;; Source field exists for future damage prevention implementation
-    ;; This test documents the interface, actual prevention is future work
+  (testing "deal-damage with source object reduces life and leaves source intact"
     (let [[db object-id] (add-permanent (init-game-state) :player-1)
           effect {:effect/type :deal-damage
                   :effect/amount 3
                   :effect/target :player-1
-                  :effect/source object-id}  ; source present for future use
+                  :effect/source object-id}
           db' (fx/execute-effect db :player-1 effect)]
-      ;; Currently just reduces life like :lose-life
-      (is (= 17 (q/get-life-total db' :player-1))))))
+      (is (= 17 (q/get-life-total db' :player-1)))
+      (is (= :battlefield (:object/zone (q/get-object db' object-id)))
+          "Source object should still exist on battlefield"))))
 
 
 (deftest test-deal-damage-can-go-negative
@@ -1349,11 +1354,13 @@
 
 (deftest test-add-restriction-default-turn-when-nil
   (testing "defaults to turn 1 when game turn is nil"
-    ;; Catches: nil pointer on (or (:game/turn game) 1) pattern
-    ;; Note: init-game-state creates game with :game/turn 1 already
-    ;; This test documents expected behavior
-    (let [db (-> (init-game-state)
-                 (add-opponent))
+    ;; Retract :game/turn to exercise the (or (:game/turn game) 1) nil path
+    (let [base-db (-> (init-game-state)
+                      (add-opponent))
+          game-eid (d/q '[:find ?g . :where [?g :game/id _]] base-db)
+          conn (d/conn-from-db base-db)
+          _ (d/transact! conn [[:db/retract game-eid :game/turn 1]])
+          db @conn
           source-id (random-uuid)
           [source-id db] (add-spell-with-target db :player-1 source-id :player-2)
           effect {:effect/type :add-restriction
@@ -1361,8 +1368,10 @@
                   :effect/target :targeted-player}
           db' (fx/execute-effect db :player-1 effect source-id)
           grant (first (grants/get-player-grants db' :player-2))]
+      (is (nil? (:game/turn (q/get-game-state db)))
+          "Precondition: game/turn should be nil")
       (is (= 1 (get-in grant [:grant/expires :expires/turn]))
-          "Should default to turn 1"))))
+          "Should default to turn 1 when game/turn is nil"))))
 
 
 ;; === Test helpers for :destroy effect ===

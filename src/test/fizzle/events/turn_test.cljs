@@ -5,6 +5,7 @@
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
     [fizzle.engine.grants :as grants]
+    [fizzle.engine.stack :as stack]
     [fizzle.events.game :as game]))
 
 
@@ -86,15 +87,12 @@
     (every? zero? (vals pool))))
 
 
-(defn add-trigger-to-stack
-  "Add a trigger to the stack for testing."
+(defn add-stack-item-to-stack
+  "Add a stack-item to the stack for testing."
   [db]
-  (let [conn (d/conn-from-db db)
-        order (q/get-next-stack-order db)]
-    (d/transact! conn [{:trigger/type :test-trigger
-                        :trigger/stack-order order
-                        :trigger/controller :player-1}])
-    @conn))
+  (stack/create-stack-item db
+                           {:stack-item/type :test
+                            :stack-item/controller :player-1}))
 
 
 (defn add-spell-to-stack
@@ -102,7 +100,7 @@
   [db player-id]
   (let [conn (d/conn-from-db db)
         player-eid (q/get-player-eid db player-id)
-        order (q/get-next-stack-order db)]
+        order (stack/get-next-stack-order db)]
     (d/transact! conn [{:object/id (str "test-spell-" order)
                         :object/owner player-eid
                         :object/zone :stack
@@ -117,7 +115,7 @@
     (let [db (-> (init-game-state)
                  (set-phase :main1)
                  (add-mana :player-1 {:black 3})
-                 (add-trigger-to-stack))
+                 (add-stack-item-to-stack))
           db' (game/advance-phase db :player-1)]
       (is (= :main1 (get-phase db')) "phase should not advance")
       (is (not (mana-pool-empty? db' :player-1)) "mana pool should not be cleared"))))
@@ -136,7 +134,7 @@
   (testing "advance-phase no-ops when both triggers and spells are on the stack"
     (let [db (-> (init-game-state)
                  (set-phase :main1)
-                 (add-trigger-to-stack)
+                 (add-stack-item-to-stack)
                  (add-spell-to-stack :player-1))
           db' (game/advance-phase db :player-1)]
       (is (= :main1 (get-phase db')) "phase should not advance"))))
@@ -147,7 +145,7 @@
     (let [db (-> (init-game-state)
                  (set-phase :cleanup)
                  (set-turn 1)
-                 (add-trigger-to-stack))
+                 (add-stack-item-to-stack))
           db' (game/start-turn db :player-1)]
       (is (= :cleanup (get-phase db')) "phase should stay at cleanup")
       (is (= 1 (get-turn db')) "turn should not increment"))))
@@ -335,7 +333,7 @@
           selection (:pending-selection result)]
       (is (some? selection)
           "should create pending selection")
-      (is (= 2 (:selection/count selection))
+      (is (= 2 (:selection/select-count selection))
           "should discard 2 cards (9 - 7)")
       (is (= :hand (:selection/zone selection))
           "should select from hand")
@@ -357,7 +355,7 @@
           selection (:pending-selection result)]
       (is (some? selection)
           "should create selection when over custom max")
-      (is (= 1 (:selection/count selection))
+      (is (= 1 (:selection/select-count selection))
           "should discard 1 card (6 - 5)"))))
 
 
@@ -398,32 +396,31 @@
 
 (deftest test-cleanup-confirm-no-spell-cleanup
   (testing "Cleanup discard does not try to clean up a spell (no spell-id)"
-    (let [;; Just verify it doesn't crash - no spell on stack for cleanup discard
-          db (-> (init-game-state)
+    (let [db (-> (init-game-state)
                  (add-cards-to-hand :player-1 8)
                  (set-phase :cleanup)
                  (set-turn 1))
           hand (q/get-hand db :player-1)
           to-discard (set (map :object/id (take 2 hand)))
           result (game/complete-cleanup-discard db :player-1 to-discard)]
-      (is (some? (:db result))
-          "should return valid db without crashing"))))
+      (is (= 7 (count (q/get-hand (:db result) :player-1)))
+          "hand should have 7 cards after discarding 2")
+      (is (= 2 (count (q/get-objects-in-zone (:db result) :player-1 :graveyard)))
+          "discarded cards should be in graveyard"))))
 
 
 (deftest test-cleanup-advance-blocked-during-selection
   (testing "Cannot advance phase when cleanup discard selection is pending"
-    (let [;; Simulate: already at cleanup, pending selection exists
-          db (-> (init-game-state)
+    (let [db (-> (init-game-state)
                  (set-phase :cleanup)
                  (set-turn 1)
                  (add-cards-to-hand :player-1 8))
-          ;; begin-cleanup should return pending selection
           result (game/begin-cleanup db :player-1)]
-      ;; The db returned is at :cleanup but grants NOT yet expired
-      ;; (they only expire after discard confirmation)
+      (is (some? (:pending-selection result))
+          "begin-cleanup should create a pending selection for discard")
+      (is (= :cleanup-discard (:selection/effect-type (:pending-selection result)))
+          "selection should be for cleanup discard")
       (let [cleanup-db (:db result)
-            ;; Trying to start a new turn should be blocked
-            ;; (advance-phase from cleanup stays at cleanup per existing behavior)
             after-advance (game/advance-phase cleanup-db :player-1)]
         (is (= :cleanup (get-phase after-advance))
             "should stay at cleanup, cannot advance past it")))))
@@ -462,7 +459,7 @@
                       (set-phase :cleanup)
                       (set-turn 1)
                       (add-expiring-player-grant :player-1 1 :cleanup)
-                      (add-trigger-to-stack))
+                      (add-stack-item-to-stack))
           app-db (make-app-db game-db)
           result (game/maybe-continue-cleanup app-db)]
       ;; Should NOT re-run begin-cleanup while stack has items
@@ -472,14 +469,14 @@
 
 (deftest test-cleanup-repeat-does-not-trigger-at-other-phases
   (testing "maybe-continue-cleanup is a no-op during non-cleanup phases"
-    (let [;; Main1 phase with empty stack
-          game-db (-> (init-game-state)
+    (let [game-db (-> (init-game-state)
                       (set-phase :main1)
                       (set-turn 1)
                       (add-expiring-player-grant :player-1 1 :cleanup))
           app-db (make-app-db game-db)
           result (game/maybe-continue-cleanup app-db)]
-      ;; Should NOT run begin-cleanup during main1
+      (is (= game-db (:game/db result))
+          "game-db should be unchanged during non-cleanup phase")
       (is (seq (grants/get-player-grants (:game/db result) :player-1))
           "grants should NOT be expired during non-cleanup phase"))))
 
@@ -496,5 +493,5 @@
       ;; Should re-run begin-cleanup which creates selection for discard
       (is (some? (:game/pending-selection result))
           "should create pending selection for discard")
-      (is (= 2 (:selection/count (:game/pending-selection result)))
+      (is (= 2 (:selection/select-count (:game/pending-selection result)))
           "should need to discard 2 cards (9 - 7)"))))

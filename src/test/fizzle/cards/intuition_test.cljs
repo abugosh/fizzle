@@ -17,7 +17,8 @@
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
-    [fizzle.events.game :as game]))
+    [fizzle.engine.rules :as rules]
+    [fizzle.events.selection :as selection]))
 
 
 ;; === Test helpers ===
@@ -130,10 +131,55 @@
           intuition-card (some #(when (= :intuition (:card/id %)) %)
                                cards/all-cards)
           intuition-effect (first (:card/effects intuition-card))
-          selection (game/build-tutor-selection db' :player-1 (random-uuid)
-                                                intuition-effect [])]
+          selection (selection/build-tutor-selection db' :player-1 (random-uuid)
+                                                     intuition-effect [])]
       ;; Verify multi-select tutor
       (is (= 3 (:selection/select-count selection))
           "Intuition must require 3 cards")
       (is (= {:hand 1 :graveyard :rest} (:selection/pile-choice selection))
           "Selection must include pile-choice for second phase"))))
+
+
+(defn add-card-to-zone
+  "Add a card object to a zone for a player.
+   Returns [db object-id] tuple."
+  [db card-id zone player-id]
+  (let [conn (d/conn-from-db db)
+        player-eid (q/get-player-eid db player-id)
+        card-eid (d/q '[:find ?e .
+                        :in $ ?cid
+                        :where [?e :card/id ?cid]]
+                      db card-id)
+        obj-id (random-uuid)]
+    (d/transact! conn [{:object/id obj-id
+                        :object/card card-eid
+                        :object/zone zone
+                        :object/owner player-eid
+                        :object/controller player-eid
+                        :object/tapped false}])
+    [@conn obj-id]))
+
+
+(deftest test-intuition-with-fewer-than-3-cards-in-library
+  ;; Bug caught: crash or wrong behavior with insufficient cards
+  (testing "Intuition with only 2 cards in library creates tutor with 2 candidates"
+    (let [db (create-test-db)
+          ;; Add only 2 cards to library (fewer than Intuition's select-count of 3)
+          [db' _card-ids] (add-cards-to-library db [:dark-ritual :cabal-ritual] :player-1)
+          ;; Add Intuition to hand
+          [db'' int-id] (add-card-to-zone db' :intuition :hand :player-1)
+          ;; Cast Intuition (already has 3 blue mana from create-test-db)
+          db-cast (rules/cast-spell db'' :player-1 int-id)
+          _ (is (= :stack (:object/zone (q/get-object db-cast int-id)))
+                "Precondition: Intuition on stack")
+          ;; Resolve - should create tutor selection with available cards
+          result (selection/resolve-spell-with-selection db-cast :player-1 int-id)
+          sel (:pending-selection result)]
+      ;; Should have pending selection (tutor)
+      (is (some? sel)
+          "Should have pending tutor selection")
+      (is (= :tutor (:selection/effect-type sel))
+          "Selection type should be :tutor")
+      ;; With only 2 cards, can only find up to 2
+      (is (<= (count (:selection/candidate-ids sel)) 2)
+          "Should have at most 2 candidates (only 2 cards in library)"))))

@@ -18,6 +18,8 @@
     [fizzle.cards.orims-chant :as orims-chant]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
+    [fizzle.engine.grants :as grants]
+    [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]))
 
@@ -243,3 +245,62 @@
       ;; Even without opponent, can target self
       (is (targeting/has-valid-targets? db :player-1 orims-chant/orims-chant)
           "Should have valid targets (can target self even in goldfish)"))))
+
+
+;; === Resolution Tests ===
+
+(deftest orims-chant-resolution-applies-restriction-test
+  ;; Bug caught: restriction never applied during spell resolution
+  (testing "Casting and resolving Orim's Chant adds cannot-cast-spells restriction"
+    (let [db (create-test-db)
+          ;; Add Orim's Chant to hand
+          [obj-id db] (add-card-to-zone db :orims-chant :hand :player-1)
+          ;; Add white mana to cast
+          db-with-mana (mana/add-mana db :player-1 {:white 1})
+          ;; Cast targeting opponent (player-2)
+          db-cast (rules/cast-spell db-with-mana :player-1 obj-id)
+          _ (is (= :stack (:object/zone (q/get-object db-cast obj-id)))
+                "Precondition: Orim's Chant on stack")
+          ;; Store targets on the spell
+          obj-eid (d/q '[:find ?e . :in $ ?oid
+                         :where [?e :object/id ?oid]]
+                       db-cast obj-id)
+          db-targeted (d/db-with db-cast [[:db/add obj-eid :object/targets {:player :player-2}]])
+          ;; Resolve the spell (should execute add-restriction effect)
+          db-resolved (rules/resolve-spell db-targeted :player-1 obj-id)]
+      ;; Spell should be in graveyard after resolution
+      (is (= :graveyard (:object/zone (q/get-object db-resolved obj-id)))
+          "Orim's Chant should be in graveyard after resolution")
+      ;; Player-2 should have a restriction grant
+      (let [player2-grants (grants/get-player-grants db-resolved :player-2)]
+        (is (seq player2-grants)
+            "Player-2 should have at least one grant after resolution")
+        (is (some #(= :cannot-cast-spells (:restriction/type (:grant/data %))) player2-grants)
+            "Player-2 should have :cannot-cast-spells restriction")))))
+
+
+(deftest orims-chant-restricted-player-cannot-cast-test
+  ;; Bug caught: restriction exists but not enforced by can-cast?
+  (testing "Player with cannot-cast-spells restriction cannot cast spells"
+    (let [db (create-test-db)
+          ;; Add Orim's Chant to hand
+          [_chant-id db] (add-card-to-zone db :orims-chant :hand :player-1)
+          ;; Add a spell to player-2's hand
+          [spell-id db] (add-card-to-zone db :dark-ritual :hand :player-2)
+          ;; Give player-2 mana to cast Dark Ritual
+          conn (d/conn-from-db db)
+          p2-eid (q/get-player-eid db :player-2)
+          _ (d/transact! conn [[:db/add p2-eid :player/mana-pool
+                                {:white 0 :blue 0 :black 1 :red 0 :green 0 :colorless 0}]])
+          db @conn
+          ;; Verify player-2 CAN cast before restriction
+          _ (is (rules/can-cast? db :player-2 spell-id)
+                "Precondition: player-2 can cast Dark Ritual before restriction")
+          ;; Apply restriction directly via grants (simulating resolved Orim's Chant)
+          db-restricted (grants/add-player-grant db :player-2
+                                                 {:grant/type :restriction
+                                                  :grant/data {:restriction/type :cannot-cast-spells}
+                                                  :grant/expires {:expires/turn 1 :expires/phase :cleanup}})]
+      ;; Player-2 should NOT be able to cast now
+      (is (false? (rules/can-cast? db-restricted :player-2 spell-id))
+          "Player-2 should not be able to cast with cannot-cast-spells restriction"))))

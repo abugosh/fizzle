@@ -10,8 +10,8 @@
     [fizzle.engine.effects :as effects]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
+    [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
-    [fizzle.engine.triggers :as triggers]
     [fizzle.engine.zones :as zones]))
 
 
@@ -229,16 +229,10 @@
    Sorcery speed requires: main phase (main1 or main2) and empty stack."
   [db]
   (let [game-state (q/get-game-state db)
-        phase (:game/phase game-state)
-        ;; Stack is empty when no triggers and no objects on stack
-        triggers (q/get-stack-items db)
-        stack-objects (d/q '[:find [?e ...]
-                             :where [?e :object/zone :stack]]
-                           db)]
+        phase (:game/phase game-state)]
     (boolean
       (and (#{:main1 :main2} phase)
-           (empty? triggers)
-           (empty? stack-objects)))))
+           (q/stack-empty? db)))))
 
 
 (defn can-cast?
@@ -306,24 +300,37 @@
                         (sequential? keywords) (some #{:storm} keywords)
                         :else false)]
         (if (and has-storm (not is-copy))
-          ;; Create storm trigger - count = spells cast before this one
           (let [storm-count (q/get-storm-count db player-id)
-                copy-count (dec storm-count)  ; Already incremented, so dec for "before"
-                trigger (triggers/create-trigger :storm object-id player-id {:count copy-count})]
-            (triggers/add-trigger-to-stack db trigger))
+                copy-count (dec storm-count)]
+            (stack/create-stack-item db
+                                     {:stack-item/type :storm
+                                      :stack-item/controller player-id
+                                      :stack-item/source object-id
+                                      :stack-item/effects [{:effect/type :storm-copies
+                                                            :effect/count copy-count}]
+                                      :stack-item/description (str "Storm - create " copy-count " copies")}))
           db))
       db)))
 
 
-(defn- set-stack-order
-  "Set stack position on an object so stack resolves LIFO."
-  [db object-id]
-  (let [stack-order (q/get-next-stack-order db)
-        obj-eid (d/q '[:find ?e .
+(defn- create-spell-stack-item
+  "Create a stack-item for a spell being cast.
+   Also sets object/position to the same value for backward compatibility."
+  [db player-id object-id]
+  (let [obj-eid (d/q '[:find ?e .
                        :in $ ?oid
                        :where [?e :object/id ?oid]]
-                     db object-id)]
-    (d/db-with db [[:db/add obj-eid :object/position stack-order]])))
+                     db object-id)
+        db-with-item (stack/create-stack-item db
+                                              {:stack-item/type :spell
+                                               :stack-item/controller player-id
+                                               :stack-item/source object-id
+                                               :stack-item/object-ref obj-eid})
+        ;; Get the position that was auto-assigned to the stack-item
+        stack-item (stack/get-stack-item-by-object-ref db-with-item obj-eid)
+        position (:stack-item/position stack-item)]
+    ;; Set object/position to match stack-item for backward compat
+    (d/db-with db-with-item [[:db/add obj-eid :object/position position]])))
 
 
 (defn- set-cast-mode
@@ -352,7 +359,7 @@
       (mana/pay-mana player-id (:mode/mana-cost mode))
       (pay-additional-costs player-id object-id (:mode/additional-costs mode))
       (zones/move-to-zone object-id :stack)
-      (set-stack-order object-id)
+      (create-spell-stack-item player-id object-id)
       (set-cast-mode object-id mode)
       (increment-storm player-id)
       (maybe-create-storm-trigger player-id object-id)))

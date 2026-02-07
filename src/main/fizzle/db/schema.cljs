@@ -65,13 +65,17 @@
    :game/winner        {:db/valueType :db.type/ref}  ; nil until game ends
    :game/loss-condition {}  ; Keyword like :empty-library, :life-zero when player loses
 
-   ;; === Triggers (triggered abilities on stack) ===
-   ;; Triggers are objects on the stack that represent triggered abilities.
-   ;; They resolve before the spell that created them (LIFO stack order).
-   :trigger/id         {:db/unique :db.unique/identity}  ; UUID, unique identifier
-   :trigger/type       {}  ; Keyword, e.g. :storm, :etb
-   :trigger/source     {}  ; ID of source object (not ref, may be in graveyard)
-   :trigger/controller {}  ; Player ID who controls this trigger
-   :trigger/data       {}  ; Map of trigger-specific data
-   :trigger/description {}  ; Human-readable description for stack display
-   :trigger/stack-order {}})
+   ;; === Stack Items (unified stack representation) ===
+   ;; Stack items represent anything on the stack awaiting resolution.
+   ;; Spells reference their game object; triggers/abilities have inline effects.
+   :stack-item/position    {}  ; Integer, LIFO ordering (higher = resolves first)
+   :stack-item/type        {}  ; Keyword: :spell, :storm-copy, :activated-ability, :etb, :permanent-tapped, :land-entered
+   :stack-item/controller  {}  ; Player entity ID
+   :stack-item/source      {}  ; Source object entity ID
+   :stack-item/effects     {}  ; Vector of effect maps (EDN)
+   :stack-item/targets     {}  ; Map of stored targeting choices
+   :stack-item/description {}  ; String, human-readable for stack display
+   :stack-item/is-copy     {}  ; Boolean, true for storm copies
+   :stack-item/cast-mode   {}  ; Map, the casting mode used
+   :stack-item/object-ref  {:db/valueType :db.type/ref}  ; Reference to game object entity (spells only)
+   })

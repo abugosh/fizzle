@@ -14,7 +14,7 @@
     [datascript.core :as d]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
-    [fizzle.events.game :as game]))
+    [fizzle.events.selection :as selection]))
 
 
 ;; === Test helpers ===
@@ -73,7 +73,7 @@
                   :effect/selection :player}
           spell-id (random-uuid)
           remaining-effects [{:effect/type :draw :effect/amount 1}]
-          result (game/build-graveyard-selection db :player-1 spell-id effect remaining-effects)]
+          result (selection/build-graveyard-selection db :player-1 spell-id effect remaining-effects)]
       ;; Selection type must be :graveyard-return (distinct from :tutor, :discard)
       (is (= :graveyard-return (:selection/type result))
           "Selection type must be :graveyard-return")
@@ -81,7 +81,7 @@
       (is (= :graveyard (:selection/zone result))
           "Selection zone must be :graveyard")
       ;; Count should match effect
-      (is (= 3 (:selection/count result))
+      (is (= 3 (:selection/select-count result))
           "Selection count must match effect count")
       ;; Min count should be 0 (can select fewer)
       (is (= 0 (:selection/min-count result))
@@ -110,7 +110,7 @@
           effect {:effect/type :return-from-graveyard
                   :effect/count 3
                   :effect/selection :player}
-          result (game/build-graveyard-selection db :player-1 (random-uuid) effect [])]
+          result (selection/build-graveyard-selection db :player-1 (random-uuid) effect [])]
       ;; Should return valid state, not nil or crash
       (is (some? result)
           "Should return valid state, not nil")
@@ -133,7 +133,7 @@
                   :effect/selection :player
                   :effect/target :opponent}
           ;; Player-1 casts, targets opponent
-          result (game/build-graveyard-selection db :player-1 (random-uuid) effect [])]
+          result (selection/build-graveyard-selection db :player-1 (random-uuid) effect [])]
       ;; Player ID should be opponent's player-id, not :opponent keyword
       (is (= :player-2 (:selection/player-id result))
           "Player ID must be resolved to :player-2, not :opponent keyword")
@@ -150,7 +150,7 @@
                   :effect/count 2
                   :effect/selection :player
                   :effect/target :self}
-          result (game/build-graveyard-selection db :player-1 (random-uuid) effect [])]
+          result (selection/build-graveyard-selection db :player-1 (random-uuid) effect [])]
       ;; Player ID should be caster's player-id, not :self keyword
       (is (= :player-1 (:selection/player-id result))
           "Player ID must be resolved to :player-1, not :self keyword")
@@ -168,7 +168,7 @@
                   :effect/selection :player
                   ;; No :effect/target - should default to caster
                   }
-          result (game/build-graveyard-selection db :player-1 (random-uuid) effect [])]
+          result (selection/build-graveyard-selection db :player-1 (random-uuid) effect [])]
       (is (= :player-1 (:selection/player-id result))
           "Player ID must default to caster when target not specified")
       (is (= (set gy-ids) (:selection/candidate-ids result))

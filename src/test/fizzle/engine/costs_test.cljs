@@ -206,3 +206,122 @@
       (is (some? db'))
       ;; Life should be decremented by 1
       (is (= (dec life-before) life-after)))))
+
+
+;; === :sacrifice-self cost tests ===
+
+(deftest test-can-pay-sacrifice-self-on-battlefield
+  (testing "can-pay? :sacrifice-self returns true for permanent on battlefield"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          cost {:sacrifice-self true}]
+      (is (true? (costs/can-pay? db object-id cost))))))
+
+
+(deftest test-can-pay-sacrifice-self-not-on-battlefield
+  (testing "can-pay? :sacrifice-self returns false when not on battlefield"
+    (let [db (init-game-state)
+          hand (q/get-hand db :player-1)
+          obj-id (:object/id (first hand))
+          cost {:sacrifice-self true}]
+      ;; Object is in hand, not battlefield
+      (is (false? (costs/can-pay? db obj-id cost))))))
+
+
+(deftest test-pay-sacrifice-self-moves-to-graveyard
+  (testing "pay-cost :sacrifice-self moves permanent from battlefield to graveyard"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          cost {:sacrifice-self true}
+          db' (costs/pay-cost db object-id cost)]
+      (is (some? db'))
+      (is (= :graveyard (:object/zone (q/get-object db' object-id)))
+          "Sacrificed permanent should be in graveyard")
+      (is (= 0 (count (q/get-objects-in-zone db' :player-1 :battlefield)))
+          "Battlefield should be empty"))))
+
+
+(deftest test-pay-sacrifice-self-invalid-object
+  (testing "pay-cost :sacrifice-self returns nil for nonexistent object"
+    (let [db (init-game-state)
+          result (costs/pay-cost db (random-uuid) {:sacrifice-self true})]
+      (is (nil? result)))))
+
+
+;; === :discard-hand cost tests ===
+
+(deftest test-can-pay-discard-hand-on-battlefield
+  (testing "can-pay? :discard-hand returns true when object on battlefield"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          cost {:discard-hand true}]
+      (is (true? (costs/can-pay? db object-id cost))))))
+
+
+(deftest test-pay-discard-hand-moves-cards-to-graveyard
+  (testing "pay-cost :discard-hand moves all hand cards to graveyard"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          ;; init-game-state puts 1 Dark Ritual in hand
+          hand-before (q/get-hand db :player-1)
+          _ (is (= 1 (count hand-before))
+                "Precondition: 1 card in hand")
+          cost {:discard-hand true}
+          db' (costs/pay-cost db object-id cost)]
+      (is (some? db'))
+      (is (= 0 (count (q/get-hand db' :player-1)))
+          "Hand should be empty after discard")
+      (is (= 1 (count (q/get-objects-in-zone db' :player-1 :graveyard)))
+          "Graveyard should have the discarded card"))))
+
+
+(deftest test-pay-discard-hand-empty-hand-noop
+  (testing "pay-cost :discard-hand with empty hand is a no-op (still succeeds)"
+    (let [db (init-game-state)
+          ;; Move the only card out of hand
+          hand (q/get-hand db :player-1)
+          obj-id (:object/id (first hand))
+          db (d/db-with db (let [eid (d/q '[:find ?e . :in $ ?oid
+                                            :where [?e :object/id ?oid]]
+                                          db obj-id)]
+                             [[:db/add eid :object/zone :battlefield]]))
+          [db perm-id] (add-permanent db :player-1)
+          cost {:discard-hand true}
+          db' (costs/pay-cost db perm-id cost)]
+      (is (some? db')
+          "Should succeed even with empty hand"))))
+
+
+;; === :mana cost tests ===
+
+(deftest test-can-pay-mana-sufficient
+  (testing "can-pay? :mana returns true when controller has sufficient mana"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          ;; Player starts with empty pool, add mana
+          conn (d/conn-from-db db)
+          player-eid (q/get-player-eid db :player-1)
+          _ (d/transact! conn [[:db/add player-eid :player/mana-pool {:black 2 :white 0 :blue 0
+                                                                      :red 0 :green 0 :colorless 0}]])
+          db @conn
+          cost {:mana {:black 1}}]
+      (is (true? (costs/can-pay? db object-id cost))))))
+
+
+(deftest test-can-pay-mana-insufficient
+  (testing "can-pay? :mana returns false when controller lacks mana"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          cost {:mana {:black 1}}]
+      ;; Player starts with 0 black mana
+      (is (false? (costs/can-pay? db object-id cost))))))
+
+
+(deftest test-pay-mana-deducts-from-pool
+  (testing "pay-cost :mana deducts correct amount from controller's pool"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          conn (d/conn-from-db db)
+          player-eid (q/get-player-eid db :player-1)
+          _ (d/transact! conn [[:db/add player-eid :player/mana-pool {:black 3 :white 0 :blue 0
+                                                                      :red 0 :green 0 :colorless 0}]])
+          db @conn
+          cost {:mana {:black 2}}
+          db' (costs/pay-cost db object-id cost)
+          pool-after (q/get-mana-pool db' :player-1)]
+      (is (some? db'))
+      (is (= 1 (:black pool-after))
+          "Should have 1 black mana remaining after paying 2"))))

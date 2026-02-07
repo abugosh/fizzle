@@ -23,7 +23,8 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.zones :as zones]
-    [fizzle.events.game :as events]))
+    [fizzle.events.game :as events]
+    [fizzle.events.selection :as selection]))
 
 
 ;; === Test helpers ===
@@ -69,7 +70,7 @@
         "Deep Analysis should cost {3}{U}"))
 
   (testing "Deep Analysis is a sorcery"
-    (is (contains? (:card/types deep-analysis/deep-analysis) :sorcery)
+    (is (= #{:sorcery} (:card/types deep-analysis/deep-analysis))
         "Deep Analysis should be a sorcery"))
 
   (testing "Deep Analysis has correct cmc"
@@ -77,7 +78,7 @@
         "Deep Analysis should have CMC 4"))
 
   (testing "Deep Analysis is blue"
-    (is (contains? (:card/colors deep-analysis/deep-analysis) :blue)
+    (is (= #{:blue} (:card/colors deep-analysis/deep-analysis))
         "Deep Analysis should be blue")))
 
 
@@ -253,7 +254,7 @@
           [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :hand)
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
           db-cast (rules/cast-spell db :player-1 obj-id)
-          result (events/resolve-spell-with-selection db-cast :player-1 obj-id)]
+          result (selection/resolve-spell-with-selection db-cast :player-1 obj-id)]
       (is (some? (:pending-selection result))
           "Should have pending selection")
       (is (= :player-target (:selection/effect-type (:pending-selection result)))
@@ -265,7 +266,7 @@
 (deftest deep-analysis-finds-any-player-target-test
   (testing "find-selection-effect-index detects :any-player target"
     (let [effects (:card/effects deep-analysis/deep-analysis)
-          idx (events/find-selection-effect-index effects)]
+          idx (selection/find-selection-effect-index effects)]
       (is (= 0 idx)
           "Should find the draw effect at index 0")
       (is (= :any-player (:effect/target (nth effects idx)))
@@ -278,7 +279,7 @@
           [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :hand)
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
           db-cast (rules/cast-spell db :player-1 obj-id)
-          result (events/resolve-spell-with-selection db-cast :player-1 obj-id)
+          result (selection/resolve-spell-with-selection db-cast :player-1 obj-id)
           selection (:pending-selection result)]
       (is (= :player-1 (:selection/player-id selection))
           "Caster should be tracked")
@@ -312,7 +313,7 @@
           [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :hand)
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
           db-cast (rules/cast-spell db :player-1 obj-id)
-          result (events/resolve-spell-with-selection db-cast :player-1 obj-id)
+          result (selection/resolve-spell-with-selection db-cast :player-1 obj-id)
           selection (:pending-selection result)
           target-effect (:selection/target-effect selection)]
       ;; The stored effect should have :any-player target (to be replaced on confirm)
@@ -357,7 +358,7 @@
           [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :graveyard)
           db (mana/add-mana db :player-1 {:colorless 1 :blue 1})
           db-cast (rules/cast-spell db :player-1 obj-id)
-          result (events/resolve-spell-with-selection db-cast :player-1 obj-id)
+          result (selection/resolve-spell-with-selection db-cast :player-1 obj-id)
           ;; Confirm with player target
           selection (assoc (:pending-selection result) :selection/selected-target :player-1)
           app-db {:game/db (:db result)
@@ -426,7 +427,7 @@
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
           ;; Use cast-spell-with-targeting which should return pending-selection
           ;; for cards with :card/targeting
-          result (events/cast-spell-with-targeting db :player-1 obj-id)]
+          result (selection/cast-spell-with-targeting db :player-1 obj-id)]
       ;; Should have pending target selection (not yet on stack)
       (is (some? (:pending-target-selection result))
           "Should return pending target selection for Deep Analysis")
@@ -440,11 +441,11 @@
           [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :hand)
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
           ;; Start casting - get pending selection
-          result (events/cast-spell-with-targeting db :player-1 obj-id)
+          result (selection/cast-spell-with-targeting db :player-1 obj-id)
           selection (assoc (:pending-target-selection result)
                            :selection/selected-target :player-1)
           ;; Confirm the target selection
-          db-after (events/confirm-cast-time-target (:db result) selection)]
+          db-after (selection/confirm-cast-time-target (:db result) selection)]
       ;; Spell should be on stack
       (is (= :stack (:object/zone (q/get-object db-after obj-id)))
           "Spell should be on stack after confirming target")
@@ -462,14 +463,14 @@
           [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :hand)
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
           ;; Cast with targeting flow
-          result (events/cast-spell-with-targeting db :player-1 obj-id)
+          result (selection/cast-spell-with-targeting db :player-1 obj-id)
           selection (assoc (:pending-target-selection result)
                            :selection/selected-target :player-1)
-          db-cast (events/confirm-cast-time-target (:db result) selection)
+          db-cast (selection/confirm-cast-time-target (:db result) selection)
           ;; Count cards before resolution
           initial-hand-count (count (q/get-hand db-cast :player-1))
           ;; Resolve the spell - should use stored target, not prompt
-          resolve-result (events/resolve-spell-with-selection db-cast :player-1 obj-id)]
+          resolve-result (selection/resolve-spell-with-selection db-cast :player-1 obj-id)]
       ;; Should NOT have pending selection (target already chosen at cast time)
       (is (nil? (:pending-selection resolve-result))
           "Should not prompt for target when :object/targets is present")
@@ -488,10 +489,10 @@
           [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :hand)
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
           ;; Cast with targeting flow
-          result (events/cast-spell-with-targeting db :player-1 obj-id)
+          result (selection/cast-spell-with-targeting db :player-1 obj-id)
           selection (assoc (:pending-target-selection result)
                            :selection/selected-target :player-1)
-          db-cast (events/confirm-cast-time-target (:db result) selection)]
+          db-cast (selection/confirm-cast-time-target (:db result) selection)]
       ;; Check that all targets are legal (player targets always are)
       (is (targeting/all-targets-legal? db-cast obj-id)
           "Player targets should always be legal"))))
@@ -503,7 +504,7 @@
           [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :graveyard)
           db (mana/add-mana db :player-1 {:colorless 1 :blue 1})
           ;; Cast via cast-spell-with-targeting (should work from graveyard too)
-          result (events/cast-spell-with-targeting db :player-1 obj-id)]
+          result (selection/cast-spell-with-targeting db :player-1 obj-id)]
       ;; Should have pending target selection
       (is (some? (:pending-target-selection result))
           "Flashback cast should also prompt for target selection")

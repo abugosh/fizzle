@@ -16,7 +16,9 @@
     [fizzle.cards.seal-of-cleansing :as seal]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
-    [fizzle.engine.targeting :as targeting]))
+    [fizzle.engine.stack :as stack]
+    [fizzle.engine.targeting :as targeting]
+    [fizzle.events.abilities :as ability-events]))
 
 
 ;; === Test helpers ===
@@ -111,7 +113,7 @@
         "Seal of Cleansing should cost {1}{W}"))
 
   (testing "Seal of Cleansing is an enchantment"
-    (is (contains? (:card/types seal/seal-of-cleansing) :enchantment)
+    (is (= #{:enchantment} (:card/types seal/seal-of-cleansing))
         "Seal of Cleansing should be an enchantment"))
 
   (testing "Seal of Cleansing has correct cmc"
@@ -119,7 +121,7 @@
         "Seal of Cleansing should have CMC 2"))
 
   (testing "Seal of Cleansing is white"
-    (is (contains? (:card/colors seal/seal-of-cleansing) :white)
+    (is (= #{:white} (:card/colors seal/seal-of-cleansing))
         "Seal of Cleansing should be white")))
 
 
@@ -252,3 +254,41 @@
             "Should find exactly one valid target")
         (is (= seal-id (first targets))
             "Should find Seal of Cleansing as valid target")))))
+
+
+;; === Activation Resolution Flow Test ===
+
+(deftest seal-of-cleansing-activation-resolution-flow-test
+  ;; Bug caught: ability resolution broken
+  (testing "Activate ability targeting enchantment, resolve from stack, verify destroyed"
+    (let [db (init-game-state)
+          ;; Add Seal of Cleansing to battlefield
+          [seal-id db] (add-card-to-zone db :player-1 seal/seal-of-cleansing :battlefield)
+          ;; Add target enchantment to battlefield
+          [target-id db] (add-card-to-zone db :player-1 test-enchantment :battlefield)
+          _ (is (= :battlefield (:object/zone (q/get-object db seal-id)))
+                "Precondition: Seal on battlefield")
+          _ (is (= :battlefield (:object/zone (q/get-object db target-id)))
+                "Precondition: Target enchantment on battlefield")
+          ;; Activate Seal's ability (index 0 = only ability)
+          ;; This should return pending selection for targeting
+          result (ability-events/activate-ability db :player-1 seal-id 0)
+          sel (:pending-selection result)]
+      ;; Should have pending selection for target
+      (is (some? sel)
+          "Should have pending target selection")
+      (is (= :ability-targeting (:selection/type sel))
+          "Selection type should be :ability-targeting")
+      ;; Confirm target selection
+      (let [selection-with-target (assoc sel :selection/selected-target target-id)
+            final-result (ability-events/confirm-ability-target (:db result) selection-with-target)
+            db-after-confirm (:db final-result)]
+        ;; Seal should be sacrificed (cost paid)
+        (is (= :graveyard (:object/zone (q/get-object db-after-confirm seal-id)))
+            "Seal should be in graveyard after sacrifice")
+        ;; Should have stack-item for the ability
+        (let [top-item (stack/get-top-stack-item db-after-confirm)]
+          (is (some? top-item)
+              "Should have activated ability on stack")
+          (is (= :activated-ability (:stack-item/type top-item))
+              "Stack item should be activated ability type"))))))
