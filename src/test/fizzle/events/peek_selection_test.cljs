@@ -104,7 +104,7 @@
           "Should have 3 candidates from top of library")
       (is (= 1 (:selection/select-count result))
           "Should select exactly 1 card")
-      (is (= :peek-and-select (:selection/effect-type result))
+      (is (= :peek-and-select (:selection/type result))
           "Effect type should be :peek-and-select"))))
 
 
@@ -262,7 +262,7 @@
           db (-> (init-game-state)
                  (add-library-cards-with-ids :player-1 obj-ids))
           selected-id (first obj-ids)
-          selection {:selection/effect-type :peek-and-select
+          selection {:selection/type :peek-and-select
                      :selection/selected #{selected-id}
                      :selection/candidates (set obj-ids)
                      :selection/selected-zone :hand
@@ -286,7 +286,7 @@
           remainder-ids (rest obj-ids)
           ;; extra cards start at positions 3, 4 (below peeked cards)
           extra-positions-before (mapv #(get-object-position db %) extra-ids)
-          selection {:selection/effect-type :peek-and-select
+          selection {:selection/type :peek-and-select
                      :selection/selected #{selected-id}
                      :selection/candidates (set obj-ids)
                      :selection/selected-zone :hand
@@ -311,7 +311,7 @@
           db (-> (init-game-state)
                  (add-library-cards-with-ids :player-1 obj-ids))
           original-positions (mapv #(get-object-position db %) obj-ids)
-          selection {:selection/effect-type :peek-and-select
+          selection {:selection/type :peek-and-select
                      :selection/selected #{}  ; Player chose nothing
                      :selection/candidates (set obj-ids)
                      :selection/selected-zone :hand
@@ -340,7 +340,7 @@
           selected-id (first peek-ids)
           remainder-ids (rest peek-ids)
           ;; Select first card for hand, rest go to bottom
-          selection {:selection/effect-type :peek-and-select
+          selection {:selection/type :peek-and-select
                      :selection/selected #{selected-id}
                      :selection/candidates (set peek-ids)
                      :selection/selected-zone :hand

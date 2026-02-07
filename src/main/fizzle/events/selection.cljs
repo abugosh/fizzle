@@ -1,15 +1,15 @@
 (ns fizzle.events.selection
   "Selection state management for player choices during spell/ability resolution.
 
-  Selection Types and Their Keys:
-  ──────────────────────────────
-  1. Tutor (:effect-type :tutor)
+  Selection Types (all use :selection/type as discriminator):
+  ──────────────────────────────────────────────────────────
+  1. Tutor (:type :tutor)
      zone, select-count, exact?, shuffle?, allow-fail-to-find?, candidates, target-zone
 
-  2. Discard (:effect-type :discard)
+  2. Discard (:type :discard)
      zone :hand, select-count, player-id
 
-  3. Cleanup Discard (:effect-type :cleanup-discard)
+  3. Cleanup Discard (:type :cleanup-discard)
      zone :hand, select-count, player-id
 
   4. Graveyard Return (:type :graveyard-return)
@@ -21,17 +21,20 @@
   6. Pile Choice (:type :pile-choice)
      candidates, hand-count, selected, bottom-pile
 
-  7. Peek-and-Select (:effect-type :peek-and-select)
+  7. Peek-and-Select (:type :peek-and-select)
      select-count, candidates
 
-  8. Exile Cards Cost (:effect-type :exile-cards-cost)
+  8. Exile Cards Cost (:type :exile-cards-cost)
      select-count, candidate-ids
 
-  9. X Mana Cost (:effect-type :x-mana-cost)
+  9. X Mana Cost (:type :x-mana-cost)
      max-x, selected-x
 
   10. Targeting (:type :cast-time-targeting / :ability-targeting)
       target-requirement, valid-targets, selected-target
+
+  11. Player Target (:type :player-target)
+      selected-target, target-effect
 
   Common keys (all namespaced :selection/*):
     selected, spell-id, remaining-effects, player-id, source-type, stack-item-eid"
@@ -169,7 +172,7 @@
      :selection/selected #{}
      :selection/spell-id object-id
      :selection/remaining-effects effects-after
-     :selection/effect-type :tutor
+     :selection/type :tutor
      :selection/target-zone target-zone
      :selection/allow-fail-to-find? true  ; Always allow fail-to-find (anti-pattern: NO auto-select)
      :selection/candidates candidate-ids
@@ -276,7 +279,7 @@
                 ;; Actual count is min of requested and available
                 actual-select-count (min select-count (count candidate-ids))]
             {:selection/zone :peek  ; Distinct from :library (tutor)
-             :selection/effect-type :peek-and-select
+             :selection/type :peek-and-select
              :selection/candidates candidate-ids
              :selection/select-count actual-select-count
              :selection/exact? false  ; Can select fewer (fail-to-find)
@@ -312,7 +315,7 @@
         candidate-ids (set (map :object/id candidates))]
     (when (seq candidate-ids)
       {:selection/zone zone
-       :selection/effect-type :exile-cards-cost
+       :selection/type :exile-cards-cost
        :selection/candidates candidate-ids
        :selection/select-count 1  ; Minimum 1, but can select more
        :selection/exact? false    ; Can select any number >= 1
@@ -347,7 +350,7 @@
         ;; Max X is what's left after paying fixed costs
         max-x total-remaining]
     {:selection/zone :mana-pool
-     :selection/effect-type :x-mana-cost
+     :selection/type :x-mana-cost
      :selection/player-id player-id
      :selection/spell-id object-id
      :selection/mode mode
@@ -364,7 +367,7 @@
    :selection/selected #{}
    :selection/spell-id object-id
    :selection/remaining-effects effects-after
-   :selection/effect-type :discard})
+   :selection/type :discard})
 
 
 (defn build-graveyard-selection
@@ -399,7 +402,6 @@
      :selection/selected #{}
      :selection/spell-id object-id
      :selection/remaining-effects effects-after
-     :selection/effect-type :return-from-graveyard
      :selection/candidate-ids candidate-ids}))
 
 
@@ -412,8 +414,7 @@
    :selection/selected-target nil  ; Will be :player-1 or :opponent
    :selection/spell-id object-id
    :selection/target-effect target-effect  ; The effect needing a target
-   :selection/remaining-effects effects-after
-   :selection/effect-type :player-target})
+   :selection/remaining-effects effects-after})
 
 
 ;; =====================================================
@@ -696,7 +697,7 @@
                                      :selection/selected #{}
                                      :selection/spell-id object-id
                                      :selection/remaining-effects effects-after
-                                     :selection/effect-type effect-type})]
+                                     :selection/type effect-type})]
             {:db db-after-before
              :pending-selection pending-selection}))))))
 
@@ -775,8 +776,7 @@
                                      :selection/selected #{}
                                      :selection/stack-item-eid stack-item-eid
                                      :selection/source-type :stack-item
-                                     :selection/remaining-effects effects-after-next
-                                     :selection/effect-type :discard})]
+                                     :selection/remaining-effects effects-after-next})]
             {:db db-after-before-next :pending-selection pending-selection})
           (let [db-after-all (reduce (fn [d effect]
                                        (effects/execute-effect d controller effect))
@@ -822,8 +822,7 @@
                                  :selection/selected #{}
                                  :selection/stack-item-eid stack-item-eid
                                  :selection/source-type :stack-item
-                                 :selection/remaining-effects effects-after
-                                 :selection/effect-type :discard}
+                                 :selection/remaining-effects effects-after}
 
                                 :else nil)]
         {:db db-after-before :pending-selection pending-selection}))))
@@ -1020,7 +1019,6 @@
     (let [selection (get db :game/pending-selection)
           selected (get selection :selection/selected #{})
           selection-type (get selection :selection/type)
-          effect-type (get selection :selection/effect-type)
           ;; Max count depends on selection type
           max-count (cond
                       (= selection-type :pile-choice)
@@ -1034,7 +1032,7 @@
                          (disj selected object-id)
 
                          ;; For single-select tutors (max 1): replace current selection
-                         (and (= effect-type :tutor) (= max-count 1) (not= selection-type :pile-choice))
+                         (and (= selection-type :tutor) (= max-count 1) (not= selection-type :pile-choice))
                          #{object-id}
 
                          ;; Under limit: add to selection
@@ -1053,11 +1051,11 @@
           selected (:selection/selected selection)
           count-required (:selection/select-count selection)
           remaining-effects (:selection/remaining-effects selection)
-          effect-type (:selection/effect-type selection)
+          selection-type (:selection/type selection)
           player-id (:selection/player-id selection)]
       (if (= (count selected) count-required)
         ;; Valid selection - execute the effect on selected cards
-        (if (= effect-type :cleanup-discard)
+        (if (= selection-type :cleanup-discard)
           ;; Cleanup discard: move cards to graveyard, expire grants, no spell cleanup
           (let [game-db (:game/db db)
                 ;; Move selected cards to graveyard
@@ -1074,8 +1072,8 @@
                 (dissoc :game/pending-selection)))
           ;; Normal selection (spell/trigger based)
           (let [game-db (:game/db db)
-                ;; Move selected cards based on effect type
-                db-after-effect (case effect-type
+                ;; Move selected cards based on selection type
+                db-after-effect (case selection-type
                                   :discard (reduce (fn [gdb obj-id]
                                                      (zones/move-to-zone gdb obj-id :graveyard))
                                                    game-db
@@ -1381,8 +1379,7 @@
                                             :selection/select-count (:effect/count next-selection-effect)
                                             :selection/selected #{}
                                             :selection/source-type source-type
-                                            :selection/remaining-effects effects-after-next
-                                            :selection/effect-type :discard}
+                                            :selection/remaining-effects effects-after-next}
                                      spell-id (assoc :selection/spell-id spell-id)
                                      (:selection/stack-item-eid selection)
                                      (assoc :selection/stack-item-eid (:selection/stack-item-eid selection))))]

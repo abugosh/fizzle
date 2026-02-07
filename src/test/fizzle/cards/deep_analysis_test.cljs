@@ -257,7 +257,7 @@
           result (selection/resolve-spell-with-selection db-cast :player-1 obj-id)]
       (is (some? (:pending-selection result))
           "Should have pending selection")
-      (is (= :player-target (:selection/effect-type (:pending-selection result)))
+      (is (= :player-target (:selection/type (:pending-selection result)))
           "Selection type should be :player-target")
       (is (= obj-id (:selection/spell-id (:pending-selection result)))
           "Should track spell id for cleanup"))))

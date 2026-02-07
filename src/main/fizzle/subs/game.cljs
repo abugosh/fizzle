@@ -182,7 +182,6 @@
     (when (and game-db selection)
       (let [player-id (:selection/player-id selection)
             selection-type (:selection/type selection)
-            effect-type (:selection/effect-type selection)
             zone (:selection/zone selection)]
         (cond
           ;; Pile choice: cards from candidates (still in library)
@@ -209,24 +208,24 @@
                  (filterv some?)))
 
           ;; Tutor: library cards filtered to candidates
-          (= effect-type :tutor)
+          (= selection-type :tutor)
           (let [candidates (:selection/candidates selection)
                 library (queries/get-objects-in-zone game-db player-id :library)]
             (filterv #(contains? candidates (:object/id %)) library))
 
           ;; Discard: hand cards
-          (= effect-type :discard)
+          (= selection-type :discard)
           (queries/get-hand game-db player-id)
 
           ;; Exile-cards cost: cards from candidates (graveyard filtered by criteria)
-          (= effect-type :exile-cards-cost)
+          (= selection-type :exile-cards-cost)
           (let [candidates (:selection/candidates selection)]
             (->> candidates
                  (map #(queries/get-object game-db %))
                  (filterv some?)))
 
           ;; Peek-and-select: top N cards from library
-          (= effect-type :peek-and-select)
+          (= selection-type :peek-and-select)
           (let [candidates (:selection/candidates selection)]
             (->> candidates
                  (map #(queries/get-object game-db %))

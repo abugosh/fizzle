@@ -337,7 +337,7 @@
           "should discard 2 cards (9 - 7)")
       (is (= :hand (:selection/zone selection))
           "should select from hand")
-      (is (= :cleanup-discard (:selection/effect-type selection))
+      (is (= :cleanup-discard (:selection/type selection))
           "should have cleanup-discard effect type")
       (is (= :player-1 (:selection/player-id selection))
           "should be for player-1"))))
@@ -418,7 +418,7 @@
           result (game/begin-cleanup db :player-1)]
       (is (some? (:pending-selection result))
           "begin-cleanup should create a pending selection for discard")
-      (is (= :cleanup-discard (:selection/effect-type (:pending-selection result)))
+      (is (= :cleanup-discard (:selection/type (:pending-selection result)))
           "selection should be for cleanup discard")
       (let [cleanup-db (:db result)
             after-advance (game/advance-phase cleanup-db :player-1)]

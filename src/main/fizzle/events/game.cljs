@@ -303,7 +303,7 @@
    :selection/select-count discard-count
    :selection/player-id player-id
    :selection/selected #{}
-   :selection/effect-type :cleanup-discard})
+   :selection/type :cleanup-discard})
 
 
 (defn begin-cleanup

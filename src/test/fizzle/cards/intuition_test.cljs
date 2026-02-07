@@ -178,7 +178,7 @@
       ;; Should have pending selection (tutor)
       (is (some? sel)
           "Should have pending tutor selection")
-      (is (= :tutor (:selection/effect-type sel))
+      (is (= :tutor (:selection/type sel))
           "Selection type should be :tutor")
       ;; With only 2 cards, can only find up to 2
       (is (<= (count (:selection/candidate-ids sel)) 2)

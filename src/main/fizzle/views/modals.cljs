@@ -231,8 +231,8 @@
   (let [selected (:selection/selected selection)
         required-count (:selection/select-count selection)
         current-count (count selected)
-        effect-type (:selection/effect-type selection)
-        is-tutor? (= effect-type :tutor)
+        selection-type (:selection/type selection)
+        is-tutor? (= selection-type :tutor)
         is-multi-select? (and is-tutor? required-count (> required-count 1))
         allow-fail-to-find? (:selection/allow-fail-to-find? selection)
         ;; Validation logic:
@@ -258,7 +258,7 @@
       [:h2 {:style {:color "#eee"
                     :margin "0 0 8px 0"
                     :font-size "18px"}}
-       (case effect-type
+       (case selection-type
          :discard "Select cards to discard"
          :tutor "Search your library"
          "Select cards")]
@@ -770,12 +770,11 @@
         cards @(rf/subscribe [::subs/selection-cards])]
     (when selection
       (let [selection-type (:selection/type selection)
-            effect-type (:selection/effect-type selection)
             ;; For ability/cast-time targeting, check if target is a player
             target-req (:selection/target-requirement selection)
             targets-player? (= :player (:target/type target-req))]
         (cond
-          ;; Scry selection (has :selection/type :scry)
+          ;; Scry selection
           (= selection-type :scry)
           [scry-modal selection]
 
@@ -810,7 +809,7 @@
             :unselected-label "Select a target"}]
 
           ;; Player target selection (for spell effects during resolution)
-          (= effect-type :player-target)
+          (= selection-type :player-target)
           [player-target-modal selection ::selection-events/confirm-player-target-selection]
 
           ;; Graveyard return selection (Ill-Gotten Gains style)
@@ -818,15 +817,15 @@
           [graveyard-selection-modal selection cards]
 
           ;; Exile cards cost selection (Flash of Insight flashback)
-          (= effect-type :exile-cards-cost)
+          (= selection-type :exile-cards-cost)
           [exile-cards-selection-modal selection cards]
 
           ;; X mana cost selection (spells with X in cost)
-          (= effect-type :x-mana-cost)
+          (= selection-type :x-mana-cost)
           [x-mana-selection-modal selection]
 
           ;; Peek-and-select selection (Flash of Insight effect)
-          (= effect-type :peek-and-select)
+          (= selection-type :peek-and-select)
           [peek-selection-modal selection cards]
 
           ;; Card selection (discard, tutor)

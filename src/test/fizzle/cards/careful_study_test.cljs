@@ -228,7 +228,7 @@
       (is (= 2 (get-in result [:pending-selection :selection/select-count]))
           "Selection should require exactly 2 cards")
       ;; Selection type should be :discard
-      (is (= :discard (get-in result [:pending-selection :selection/effect-type]))
+      (is (= :discard (get-in result [:pending-selection :selection/type]))
           "Selection effect type should be :discard")
       ;; Draw effect should have executed (3 cards in hand: 2 drawn + 0 from empty hand after CS cast)
       (is (= 2 (get-hand-count (:db result) :player-1))
@@ -298,7 +298,7 @@
                              :selection/player-id :player-1
                              :selection/selected #{}  ; Empty selection
                              :selection/spell-id (random-uuid)
-                             :selection/effect-type :discard}
+                             :selection/type :discard}
           ;; Selection count mismatch - should not allow confirmation
           selected-count (count (:selection/selected pending-selection))
           required-count (:selection/select-count pending-selection)]
@@ -398,7 +398,7 @@
       ;; Should have pending discard selection
       (is (some? sel)
           "Should have pending discard selection")
-      (is (= :discard (:selection/effect-type sel))
+      (is (= :discard (:selection/type sel))
           "Selection type should be :discard")
       (is (= 2 (:selection/select-count sel))
           "Should require discarding 2 cards")

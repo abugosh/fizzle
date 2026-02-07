@@ -190,7 +190,7 @@
                      :selection/selected #{island-id}
                      :selection/spell-id (random-uuid)
                      :selection/target-zone :battlefield
-                     :selection/effect-type :tutor
+                     :selection/type :tutor
                      :selection/enters-tapped true
                      :selection/allow-fail-to-find? true}
           db-after (selection/execute-tutor-selection db' selection)]
@@ -215,7 +215,7 @@
                      :selection/selected #{island-id}
                      :selection/spell-id (random-uuid)
                      :selection/target-zone :battlefield
-                     :selection/effect-type :tutor
+                     :selection/type :tutor
                      :selection/enters-tapped true
                      :selection/allow-fail-to-find? true}
           db-after (selection/execute-tutor-selection db' selection)]
@@ -234,7 +234,7 @@
                      :selection/selected #{island-id}
                      :selection/spell-id (random-uuid)
                      :selection/target-zone :battlefield
-                     :selection/effect-type :tutor
+                     :selection/type :tutor
                      :selection/enters-tapped false  ; Not tapped
                      :selection/allow-fail-to-find? true}
           db-after (selection/execute-tutor-selection db' selection)]
@@ -253,7 +253,7 @@
                      :selection/selected #{island-id}
                      :selection/spell-id (random-uuid)
                      :selection/target-zone :hand
-                     :selection/effect-type :tutor
+                     :selection/type :tutor
                      :selection/enters-tapped true  ; Should be ignored for hand
                      :selection/allow-fail-to-find? true}
           db-after (selection/execute-tutor-selection db' selection)]
@@ -333,7 +333,7 @@
                      :selection/selected #{}  ; Empty = fail to find
                      :selection/spell-id (random-uuid)
                      :selection/target-zone :battlefield
-                     :selection/effect-type :tutor
+                     :selection/type :tutor
                      :selection/enters-tapped true
                      :selection/allow-fail-to-find? true}
           db-after (selection/execute-tutor-selection db' selection)]
@@ -359,7 +359,7 @@
                      :selection/selected #{island-id}
                      :selection/spell-id (random-uuid)
                      :selection/target-zone :battlefield
-                     :selection/effect-type :tutor
+                     :selection/type :tutor
                      :selection/enters-tapped true
                      :selection/shuffle? true
                      :selection/allow-fail-to-find? true}
@@ -513,7 +513,7 @@
       ;; Should create tutor selection for library search
       (is (some? (:pending-selection resolve-result))
           "Should have pending tutor selection")
-      (is (= :tutor (get-in resolve-result [:pending-selection :selection/effect-type]))
+      (is (= :tutor (get-in resolve-result [:pending-selection :selection/type]))
           "Selection should be tutor type")
       ;; Candidates should include Island and Swamp (match criteria)
       (let [candidates (:selection/candidates (:pending-selection resolve-result))]

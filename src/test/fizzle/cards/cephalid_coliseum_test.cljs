@@ -593,7 +593,7 @@
       ;; Should have pending discard selection (discard 3)
       (is (some? (:pending-selection resolve-result))
           "Should have pending discard selection for 3 cards")
-      (is (= :discard (get-in resolve-result [:pending-selection :selection/effect-type]))
+      (is (= :discard (get-in resolve-result [:pending-selection :selection/type]))
           "Pending selection should be for discard")
       (is (= 3 (get-in resolve-result [:pending-selection :selection/select-count]))
           "Should require discarding 3 cards"))))

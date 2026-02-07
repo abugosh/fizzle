@@ -218,7 +218,7 @@
       (is (some? sel)
           "Should return pending peek-and-select selection state")
       ;; Selection type should be :peek-and-select
-      (is (= :peek-and-select (:selection/effect-type sel))
+      (is (= :peek-and-select (:selection/type sel))
           "Selection effect type should be :peek-and-select")
       ;; Should show 2 candidates (X=2 peek)
       (is (= 2 (count (:selection/candidates sel)))

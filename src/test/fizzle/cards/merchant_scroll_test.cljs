@@ -252,7 +252,7 @@
           result (selection/resolve-spell-with-selection db-after-cast :player-1 ms-id)]
       (is (some? (:pending-selection result))
           "Should return pending selection state")
-      (is (= :tutor (get-in result [:pending-selection :selection/effect-type]))
+      (is (= :tutor (get-in result [:pending-selection :selection/type]))
           "Selection effect type should be :tutor")
       (is (= :library (get-in result [:pending-selection :selection/zone]))
           "Selection zone should be :library")
@@ -278,7 +278,7 @@
                      :selection/selected #{}  ; Empty = fail to find
                      :selection/spell-id (random-uuid)
                      :selection/target-zone :hand
-                     :selection/effect-type :tutor
+                     :selection/type :tutor
                      :selection/allow-fail-to-find? true}
           db-after (selection/execute-tutor-selection db' selection)]
       ;; Hand should not change
@@ -303,7 +303,7 @@
                      :selection/selected #{bf-id}
                      :selection/spell-id (random-uuid)
                      :selection/target-zone :hand
-                     :selection/effect-type :tutor
+                     :selection/type :tutor
                      :selection/allow-fail-to-find? true}
           db-after (selection/execute-tutor-selection db' selection)]
       ;; Brain Freeze should be in hand
@@ -332,7 +332,7 @@
                      :selection/selected #{bf-id}
                      :selection/spell-id (random-uuid)
                      :selection/target-zone :hand
-                     :selection/effect-type :tutor
+                     :selection/type :tutor
                      :selection/allow-fail-to-find? true}
           db-after (selection/execute-tutor-selection db' selection)]
       ;; Brain Freeze should be in hand (moved before shuffle)
