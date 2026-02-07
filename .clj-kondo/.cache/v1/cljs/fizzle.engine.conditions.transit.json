@@ -1,1 +1,0 @@
-["^ ","~$threshold?",["^ ","~:row",10,"~:col",1,"~:fixed-arities",["~#set",[2]],"~:name","^0","~:ns","~$fizzle.engine.conditions","~:top-ns","^7","~:arities",["^ ","~i2",["^ ","~:ret","~:boolean"]],"~:type","~:fn"],"~:filename","src/main/fizzle/engine/conditions.cljs"]

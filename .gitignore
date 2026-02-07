@@ -16,6 +16,7 @@ out/
 .lein-*
 .nrepl-*
 .DS_Store
+.clj-kondo/.cache/
 
 .hgignore
 .hg/
