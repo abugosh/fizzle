@@ -165,8 +165,9 @@
   "Start casting a spell with a specific mode.
    Checks for X costs and targeting before actually casting.
    Returns updated app-db."
-  [app-db game-db player-id object-id mode]
-  (let [obj (queries/get-object game-db object-id)
+  [app-db player-id object-id mode]
+  (let [game-db (:game/db app-db)
+        obj (queries/get-object game-db object-id)
         card (:object/card obj)
         targeting-reqs (targeting/get-targeting-requirements card)]
     (cond
@@ -207,27 +208,27 @@
   "Handle cast-spell event: check casting modes and either auto-cast,
    show mode selector, or initiate casting with X cost/targeting checks.
    Pure function: (app-db) -> app-db"
-  [db]
-  (let [game-db (:game/db db)
-        selected (:game/selected-card db)]
+  [app-db]
+  (let [game-db (:game/db app-db)
+        selected (:game/selected-card app-db)]
     (if (and selected (rules/can-cast? game-db :player-1 selected))
       (let [modes (rules/get-casting-modes game-db :player-1 selected)
             castable-modes (filterv #(rules/can-cast-mode? game-db :player-1 selected %) modes)]
         (cond
           ;; No castable modes - shouldn't happen if can-cast? passed
           (empty? castable-modes)
-          db
+          app-db
 
           ;; Multiple modes: show selector first (X costs/targeting checked after mode selection)
           (> (count castable-modes) 1)
-          (assoc db :game/pending-mode-selection
+          (assoc app-db :game/pending-mode-selection
                  {:object-id selected
                   :modes castable-modes})
 
           ;; Single mode: check for X costs, targeting, then cast
           :else
-          (initiate-cast-with-mode db game-db :player-1 selected (first castable-modes))))
-      db)))
+          (initiate-cast-with-mode app-db :player-1 selected (first castable-modes))))
+      app-db)))
 
 
 (rf/reg-event-db
@@ -712,15 +713,14 @@
   "Handle select-casting-mode event: cast spell with the chosen mode.
    Clears pending mode selection and initiates cast with X cost/targeting checks.
    Pure function: (app-db, mode) -> app-db"
-  [db mode]
-  (let [game-db (:game/db db)
-        pending (:game/pending-mode-selection db)
+  [app-db mode]
+  (let [pending (:game/pending-mode-selection app-db)
         object-id (:object-id pending)]
     (if (and pending object-id mode)
       ;; Use initiate-cast-with-mode to handle X costs, targeting, and casting
-      (-> (initiate-cast-with-mode db game-db :player-1 object-id mode)
+      (-> (initiate-cast-with-mode app-db :player-1 object-id mode)
           (dissoc :game/pending-mode-selection))
-      db)))
+      app-db)))
 
 
 (rf/reg-event-db
@@ -732,8 +732,8 @@
 (defn cancel-mode-selection-handler
   "Handle cancel-mode-selection event: clear pending mode selection state.
    Pure function: (app-db) -> app-db"
-  [db]
-  (dissoc db :game/pending-mode-selection))
+  [app-db]
+  (dissoc app-db :game/pending-mode-selection))
 
 
 (rf/reg-event-db

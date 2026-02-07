@@ -57,14 +57,14 @@
   "Remove the stack-item for a spell after resolution.
    Looks up the stack-item by the spell's object EID and removes it.
    Returns updated db. Safe to call when no stack-item exists."
-  [db spell-id]
+  [game-db spell-id]
   (let [obj-eid (d/q '[:find ?e .
                        :in $ ?oid
                        :where [?e :object/id ?oid]]
-                     db spell-id)]
-    (if-let [si (when obj-eid (stack/get-stack-item-by-object-ref db obj-eid))]
-      (stack/remove-stack-item db (:db/id si))
-      db)))
+                     game-db spell-id)]
+    (if-let [si (when obj-eid (stack/get-stack-item-by-object-ref game-db obj-eid))]
+      (stack/remove-stack-item game-db (:db/id si))
+      game-db)))
 
 
 ;; =====================================================
@@ -153,10 +153,10 @@
    Supports multi-select via :effect/select-count (default 1 for backwards compat).
    Actual selection count = min(select-count, candidate-count).
    When select-count > 1, :selection/exact? is true (must select exactly that many)."
-  [db player-id object-id tutor-effect effects-after]
+  [game-db player-id object-id tutor-effect effects-after]
   (let [criteria (:effect/criteria tutor-effect)
         target-zone (or (:effect/target-zone tutor-effect) :hand)
-        matching-objs (queries/query-library-by-criteria db player-id criteria)
+        matching-objs (queries/query-library-by-criteria game-db player-id criteria)
         candidate-ids (set (map :object/id matching-objs))
         ;; Multi-select support: default to 1 for backwards compat
         effect-select-count (max 1 (or (:effect/select-count tutor-effect) 1))
@@ -230,10 +230,10 @@
   "Build pending selection state for a scry effect.
    Reveals top N cards from library for player to arrange.
    Returns nil if library is empty or amount <= 0 (no selection needed)."
-  [db player-id object-id scry-effect effects-after]
+  [game-db player-id object-id scry-effect effects-after]
   (let [amount (or (:effect/amount scry-effect) 0)]
     (when (pos? amount)
-      (let [library-cards (queries/get-top-n-library db player-id amount)]
+      (let [library-cards (queries/get-top-n-library game-db player-id amount)]
         (when (seq library-cards)
           {:selection/type :scry
            :selection/player-id player-id
@@ -250,7 +250,7 @@
    Returns nil if library is empty or count <= 0 (no selection needed).
 
    Arguments:
-     db - Datascript game database
+     game-db - Datascript game database
      player-id - Player performing the peek
      object-id - Spell-id for cleanup after selection confirmed
      effect - The :peek-and-select effect map with:
@@ -262,14 +262,14 @@
      effects-after - Remaining effects to execute after selection
 
    Anti-pattern: NO auto-select even with 1 card. Player must choose or fail-to-find."
-  [db player-id object-id effect effects-after]
+  [game-db player-id object-id effect effects-after]
   (let [effect-count (:effect/count effect)
         ;; Resolve :x from spell's stored X value
         peek-count (if (= effect-count :x)
-                     (or (:object/x-value (queries/get-object db object-id)) 0)
+                     (or (:object/x-value (queries/get-object game-db object-id)) 0)
                      (or effect-count 0))]
     (when (pos? peek-count)
-      (let [library-cards (queries/get-top-n-library db player-id peek-count)]
+      (let [library-cards (queries/get-top-n-library game-db player-id peek-count)]
         (when (seq library-cards)
           (let [candidate-ids (set library-cards)
                 select-count (or (:effect/select-count effect) 1)
@@ -295,18 +295,18 @@
    Player selects which cards to exile (1 or more), and the count becomes X.
 
    Arguments:
-     db - Datascript game database
+     game-db - Datascript game database
      player-id - Player casting the spell
      object-id - Spell being cast
      mode - Casting mode with :exile-cards cost
      exile-cost - The :exile-cards cost map
 
    Returns selection state for choosing cards to exile."
-  [db player-id object-id mode exile-cost]
+  [game-db player-id object-id mode exile-cost]
   (let [zone (:cost/zone exile-cost)
         criteria (:cost/criteria exile-cost)
         ;; Get available cards matching criteria
-        available (queries/query-zone-by-criteria db player-id zone criteria)
+        available (queries/query-zone-by-criteria game-db player-id zone criteria)
         ;; Exclude the spell being cast (can't exile itself)
         candidates (filterv #(not= object-id (:object/id %)) available)
         candidate-ids (set (map :object/id candidates))]
@@ -329,14 +329,14 @@
    Player selects how much to pay for X.
 
    Arguments:
-     db - Datascript game database
+     game-db - Datascript game database
      player-id - Player casting the spell
      object-id - Spell being cast
      mode - Casting mode with X in mana cost
 
    Returns selection state for choosing X value."
-  [db player-id object-id mode]
-  (let [pool (queries/get-mana-pool db player-id)
+  [game-db player-id object-id mode]
+  (let [pool (queries/get-mana-pool game-db player-id)
         mana-cost (:mode/mana-cost mode)
         ;; Fixed costs (non-X portion)
         fixed-colorless (get mana-cost :colorless 0)
@@ -373,7 +373,7 @@
    Player can select 0 to :effect/count cards.
 
    Arguments:
-     db - Datascript game database
+     game-db - Datascript game database
      player-id - Caster's player-id (used to resolve :self target)
      object-id - Spell-id for cleanup after selection confirmed
      effect - The :return-from-graveyard effect map with:
@@ -383,13 +383,13 @@
      effects-after - Vector of effects to execute after selection
 
    Returns selection state map for UI to render graveyard selection."
-  [db player-id object-id effect effects-after]
+  [game-db player-id object-id effect effects-after]
   (let [target (get effect :effect/target player-id)
         target-player (cond
-                        (= target :opponent) (queries/get-opponent-id db player-id)
+                        (= target :opponent) (queries/get-opponent-id game-db player-id)
                         (= target :self) player-id
                         :else target)
-        gy-cards (or (queries/get-objects-in-zone db target-player :graveyard) [])
+        gy-cards (or (queries/get-objects-in-zone game-db target-player :graveyard) [])
         candidate-ids (set (map :object/id gy-cards))]
     {:selection/type :graveyard-return
      :selection/zone :graveyard
@@ -425,7 +425,7 @@
    Pure function: (db, selection) -> db
 
    Arguments:
-     db - Datascript game database (not app-db)
+     game-db - Datascript game database (not app-db)
      selection - Selection state map with:
        :selection/selected - Set of object-ids (1 or more for multi-select tutor)
        :selection/target-zone - Zone to move cards to (:hand for Merchant Scroll, :battlefield for fetchlands)
@@ -438,7 +438,7 @@
      - Cards selected: Moves ALL to target zone, sets tapped if needed, then shuffles ONCE
 
    CRITICAL: Move ALL cards BEFORE shuffle (anti-pattern: NO shuffling between moves)"
-  [db selection]
+  [game-db selection]
   (let [selected (:selection/selected selection)
         target-zone (:selection/target-zone selection)
         player-id (:selection/player-id selection)
@@ -448,13 +448,13 @@
     (if (empty? selected)
       ;; Fail-to-find: just shuffle
       (if should-shuffle?
-        (zones/shuffle-library db player-id)
-        db)
+        (zones/shuffle-library game-db player-id)
+        game-db)
       ;; Cards found: move ALL to target zone, set tapped if needed, then shuffle ONCE
       (let [;; Move all selected cards to target zone
             db-after-moves (reduce (fn [d card-id]
                                      (zones/move-to-zone d card-id target-zone))
-                                   db
+                                   game-db
                                    selected)
             ;; If entering battlefield tapped, set tapped state for all moved cards
             db-after-tapped (if enters-tapped?
@@ -478,7 +478,7 @@
    Pure function: (db, selection) -> db
 
    Arguments:
-     db - Datascript game database (not app-db)
+     game-db - Datascript game database (not app-db)
      selection - Peek selection state with:
        :selection/selected - Set of object-ids going to hand
        :selection/candidates - Set of all object-ids that were peeked
@@ -491,7 +491,7 @@
      - Empty selection (fail-to-find): All candidates go to bottom
      - Cards selected: Selected go to hand, rest go to bottom
      - Remainder shuffling: If shuffle-remainder? true, randomize bottom order"
-  [db selection]
+  [game-db selection]
   (let [selected (:selection/selected selection)
         candidates (:selection/candidates selection)
         remainder (set/difference candidates selected)
@@ -501,7 +501,7 @@
         ;; Move selected cards to hand
         db-after-selected (reduce (fn [d card-id]
                                     (zones/move-to-zone d card-id selected-zone))
-                                  db
+                                  game-db
                                   selected)
         ;; Get max position in library to put remainder at bottom
         ;; Cards in library after removing selected ones
@@ -532,21 +532,21 @@
    Pure function: (db, selection) -> db
 
    Arguments:
-     db - Datascript game database (not app-db)
+     game-db - Datascript game database (not app-db)
      selection - Pile choice selection state with:
        :selection/selected - Set of object-ids going to hand
        :selection/candidates - Set of all object-ids in pile choice
 
    Note: Does NOT shuffle library. Shuffle happens in confirm-pile-choice-selection
    after all pile choice operations are complete."
-  [db selection]
+  [game-db selection]
   (let [hand-selected (:selection/selected selection)
         all-candidates (:selection/candidates selection)
         graveyard-cards (set/difference all-candidates hand-selected)
         ;; Move selected cards to hand
         db-after-hand (reduce (fn [d card-id]
                                 (zones/move-to-zone d card-id :hand))
-                              db
+                              game-db
                               hand-selected)
         ;; Move remaining to graveyard
         db-after-graveyard (reduce (fn [d card-id]
@@ -591,13 +591,13 @@
    Handles two types of selection:
    - :discard with :selection :player - player chooses cards to discard
    - :tutor - player searches library for matching card (with fail-to-find)"
-  [db player-id object-id]
-  (let [obj (queries/get-object db object-id)]
+  [game-db player-id object-id]
+  (let [obj (queries/get-object game-db object-id)]
     (if (not= :stack (:object/zone obj))
-      {:db db :pending-selection nil}  ; No-op if spell not on stack
+      {:db game-db :pending-selection nil}  ; No-op if spell not on stack
       (let [card (:object/card obj)
             stored-targets (:object/targets obj)
-            effects-list (or (rules/get-active-effects db player-id card object-id) [])
+            effects-list (or (rules/get-active-effects game-db player-id card object-id) [])
             selection-idx (find-selection-effect-index effects-list)
             ;; Check if stored targets can satisfy the selection effect
             has-stored-player-target (and stored-targets
@@ -614,18 +614,18 @@
           (let [cast-mode (:object/cast-mode obj)
                 destination (or (:mode/on-resolve cast-mode) :graveyard)]
             ;; Fizzle check: if any target is no longer legal, skip effects
-            (if (targeting/all-targets-legal? db object-id)
+            (if (targeting/all-targets-legal? game-db object-id)
               ;; Targets legal - resolve normally with stored targets
               (let [resolved-effects (mapv #(resolve-effect-with-stored-target % stored-targets) effects-list)
                     db-after-effects (reduce (fn [d effect]
                                                (effects/execute-effect d player-id effect))
-                                             db
+                                             game-db
                                              resolved-effects)
                     db-final (zones/move-to-zone db-after-effects object-id destination)]
                 {:db db-final
                  :pending-selection nil})
               ;; Fizzle: targets invalid, skip effects, move spell off stack
-              {:db (zones/move-to-zone db object-id destination)
+              {:db (zones/move-to-zone game-db object-id destination)
                :pending-selection nil}))
 
           ;; Cast-time targeting with object target (e.g., Recoup): check fizzle, resolve with object-id
@@ -633,17 +633,17 @@
           (let [cast-mode (:object/cast-mode obj)
                 destination (or (:mode/on-resolve cast-mode) :graveyard)]
             ;; Fizzle check: if any target is no longer legal, skip effects
-            (if (targeting/all-targets-legal? db object-id)
+            (if (targeting/all-targets-legal? game-db object-id)
               ;; Targets legal - resolve with object-id for effects that need stored targets
-              {:db (rules/resolve-spell db player-id object-id)
+              {:db (rules/resolve-spell game-db player-id object-id)
                :pending-selection nil}
               ;; Fizzle: targets invalid, skip effects, move spell off stack
-              {:db (zones/move-to-zone db object-id destination)
+              {:db (zones/move-to-zone game-db object-id destination)
                :pending-selection nil}))
 
           ;; No selection effect and no stored targets - resolve normally
           (nil? selection-idx)
-          {:db (rules/resolve-spell db player-id object-id)
+          {:db (rules/resolve-spell game-db player-id object-id)
            :pending-selection nil}
 
           ;; Has selection effect without stored targets - pause for selection
@@ -654,7 +654,7 @@
                 ;; Execute effects before selection (pass object-id for effects like :exile-self)
                 db-after-before (reduce (fn [d effect]
                                           (effects/execute-effect d player-id effect object-id))
-                                        db
+                                        game-db
                                         effects-before)
                 ;; Build selection state based on effect type or target type
                 pending-selection (cond
@@ -710,19 +710,19 @@
    Handles 2 source types:
    - :stack-item → remove the stack-item entity
    - nil/spell → move spell to destination zone + remove stack-item"
-  [db selection]
+  [game-db selection]
   (let [source-type (:selection/source-type selection)]
     (if (= source-type :stack-item)
       (let [si-eid (:selection/stack-item-eid selection)]
-        (stack/remove-stack-item db si-eid))
+        (stack/remove-stack-item game-db si-eid))
       (let [spell-id (:selection/spell-id selection)
-            spell-obj (queries/get-object db spell-id)
+            spell-obj (queries/get-object game-db spell-id)
             current-zone (:object/zone spell-obj)
             db-after-move (if (= current-zone :stack)
                             (let [cast-mode (:object/cast-mode spell-obj)
                                   destination (or (:mode/on-resolve cast-mode) :graveyard)]
-                              (zones/move-to-zone db spell-id destination))
-                            db)]
+                              (zones/move-to-zone game-db spell-id destination))
+                            game-db)]
         (remove-spell-stack-item db-after-move spell-id)))))
 
 
@@ -735,11 +735,11 @@
    Uses resolve-effect-target for all target resolution.
 
    Arguments:
-     db - Datascript database
+     game-db - Datascript database
      stack-item - Stack-item entity map with :stack-item/* attributes
 
    Returns {:db db :pending-selection selection-or-nil}"
-  [db stack-item]
+  [game-db stack-item]
   (let [controller (:stack-item/controller stack-item)
         source-id (:stack-item/source stack-item)
         stack-item-eid (:db/id stack-item)
@@ -759,7 +759,7 @@
             db-after-before (reduce (fn [d effect]
                                       (effects/execute-effect d controller
                                                               (stack/resolve-effect-target effect source-id controller nil)))
-                                    db effects-before)
+                                    game-db effects-before)
             db-after-player-effect (effects/execute-effect db-after-before controller resolved-player-effect)
             next-selection-idx (find-selection-effect-index effects-after)]
         (if next-selection-idx
@@ -789,7 +789,7 @@
                                (fn [d effect]
                                  (let [resolved (stack/resolve-effect-target effect source-id controller stored-targets)]
                                    (effects/execute-effect d controller resolved source-id)))
-                               db effects-list)]
+                               game-db effects-list)]
         {:db db-after-effects :pending-selection nil})
 
       ;; Has selection effect without stored targets
@@ -799,7 +799,7 @@
             db-after-before (reduce (fn [d effect]
                                       (effects/execute-effect d controller
                                                               (stack/resolve-effect-target effect source-id controller nil)))
-                                    db effects-before)
+                                    game-db effects-before)
             pending-selection (cond
                                 (= :any-player (:effect/target selection-effect))
                                 (-> (build-player-target-selection controller stack-item-eid
@@ -839,13 +839,13 @@
    bottom-pile cards go to last positions (click order)
    Unassigned cards from selection stay at original relative positions.
    Cards not in scry selection are unaffected."
-  [db player-id selection]
+  [game-db player-id selection]
   (let [scry-card-ids (set (:selection/cards selection))
         top-pile (vec (or (:selection/top-pile selection) []))
         bottom-pile (vec (or (:selection/bottom-pile selection) []))
         assigned-ids (into (set top-pile) bottom-pile)
         ;; Get all library objects sorted by current position
-        library-objs (->> (queries/get-objects-in-zone db player-id :library)
+        library-objs (->> (queries/get-objects-in-zone game-db player-id :library)
                           (sort-by :object/position))
         ;; Separate scry cards from non-scry cards
         non-scry-objs (remove #(scry-card-ids (:object/id %)) library-objs)
@@ -868,11 +868,11 @@
                          (let [obj-eid (d/q '[:find ?e .
                                               :in $ ?oid
                                               :where [?e :object/id ?oid]]
-                                            db obj-id)]
+                                            game-db obj-id)]
                            (when obj-eid
                              [:db/add obj-eid :object/position idx])))
                        new-order)]
-    (d/db-with db (filterv some? position-txs))))
+    (d/db-with game-db (filterv some? position-txs))))
 
 
 (defn confirm-scry-selection
@@ -913,15 +913,15 @@
    Used when a spell has :card/targeting requirements.
 
    Arguments:
-     db - Datascript database
+     game-db - Datascript database
      player-id - Casting player
      object-id - Spell being cast
      mode - Casting mode being used
      target-req - First targeting requirement (player target for now)
 
    Returns selection state map."
-  [db player-id object-id mode target-req]
-  (let [valid-targets (targeting/find-valid-targets db player-id target-req)]
+  [game-db player-id object-id mode target-req]
+  (let [valid-targets (targeting/find-valid-targets game-db player-id target-req)]
     {:selection/type :cast-time-targeting
      :selection/player-id player-id
      :selection/object-id object-id
@@ -944,28 +944,28 @@
    - Spell immediately goes to stack via rules/cast-spell
 
    Arguments:
-     db - Datascript database
+     game-db - Datascript database
      player-id - Casting player
      object-id - Object to cast"
-  [db player-id object-id]
-  (let [obj (queries/get-object db object-id)
+  [game-db player-id object-id]
+  (let [obj (queries/get-object game-db object-id)
         card (:object/card obj)
         targeting-reqs (targeting/get-targeting-requirements card)
-        modes (rules/get-casting-modes db player-id object-id)
+        modes (rules/get-casting-modes game-db player-id object-id)
         ;; Pick best mode (primary if available, else first)
         primary (first (filter #(= :primary (:mode/id %)) modes))
         mode (or primary (first modes))]
     (if (and (seq targeting-reqs)
-             (rules/can-cast-mode? db player-id object-id mode))
+             (rules/can-cast-mode? game-db player-id object-id mode))
       ;; Has targeting - pause for target selection
       (let [first-req (first targeting-reqs)
-            selection (build-cast-time-target-selection db player-id object-id mode first-req)]
-        {:db db
+            selection (build-cast-time-target-selection game-db player-id object-id mode first-req)]
+        {:db game-db
          :pending-target-selection selection})
       ;; No targeting - cast normally
-      {:db (if (rules/can-cast? db player-id object-id)
-             (rules/cast-spell db player-id object-id)
-             db)
+      {:db (if (rules/can-cast? game-db player-id object-id)
+             (rules/cast-spell game-db player-id object-id)
+             game-db)
        :pending-target-selection nil})))
 
 
@@ -977,11 +977,11 @@
    3. Stores the selected target on the object as :object/targets
 
    Arguments:
-     db - Datascript database
+     game-db - Datascript database
      selection - Cast-time target selection state with :selection/selected-target set
 
    Returns updated db with spell on stack and target stored."
-  [db selection]
+  [game-db selection]
   (let [player-id (:selection/player-id selection)
         object-id (:selection/object-id selection)
         mode (:selection/mode selection)
@@ -991,7 +991,7 @@
     (if selected-target
       ;; Cast spell and store target
       (let [;; Cast via rules/cast-spell-mode (pays costs, moves to stack)
-            db-after-cast (rules/cast-spell-mode db player-id object-id mode)
+            db-after-cast (rules/cast-spell-mode game-db player-id object-id mode)
             ;; Store the target on the object
             obj-eid (d/q '[:find ?e .
                            :in $ ?oid
@@ -1001,7 +1001,7 @@
                                       [[:db/add obj-eid :object/targets {target-id selected-target}]])]
         db-with-target)
       ;; No target selected - return unchanged
-      db)))
+      game-db)))
 
 
 ;; =====================================================
