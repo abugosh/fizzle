@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@theme {
+  /* Surface colors */
+  --color-surface: #0d0d1a;
+  --color-surface-raised: #1a1a2a;
+  --color-surface-hover: #2a2a3a;
+
+  /* Border colors */
+  --color-border: #555;
+  --color-border-accent: #4A9BD9;
+  --color-border-selected: #FFD700;
+
+  /* Text colors */
+  --color-text: #eee;
+  --color-text-muted: #AAA;
+
+  /* Accent colors */
+  --color-accent: #4A9BD9;
+  --color-gold: #FFD700;
+
+  /* MTG mana colors */
+  --color-mana-white: #FFF;
+  --color-mana-blue: #4A9BD9;
+  --color-mana-black: #A080C0;
+  --color-mana-red: #D9534F;
+  --color-mana-green: #5CB85C;
+  --color-mana-colorless: #AAA;
+}

@@ -7,7 +7,12 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
     "clj-kondo": "^2025.10.23",
-    "shadow-cljs": "3.3.5"
+    "concurrently": "^9.2.1",
+    "postcss": "^8.5.6",
+    "postcss-cli": "^11.0.1",
+    "shadow-cljs": "3.3.5",
+    "tailwindcss": "^4.1.18"
   }
 }

@@ -1,4 +1,4 @@
-.PHONY: repl dev test clean help lint fmt-check fmt validate
+.PHONY: repl dev test clean help lint fmt-check fmt validate build-css
 
 # Detect Java - try common locations
 JAVA_HOME ?= $(shell \
@@ -15,7 +15,7 @@ help:
 	@echo "Fizzle Development Commands"
 	@echo ""
 	@echo "  make repl      - Start ClojureScript REPL (node)"
-	@echo "  make dev       - Start browser dev server"
+	@echo "  make dev       - Start browser dev server + Tailwind watcher"
 	@echo "  make test      - Run all tests"
 	@echo "  make lint      - Run clj-kondo linter"
 	@echo "  make fmt-check - Check code formatting"
@@ -27,13 +27,19 @@ repl:
 	npx shadow-cljs node-repl
 
 dev:
-	npx shadow-cljs watch app
+	npx concurrently --kill-others \
+	  "npx shadow-cljs watch app" \
+	  "npx postcss src/css/app.css -o resources/public/css/app.css --watch"
 
 test:
 	npx shadow-cljs compile test && node out/test.js
 
+build-css:
+	mkdir -p resources/public/css
+	npx postcss src/css/app.css -o resources/public/css/app.css
+
 clean:
-	rm -rf out/ .shadow-cljs/ resources/public/js/
+	rm -rf out/ .shadow-cljs/ resources/public/js/ resources/public/css/
 
 lint:
 	npx clj-kondo --lint src/
