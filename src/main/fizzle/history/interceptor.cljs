@@ -1,24 +1,23 @@
 (ns fizzle.history.interceptor
   (:require
-    [clojure.string :as str]
     [fizzle.db.queries :as queries]
     [fizzle.history.core :as history]
     [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
 
 
-(def ^:private history-event-ns
-  "Namespace prefix for history navigation events that should NOT be recorded."
-  "fizzle.history")
-
-
-(defn- history-event?
-  "Returns true if this event is a history navigation event (step, switch, etc.)
-   that should not create new history entries."
-  [event-id]
-  (and (keyword? event-id)
-       (some-> (namespace event-id)
-               (str/starts-with? history-event-ns))))
+(def ^:private priority-events
+  "Events that represent player priority actions and should create history entries.
+   Mid-resolution choices (selections, targeting, mode picks) are excluded so that
+   stepping back always lands on a state where the player can act."
+  #{:fizzle.events.game/init-game
+    :fizzle.events.game/cast-spell
+    :fizzle.events.game/resolve-top
+    :fizzle.events.game/advance-phase
+    :fizzle.events.game/start-turn
+    :fizzle.events.game/play-land
+    :fizzle.events.abilities/activate-mana-ability
+    :fizzle.events.abilities/activate-ability})
 
 
 (defn- get-turn
@@ -46,7 +45,7 @@
     :after (fn [context]
              (let [event (get-in context [:coeffects :event])
                    event-id (first event)]
-               (if (history-event? event-id)
+               (if-not (priority-events event-id)
                  context
                  (let [pre-game-db (get-in context [:coeffects :history/pre-game-db])
                        db-after (get-in context [:effects :db])

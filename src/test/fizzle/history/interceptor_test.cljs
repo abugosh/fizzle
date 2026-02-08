@@ -64,7 +64,7 @@
           pre-db (make-db-with-history same-db)
           ;; Post-db has same game-db reference
           post-db (make-db-with-history same-db)
-          event [:fizzle.events.game/select-card :obj-1]
+          event [:fizzle.events.game/cast-spell]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])]
@@ -72,18 +72,21 @@
           "No entry should be appended when game-db unchanged"))))
 
 
-(deftest test-after-skips-history-events
-  (testing "Events in fizzle.history namespace are not recorded"
+(deftest test-after-skips-non-priority-events
+  (testing "Non-priority events are not recorded even if they change game-db"
     (let [old-game-db :db-old
           new-game-db :db-new
           pre-db (make-db-with-history old-game-db)
-          post-db (make-db-with-history new-game-db)
-          event [:fizzle.history.events/step-to 3]
-          context (make-context pre-db post-db event)
-          result (run-interceptor context)
-          result-db (get-in result [:effects :db])]
-      (is (zero? (count (:history/main result-db)))
-          "History events should not create entries"))))
+          post-db (make-db-with-history new-game-db)]
+      (doseq [event [[:fizzle.history.events/step-to 3]
+                     [:fizzle.events.selection/confirm-selection]
+                     [:fizzle.events.game/select-card :obj-1]
+                     [:fizzle.events.selection/confirm-tutor-selection]]]
+        (let [context (make-context pre-db post-db event)
+              result (run-interceptor context)
+              result-db (get-in result [:effects :db])]
+          (is (zero? (count (:history/main result-db)))
+              (str (first event) " should not create entries")))))))
 
 
 (deftest test-after-auto-forks-when-not-at-tip
@@ -142,17 +145,26 @@
       (is (= "Start new turn" (:entry/description entry))))))
 
 
-(deftest test-fallback-description-for-unknown-event
-  (testing "Entry uses (name event-id) as fallback when describe-event returns nil"
-    (let [pre-db (make-db-with-history :db-old)
-          post-db (make-db-with-history :db-new)
-          event [:fizzle.events.game/some-new-event]
-          context (make-context pre-db post-db event)
-          result (run-interceptor context)
-          result-db (get-in result [:effects :db])
-          entry (first (:history/main result-db))]
-      (is (= "some-new-event" (:entry/description entry))
-          "Should fall back to event keyword name"))))
+(deftest test-priority-events-all-have-descriptions
+  (testing "All priority events produce named descriptions (not fallback)"
+    (doseq [event [[:fizzle.events.game/cast-spell]
+                   [:fizzle.events.game/resolve-top]
+                   [:fizzle.events.game/advance-phase]
+                   [:fizzle.events.game/start-turn]
+                   [:fizzle.events.game/play-land :obj-1]
+                   [:fizzle.events.game/init-game]
+                   [:fizzle.events.abilities/activate-mana-ability :obj-1 :black]
+                   [:fizzle.events.abilities/activate-ability :obj-1 0]]]
+      (let [pre-db (make-db-with-history :db-old)
+            post-db (make-db-with-history :db-new)
+            context (make-context pre-db post-db event)
+            result (run-interceptor context)
+            result-db (get-in result [:effects :db])
+            entry (first (:history/main result-db))]
+        (is (string? (:entry/description entry))
+            (str (first event) " should have a description"))
+        (is (not= (name (first event)) (:entry/description entry))
+            (str (first event) " should not use fallback name"))))))
 
 
 (deftest test-init-game-creates-first-entry
@@ -167,7 +179,9 @@
       (is (= 1 (count (:history/main result-db)))
           "First entry should be appended")
       (is (= 0 (:history/position result-db))
-          "Position should be 0 after first entry"))))
+          "Position should be 0 after first entry")
+      (is (= "Game started" (:entry/description (first (:history/main result-db))))
+          "Should have a description"))))
 
 
 (deftest test-after-skips-when-no-db-in-effects

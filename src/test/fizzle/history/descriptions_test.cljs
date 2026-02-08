@@ -16,22 +16,15 @@
 (deftest test-ability-events-have-descriptions
   (testing "Ability events return non-nil description strings"
     (is (string? (descriptions/describe-event [:fizzle.events.abilities/activate-mana-ability :obj-1 :black])))
-    (is (string? (descriptions/describe-event [:fizzle.events.abilities/activate-ability :obj-1 0])))
-    (is (string? (descriptions/describe-event [:fizzle.events.abilities/confirm-ability-target :target-1])))))
+    (is (string? (descriptions/describe-event [:fizzle.events.abilities/activate-ability :obj-1 0])))))
 
 
-(deftest test-selection-confirm-events-have-descriptions
-  (testing "Selection confirmation events return non-nil description strings"
-    (is (string? (descriptions/describe-event [:fizzle.events.selection/confirm-selection])))
-    (is (string? (descriptions/describe-event [:fizzle.events.selection/confirm-peek-selection])))
-    (is (string? (descriptions/describe-event [:fizzle.events.selection/confirm-graveyard-selection])))
-    (is (string? (descriptions/describe-event [:fizzle.events.selection/confirm-tutor-selection])))
-    (is (string? (descriptions/describe-event [:fizzle.events.selection/confirm-pile-choice-selection])))
-    (is (string? (descriptions/describe-event [:fizzle.events.selection/confirm-scry-selection])))
-    (is (string? (descriptions/describe-event [:fizzle.events.selection/confirm-player-target-selection])))
-    (is (string? (descriptions/describe-event [:fizzle.events.selection/confirm-exile-cards-selection])))
-    (is (string? (descriptions/describe-event [:fizzle.events.selection/confirm-x-mana-selection])))
-    (is (string? (descriptions/describe-event [:fizzle.events.selection/confirm-cast-time-target])))))
+(deftest test-selection-events-return-nil
+  (testing "Selection events are mid-resolution choices, not priority actions — return nil"
+    (is (nil? (descriptions/describe-event [:fizzle.events.selection/confirm-selection])))
+    (is (nil? (descriptions/describe-event [:fizzle.events.selection/confirm-tutor-selection])))
+    (is (nil? (descriptions/describe-event [:fizzle.events.selection/confirm-scry-selection])))
+    (is (nil? (descriptions/describe-event [:fizzle.events.selection/confirm-cast-time-target])))))
 
 
 (deftest test-unknown-event-returns-nil
@@ -47,19 +40,21 @@
     (is (nil? (descriptions/describe-event [:fizzle.events.game/cancel-mode-selection])))))
 
 
-(deftest test-select-casting-mode-has-description
-  (testing "select-casting-mode changes game state and has a description"
-    (is (string? (descriptions/describe-event [:fizzle.events.game/select-casting-mode {:mode :normal}])))))
+(deftest test-mid-action-events-return-nil
+  (testing "Mid-action events (mode selection, ability targeting) return nil"
+    (is (nil? (descriptions/describe-event [:fizzle.events.game/select-casting-mode {:mode :normal}])))
+    (is (nil? (descriptions/describe-event [:fizzle.events.abilities/confirm-ability-target :target-1])))))
 
 
-(deftest test-init-game-returns-nil
-  (testing "init-game is initialization, not a player action — returns nil"
-    (is (nil? (descriptions/describe-event [:fizzle.events.game/init-game])))))
+(deftest test-init-game-has-description
+  (testing "init-game is a priority event and has a description"
+    (is (= "Game started" (descriptions/describe-event [:fizzle.events.game/init-game])))))
 
 
 (deftest test-descriptions-are-non-empty-strings
   (testing "All descriptions that are strings are non-empty"
-    (let [events [[:fizzle.events.game/cast-spell]
+    (let [events [[:fizzle.events.game/init-game]
+                  [:fizzle.events.game/cast-spell]
                   [:fizzle.events.game/resolve-top]
                   [:fizzle.events.game/advance-phase]
                   [:fizzle.events.game/start-turn]
