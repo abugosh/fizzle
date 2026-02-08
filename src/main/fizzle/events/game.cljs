@@ -18,6 +18,7 @@
     [fizzle.engine.zones :as zones]
     [fizzle.events.abilities]
     [fizzle.events.selection :as selection]
+    [fizzle.history.core :as history]
     [re-frame.core :as rf]))
 
 
@@ -144,7 +145,9 @@
             db-after-draw (effects/execute-effect db-with-lib :player-1
                                                   {:effect/type :draw
                                                    :effect/amount 7})]
-        {:game/db db-after-draw}))))
+        (merge
+          {:game/db db-after-draw}
+          (history/init-history))))))
 
 
 (rf/reg-event-db

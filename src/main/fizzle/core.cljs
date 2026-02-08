@@ -3,6 +3,7 @@
     [fizzle.events.abilities :as ability-events]
     [fizzle.events.game :as events]
     [fizzle.events.selection]
+    [fizzle.history.interceptor :as history-interceptor]
     [fizzle.subs.game :as subs]
     [fizzle.views.modals :as modals]
     [re-frame.core :as rf]
@@ -448,5 +449,6 @@
 
 (defn init
   []
+  (history-interceptor/register!)
   (rf/dispatch-sync [::events/init-game])
   (mount-root))
