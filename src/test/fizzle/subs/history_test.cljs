@@ -93,3 +93,45 @@
           "can-step-back? should be falsy with nil history")
       (is (not (sub-value empty-db [::subs/can-step-forward?]))
           "can-step-forward? should be falsy with nil history"))))
+
+
+(defn- make-db-with-turn-entries
+  "Create an app-db with entries across multiple turns."
+  [turn-specs]
+  (reduce (fn [db [i turn]]
+            (let [snapshot (keyword (str "db-" i))
+                  entry (history/make-entry snapshot (keyword (str "evt-" i))
+                                            (str "Entry " i) turn)]
+              (-> db
+                  (assoc :game/db snapshot)
+                  (history/append-entry entry))))
+          (merge {:game/db :db-init} (history/init-history))
+          (map-indexed vector turn-specs)))
+
+
+(deftest test-entries-by-turn-sub
+  (testing "::entries-by-turn returns entries grouped by turn"
+    (let [;; 2 entries on turn 1, 1 entry on turn 2
+          db (make-db-with-turn-entries [1 1 2])
+          result (sub-value db [::subs/entries-by-turn])]
+      (is (= 2 (count result)) "two turn groups")
+      (is (= 1 (:turn (first result))))
+      (is (= 2 (count (:entries (first result)))))
+      (is (= 2 (:turn (second result))))
+      (is (= 1 (count (:entries (second result))))))))
+
+
+(deftest test-fork-tree-sub
+  (testing "::fork-tree returns hierarchical tree of forks"
+    (let [db (make-db-with-entries 3)
+          ;; Create parent fork
+          with-parent (history/create-named-fork db "Parent")
+          parent-id (:fork/id (first (vals (:history/forks with-parent))))
+          ;; Switch to parent branch, then create child fork
+          on-parent (history/switch-branch with-parent parent-id)
+          with-child (history/create-named-fork on-parent "Child")
+          tree (sub-value with-child [::subs/fork-tree])]
+      (is (= 1 (count tree)) "one root fork")
+      (is (= "Parent" (:fork/name (first tree))))
+      (is (= 1 (count (:children (first tree)))) "one child")
+      (is (= "Child" (:fork/name (first (:children (first tree)))))))))

@@ -24,3 +24,27 @@
   ::switch-branch
   (fn [db [_ fork-id]]
     (history/switch-branch db fork-id)))
+
+
+(rf/reg-event-db
+  ::jump-to
+  (fn [db [_ position]]
+    (history/step-to db position)))
+
+
+(rf/reg-event-db
+  ::create-fork
+  (fn [db [_ name]]
+    (history/create-named-fork db name)))
+
+
+(rf/reg-event-db
+  ::rename-fork
+  (fn [db [_ fork-id new-name]]
+    (history/rename-fork db fork-id new-name)))
+
+
+(rf/reg-event-db
+  ::delete-fork
+  (fn [db [_ fork-id]]
+    (history/delete-fork db fork-id)))

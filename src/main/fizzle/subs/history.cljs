@@ -11,6 +11,10 @@
 (rf/reg-sub ::forks (fn [db _] (history/list-forks db)))
 
 
+;; Layer 2: raw map for fork-tree derivation
+(rf/reg-sub ::forks-map (fn [db _] (:history/forks db)))
+
+
 ;; Layer 3: derived subscriptions
 (rf/reg-sub
   ::can-step-back?
@@ -41,3 +45,17 @@
   :<- [::entries]
   (fn [entries _]
     (count (or entries []))))
+
+
+(rf/reg-sub
+  ::entries-by-turn
+  :<- [::entries]
+  (fn [entries _]
+    (history/entries-by-turn (or entries []))))
+
+
+(rf/reg-sub
+  ::fork-tree
+  :<- [::forks-map]
+  (fn [forks _]
+    (history/fork-tree (or forks {}))))

@@ -117,3 +117,70 @@
           result (dispatch-sync-on-db db [::events/switch-branch :nonexistent])]
       (is (= (:history/position db) (:history/position result)))
       (is (= (:game/db db) (:game/db result))))))
+
+
+(deftest test-jump-to-event
+  (testing "jump-to with valid position updates position and game/db"
+    (let [db (make-db-with-entries 3)
+          _ (is (= 2 (:history/position db)) "precondition: at tip")
+          result (dispatch-sync-on-db db [::events/jump-to 0])]
+      (is (= 0 (:history/position result)))
+      (is (= :db-0 (:game/db result))))))
+
+
+(deftest test-jump-to-event-out-of-bounds
+  (testing "jump-to with out-of-bounds position leaves db unchanged"
+    (let [db (make-db-with-entries 3)
+          result-neg (dispatch-sync-on-db db [::events/jump-to -1])
+          result-high (dispatch-sync-on-db db [::events/jump-to 99])]
+      (is (= 2 (:history/position result-neg)))
+      (is (= (:game/db db) (:game/db result-neg)))
+      (is (= 2 (:history/position result-high)))
+      (is (= (:game/db db) (:game/db result-high))))))
+
+
+(deftest test-create-fork-event
+  (testing "create-fork adds a fork to :history/forks"
+    (let [db (make-db-with-entries 3)
+          _ (is (empty? (:history/forks db)) "precondition: no forks")
+          result (dispatch-sync-on-db db [::events/create-fork "Test Fork"])]
+      (is (= 1 (count (:history/forks result))))
+      (let [fork (first (vals (:history/forks result)))]
+        (is (= "Test Fork" (:fork/name fork)))
+        (is (= 2 (:fork/branch-point fork)))
+        (is (nil? (:fork/parent fork)))))))
+
+
+(deftest test-rename-fork-event
+  (testing "rename-fork updates fork name"
+    (let [db (make-db-with-entries 3)
+          with-fork (dispatch-sync-on-db db [::events/create-fork "Old Name"])
+          fork-id (:fork/id (first (vals (:history/forks with-fork))))
+          result (dispatch-sync-on-db with-fork [::events/rename-fork fork-id "New Name"])
+          fork (get-in result [:history/forks fork-id])]
+      (is (= "New Name" (:fork/name fork))))))
+
+
+(deftest test-delete-fork-event
+  (testing "delete-fork removes fork from map"
+    (let [db (make-db-with-entries 3)
+          with-fork (dispatch-sync-on-db db [::events/create-fork "Doomed Fork"])
+          fork-id (:fork/id (first (vals (:history/forks with-fork))))
+          _ (is (= 1 (count (:history/forks with-fork))) "precondition: fork exists")
+          result (dispatch-sync-on-db with-fork [::events/delete-fork fork-id])]
+      (is (empty? (:history/forks result))))))
+
+
+(deftest test-delete-fork-event-cascade
+  (testing "deleting parent fork cascades to children"
+    (let [db (make-db-with-entries 3)
+          ;; Create parent fork
+          with-parent (dispatch-sync-on-db db [::events/create-fork "Parent"])
+          parent-id (:fork/id (first (vals (:history/forks with-parent))))
+          ;; Switch to parent fork, then create child fork
+          on-parent (dispatch-sync-on-db with-parent [::events/switch-branch parent-id])
+          with-child (dispatch-sync-on-db on-parent [::events/create-fork "Child"])
+          _ (is (= 2 (count (:history/forks with-child))) "precondition: 2 forks")
+          ;; Delete parent — should cascade to child
+          result (dispatch-sync-on-db with-child [::events/delete-fork parent-id])]
+      (is (empty? (:history/forks result))))))
