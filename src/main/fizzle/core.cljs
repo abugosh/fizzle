@@ -3,8 +3,11 @@
     [fizzle.events.abilities :as ability-events]
     [fizzle.events.game :as events]
     [fizzle.events.selection]
+    [fizzle.history.events]
     [fizzle.history.interceptor :as history-interceptor]
     [fizzle.subs.game :as subs]
+    [fizzle.subs.history]
+    [fizzle.views.history :as history]
     [fizzle.views.modals :as modals]
     [re-frame.core :as rf]
     [reagent.dom :as rdom]))
@@ -420,24 +423,24 @@
 
 (defn app
   []
-  [:div {:style {:padding "20px"
-                 :font-family "monospace"
+  [:div {:style {:display "flex"
+                 :min-height "100vh"
                  :background "#0d0d1a"
-                 :color "#eee"
-                 :min-height "100vh"}}
-   [:h1 {:style {:margin-bottom "20px" :color "#eee"}} "Fizzle"]
-   [turn-bar]
-   [life-view]
-   [battlefield-view]
-   [hand-view]
-   [controls-view]
-   [graveyard-view]
-   [mana-pool-view]
-   [storm-count-view]
-   [stack-view]
-   ;; Selection modal (shows when pending selection exists)
+                 :font-family "monospace"
+                 :color "#eee"}}
+   [:div {:style {:flex 1 :padding "20px" :overflow-y "auto"}}
+    [:h1 {:style {:margin-bottom "20px" :color "#eee"}} "Fizzle"]
+    [turn-bar]
+    [life-view]
+    [battlefield-view]
+    [hand-view]
+    [controls-view]
+    [graveyard-view]
+    [mana-pool-view]
+    [storm-count-view]
+    [stack-view]]
+   [history/history-sidebar]
    [modals/selection-modal]
-   ;; Mode selection modal (shows when multiple casting modes available)
    [modals/mode-selector-modal]])
 
 
