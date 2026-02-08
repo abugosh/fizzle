@@ -352,3 +352,278 @@
       (is (= :db-fa0 (:entry/snapshot (nth entries 4))))
       (is (= :db-fb0 (:entry/snapshot (nth entries 5))))
       (is (= :db-fc0 (:entry/snapshot (nth entries 6)))))))
+
+
+;; === rename-fork tests ===
+
+(deftest test-rename-fork
+  (testing "Renames fork, other fork fields unchanged"
+    (let [db (-> (build-6-entry-db)
+                 (history/step-to 3))
+          entry (history/make-entry :db-fork :action "Fork" 2)
+          db' (history/auto-fork db entry)
+          fork-id (:history/current-branch db')
+          fork-before (history/get-fork db' fork-id)
+          db'' (history/rename-fork db' fork-id "My Fork")
+          fork-after (history/get-fork db'' fork-id)]
+      (is (= "My Fork" (:fork/name fork-after)))
+      (is (= (:fork/id fork-before) (:fork/id fork-after)))
+      (is (= (:fork/branch-point fork-before) (:fork/branch-point fork-after)))
+      (is (= (:fork/parent fork-before) (:fork/parent fork-after)))
+      (is (= (:fork/entries fork-before) (:fork/entries fork-after))))))
+
+
+(deftest test-rename-fork-nonexistent
+  (testing "Rename of nonexistent fork-id returns db unchanged"
+    (let [db (build-6-entry-db)
+          db' (history/rename-fork db :nonexistent "New Name")]
+      (is (= db db')))))
+
+
+;; === delete-fork tests ===
+
+(defn- build-db-with-fork
+  "Helper: 6 entries on main, one fork from position 3 with one entry.
+   Returns [db fork-id]."
+  []
+  (let [db (-> (build-6-entry-db)
+               (history/step-to 3))
+        entry (history/make-entry :db-fork :action "Fork action" 2)
+        db' (history/auto-fork db entry)
+        fork-id (:history/current-branch db')]
+    [db' fork-id]))
+
+
+(defn- build-db-with-fork-tree
+  "Helper: main with 6 entries, Fork A from pos 3, Fork B child of A, Fork C child of B.
+   Returns [db fork-a-id fork-b-id fork-c-id]."
+  []
+  (let [db (-> (build-6-entry-db)
+               (history/step-to 3))
+        ;; Fork A from main at position 3
+        entry-a (history/make-entry :db-fa :action "FA" 2)
+        db-a (history/auto-fork db entry-a)
+        fork-a-id (:history/current-branch db-a)
+        ;; Fork B from Fork A at position 4
+        entry-a1 (history/make-entry :db-fa1 :action "FA1" 2)
+        db-a' (history/append-entry db-a entry-a1)
+        db-a-at-4 (history/step-to db-a' 4)
+        entry-b (history/make-entry :db-fb :action "FB" 3)
+        db-b (history/auto-fork db-a-at-4 entry-b)
+        fork-b-id (:history/current-branch db-b)
+        ;; Fork C from Fork B at position 5
+        entry-b1 (history/make-entry :db-fb1 :action "FB1" 3)
+        db-b' (history/append-entry db-b entry-b1)
+        db-b-at-5 (history/step-to db-b' 5)
+        entry-c (history/make-entry :db-fc :action "FC" 4)
+        db-c (history/auto-fork db-b-at-5 entry-c)
+        fork-c-id (:history/current-branch db-c)]
+    [db-c fork-a-id fork-b-id fork-c-id]))
+
+
+(deftest test-delete-fork-single
+  (testing "Deleting a single fork with no children removes it"
+    (let [[db fork-id] (build-db-with-fork)
+          db' (history/delete-fork db fork-id)]
+      (is (empty? (:history/forks db')))
+      (is (nil? (history/get-fork db' fork-id))))))
+
+
+(deftest test-delete-fork-cascade-children
+  (testing "Deleting parent fork cascades to children"
+    (let [[db fork-a-id fork-b-id fork-c-id] (build-db-with-fork-tree)
+          ;; Switch to main first so we're not on a deleted branch
+          db-main (history/switch-branch db nil)
+          db' (history/delete-fork db-main fork-a-id)]
+      (is (nil? (history/get-fork db' fork-a-id)))
+      (is (nil? (history/get-fork db' fork-b-id)))
+      (is (nil? (history/get-fork db' fork-c-id)))
+      (is (empty? (:history/forks db'))))))
+
+
+(deftest test-delete-fork-cascade-deep
+  (testing "Deleting root of 3-level chain removes all three"
+    (let [[db fork-a-id _ _] (build-db-with-fork-tree)
+          db-main (history/switch-branch db nil)
+          db' (history/delete-fork db-main fork-a-id)]
+      (is (= 0 (count (:history/forks db')))))))
+
+
+(deftest test-delete-fork-active-branch
+  (testing "Deleting current branch switches to main, restores game/db"
+    (let [[db fork-id] (build-db-with-fork)
+          ;; Currently on fork-id
+          db' (history/delete-fork db fork-id)]
+      (is (nil? (:history/current-branch db')))
+      (is (= 5 (:history/position db')))
+      (is (= :db-5 (:game/db db'))))))
+
+
+(deftest test-delete-fork-ancestor-of-active
+  (testing "Deleting ancestor of active branch switches to main"
+    (let [[db fork-a-id _ _] (build-db-with-fork-tree)
+          ;; Currently on Fork C (deepest) — delete Fork A (root ancestor)
+          db' (history/delete-fork db fork-a-id)]
+      (is (nil? (:history/current-branch db')))
+      (is (= 5 (:history/position db')))
+      (is (= :db-5 (:game/db db')))
+      (is (empty? (:history/forks db'))))))
+
+
+(deftest test-delete-fork-inactive
+  (testing "Deleting inactive fork leaves current-branch and position unchanged"
+    (let [[db fork-a-id fork-b-id fork-c-id] (build-db-with-fork-tree)
+          ;; Switch to main, delete Fork C (a leaf)
+          db-main (history/switch-branch db nil)
+          db' (history/delete-fork db-main fork-c-id)]
+      (is (nil? (:history/current-branch db')))
+      ;; Fork A and B still exist
+      (is (some? (history/get-fork db' fork-a-id)))
+      (is (some? (history/get-fork db' fork-b-id)))
+      (is (nil? (history/get-fork db' fork-c-id))))))
+
+
+(deftest test-delete-fork-nil-noop
+  (testing "delete-fork with nil fork-id (main) returns db unchanged"
+    (let [[db _] (build-db-with-fork)
+          db' (history/delete-fork db nil)]
+      (is (= db db')))))
+
+
+(deftest test-delete-fork-nonexistent
+  (testing "delete-fork with nonexistent fork-id returns db unchanged"
+    (let [[db _] (build-db-with-fork)
+          db' (history/delete-fork db :nonexistent)]
+      (is (= db db')))))
+
+
+(deftest test-delete-fork-preserves-main
+  (testing "Cascade delete does not affect :history/main entries"
+    (let [[db fork-a-id _ _] (build-db-with-fork-tree)
+          main-before (:history/main db)
+          db' (history/delete-fork db fork-a-id)
+          main-after (:history/main db')]
+      (is (= main-before main-after)))))
+
+
+;; === entries-by-turn tests ===
+
+(deftest test-entries-by-turn-empty
+  (testing "Empty entries list returns empty vector"
+    (is (= [] (history/entries-by-turn [])))))
+
+
+(deftest test-entries-by-turn-single-turn
+  (testing "All entries same turn grouped into one group"
+    (let [entries [(history/make-entry :db-0 :init "Start" 1)
+                   (history/make-entry :db-1 :cast "Cast" 1)
+                   (history/make-entry :db-2 :draw "Draw" 1)]
+          result (history/entries-by-turn entries)]
+      (is (= 1 (count result)))
+      (is (= 1 (:turn (first result))))
+      (is (= 3 (count (:entries (first result))))))))
+
+
+(deftest test-entries-by-turn-multiple-turns
+  (testing "Entries across turns 1, 2, 3 produce 3 groups in order"
+    (let [entries [(history/make-entry :db-0 :init "Start" 1)
+                   (history/make-entry :db-1 :cast "Cast" 1)
+                   (history/make-entry :db-2 :phase "Phase" 2)
+                   (history/make-entry :db-3 :draw "Draw" 3)]
+          result (history/entries-by-turn entries)]
+      (is (= 3 (count result)))
+      (is (= [1 2 3] (mapv :turn result)))
+      (is (= 2 (count (:entries (first result)))))
+      (is (= 1 (count (:entries (second result)))))
+      (is (= 1 (count (:entries (nth result 2))))))))
+
+
+(deftest test-entries-by-turn-preserves-order
+  (testing "Within a turn group, entries appear in original insertion order"
+    (let [e0 (history/make-entry :db-0 :init "First" 1)
+          e1 (history/make-entry :db-1 :cast "Second" 1)
+          e2 (history/make-entry :db-2 :draw "Third" 1)
+          result (history/entries-by-turn [e0 e1 e2])
+          group-entries (:entries (first result))]
+      (is (= :db-0 (:entry/snapshot (nth group-entries 0))))
+      (is (= :db-1 (:entry/snapshot (nth group-entries 1))))
+      (is (= :db-2 (:entry/snapshot (nth group-entries 2)))))))
+
+
+(deftest test-entries-by-turn-non-consecutive
+  (testing "Non-consecutive turns (1, 3, 5) produce 3 groups ordered by turn"
+    (let [entries [(history/make-entry :db-0 :init "Start" 1)
+                   (history/make-entry :db-1 :cast "Cast" 3)
+                   (history/make-entry :db-2 :draw "Draw" 5)]
+          result (history/entries-by-turn entries)]
+      (is (= 3 (count result)))
+      (is (= [1 3 5] (mapv :turn result))))))
+
+
+;; === fork-tree tests ===
+
+(defn- make-fork
+  "Helper to create a fork map with deterministic id."
+  [id name parent branch-point]
+  {:fork/id id
+   :fork/name name
+   :fork/parent parent
+   :fork/branch-point branch-point
+   :fork/entries []})
+
+
+(deftest test-fork-tree-empty
+  (testing "Empty forks map returns empty vector"
+    (is (= [] (history/fork-tree {})))))
+
+
+(deftest test-fork-tree-all-roots
+  (testing "Three forks with nil parent produce 3 root nodes, sorted by name"
+    (let [forks {:c (make-fork :c "Charlie" nil 2)
+                 :a (make-fork :a "Alpha" nil 0)
+                 :b (make-fork :b "Bravo" nil 1)}
+          result (history/fork-tree forks)]
+      (is (= 3 (count result)))
+      (is (= ["Alpha" "Bravo" "Charlie"] (mapv :fork/name result)))
+      (is (every? #(= [] (:children %)) result)))))
+
+
+(deftest test-fork-tree-parent-child
+  (testing "Parent fork has child nested in :children"
+    (let [forks {:p (make-fork :p "Parent" nil 0)
+                 :c (make-fork :c "Child" :p 2)}
+          result (history/fork-tree forks)]
+      (is (= 1 (count result)))
+      (is (= "Parent" (:fork/name (first result))))
+      (is (= 1 (count (:children (first result)))))
+      (is (= "Child" (:fork/name (first (:children (first result)))))))))
+
+
+(deftest test-fork-tree-deep-nesting
+  (testing "A→B→C chain nests correctly"
+    (let [forks {:a (make-fork :a "A" nil 0)
+                 :b (make-fork :b "B" :a 2)
+                 :c (make-fork :c "C" :b 3)}
+          result (history/fork-tree forks)]
+      (is (= 1 (count result)))
+      (is (= "A" (:fork/name (first result))))
+      (let [b (first (:children (first result)))]
+        (is (= "B" (:fork/name b)))
+        (let [c (first (:children b))]
+          (is (= "C" (:fork/name c)))
+          (is (= [] (:children c))))))))
+
+
+(deftest test-fork-tree-mixed
+  (testing "2 roots, one with 2 children, produces correct tree"
+    (let [forks {:r1 (make-fork :r1 "Root1" nil 0)
+                 :r2 (make-fork :r2 "Root2" nil 1)
+                 :c1 (make-fork :c1 "Child1" :r1 2)
+                 :c2 (make-fork :c2 "Child2" :r1 3)}
+          result (history/fork-tree forks)]
+      (is (= 2 (count result)))
+      (let [r1 (first (filter #(= "Root1" (:fork/name %)) result))
+            r2 (first (filter #(= "Root2" (:fork/name %)) result))]
+        (is (= 2 (count (:children r1))))
+        (is (= ["Child1" "Child2"] (mapv :fork/name (:children r1))))
+        (is (= [] (:children r2)))))))

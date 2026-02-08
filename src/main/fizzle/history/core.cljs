@@ -127,9 +127,69 @@
     db))
 
 
+(defn rename-fork
+  [db fork-id new-name]
+  (if (get-fork db fork-id)
+    (assoc-in db [:history/forks fork-id :fork/name] new-name)
+    db))
+
+
+(defn- find-descendants
+  "Returns set of all fork-ids that are descendants of fork-id."
+  [forks fork-id]
+  (let [children (into #{}
+                       (comp (filter #(= fork-id (:fork/parent (val %))))
+                             (map key))
+                       forks)]
+    (reduce (fn [acc child-id]
+              (into acc (find-descendants forks child-id)))
+            children
+            children)))
+
+
+(defn delete-fork
+  [db fork-id]
+  (if (or (nil? fork-id) (nil? (get-fork db fork-id)))
+    db
+    (let [forks (:history/forks db)
+          to-delete (conj (find-descendants forks fork-id) fork-id)
+          current (:history/current-branch db)
+          need-switch? (contains? to-delete current)
+          db' (update db :history/forks #(apply dissoc % to-delete))]
+      (if need-switch?
+        (let [main (:history/main db')
+              tip (dec (count main))]
+          (-> db'
+              (assoc :history/current-branch nil)
+              (assoc :history/position (if (neg? tip) -1 tip))
+              (cond-> (>= tip 0)
+                (assoc :game/db (:entry/snapshot (nth main tip))))))
+        db'))))
+
+
 (defn list-forks
   [db]
   (vec (vals (:history/forks db))))
+
+
+(defn fork-tree
+  [forks]
+  (let [by-parent (group-by :fork/parent (vals forks))
+        build-children (fn build-children
+                         [parent-id]
+                         (->> (get by-parent parent-id [])
+                              (sort-by :fork/name)
+                              (mapv #(assoc % :children (build-children (:fork/id %))))))]
+    (build-children nil)))
+
+
+(defn entries-by-turn
+  [entries]
+  (->> entries
+       (group-by :entry/turn)
+       (sort-by first)
+       (mapv (fn [[turn es]]
+               {:turn turn :entries (vec es)}))))
 
 
 (defn current-entry
