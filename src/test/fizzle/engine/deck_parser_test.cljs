@@ -213,13 +213,12 @@
 
 
 (deftest parse-decklist-mtggoldfish-format-test
-  (testing "handles MTGGoldfish text export (no set codes)"
+  (testing "handles MTGGoldfish text export (blank line as sideboard separator)"
     (let [text (str "4 Dark Ritual\n"
                     "4 Cabal Ritual\n"
                     "4 Lotus Petal\n"
                     "4 Lion's Eye Diamond\n"
                     "\n"
-                    "Sideboard\n"
                     "2 Merchant Scroll\n")
           result (parser/parse-decklist text)]
       (is (contains? result :ok))
@@ -233,6 +232,54 @@
     (let [result (parser/parse-decklist "")]
       (is (contains? result :ok))
       (is (empty? (get-in result [:ok :deck/main])))
+      (is (empty? (get-in result [:ok :deck/side]))))))
+
+
+;; === Blank-Line Sideboard Separator Tests ===
+
+(deftest parse-decklist-blank-line-separator-no-comments-test
+  (testing "blank line acts as sideboard separator when no comments or markers"
+    (let [text "4 Dark Ritual\n4 Cabal Ritual\n\n2 Merchant Scroll"
+          result (parser/parse-decklist text)]
+      (is (contains? result :ok))
+      (is (= [{:card/id :dark-ritual :count 4}
+              {:card/id :cabal-ritual :count 4}]
+             (get-in result [:ok :deck/main])))
+      (is (= [{:card/id :merchant-scroll :count 2}]
+             (get-in result [:ok :deck/side]))))))
+
+
+(deftest parse-decklist-blank-line-ignored-with-comments-test
+  (testing "blank line is cosmetic when comments are present (not a separator)"
+    (let [text "// Main Deck\n4 Dark Ritual\n\n// Artifacts\n4 Lotus Petal"
+          result (parser/parse-decklist text)]
+      (is (contains? result :ok))
+      (is (= [{:card/id :dark-ritual :count 4}
+              {:card/id :lotus-petal :count 4}]
+             (get-in result [:ok :deck/main])))
+      (is (empty? (get-in result [:ok :deck/side]))))))
+
+
+(deftest parse-decklist-blank-line-ignored-with-sideboard-header-test
+  (testing "blank line is cosmetic when explicit Sideboard header present"
+    (let [text "4 Dark Ritual\n\n4 Lotus Petal\n\nSideboard\n2 Merchant Scroll"
+          result (parser/parse-decklist text)]
+      (is (contains? result :ok))
+      (is (= #{{:card/id :dark-ritual :count 4}
+               {:card/id :lotus-petal :count 4}}
+             (set (get-in result [:ok :deck/main]))))
+      (is (= [{:card/id :merchant-scroll :count 2}]
+             (get-in result [:ok :deck/side]))))))
+
+
+(deftest parse-decklist-leading-blank-lines-ignored-test
+  (testing "blank lines before any cards don't trigger sideboard"
+    (let [text "\n\n4 Dark Ritual\n4 Lotus Petal"
+          result (parser/parse-decklist text)]
+      (is (contains? result :ok))
+      (is (= [{:card/id :dark-ritual :count 4}
+              {:card/id :lotus-petal :count 4}]
+             (get-in result [:ok :deck/main])))
       (is (empty? (get-in result [:ok :deck/side]))))))
 
 

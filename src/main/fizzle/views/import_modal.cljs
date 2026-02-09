@@ -23,11 +23,12 @@
      [:div {:class "text-text-label font-sans mb-0.5"} "Sideboard (any of):"]
      [:div "Sideboard"]
      [:div "Sideboard:"]
-     [:div "SB: 2 Merchant Scroll"]]
+     [:div "SB: 2 Merchant Scroll"]
+     [:div {:class "text-text-muted font-sans italic"} "or a blank line (MTGGoldfish style)"]]
     [:div
-     [:div {:class "text-text-label font-sans mb-0.5"} "Ignored:"]
-     [:div "// comments"]
-     [:div {:class "text-text-muted font-sans italic"} "blank lines"]]
+     [:div {:class "text-text-label font-sans mb-0.5"} "Also handled:"]
+     [:div "// comments " [:span {:class "text-text-muted font-sans italic"} "(ignored)"]]
+     [:div {:class "text-text-muted font-sans italic"} "blank lines between sections (when comments present)"]]
     [:p {:class "text-text-muted font-sans mt-1"}
      "Works with Moxfield and MTGGoldfish text exports. Card names must match implemented cards exactly (case-insensitive)."]]])
 

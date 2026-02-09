@@ -76,16 +76,40 @@
             {:unrecognized clean-name}))))))
 
 
+(defn- has-explicit-sideboard-marker?
+  "Pre-scan lines for explicit sideboard indicators (header or SB: prefix).
+   Used to decide whether blank lines should act as sideboard separators."
+  [lines]
+  (some (fn [line]
+          (let [t (str/trim line)]
+            (or (re-matches #"(?i)sideboard:?" t)
+                (re-find sb-prefix-re t))))
+        lines))
+
+
+(defn- has-comment-lines?
+  "Pre-scan lines for // comment lines."
+  [lines]
+  (some #(str/starts-with? (str/trim %) "//") lines))
+
+
 (defn parse-decklist
   "Parse a full decklist text into a deck map.
    Returns {:ok {:deck/main [...] :deck/side [...]}} on success.
-   Returns {:error {:unrecognized [list of card name strings]}} on failure."
+   Returns {:error {:unrecognized [list of card name strings]}} on failure.
+   When no explicit sideboard marker or comments are present, a blank line
+   after card lines acts as sideboard separator (MTGGoldfish format)."
   [text]
   (if (str/blank? text)
     {:ok {:deck/main [] :deck/side []}}
-    (let [lines (str/split-lines text)]
+    (let [lines (str/split-lines text)
+          ;; MTGGoldfish uses blank line as separator; only infer this when
+          ;; the text has no explicit markers and no comment lines.
+          blank-sep? (and (not (has-explicit-sideboard-marker? lines))
+                          (not (has-comment-lines? lines)))]
       (loop [remaining lines
              in-sideboard? false
+             saw-card? false
              main []
              side []
              unrecognized []]
@@ -104,31 +128,38 @@
                     :deck/side (consolidate side)}}))
           ;; Process next line
           (let [line (first remaining)
-                parsed (parse-line line)]
-            (cond
-              ;; Nil (comment/blank) - skip
-              (nil? parsed)
-              (recur (rest remaining) in-sideboard? main side unrecognized)
+                trimmed (str/trim line)]
+            (if (str/blank? trimmed)
+              ;; Blank line: sideboard separator in MTGGoldfish mode, else skip
+              (if (and blank-sep? saw-card? (not in-sideboard?))
+                (recur (rest remaining) true saw-card? main side unrecognized)
+                (recur (rest remaining) in-sideboard? saw-card? main side unrecognized))
+              ;; Non-blank line: parse normally
+              (let [parsed (parse-line line)]
+                (cond
+                  ;; Nil (comment) - skip
+                  (nil? parsed)
+                  (recur (rest remaining) in-sideboard? saw-card? main side unrecognized)
 
-              ;; Sideboard marker
-              (= :sideboard parsed)
-              (recur (rest remaining) true main side unrecognized)
+                  ;; Sideboard marker
+                  (= :sideboard parsed)
+                  (recur (rest remaining) true saw-card? main side unrecognized)
 
-              ;; Unrecognized card
-              (:unrecognized parsed)
-              (recur (rest remaining) in-sideboard? main side
-                     (conj unrecognized (:unrecognized parsed)))
+                  ;; Unrecognized card
+                  (:unrecognized parsed)
+                  (recur (rest remaining) in-sideboard? true main side
+                         (conj unrecognized (:unrecognized parsed)))
 
-              ;; SB: prefix card - always goes to sideboard
-              (:sideboard? parsed)
-              (recur (rest remaining) in-sideboard? main
-                     (conj side (dissoc parsed :sideboard?)) unrecognized)
+                  ;; SB: prefix card - always goes to sideboard
+                  (:sideboard? parsed)
+                  (recur (rest remaining) in-sideboard? true main
+                         (conj side (dissoc parsed :sideboard?)) unrecognized)
 
-              ;; Normal card - main or side based on position
-              :else
-              (if in-sideboard?
-                (recur (rest remaining) true main (conj side parsed) unrecognized)
-                (recur (rest remaining) false (conj main parsed) side unrecognized)))))))))
+                  ;; Normal card - main or side based on position
+                  :else
+                  (if in-sideboard?
+                    (recur (rest remaining) true true main (conj side parsed) unrecognized)
+                    (recur (rest remaining) false true (conj main parsed) side unrecognized)))))))))))
 
 
 ;; Type ordering for text regeneration
