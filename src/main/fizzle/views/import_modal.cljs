@@ -6,6 +6,32 @@
     [re-frame.core :as rf]))
 
 
+(defn- format-help
+  "Collapsible format guide for decklist text."
+  []
+  [:details {:class "text-xs text-text-muted mb-3"}
+   [:summary {:class "cursor-pointer select-none hover:text-text"}
+    "Format help"]
+   [:div {:class "mt-2 p-3 bg-surface-dim border border-border rounded font-mono space-y-2"}
+    [:p {:class "text-text-label font-sans font-bold mb-1"} "Accepted formats"]
+    [:div
+     [:div {:class "text-text-label font-sans mb-0.5"} "Card lines:"]
+     [:div "4 Dark Ritual"]
+     [:div "4 Dark Ritual (VIS) 72"]
+     [:div {:class "text-text-muted font-sans italic"} "Set codes (Moxfield) are stripped automatically"]]
+    [:div
+     [:div {:class "text-text-label font-sans mb-0.5"} "Sideboard (any of):"]
+     [:div "Sideboard"]
+     [:div "Sideboard:"]
+     [:div "SB: 2 Merchant Scroll"]]
+    [:div
+     [:div {:class "text-text-label font-sans mb-0.5"} "Ignored:"]
+     [:div "// comments"]
+     [:div {:class "text-text-muted font-sans italic"} "blank lines"]]
+    [:p {:class "text-text-muted font-sans mt-1"}
+     "Works with Moxfield and MTGGoldfish text exports. Card names must match implemented cards exactly (case-insensitive)."]]])
+
+
 (defn import-deck-modal
   "Modal for importing or editing a deck.
    Shows name field, textarea for decklist, error display, and action buttons."
@@ -28,6 +54,8 @@
                   :placeholder "Paste decklist here...\n\n4 Dark Ritual\n4 Cabal Ritual\n...\n\nSideboard\n2 Merchant Scroll"
                   :value (or (:text modal) "")
                   :on-change #(rf/dispatch [::setup/set-import-text (.. % -target -value)])}]]
+     ;; Format help
+     [format-help]
      ;; Error display
      (when-let [errors (:errors modal)]
        [:div {:class "border border-error rounded p-3 mt-3 text-sm"}
