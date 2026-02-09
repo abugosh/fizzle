@@ -229,8 +229,8 @@
   (testing "start-game creates game when deck has 60+ cards"
     (let [db (setup/init-setup-handler {})
           db-after (setup/start-game-handler db)]
-      (is (= :game (:active-screen db-after))
-          "Should switch to game screen")
+      (is (= :opening-hand (:active-screen db-after))
+          "Should switch to opening-hand screen")
       (is (some? (:game/db db-after))
           "Should have initialized game db"))))
 
@@ -242,7 +242,7 @@
                  (setup/move-to-main-handler :merchant-scroll)
                  (setup/move-to-main-handler :merchant-scroll))
           db-after (setup/start-game-handler db)]
-      (is (= :game (:active-screen db-after))
+      (is (= :opening-hand (:active-screen db-after))
           "Should allow oversized deck"))))
 
 
@@ -265,8 +265,8 @@
     (let [db (-> (setup/init-setup-handler {})
                  (setup/save-preset-handler "My Preset"))
           db-after (setup/quick-start-handler db)]
-      (is (= :game (:active-screen db-after))
-          "Should switch to game screen")
+      (is (= :opening-hand (:active-screen db-after))
+          "Should switch to opening-hand screen")
       (is (some? (:game/db db-after))
           "Should have initialized game db"))))
 
@@ -336,8 +336,8 @@
     (let [setup-db (setup/init-setup-handler {})
           game-db (setup/start-game-handler setup-db)
           new-db (setup/new-game-handler game-db)]
-      (is (= :game (:active-screen new-db))
-          "Should stay on game screen")
+      (is (= :opening-hand (:active-screen new-db))
+          "Should go to opening-hand screen")
       (is (some? (:game/db new-db))
           "Should have game db")
       (is (some? (:setup/stashed-config new-db))

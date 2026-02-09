@@ -32,14 +32,41 @@
                   main-deck))))
 
 
+(defn- extract-sculpted-card-ids
+  "Extract sculpted card-ids from a shuffled deck.
+   Returns [sculpted-card-ids remaining-card-ids].
+   For each {card-id count} in must-contain, removes count occurrences from deck.
+   Takes min(requested, available) to handle edge cases defensively."
+  [shuffled-deck must-contain]
+  (if (empty? must-contain)
+    [[] shuffled-deck]
+    (reduce
+      (fn [[sculpted remaining] [card-id cnt]]
+        (loop [r remaining
+               s sculpted
+               n cnt]
+          (if (or (zero? n) (empty? r))
+            [s r]
+            (let [idx (.indexOf r card-id)]
+              (if (neg? idx)
+                [s r]
+                (recur (into (subvec r 0 idx) (subvec r (inc idx)))
+                       (conj s card-id)
+                       (dec n)))))))
+      [[] (vec shuffled-deck)]
+      must-contain)))
+
+
 (defn init-game-state
   "Initialize a fresh game state from config.
    Config keys:
-     :main-deck - vec of {:card/id :count} maps (required)
-     :clock-turns - integer turns until opponent wins (default 4)
+     :main-deck     - vec of {:card/id :count} maps (required)
+     :clock-turns   - integer turns until opponent wins (default 4)
+     :must-contain  - map of {card-id count} for sculpted opening hand (default {})
 
-   Returns app-db map with :game/db key containing Datascript db."
-  [{:keys [main-deck] :or {}}]
+   Returns app-db map with :game/db, :active-screen :opening-hand,
+   and opening-hand state keys."
+  [{:keys [main-deck must-contain] :or {must-contain {}}}]
   (let [conn (d/create-conn schema)]
     ;; Transact card definitions
     (d/transact! conn cards/all-cards)
@@ -77,9 +104,29 @@
                                 :in $ ?cid
                                 :where [?e :card/id ?cid]]
                               db card-id))
-          ;; Create player's shuffled library from config
-          deck (deck-to-card-ids main-deck)]
-      ;; Transact player library (60 cards, shuffled, with positions)
+          ;; Create player's shuffled deck and split into hand + library
+          shuffled-deck (deck-to-card-ids main-deck)
+          [sculpted-card-ids remaining-after-sculpt] (extract-sculpted-card-ids shuffled-deck must-contain)
+          random-draw-count (- 7 (count sculpted-card-ids))
+          random-card-ids (take random-draw-count remaining-after-sculpt)
+          library-card-ids (drop random-draw-count remaining-after-sculpt)
+          hand-card-ids (concat sculpted-card-ids random-card-ids)
+          ;; Generate UUIDs and track which are sculpted
+          sculpted-count (count sculpted-card-ids)
+          hand-uuids (repeatedly (count hand-card-ids) random-uuid)
+          sculpted-id-set (set (take sculpted-count hand-uuids))]
+      ;; Transact hand objects
+      (d/transact! conn
+                   (vec (map (fn [uuid card-id]
+                               {:object/id uuid
+                                :object/card (get-card-eid @conn card-id)
+                                :object/zone :hand
+                                :object/owner player-eid
+                                :object/controller player-eid
+                                :object/tapped false
+                                :object/position 0})
+                             hand-uuids hand-card-ids)))
+      ;; Transact library objects
       (d/transact! conn
                    (vec (map-indexed
                           (fn [i card-id]
@@ -90,7 +137,7 @@
                              :object/controller player-eid
                              :object/tapped false
                              :object/position i})
-                          deck)))
+                          library-card-ids)))
       ;; Create opponent library (40 cards so mill has targets)
       (let [dr-eid (get-card-eid @conn :dark-ritual)]
         (d/transact! conn (vec (for [i (range 40)]
@@ -105,15 +152,13 @@
                           :game/priority player-eid}])
       ;; Register turn-based actions (draw, untap triggers)
       (turn-based/register-turn-based-actions!)
-      ;; Draw 7-card opening hand using draw effect
-      (let [db-with-lib @conn
-            db-after-draw (effects/execute-effect db-with-lib :player-1
-                                                  {:effect/type :draw
-                                                   :effect/amount 7})]
-        (merge
-          {:game/db db-after-draw
-           :active-screen :game}
-          (history/init-history))))))
+      (merge
+        {:game/db @conn
+         :active-screen :opening-hand
+         :opening-hand/mulligan-count 0
+         :opening-hand/sculpted-ids sculpted-id-set
+         :opening-hand/phase :viewing}
+        (history/init-history)))))
 
 
 (rf/reg-event-db

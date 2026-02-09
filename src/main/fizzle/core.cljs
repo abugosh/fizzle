@@ -94,6 +94,8 @@
      ;; Screen content
      (case screen
        :setup [setup-view/setup-screen]
+       :opening-hand [:div {:class "p-8 text-center text-text"}
+                      [:p "Opening hand screen (coming soon)"]]
        [game-screen])]))
 
 

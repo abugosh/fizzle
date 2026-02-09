@@ -2,6 +2,7 @@
   "Tests for game initialization - player library and starting hand."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
+    [clojure.set]
     [datascript.core :as d]
     [datascript.db :as ds-db]
     [fizzle.cards.iggy-pop :as cards]
@@ -179,10 +180,10 @@
 
 
 (deftest test-init-game-state-includes-active-screen
-  (testing "init-game-state includes :active-screen defaulting to :game"
+  (testing "init-game-state returns :active-screen :opening-hand"
     (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)})]
-      (is (= :game (:active-screen app-db))
-          "Active screen should default to :game"))))
+      (is (= :opening-hand (:active-screen app-db))
+          "Active screen should be :opening-hand"))))
 
 
 ;; === Decklist constant tests ===
@@ -251,3 +252,129 @@
                                         :clock-turns 6})]
       (is (some? (:game/db app-db))
           "Should initialize with custom clock-turns"))))
+
+
+;; === Must-Contain / Opening Hand Tests ===
+
+(deftest test-init-empty-must-contain-returns-opening-hand
+  (testing "init-game-state with empty must-contain returns :opening-hand"
+    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)
+                                        :must-contain {}})]
+      (is (= :opening-hand (:active-screen app-db))
+          "Should return :opening-hand screen")
+      (is (= 7 (count (get-hand-objects (:game/db app-db) :player-1)))
+          "Hand should have 7 cards")
+      (is (= 53 (count (get-library-objects (:game/db app-db) :player-1)))
+          "Library should have 53 cards"))))
+
+
+(deftest test-init-must-contain-places-sculpted-cards
+  (testing "init-game-state with :must-contain {:dark-ritual 2} places 2 dark-rituals in hand"
+    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)
+                                        :must-contain {:dark-ritual 2}})
+          db (:game/db app-db)
+          hand (get-hand-objects db :player-1)
+          hand-card-ids (map #(get-in % [:object/card :card/id]) hand)
+          dr-count (count (filter #(= :dark-ritual %) hand-card-ids))]
+      (is (= 7 (count hand))
+          "Hand should still have 7 cards")
+      (is (= 2 dr-count)
+          "Hand should contain exactly 2 Dark Rituals")
+      (is (= 53 (count (get-library-objects db :player-1)))
+          "Library should have 53 cards"))))
+
+
+(deftest test-init-must-contain-all-seven-sculpted
+  (testing "init-game-state with must-contain totaling 7 places all sculpted, 0 random"
+    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)
+                                        :must-contain {:dark-ritual 4 :cabal-ritual 3}})
+          db (:game/db app-db)
+          hand (get-hand-objects db :player-1)
+          hand-card-ids (frequencies (map #(get-in % [:object/card :card/id]) hand))]
+      (is (= 7 (count hand))
+          "Hand should have 7 cards")
+      (is (= 4 (get hand-card-ids :dark-ritual))
+          "Hand should have 4 Dark Rituals")
+      (is (= 3 (get hand-card-ids :cabal-ritual))
+          "Hand should have 3 Cabal Rituals")
+      (is (= 53 (count (get-library-objects db :player-1)))
+          "Library should have 53 cards"))))
+
+
+(deftest test-init-must-contain-single-copy-card
+  (testing "init-game-state with :must-contain {:orims-chant 1} places 1 in hand"
+    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)
+                                        :must-contain {:orims-chant 1}})
+          db (:game/db app-db)
+          hand (get-hand-objects db :player-1)
+          hand-card-ids (map #(get-in % [:object/card :card/id]) hand)
+          oc-count (count (filter #(= :orims-chant %) hand-card-ids))]
+      (is (= 7 (count hand))
+          "Hand should have 7 cards")
+      (is (= 1 oc-count)
+          "Hand should contain exactly 1 Orim's Chant"))))
+
+
+(deftest test-init-opening-hand-mulligan-count-starts-at-zero
+  (testing ":opening-hand/mulligan-count initialized to 0"
+    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)})]
+      (is (= 0 (:opening-hand/mulligan-count app-db))
+          "Mulligan count should start at 0"))))
+
+
+(deftest test-init-opening-hand-phase-starts-at-viewing
+  (testing ":opening-hand/phase initialized to :viewing"
+    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)})]
+      (is (= :viewing (:opening-hand/phase app-db))
+          "Opening hand phase should start at :viewing"))))
+
+
+(deftest test-init-opening-hand-sculpted-ids-empty-when-no-must-contain
+  (testing ":opening-hand/sculpted-ids is empty set when no must-contain"
+    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)
+                                        :must-contain {}})]
+      (is (= #{} (:opening-hand/sculpted-ids app-db))
+          "Sculpted IDs should be empty set"))))
+
+
+(deftest test-init-opening-hand-sculpted-ids-match-sculpted-objects
+  (testing ":opening-hand/sculpted-ids contains UUIDs of sculpted hand objects"
+    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)
+                                        :must-contain {:dark-ritual 2}})
+          db (:game/db app-db)
+          sculpted-ids (:opening-hand/sculpted-ids app-db)
+          hand (get-hand-objects db :player-1)
+          ;; Find hand objects that match sculpted IDs
+          sculpted-objs (filter #(contains? sculpted-ids (:object/id %)) hand)]
+      (is (= 2 (count sculpted-ids))
+          "Should have 2 sculpted IDs")
+      (is (= 2 (count sculpted-objs))
+          "Should find 2 matching objects in hand")
+      (is (every? #(= :dark-ritual (get-in % [:object/card :card/id])) sculpted-objs)
+          "All sculpted objects should be Dark Rituals"))))
+
+
+(deftest test-init-sculpted-cards-not-in-library
+  (testing "sculpted cards are not present in library"
+    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)
+                                        :must-contain {:dark-ritual 2}})
+          db (:game/db app-db)
+          sculpted-ids (:opening-hand/sculpted-ids app-db)
+          library (get-library-objects db :player-1)
+          lib-obj-ids (set (map :object/id library))]
+      (is (empty? (clojure.set/intersection sculpted-ids lib-obj-ids))
+          "No sculpted object IDs should appear in library"))))
+
+
+(deftest test-init-must-contain-small-custom-deck
+  (testing "must-contain works with small custom deck"
+    (let [app-db (game/init-game-state {:main-deck [{:card/id :dark-ritual :count 4}
+                                                    {:card/id :island :count 3}]
+                                        :must-contain {:dark-ritual 2}})
+          db (:game/db app-db)
+          hand (get-hand-objects db :player-1)
+          hand-card-ids (frequencies (map #(get-in % [:object/card :card/id]) hand))]
+      (is (= 7 (count hand))
+          "Hand should have 7 cards (entire deck)")
+      (is (>= (get hand-card-ids :dark-ritual 0) 2)
+          "Hand should have at least 2 Dark Rituals"))))

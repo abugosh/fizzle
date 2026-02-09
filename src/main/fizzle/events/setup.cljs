@@ -211,7 +211,8 @@
     (if (and (seq main-deck)
              (>= main-count 60))
       (let [game-db (game/init-game-state {:main-deck main-deck
-                                           :clock-turns (:setup/clock-turns db)})]
+                                           :clock-turns (:setup/clock-turns db)
+                                           :must-contain (:setup/must-contain db)})]
         (assoc game-db :setup/stashed-config (stash-setup-config db)))
       db)))
 
@@ -229,7 +230,8 @@
   [db]
   (if-let [config (:setup/stashed-config db)]
     (let [game-db (game/init-game-state {:main-deck (:setup/main-deck config)
-                                         :clock-turns (:setup/clock-turns config)})]
+                                         :clock-turns (:setup/clock-turns config)
+                                         :must-contain (get config :setup/must-contain {})})]
       (assoc game-db :setup/stashed-config config))
     db))
 
