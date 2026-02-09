@@ -133,6 +133,38 @@
                               (rf/dispatch [::setup/set-clock-turns n])))}]]))
 
 
+(defn- must-contain-picker
+  []
+  (let [must-contain (or @(rf/subscribe [::setup-subs/must-contain]) {})
+        grouped @(rf/subscribe [::setup-subs/current-main-grouped])
+        all-cards (->> type-order
+                       (mapcat #(get grouped %))
+                       (map (fn [{:keys [card/id card/name]}]
+                              {:id id :name name})))
+        total (reduce + 0 (vals must-contain))]
+    [:div {:class "space-y-2"}
+     [:div {:class "flex items-center gap-2"}
+      [:span {:class "text-text-label text-xs font-bold uppercase tracking-wider"}
+       "Hand Sculpting"]
+      [:span {:class "text-text-muted text-xs"} (str total " / 7 cards sculpted")]
+      (when (pos? total)
+        [:span {:class "text-xs text-text-muted cursor-pointer underline"
+                :on-click #(rf/dispatch [::setup/clear-must-contain])}
+         "Clear"])]
+     [:div {:class "flex flex-wrap gap-1.5"}
+      (for [{:keys [id name]} all-cards]
+        (let [cnt (get must-contain id 0)]
+          ^{:key id}
+          [:span {:class (str "px-2 py-0.5 text-xs rounded-full border cursor-pointer select-none "
+                              (if (pos? cnt)
+                                "border-accent bg-accent/20 text-text"
+                                "border-border bg-surface-raised text-text-muted"))
+                  :on-click #(rf/dispatch [::setup/toggle-must-contain id])}
+           (if (pos? cnt)
+             (str name " x" cnt)
+             name)]))]]))
+
+
 (defn- action-buttons
   []
   (let [valid? @(rf/subscribe [::setup-subs/deck-valid?])]
@@ -153,4 +185,5 @@
    [deck-selector]
    [deck-panels]
    [opponent-config]
+   [must-contain-picker]
    [action-buttons]])

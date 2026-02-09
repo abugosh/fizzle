@@ -366,6 +366,22 @@
           "No sculpted object IDs should appear in library"))))
 
 
+(deftest test-init-opening-hand-must-contain-stored
+  (testing ":opening-hand/must-contain stored in app-db matching input"
+    (let [mc {:dark-ritual 2 :lions-eye-diamond 1}
+          app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)
+                                        :must-contain mc})]
+      (is (= mc (:opening-hand/must-contain app-db))
+          "Must-contain config should be stored in app-db"))))
+
+
+(deftest test-init-opening-hand-must-contain-empty
+  (testing ":opening-hand/must-contain stored as {} when not specified"
+    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)})]
+      (is (= {} (:opening-hand/must-contain app-db))
+          "Must-contain should default to empty map"))))
+
+
 (deftest test-init-must-contain-small-custom-deck
   (testing "must-contain works with small custom deck"
     (let [app-db (game/init-game-state {:main-deck [{:card/id :dark-ritual :count 4}

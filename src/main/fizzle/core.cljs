@@ -1,12 +1,14 @@
 (ns fizzle.core
   (:require
     [fizzle.events.game :as events]
+    [fizzle.events.opening-hand]
     [fizzle.events.selection]
     [fizzle.events.setup :as setup]
     [fizzle.history.events]
     [fizzle.history.interceptor :as history-interceptor]
     [fizzle.subs.game :as subs]
     [fizzle.subs.history]
+    [fizzle.subs.opening-hand]
     [fizzle.subs.setup]
     [fizzle.views.battlefield :as battlefield]
     [fizzle.views.controls :as controls]
@@ -15,6 +17,7 @@
     [fizzle.views.history :as history]
     [fizzle.views.mana-pool :as mana-pool]
     [fizzle.views.modals :as modals]
+    [fizzle.views.opening-hand :as opening-hand]
     [fizzle.views.opponent :as opponent]
     [fizzle.views.phase-bar :as phase-bar]
     [fizzle.views.setup :as setup-view]
@@ -94,8 +97,7 @@
      ;; Screen content
      (case screen
        :setup [setup-view/setup-screen]
-       :opening-hand [:div {:class "p-8 text-center text-text"}
-                      [:p "Opening hand screen (coming soon)"]]
+       :opening-hand [opening-hand/opening-hand-screen]
        [game-screen])]))
 
 

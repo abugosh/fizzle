@@ -157,6 +157,7 @@
          :active-screen :opening-hand
          :opening-hand/mulligan-count 0
          :opening-hand/sculpted-ids sculpted-id-set
+         :opening-hand/must-contain (or must-contain {})
          :opening-hand/phase :viewing}
         (history/init-history)))))
 
