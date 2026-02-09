@@ -2,10 +2,12 @@
   (:require
     [fizzle.events.game :as events]
     [fizzle.events.selection]
+    [fizzle.events.setup :as setup]
     [fizzle.history.events]
     [fizzle.history.interceptor :as history-interceptor]
     [fizzle.subs.game :as subs]
     [fizzle.subs.history]
+    [fizzle.subs.setup]
     [fizzle.views.battlefield :as battlefield]
     [fizzle.views.controls :as controls]
     [fizzle.views.graveyard :as graveyard]
@@ -15,6 +17,7 @@
     [fizzle.views.modals :as modals]
     [fizzle.views.opponent :as opponent]
     [fizzle.views.phase-bar :as phase-bar]
+    [fizzle.views.setup :as setup-view]
     [fizzle.views.stack :as stack]
     [re-frame.core :as rf]
     [reagent.core :as r]
@@ -45,12 +48,6 @@
        (if active?
          "bg-accent text-surface font-bold"
          "bg-surface-raised text-text-muted")))
-
-
-(defn- setup-screen
-  []
-  [:div {:class "flex items-center justify-center h-[80vh] text-text-muted text-lg"}
-   "Setup Screen (Coming Soon)"])
 
 
 (defn- game-screen
@@ -85,14 +82,18 @@
      [:div {:class "flex items-center gap-4 px-4 py-2 border-b border-border bg-surface-raised"}
       [:h1 {:class "text-text font-bold text-lg"} "Fizzle"]
       [:button {:class (nav-btn-class (= screen :setup))
-                :on-click #(rf/dispatch [::events/set-active-screen :setup])}
+                :on-click #(rf/dispatch [::setup/restore-setup])}
        "Setup"]
       [:button {:class (nav-btn-class (= screen :game))
                 :on-click #(rf/dispatch [::events/set-active-screen :game])}
-       "Game"]]
+       "Game"]
+      (when (= screen :game)
+        [:button {:class "px-3 py-1 text-sm rounded cursor-pointer bg-surface-raised text-text-muted"
+                  :on-click #(rf/dispatch [::setup/new-game])}
+         "New Game"])]
      ;; Screen content
      (case screen
-       :setup [setup-screen]
+       :setup [setup-view/setup-screen]
        [game-screen])]))
 
 
@@ -105,5 +106,5 @@
 (defn init
   []
   (history-interceptor/register!)
-  (rf/dispatch-sync [::events/init-game])
+  (rf/dispatch-sync [::setup/init-setup])
   (mount-root))

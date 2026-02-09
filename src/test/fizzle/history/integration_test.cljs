@@ -1,12 +1,13 @@
 (ns fizzle.history.integration-test
   (:require
     [cljs.test :refer-macros [deftest is testing]]
+    [fizzle.cards.iggy-pop :as cards]
     [fizzle.events.game :as game]))
 
 
 (deftest test-init-game-includes-history-keys
   (testing "init-game-state result includes history initialization keys"
-    (let [app-db (game/init-game-state)]
+    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)})]
       (is (contains? app-db :history/main)
           "Should have :history/main key")
       (is (contains? app-db :history/forks)

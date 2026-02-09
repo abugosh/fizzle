@@ -4,6 +4,7 @@
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [datascript.db :as ds-db]
+    [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.events.game :as game]))
 
@@ -12,9 +13,9 @@
 
 (defn init-and-get-db
   "Initialize game and return the datascript db.
-   Calls the init-game-state function directly."
+   Calls the init-game-state function directly with default config."
   []
-  (:game/db (game/init-game-state)))
+  (:game/db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)})))
 
 
 (defn get-library-objects
@@ -131,7 +132,7 @@
 (deftest test-init-game-state-returns-non-nil-db
   ;; Bug caught: Crash on nil db when game state not properly initialized
   (testing "init-game-state returns valid, non-nil game db"
-    (let [app-db (game/init-game-state)
+    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)})
           game-db (:game/db app-db)]
       ;; The game db must never be nil
       (is (some? game-db)
@@ -179,6 +180,74 @@
 
 (deftest test-init-game-state-includes-active-screen
   (testing "init-game-state includes :active-screen defaulting to :game"
-    (let [app-db (game/init-game-state)]
+    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)})]
       (is (= :game (:active-screen app-db))
           "Active screen should default to :game"))))
+
+
+;; === Decklist constant tests ===
+
+(deftest test-iggy-pop-decklist-main-has-60-cards
+  (testing "iggy-pop-decklist main deck sums to exactly 60 cards"
+    (let [main (:deck/main cards/iggy-pop-decklist)
+          total (reduce + (map :count main))]
+      (is (= 60 total)
+          "Main deck should have exactly 60 cards"))))
+
+
+(deftest test-iggy-pop-decklist-side-has-15-cards
+  (testing "iggy-pop-decklist sideboard sums to exactly 15 cards"
+    (let [side (:deck/side cards/iggy-pop-decklist)
+          total (reduce + (map :count side))]
+      (is (= 15 total)
+          "Sideboard should have exactly 15 cards"))))
+
+
+(deftest test-iggy-pop-decklist-all-card-ids-valid
+  (testing "every card-id in decklist has a definition in all-cards"
+    (let [defined-ids (set (map :card/id cards/all-cards))
+          main-ids (set (map :card/id (:deck/main cards/iggy-pop-decklist)))
+          side-ids (set (map :card/id (:deck/side cards/iggy-pop-decklist)))]
+      (doseq [cid main-ids]
+        (is (contains? defined-ids cid)
+            (str "Main deck card " cid " must have a definition in all-cards")))
+      (doseq [cid side-ids]
+        (is (contains? defined-ids cid)
+            (str "Sideboard card " cid " must have a definition in all-cards"))))))
+
+
+(deftest test-iggy-pop-decklist-has-metadata
+  (testing "decklist has required metadata fields"
+    (is (= :iggy-pop (:deck/id cards/iggy-pop-decklist)))
+    (is (= "Iggy Pop" (:deck/name cards/iggy-pop-decklist)))))
+
+
+;; === Config-based init tests ===
+
+(deftest test-init-game-state-with-custom-deck
+  (testing "init-game-state works with a custom small deck config"
+    (let [custom-deck [{:card/id :dark-ritual :count 4}
+                       {:card/id :island :count 3}]
+          app-db (game/init-game-state {:main-deck custom-deck})
+          db (:game/db app-db)
+          library (get-library-objects db :player-1)
+          hand (get-hand-objects db :player-1)]
+      (is (= 7 (+ (count library) (count hand)))
+          "Total cards should equal deck size (7)")
+      (is (some? db)
+          "Should produce a valid game db"))))
+
+
+(deftest test-init-game-state-clock-turns-default
+  (testing "clock-turns defaults to 4 when not specified"
+    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)})]
+      (is (some? (:game/db app-db))
+          "Should initialize with default clock-turns"))))
+
+
+(deftest test-init-game-state-clock-turns-custom
+  (testing "clock-turns can be specified in config"
+    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)
+                                        :clock-turns 6})]
+      (is (some? (:game/db app-db))
+          "Should initialize with custom clock-turns"))))

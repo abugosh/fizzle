@@ -22,59 +22,24 @@
     [re-frame.core :as rf]))
 
 
-(defn make-test-deck
-  "Create a test deck as a vector of card-ids.
-   Iggy Pop storm deck - mix of rituals, lands, acceleration, card filtering.
-   Returns shuffled vector of 60 card-ids."
-  []
+(defn- deck-to-card-ids
+  "Expand a deck main list [{:card/id :count}] into a flat shuffled vector of card-ids."
+  [main-deck]
   (shuffle
     (into []
-          (concat
-            ;; Rituals (8)
-            (repeat 4 :dark-ritual)
-            (repeat 4 :cabal-ritual)
-            ;; Win condition (4)
-            (repeat 4 :brain-freeze)
-            ;; Lands (12)
-            (repeat 3 :city-of-brass)
-            (repeat 4 :gemstone-mine)
-            (repeat 3 :polluted-delta)
-            (repeat 1 :underground-river)
-            (repeat 2 :cephalid-coliseum)
-            (repeat 2 :island)
-            (repeat 1 :swamp)
-            ;; Mana acceleration (8)
-            (repeat 4 :lotus-petal)
-            (repeat 4 :lions-eye-diamond)
-            ;; Card filtering (9)
-            (repeat 2 :careful-study)
-            (repeat 3 :mental-note)
-            (repeat 4 :opt)
-            ;; Tutors (4)
-            (repeat 4 :intuition)
-            ;; Flashback / Card advantage (4)
-            (repeat 3 :deep-analysis)
-            (repeat 1 :recoup)
-            ;; Graveyard recursion (4)
-            (repeat 4 :ill-gotten-gains)
-            ;; Protection (1)
-            (repeat 1 :orims-chant)
-            ;; Enchantment interaction (1)
-            (repeat 1 :ray-of-revelation)
-            ;; Card selection (1)
-            (repeat 1 :flash-of-insight)))))
+          (mapcat (fn [{:keys [card/id count]}]
+                    (repeat count id))
+                  main-deck))))
 
 
 (defn init-game-state
-  "Initialize a fresh game state with:
-   - Card definitions loaded
-   - Player 1 with 20 life, empty mana pool
-   - Player 1's 60-card shuffled library
-   - 7-card opening hand drawn from library
-   - Opponent with 40-card library for mill targets
+  "Initialize a fresh game state from config.
+   Config keys:
+     :main-deck - vec of {:card/id :count} maps (required)
+     :clock-turns - integer turns until opponent wins (default 4)
 
    Returns app-db map with :game/db key containing Datascript db."
-  []
+  [{:keys [main-deck] :or {}}]
   (let [conn (d/create-conn schema)]
     ;; Transact card definitions
     (d/transact! conn cards/all-cards)
@@ -112,8 +77,8 @@
                                 :in $ ?cid
                                 :where [?e :card/id ?cid]]
                               db card-id))
-          ;; Create player's 60-card shuffled library
-          deck (make-test-deck)]
+          ;; Create player's shuffled library from config
+          deck (deck-to-card-ids main-deck)]
       ;; Transact player library (60 cards, shuffled, with positions)
       (d/transact! conn
                    (vec (map-indexed
@@ -153,8 +118,9 @@
 
 (rf/reg-event-db
   ::init-game
-  (fn [_ _]
-    (init-game-state)))
+  (fn [_ [_ config]]
+    (init-game-state (or config {:main-deck (:deck/main cards/iggy-pop-decklist)
+                                 :clock-turns 4}))))
 
 
 (defn set-active-screen-handler
