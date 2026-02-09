@@ -2,6 +2,7 @@
   (:require
     [fizzle.events.setup :as setup]
     [fizzle.subs.setup :as setup-subs]
+    [fizzle.views.import-modal :as import-modal]
     [re-frame.core :as rf]))
 
 
@@ -42,7 +43,9 @@
 (defn- deck-selector
   []
   (let [decks @(rf/subscribe [::setup-subs/available-decks])
-        selected @(rf/subscribe [::setup-subs/selected-deck])]
+        selected @(rf/subscribe [::setup-subs/selected-deck])
+        selected-deck-info (some #(when (= selected (:deck/id %)) %) decks)
+        imported? (= :imported (:deck/source selected-deck-info))]
     [:div {:class "flex items-center gap-2"}
      [:label {:class "text-text-label text-xs font-bold uppercase tracking-wider"} "Deck:"]
      [:select {:class "bg-surface-raised border border-border rounded px-2 py-1 text-sm text-text"
@@ -50,7 +53,18 @@
                :on-change #(rf/dispatch [::setup/select-deck (keyword (.. % -target -value))])}
       (for [{:keys [deck/id deck/name]} decks]
         ^{:key id}
-        [:option {:value (cljs.core/name id)} name])]]))
+        [:option {:value (cljs.core/name id)} name])]
+     [:button {:class "px-3 py-1 text-sm border border-border rounded cursor-pointer bg-surface-raised text-text"
+               :on-click #(rf/dispatch [::setup/open-import-modal])}
+      "Import"]
+     (when imported?
+       [:<>
+        [:button {:class "px-3 py-1 text-sm border border-border rounded cursor-pointer bg-surface-raised text-text"
+                  :on-click #(rf/dispatch [::setup/open-edit-modal selected])}
+         "Edit"]
+        [:button {:class "px-3 py-1 text-sm border border-border rounded cursor-pointer bg-surface-raised text-text hover:text-error"
+                  :on-click #(rf/dispatch [::setup/delete-imported-deck selected])}
+         "Delete"]])]))
 
 
 (defn- card-row
@@ -180,10 +194,13 @@
 
 (defn setup-screen
   []
-  [:div {:class "max-w-4xl mx-auto p-4 space-y-4"}
-   [preset-bar]
-   [deck-selector]
-   [deck-panels]
-   [opponent-config]
-   [must-contain-picker]
-   [action-buttons]])
+  (let [import-modal @(rf/subscribe [::setup-subs/import-modal])]
+    [:div {:class "max-w-4xl mx-auto p-4 space-y-4"}
+     [preset-bar]
+     [deck-selector]
+     [deck-panels]
+     [opponent-config]
+     [must-contain-picker]
+     [action-buttons]
+     (when import-modal
+       [import-modal/import-deck-modal])]))
