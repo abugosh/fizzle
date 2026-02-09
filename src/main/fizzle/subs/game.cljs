@@ -10,6 +10,7 @@
 ;; Layer 2: extraction subscriptions
 (rf/reg-sub ::game-db (fn [db _] (:game/db db)))
 (rf/reg-sub ::selected-card (fn [db _] (:game/selected-card db)))
+(rf/reg-sub ::active-screen (fn [db _] (:active-screen db)))
 
 
 ;; Layer 3: derived subscriptions

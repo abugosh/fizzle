@@ -8,51 +8,42 @@
     [re-frame.core :as rf]))
 
 
-;; === Shared Style Constants ===
+;; === Shared Class Helpers ===
 
-(def overlay-style
-  {:position "fixed"
-   :top 0
-   :left 0
-   :right 0
-   :bottom 0
-   :background "rgba(0, 0, 0, 0.8)"
-   :display "flex"
-   :align-items "center"
-   :justify-content "center"
-   :z-index 1000})
+(def overlay-class
+  "fixed inset-0 bg-black/80 flex items-center justify-center z-[1000]")
 
 
-(defn container-style
+(defn container-class
   [{:keys [max-width border-color]
-    :or {max-width "600px" border-color "#4A9BD9"}}]
-  {:background "#1a1a2a"
-   :border (str "2px solid " border-color)
-   :border-radius "12px"
-   :padding "24px"
-   :max-width max-width
-   :width "90%"})
+    :or {max-width "600px" border-color "border-accent"}}]
+  (str "bg-surface-raised border-2 border-" border-color
+       " rounded-xl p-6 w-[90%] max-w-[" max-width "]"))
 
 
-(def header-style
-  {:color "#eee"
-   :margin "0 0 16px 0"
-   :font-size "18px"})
+(def header-class
+  "text-text text-lg m-0 mb-4")
+
+
+(defn- selectable-card-class
+  "Shared class string for cards that can be selected/deselected."
+  [selected?]
+  (str "rounded-md px-3.5 py-2.5 cursor-pointer min-w-[90px] text-center "
+       "select-none text-text transition-all duration-100 "
+       (if selected?
+         "border-[3px] border-border-accent bg-modal-selected-bg"
+         "border-2 border-border bg-surface-raised")))
 
 
 ;; === Shared Components ===
 
 (defn confirm-button
-  [{:keys [label valid? on-confirm padding enabled-bg]
-    :or {padding "8px 20px" enabled-bg "#2a6a2a"}}]
-  [:button {:style {:padding padding
-                    :border "none"
-                    :border-radius "4px"
-                    :cursor (if valid? "pointer" "not-allowed")
-                    :background (if valid? enabled-bg "#333")
-                    :color (if valid? "#fff" "#666")
-                    :font-size "14px"
-                    :font-weight "bold"}
+  [{:keys [label valid? on-confirm extra-class]}]
+  [:button {:class (str "py-2 px-5 border-none rounded font-bold text-sm "
+                        (if valid?
+                          "cursor-pointer bg-btn-enabled-bg text-white"
+                          "cursor-not-allowed bg-surface-dim text-perm-text-tapped")
+                        (when extra-class (str " " extra-class)))
             :disabled (not valid?)
             :on-click on-confirm}
    label])
@@ -60,24 +51,18 @@
 
 (defn cancel-button
   [{:keys [label on-cancel]}]
-  [:button {:style {:padding "8px 20px"
-                    :border "1px solid #555"
-                    :border-radius "4px"
-                    :cursor "pointer"
-                    :background "#333"
-                    :color "#ccc"
-                    :font-size "14px"}
+  [:button {:class "py-2 px-5 border border-border rounded cursor-pointer bg-surface-dim text-perm-text text-sm"
             :on-click on-cancel}
    label])
 
 
 (defn modal-wrapper
   [{:keys [title max-width border-color text-align]} & children]
-  [:div {:style overlay-style}
-   (into [:div {:style (cond-> (container-style {:max-width max-width
-                                                 :border-color border-color})
-                         text-align (assoc :text-align text-align))}
-          [:h2 {:style header-style} title]]
+  [:div {:class overlay-class}
+   (into [:div {:class (str (container-class {:max-width max-width
+                                              :border-color border-color})
+                            (when text-align (str " text-" text-align)))}
+          [:h2 {:class header-class} title]]
          children)])
 
 
@@ -86,17 +71,11 @@
 (defn player-target-button
   "Button to select a player as target."
   [player-id label selected?]
-  [:button {:style {:padding "16px 32px"
-                    :margin "8px"
-                    :border (if selected? "3px solid #4A9BD9" "2px solid #555")
-                    :border-radius "8px"
-                    :cursor "pointer"
-                    :background (if selected? "#1a3a5a" "#1a1a2a")
-                    :color "#eee"
-                    :font-size "16px"
-                    :font-weight "bold"
-                    :min-width "120px"
-                    :transition "all 0.1s ease"}
+  [:button {:class (str "py-4 px-8 m-2 rounded-lg cursor-pointer text-text text-base "
+                        "font-bold min-w-[120px] transition-all duration-100 "
+                        (if selected?
+                          "border-[3px] border-border-accent bg-modal-selected-bg"
+                          "border-2 border-border bg-surface-raised"))
             :on-click #(rf/dispatch [::selection-events/select-player-target player-id])}
    label])
 
@@ -110,18 +89,7 @@
         object-id (:object/id obj)
         is-selected? (= object-id selected-target)]
     ^{:key object-id}
-    [:div {:style {:border (if is-selected?
-                             "3px solid #4A9BD9"
-                             "2px solid #555")
-                   :border-radius "6px"
-                   :padding "10px 14px"
-                   :cursor "pointer"
-                   :background (if is-selected? "#1a3a5a" "#1a1a2a")
-                   :color "#eee"
-                   :min-width "90px"
-                   :text-align "center"
-                   :user-select "none"
-                   :transition "all 0.1s ease"}
+    [:div {:class (selectable-card-class is-selected?)
            :on-click #(rf/dispatch [select-event object-id])}
      card-name]))
 
@@ -141,32 +109,24 @@
         target-req (:selection/target-requirement selection)
         zone-name (name (or (:target/zone target-req) default-zone))
         valid? (some? selected-target)]
-    [:div {:style overlay-style}
-     [:div {:style (container-style {})}
+    [:div {:class overlay-class}
+     [:div {:class (container-class {})}
       ;; Header
-      [:h2 {:style {:color "#eee"
-                    :margin "0 0 8px 0"
-                    :font-size "18px"}}
+      [:h2 {:class "text-text m-0 mb-2 text-lg"}
        (str "Choose target from " zone-name)]
       ;; Instructions
-      [:p {:style {:color (if valid? "#5CB85C" "#F0AD4E")
-                   :margin "0 0 16px 0"
-                   :font-size "14px"}}
+      [:p {:class (str "m-0 mb-4 text-sm "
+                       (if valid? "text-health-good" "text-health-danger"))}
        (if valid? selected-label unselected-label)]
       ;; Card grid
-      [:div {:style {:display "flex"
-                     :flex-wrap "wrap"
-                     :gap "10px"
-                     :margin-bottom "20px"
-                     :min-height "60px"}}
+      [:div {:class "flex flex-wrap gap-2.5 mb-5 min-h-[60px]"}
        (if (seq cards)
          (for [obj cards]
            [object-target-card-view obj selected-target select-event])
-         [:div {:style {:color "#666"}}
+         [:div {:class "text-perm-text-tapped"}
           "No valid targets"])]
       ;; Confirm button
-      [:div {:style {:display "flex"
-                     :justify-content "flex-end"}}
+      [:div {:class "flex justify-end"}
        [confirm-button {:label "Confirm"
                         :valid? valid?
                         :on-confirm #(rf/dispatch [confirm-event selected-target])}]]]]))
@@ -185,18 +145,15 @@
                     :max-width "400px"
                     :text-align "center"}
      ;; Player buttons
-     [:div {:style {:display "flex"
-                    :justify-content "center"
-                    :margin-bottom "20px"}}
+     [:div {:class "flex justify-center mb-5"}
       [player-target-button :player-1 "You" (= selected-target :player-1)]
       [player-target-button :opponent "Opponent" (= selected-target :opponent)]]
      ;; Confirm button
-     [:div {:style {:display "flex"
-                    :justify-content "center"}}
+     [:div {:class "flex justify-center"}
       [confirm-button {:label "Confirm"
                        :valid? valid?
                        :on-confirm #(rf/dispatch [confirm-event selected-target])
-                       :padding "10px 32px"}]]]))
+                       :extra-class "py-2.5 px-8"}]]]))
 
 
 ;; === Card Selection Modals ===
@@ -209,18 +166,7 @@
   ([obj selected? toggle-event]
    (let [card-name (get-in obj [:object/card :card/name])
          object-id (:object/id obj)]
-     [:div {:style {:border (if selected?
-                              "3px solid #4A9BD9"
-                              "2px solid #555")
-                    :border-radius "6px"
-                    :padding "10px 14px"
-                    :cursor "pointer"
-                    :background (if selected? "#1a3a5a" "#1a1a2a")
-                    :color "#eee"
-                    :min-width "90px"
-                    :text-align "center"
-                    :user-select "none"
-                    :transition "all 0.1s ease"}
+     [:div {:class (selectable-card-class selected?)
             :on-click #(rf/dispatch [(or toggle-event ::selection-events/toggle-selection) object-id])}
       card-name])))
 
@@ -252,20 +198,17 @@
         confirm-event (if is-tutor?
                         ::selection-events/confirm-tutor-selection
                         ::selection-events/confirm-selection)]
-    [:div {:style overlay-style}
-     [:div {:style (container-style {})}
+    [:div {:class overlay-class}
+     [:div {:class (container-class {})}
       ;; Header
-      [:h2 {:style {:color "#eee"
-                    :margin "0 0 8px 0"
-                    :font-size "18px"}}
+      [:h2 {:class "text-text m-0 mb-2 text-lg"}
        (case selection-type
          :discard "Select cards to discard"
          :tutor "Search your library"
          "Select cards")]
       ;; Counter / instructions
-      [:p {:style {:color (if valid? "#5CB85C" "#F0AD4E")
-                   :margin "0 0 16px 0"
-                   :font-size "14px"}}
+      [:p {:class (str "m-0 mb-4 text-sm "
+                       (if valid? "text-health-good" "text-health-danger"))}
        (cond
          is-multi-select?
          (str current-count " / " required-count " cards selected")
@@ -278,23 +221,17 @@
          :else
          (str current-count " / " required-count " selected"))]
       ;; Card grid
-      [:div {:style {:display "flex"
-                     :flex-wrap "wrap"
-                     :gap "10px"
-                     :margin-bottom "20px"
-                     :min-height "60px"}}
+      [:div {:class "flex flex-wrap gap-2.5 mb-5 min-h-[60px]"}
        (if (seq cards)
          (for [obj cards]
            ^{:key (:object/id obj)}
            [selection-card-view obj (contains? selected (:object/id obj))])
-         [:div {:style {:color "#666"}}
+         [:div {:class "text-perm-text-tapped"}
           (if is-tutor?
             "No matching cards in library"
             "No cards available")])]
       ;; Buttons
-      [:div {:style {:display "flex"
-                     :justify-content "flex-end"
-                     :gap "12px"}}
+      [:div {:class "flex justify-end gap-3"}
        ;; For tutors: "Find Nothing" button (fail-to-find)
        (when is-tutor?
          [cancel-button {:label "Find Nothing"
@@ -322,31 +259,22 @@
         hand-count (:selection/hand-count selection)
         current-count (count selected)
         valid? (= current-count hand-count)]
-    [:div {:style overlay-style}
-     [:div {:style (container-style {})}
+    [:div {:class overlay-class}
+     [:div {:class (container-class {})}
       ;; Header
-      [:h2 {:style {:color "#eee"
-                    :margin "0 0 8px 0"
-                    :font-size "18px"}}
+      [:h2 {:class "text-text m-0 mb-2 text-lg"}
        "Choose card for hand"]
       ;; Instructions
-      [:p {:style {:color (if valid? "#5CB85C" "#F0AD4E")
-                   :margin "0 0 16px 0"
-                   :font-size "14px"}}
+      [:p {:class (str "m-0 mb-4 text-sm "
+                       (if valid? "text-health-good" "text-health-danger"))}
        (str current-count " / " hand-count " selected for hand (rest go to graveyard)")]
       ;; Card grid
-      [:div {:style {:display "flex"
-                     :flex-wrap "wrap"
-                     :gap "10px"
-                     :margin-bottom "20px"
-                     :min-height "60px"}}
+      [:div {:class "flex flex-wrap gap-2.5 mb-5 min-h-[60px]"}
        (for [obj cards]
          ^{:key (:object/id obj)}
          [selection-card-view obj (contains? selected (:object/id obj))])]
       ;; Buttons
-      [:div {:style {:display "flex"
-                     :justify-content "flex-end"
-                     :gap "12px"}}
+      [:div {:class "flex justify-end gap-3"}
        ;; Random button
        [cancel-button {:label "Random"
                        :on-cancel #(rf/dispatch [::selection-events/select-random-pile-choice])}]
@@ -365,34 +293,24 @@
         current-count (count selected)
         ;; Valid if 0 to max-count cards selected
         valid? (<= current-count max-count)]
-    [:div {:style overlay-style}
-     [:div {:style (container-style {:border-color "#6a4a8a"})}
+    [:div {:class overlay-class}
+     [:div {:class (container-class {:border-color "gy-flashback-border"})}
       ;; Header
-      [:h2 {:style {:color "#eee"
-                    :margin "0 0 8px 0"
-                    :font-size "18px"}}
+      [:h2 {:class "text-text m-0 mb-2 text-lg"}
        "Return cards from graveyard to hand"]
       ;; Instructions
-      [:p {:style {:color "#5CB85C"
-                   :margin "0 0 16px 0"
-                   :font-size "14px"}}
+      [:p {:class "text-health-good m-0 mb-4 text-sm"}
        (str "Select up to " max-count " cards (" current-count " selected)")]
       ;; Card grid
-      [:div {:style {:display "flex"
-                     :flex-wrap "wrap"
-                     :gap "10px"
-                     :margin-bottom "20px"
-                     :min-height "60px"}}
+      [:div {:class "flex flex-wrap gap-2.5 mb-5 min-h-[60px]"}
        (if (seq cards)
          (for [obj cards]
            ^{:key (:object/id obj)}
            [selection-card-view obj (contains? selected (:object/id obj))])
-         [:div {:style {:color "#666"}}
+         [:div {:class "text-perm-text-tapped"}
           "No cards in graveyard"])]
       ;; Buttons
-      [:div {:style {:display "flex"
-                     :justify-content "flex-end"
-                     :gap "12px"}}
+      [:div {:class "flex justify-end gap-3"}
        ;; Clear button
        [cancel-button {:label "Clear"
                        :on-cancel #(rf/dispatch [::selection-events/cancel-selection])}]
@@ -400,7 +318,7 @@
        [confirm-button {:label "Confirm"
                         :valid? valid?
                         :on-confirm #(rf/dispatch [::selection-events/confirm-graveyard-selection])
-                        :enabled-bg "#6a4a8a"}]]]]))
+                        :extra-class "bg-gy-flashback-border"}]]]]))
 
 
 (defn exile-cards-selection-modal
@@ -410,41 +328,31 @@
   (let [selected (:selection/selected selection)
         current-count (count selected)
         valid? (pos? current-count)]
-    [:div {:style overlay-style}
-     [:div {:style (container-style {:border-color "#6a4a8a"})}
+    [:div {:class overlay-class}
+     [:div {:class (container-class {:border-color "gy-flashback-border"})}
       ;; Header
-      [:h2 {:style {:color "#eee"
-                    :margin "0 0 8px 0"
-                    :font-size "18px"}}
+      [:h2 {:class "text-text m-0 mb-2 text-lg"}
        "Select cards to exile (Flashback cost)"]
       ;; Instructions
-      [:p {:style {:color "#5CB85C"
-                   :margin "0 0 16px 0"
-                   :font-size "14px"}}
+      [:p {:class "text-health-good m-0 mb-4 text-sm"}
        (str "Select blue cards to exile. X = " current-count " (select at least 1)")]
       ;; Card grid
-      [:div {:style {:display "flex"
-                     :flex-wrap "wrap"
-                     :gap "10px"
-                     :margin-bottom "20px"
-                     :min-height "60px"}}
+      [:div {:class "flex flex-wrap gap-2.5 mb-5 min-h-[60px]"}
        (if (seq cards)
          (for [obj cards]
            ^{:key (:object/id obj)}
            [selection-card-view obj (contains? selected (:object/id obj))
             ::selection-events/toggle-exile-card-selection])
-         [:div {:style {:color "#666"}}
+         [:div {:class "text-perm-text-tapped"}
           "No eligible cards"])]
       ;; Buttons
-      [:div {:style {:display "flex"
-                     :justify-content "flex-end"
-                     :gap "12px"}}
+      [:div {:class "flex justify-end gap-3"}
        [cancel-button {:label "Cancel"
                        :on-cancel #(rf/dispatch [::selection-events/cancel-exile-cards-selection])}]
        [confirm-button {:label (str "Exile " current-count " cards")
                         :valid? valid?
                         :on-confirm #(rf/dispatch [::selection-events/confirm-exile-cards-selection])
-                        :enabled-bg "#6a4a8a"}]]]]))
+                        :extra-class "bg-gy-flashback-border"}]]]]))
 
 
 (defn peek-selection-modal
@@ -455,42 +363,32 @@
         select-count (:selection/select-count selection)
         current-count (count selected)
         valid? (<= current-count select-count)]
-    [:div {:style overlay-style}
-     [:div {:style (container-style {:border-color "#6a4a8a"})}
+    [:div {:class overlay-class}
+     [:div {:class (container-class {:border-color "gy-flashback-border"})}
       ;; Header
-      [:h2 {:style {:color "#eee"
-                    :margin "0 0 8px 0"
-                    :font-size "18px"}}
+      [:h2 {:class "text-text m-0 mb-2 text-lg"}
        "Look at the top cards of your library"]
       ;; Instructions
-      [:p {:style {:color "#5CB85C"
-                   :margin "0 0 16px 0"
-                   :font-size "14px"}}
+      [:p {:class "text-health-good m-0 mb-4 text-sm"}
        (str "Select up to " select-count " card(s) for your hand (" current-count " selected). "
             "Remaining cards go to bottom of library.")]
       ;; Card grid
-      [:div {:style {:display "flex"
-                     :flex-wrap "wrap"
-                     :gap "10px"
-                     :margin-bottom "20px"
-                     :min-height "60px"}}
+      [:div {:class "flex flex-wrap gap-2.5 mb-5 min-h-[60px]"}
        (if (seq cards)
          (for [obj cards]
            ^{:key (:object/id obj)}
            [selection-card-view obj (contains? selected (:object/id obj))
             ::selection-events/toggle-peek-card-selection])
-         [:div {:style {:color "#666"}}
+         [:div {:class "text-perm-text-tapped"}
           "No cards to peek"])]
       ;; Buttons
-      [:div {:style {:display "flex"
-                     :justify-content "flex-end"
-                     :gap "12px"}}
+      [:div {:class "flex justify-end gap-3"}
        [cancel-button {:label "Clear"
                        :on-cancel #(rf/dispatch [::selection-events/cancel-selection])}]
        [confirm-button {:label "Confirm"
                         :valid? valid?
                         :on-confirm #(rf/dispatch [::selection-events/confirm-peek-selection])
-                        :enabled-bg "#6a4a8a"}]]]]))
+                        :extra-class "bg-gy-flashback-border"}]]]]))
 
 
 ;; === Scry Modal ===
@@ -500,18 +398,12 @@
   [obj pile]
   (let [card (:object/card obj)
         card-name (or (:card/name card) "Unknown")]
-    [:div {:style {:width "100px"
-                   :padding "8px"
-                   :border-radius "6px"
-                   :background (case pile
-                                 :top "#2a4a2a"
-                                 :bottom "#4a2a2a"
-                                 "#1a2a3a")
-                   :border "1px solid #4A9BD9"
-                   :text-align "center"
-                   :font-size "11px"
-                   :color "#eee"
-                   :cursor "pointer"}}
+    [:div {:class (str "w-[100px] p-2 rounded-md border border-border-accent "
+                       "text-center text-[11px] text-text cursor-pointer "
+                       (case pile
+                         :top "bg-scry-top-bg"
+                         :bottom "bg-scry-bottom-bg"
+                         "bg-scry-unassigned-bg"))}
      card-name]))
 
 
@@ -526,60 +418,64 @@
         unassigned-cards (remove #(contains? assigned (:object/id %)) all-cards)
         top-cards (filter #(contains? top-pile-ids (:object/id %)) all-cards)
         bottom-cards (filter #(contains? bottom-pile-ids (:object/id %)) all-cards)]
-    [:div {:style overlay-style}
-     [:div {:style (container-style {})}
+    [:div {:class overlay-class}
+     [:div {:class (container-class {})}
       ;; Header
-      [:h2 {:style {:color "#eee" :margin "0 0 16px 0"}}
+      [:h2 {:class header-class}
        (str "Scry " (count all-cards))]
 
       ;; Top Pile section
-      [:div {:style {:margin-bottom "16px"}}
-       [:h3 {:style {:color "#5CB85C" :font-size "14px" :margin "0 0 8px 0"}}
+      [:div {:class "mb-4"}
+       [:h3 {:class "text-health-good text-sm m-0 mb-2"}
         "Top of Library (first)"]
-       [:div {:style {:display "flex" :flex-wrap "wrap" :gap "8px" :min-height "40px"}}
+       [:div {:class "flex flex-wrap gap-2 min-h-[40px]"}
         (for [obj top-cards]
           ^{:key (:object/id obj)}
           [:div {:on-click #(rf/dispatch [::selection-events/scry-unassign (:object/id obj)])}
            [scry-card-view obj :top]])]]
 
       ;; Unassigned cards section
-      [:div {:style {:margin-bottom "16px"}}
-       [:h3 {:style {:color "#aaa" :font-size "14px" :margin "0 0 8px 0"}}
+      [:div {:class "mb-4"}
+       [:h3 {:class "text-text-muted text-sm m-0 mb-2"}
         "Revealed Cards"]
-       [:div {:style {:display "flex" :flex-wrap "wrap" :gap "8px" :min-height "40px"}}
+       [:div {:class "flex flex-wrap gap-2 min-h-[40px]"}
         (for [obj unassigned-cards]
           ^{:key (:object/id obj)}
-          [:div {:style {:display "flex" :gap "4px" :align-items "center"}}
+          [:div {:class "flex gap-1 items-center"}
            [scry-card-view obj nil]
-           [:div {:style {:display "flex" :flex-direction "column" :gap "2px"}}
-            [:button {:style {:padding "4px 8px" :background "#2a4a2a" :border "1px solid #5CB85C"
-                              :border-radius "4px" :color "#eee" :cursor "pointer" :font-size "10px"}
+           [:div {:class "flex flex-col gap-0.5"}
+            [:button {:class "py-1 px-2 bg-scry-top-bg border border-health-good rounded text-text cursor-pointer text-[10px]"
                       :on-click #(rf/dispatch [::selection-events/scry-assign-top (:object/id obj)])}
              "Top"]
-            [:button {:style {:padding "4px 8px" :background "#4a2a2a" :border "1px solid #D9534F"
-                              :border-radius "4px" :color "#eee" :cursor "pointer" :font-size "10px"}
+            [:button {:class "py-1 px-2 bg-scry-bottom-bg border border-health-critical rounded text-text cursor-pointer text-[10px]"
                       :on-click #(rf/dispatch [::selection-events/scry-assign-bottom (:object/id obj)])}
              "Bottom"]]])]]
 
       ;; Bottom Pile section
-      [:div {:style {:margin-bottom "20px"}}
-       [:h3 {:style {:color "#D9534F" :font-size "14px" :margin "0 0 8px 0"}}
+      [:div {:class "mb-5"}
+       [:h3 {:class "text-health-critical text-sm m-0 mb-2"}
         "Bottom of Library (last)"]
-       [:div {:style {:display "flex" :flex-wrap "wrap" :gap "8px" :min-height "40px"}}
+       [:div {:class "flex flex-wrap gap-2 min-h-[40px]"}
         (for [obj bottom-cards]
           ^{:key (:object/id obj)}
           [:div {:on-click #(rf/dispatch [::selection-events/scry-unassign (:object/id obj)])}
            [scry-card-view obj :bottom]])]]
 
       ;; Confirm button
-      [:button {:style {:width "100%" :padding "12px" :background "#4A9BD9"
-                        :border "none" :border-radius "8px" :color "#fff"
-                        :font-size "16px" :cursor "pointer"}
+      [:button {:class "w-full p-3 bg-accent border-none rounded-lg text-white text-base cursor-pointer"
                 :on-click #(rf/dispatch [::selection-events/confirm-scry-selection])}
        "Confirm"]]]))
 
 
 ;; === X Mana Selection Modal ===
+
+(defn- stepper-button-class
+  [enabled?]
+  (str "w-10 h-10 border border-border rounded cursor-"
+       (if enabled? "pointer" "not-allowed")
+       " text-white text-xl "
+       (if enabled? "bg-surface-elevated" "bg-btn-disabled-bg")))
+
 
 (defn x-mana-selection-modal
   "Modal for selecting X value for a spell with X in its mana cost.
@@ -592,62 +488,34 @@
         ;; Calculate total cost with current X
         fixed-colorless (get mana-cost :colorless 0)
         total-colorless (+ fixed-colorless selected-x)]
-    [:div {:style overlay-style}
-     [:div {:style (container-style {:max-width "400px" :border-color "#6a4a8a"})}
+    [:div {:class overlay-class}
+     [:div {:class (container-class {:max-width "400px" :border-color "gy-flashback-border"})}
       ;; Header
-      [:h2 {:style {:color "#eee"
-                    :margin "0 0 8px 0"
-                    :font-size "18px"}}
+      [:h2 {:class "text-text m-0 mb-2 text-lg"}
        "Choose X value"]
       ;; Instructions
-      [:p {:style {:color "#5CB85C"
-                   :margin "0 0 16px 0"
-                   :font-size "14px"}}
+      [:p {:class "text-health-good m-0 mb-4 text-sm"}
        (str "Total cost: {" total-colorless "}{U} (X = " selected-x ", max " max-x ")")]
       ;; X selector
-      [:div {:style {:display "flex"
-                     :align-items "center"
-                     :justify-content "center"
-                     :gap "20px"
-                     :margin-bottom "20px"}}
-       [:button {:style {:width "40px"
-                         :height "40px"
-                         :border "1px solid #555"
-                         :border-radius "4px"
-                         :cursor (if (pos? selected-x) "pointer" "not-allowed")
-                         :background (if (pos? selected-x) "#444" "#222")
-                         :color "#fff"
-                         :font-size "20px"}
+      [:div {:class "flex items-center justify-center gap-5 mb-5"}
+       [:button {:class (stepper-button-class (pos? selected-x))
                  :disabled (not (pos? selected-x))
                  :on-click #(rf/dispatch [::selection-events/decrement-x-value])}
         "-"]
-       [:div {:style {:font-size "32px"
-                      :color "#fff"
-                      :font-weight "bold"
-                      :min-width "60px"
-                      :text-align "center"}}
+       [:div {:class "text-[32px] text-white font-bold min-w-[60px] text-center"}
         (str "X = " selected-x)]
-       [:button {:style {:width "40px"
-                         :height "40px"
-                         :border "1px solid #555"
-                         :border-radius "4px"
-                         :cursor (if (< selected-x max-x) "pointer" "not-allowed")
-                         :background (if (< selected-x max-x) "#444" "#222")
-                         :color "#fff"
-                         :font-size "20px"}
+       [:button {:class (stepper-button-class (< selected-x max-x))
                  :disabled (not (< selected-x max-x))
                  :on-click #(rf/dispatch [::selection-events/increment-x-value])}
         "+"]]
       ;; Buttons
-      [:div {:style {:display "flex"
-                     :justify-content "flex-end"
-                     :gap "12px"}}
+      [:div {:class "flex justify-end gap-3"}
        [cancel-button {:label "Cancel"
                        :on-cancel #(rf/dispatch [::selection-events/cancel-x-mana-selection])}]
        [confirm-button {:label "Cast"
                         :valid? true
                         :on-confirm #(rf/dispatch [::selection-events/confirm-x-mana-selection])
-                        :enabled-bg "#6a4a8a"}]]]]))
+                        :extra-class "bg-gy-flashback-border"}]]]]))
 
 
 ;; === Mode Selector Modal ===
@@ -694,32 +562,19 @@
         additional-costs (:mode/additional-costs mode)
         formatted-mana (format-mana-cost mana-cost)
         formatted-additional (format-additional-costs additional-costs)]
-    [:button {:style {:width "100%"
-                      :padding "12px 16px"
-                      :margin-bottom "8px"
-                      :border "2px solid #4A9BD9"
-                      :border-radius "8px"
-                      :cursor "pointer"
-                      :background "#1a2a3a"
-                      :color "#eee"
-                      :text-align "left"
-                      :transition "all 0.1s ease"}
-              :on-click #(rf/dispatch [::events/select-casting-mode mode])
-              :on-mouse-over #(set! (.. % -target -style -background) "#2a3a5a")
-              :on-mouse-out #(set! (.. % -target -style -background) "#1a2a3a")}
-     [:div {:style {:font-weight "bold"
-                    :font-size "14px"
-                    :margin-bottom "4px"}}
+    [:button {:class (str "w-full py-3 px-4 mb-2 border-2 border-border-accent rounded-lg "
+                          "cursor-pointer bg-mode-btn-bg text-text text-left "
+                          "transition-all duration-100 hover:bg-mode-btn-hover")
+              :on-click #(rf/dispatch [::events/select-casting-mode mode])}
+     [:div {:class "font-bold text-sm mb-1"}
       (case mode-id
         :primary "Normal Cast"
         :flashback "Flashback"
         (name mode-id))]
-     [:div {:style {:font-size "13px"
-                    :color "#aaa"}}
+     [:div {:class "text-[13px] text-text-muted"}
       formatted-mana
       (when formatted-additional
-        [:span {:style {:margin-left "8px"
-                        :color "#c8a"}}
+        [:span {:class "ml-2 text-cost-text"}
          (str "+ " formatted-additional)])]]))
 
 
@@ -729,32 +584,21 @@
   (let [pending @(rf/subscribe [::subs/pending-mode-selection])]
     (when pending
       (let [modes (:modes pending)]
-        [:div {:style (merge overlay-style {})
+        [:div {:class overlay-class
                :on-click #(rf/dispatch [::events/cancel-mode-selection])}
-         [:div {:style (container-style {:max-width "400px"})
-                :on-click #(.stopPropagation %)}  ; Prevent closing when clicking inside
+         [:div {:class (container-class {:max-width "400px"})
+                :on-click #(.stopPropagation %)}
           ;; Header
-          [:h2 {:style {:color "#eee"
-                        :margin "0 0 16px 0"
-                        :font-size "18px"
-                        :text-align "center"}}
+          [:h2 {:class "text-text m-0 mb-4 text-lg text-center"}
            "Choose casting mode"]
           ;; Mode buttons
-          [:div {:style {:display "flex"
-                         :flex-direction "column"}}
+          [:div {:class "flex flex-col"}
            (for [mode modes]
              ^{:key (:mode/id mode)}
              [mode-button mode])]
           ;; Cancel button
-          [:button {:style {:width "100%"
-                            :padding "8px 16px"
-                            :margin-top "8px"
-                            :border "1px solid #555"
-                            :border-radius "4px"
-                            :cursor "pointer"
-                            :background "#333"
-                            :color "#999"
-                            :font-size "13px"}
+          [:button {:class (str "w-full py-2 px-4 mt-2 border border-border rounded "
+                                "cursor-pointer bg-surface-dim text-text-label text-[13px]")
                     :on-click #(rf/dispatch [::events/cancel-mode-selection])}
            "Cancel"]]]))))
 

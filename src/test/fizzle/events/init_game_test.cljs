@@ -175,3 +175,10 @@
       ;; Storm count starts at 0
       (is (= 0 (q/get-storm-count db :player-1))
           "Storm count should start at 0"))))
+
+
+(deftest test-init-game-state-includes-active-screen
+  (testing "init-game-state includes :active-screen defaulting to :game"
+    (let [app-db (game/init-game-state)]
+      (is (= :game (:active-screen app-db))
+          "Active screen should default to :game"))))

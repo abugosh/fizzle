@@ -6,32 +6,24 @@
     [reagent.core :as r]))
 
 
+(defn- step-btn-class
+  [enabled?]
+  (str "py-1 px-3 border border-border rounded text-[13px] font-bold flex-1 "
+       (if enabled?
+         "cursor-pointer bg-btn-enabled-bg text-white"
+         "cursor-default bg-btn-disabled-bg text-border")))
+
+
 (defn- step-controls
   []
   (let [can-back? @(rf/subscribe [::subs/can-step-back?])
         can-fwd? @(rf/subscribe [::subs/can-step-forward?])]
-    [:div {:style {:display "flex" :gap "8px" :margin-bottom "12px"}}
-     [:button {:style {:padding "4px 12px"
-                       :border "1px solid #555"
-                       :border-radius "4px"
-                       :cursor (if can-back? "pointer" "default")
-                       :background (if can-back? "#2a6a2a" "#222")
-                       :color (if can-back? "#fff" "#555")
-                       :font-size "13px"
-                       :font-weight "bold"
-                       :flex 1}
+    [:div {:class "flex gap-2 mb-3"}
+     [:button {:class (step-btn-class can-back?)
                :disabled (not can-back?)
                :on-click #(rf/dispatch [::events/step-back])}
       "\u25C0 Back"]
-     [:button {:style {:padding "4px 12px"
-                       :border "1px solid #555"
-                       :border-radius "4px"
-                       :cursor (if can-fwd? "pointer" "default")
-                       :background (if can-fwd? "#2a6a2a" "#222")
-                       :color (if can-fwd? "#fff" "#555")
-                       :font-size "13px"
-                       :font-weight "bold"
-                       :flex 1}
+     [:button {:class (step-btn-class can-fwd?)
                :disabled (not can-fwd?)
                :on-click #(rf/dispatch [::events/step-forward])}
       "Fwd \u25B6"]]))
@@ -57,13 +49,7 @@
              (for [{:keys [turn entries offset]} indexed-groups]
                ^{:key (str "turn-" turn)}
                [:div
-                [:div {:style {:padding "4px 8px"
-                               :font-size "11px"
-                               :color "#999"
-                               :cursor "pointer"
-                               :user-select "none"
-                               :text-transform "uppercase"
-                               :letter-spacing "0.5px"}
+                [:div {:class "px-2 py-1 text-[11px] text-text-label cursor-pointer select-none uppercase tracking-wider"
                        :on-click #(swap! collapsed
                                          (fn [s]
                                            (if (contains? s turn)
@@ -75,24 +61,16 @@
                   (for [[i entry] (map-indexed vector entries)]
                     (let [abs-idx (+ offset i)]
                       ^{:key abs-idx}
-                      [:div {:style {:padding "4px 8px"
-                                     :padding-left "16px"
-                                     :font-size "12px"
-                                     :cursor "pointer"
-                                     :color (cond
-                                              (= abs-idx position) "#eee"
-                                              (> abs-idx position) "#666"
-                                              :else "#eee")
-                                     :opacity (if (> abs-idx position) 0.4 1)
-                                     :border-left (if (= abs-idx position)
-                                                    "3px solid #4A9BD9"
-                                                    "3px solid transparent")
-                                     :background (if (= abs-idx position)
-                                                   "#1a2a3a"
-                                                   "transparent")}
+                      [:div {:class (str "px-2 py-1 pl-4 text-xs cursor-pointer "
+                                         "border-l-[3px] "
+                                         (if (= abs-idx position)
+                                           "text-text border-l-accent bg-mode-btn-bg"
+                                           (if (> abs-idx position)
+                                             "text-perm-text-tapped opacity-40 border-l-transparent"
+                                             "text-text border-l-transparent")))
                              :on-click #(rf/dispatch [::events/jump-to abs-idx])}
                        (:entry/description entry)])))])])
-          [:div {:style {:color "#555" :font-size "12px" :padding "4px 8px"}}
+          [:div {:class "text-border text-xs px-2 py-1"}
            "No actions yet"])))))
 
 
@@ -105,41 +83,25 @@
       (let [forks @(rf/subscribe [::subs/forks])
             current-branch @(rf/subscribe [::subs/current-branch])]
         [:div
-         [:div {:style {:margin-bottom "8px"}}
-          [:button {:style {:padding "4px 8px"
-                            :font-size "12px"
-                            :border "1px solid #555"
-                            :border-radius "4px"
-                            :background "#2a2a3a"
-                            :color "#ccc"
-                            :cursor "pointer"}
+         [:div {:class "mb-2"}
+          [:button {:class "py-1 px-2 text-xs border border-border rounded bg-surface-hover text-perm-text cursor-pointer"
                     :on-click #(rf/dispatch
                                  [::events/create-fork
                                   (str "Fork " (inc (count forks)))])}
            "+ New Fork"]]
-         [:div {:style {:font-size "12px"
-                        :padding "2px 8px"
-                        :color (if (nil? current-branch) "#4A9BD9" "#ccc")
-                        :font-weight (if (nil? current-branch) "bold" "normal")}}
+         [:div {:class (str "text-xs px-2 py-0.5 "
+                            (if (nil? current-branch)
+                              "text-accent font-bold"
+                              "text-perm-text"))}
           "main"]
          (for [fork forks]
            (let [fork-id (:fork/id fork)
                  active? (= fork-id current-branch)
                  editing? (= fork-id (:fork-id @editing))]
              ^{:key fork-id}
-             [:div {:style {:display "flex"
-                            :align-items "center"
-                            :gap "4px"
-                            :padding "2px 8px"
-                            :font-size "12px"}}
+             [:div {:class "flex items-center gap-1 px-2 py-0.5 text-xs"}
               (if editing?
-                [:input {:style {:background "#1a1a2a"
-                                 :border "1px solid #4A9BD9"
-                                 :border-radius "2px"
-                                 :color "#eee"
-                                 :font-size "12px"
-                                 :padding "1px 4px"
-                                 :flex 1}
+                [:input {:class "bg-surface-raised border border-border-accent rounded-sm text-text text-xs px-1 py-px flex-1"
                          :default-value (:value @editing)
                          :auto-focus true
                          :on-key-down (fn [e]
@@ -158,17 +120,15 @@
                                        fork-id
                                        (.. e -target -value)])
                                     (reset! editing nil))}]
-                [:span {:style {:flex 1
-                                :cursor "default"
-                                :color (if active? "#4A9BD9" "#ccc")
-                                :font-weight (if active? "bold" "normal")}
+                [:span {:class (str "flex-1 cursor-default "
+                                    (if active?
+                                      "text-accent font-bold"
+                                      "text-perm-text"))
                         :on-double-click #(reset! editing
                                                   {:fork-id fork-id
                                                    :value (:fork/name fork)})}
                  (:fork/name fork)])
-              [:span {:style {:cursor "pointer"
-                              :color "#666"
-                              :font-size "11px"}
+              [:span {:class "cursor-pointer text-perm-text-tapped text-[11px]"
                       :on-click #(rf/dispatch [::events/delete-fork fork-id])}
                "\u2715"]]))]))))
 
@@ -176,18 +136,12 @@
 (defn- render-tree-node
   [node current-branch depth]
   [:div
-   [:div {:style {:padding "2px 8px"
-                  :padding-left (str (+ 8 (* depth 16)) "px")
-                  :font-size "12px"
-                  :cursor (if (= (:fork/id node) current-branch)
-                            "default"
-                            "pointer")
-                  :color (if (= (:fork/id node) current-branch)
-                           "#4A9BD9"
-                           "#ccc")
-                  :font-weight (if (= (:fork/id node) current-branch)
-                                 "bold"
-                                 "normal")}
+   ;; Dynamic padding-left based on tree depth — kept as inline style since it's computed
+   [:div {:class (str "px-2 py-0.5 text-xs "
+                      (if (= (:fork/id node) current-branch)
+                        "cursor-default text-accent font-bold"
+                        "cursor-pointer text-perm-text"))
+          :style {:padding-left (str (+ 8 (* depth 16)) "px")}
           :on-click (when-not (= (:fork/id node) current-branch)
                       #(rf/dispatch [::events/switch-branch (:fork/id node)]))}
     (:fork/name node)]
@@ -203,11 +157,10 @@
   (let [tree @(rf/subscribe [::subs/fork-tree])
         current-branch @(rf/subscribe [::subs/current-branch])]
     [:div
-     [:div {:style {:padding "2px 8px"
-                    :font-size "12px"
-                    :cursor (if (nil? current-branch) "default" "pointer")
-                    :color (if (nil? current-branch) "#4A9BD9" "#ccc")
-                    :font-weight (if (nil? current-branch) "bold" "normal")}
+     [:div {:class (str "px-2 py-0.5 text-xs "
+                        (if (nil? current-branch)
+                          "cursor-default text-accent font-bold"
+                          "cursor-pointer text-perm-text"))
             :on-click (when (some? current-branch)
                         #(rf/dispatch [::events/switch-branch nil]))}
       "main"]
@@ -220,32 +173,22 @@
   []
   (let [forks @(rf/subscribe [::subs/forks])
         current-branch @(rf/subscribe [::subs/current-branch])]
-    [:div {:style {:border-top "1px solid #444"
-                   :padding-top "8px"
-                   :margin-top "8px"}}
-     [:div {:style {:color "#999"
-                    :font-size "11px"
-                    :text-transform "uppercase"
-                    :letter-spacing "1px"
-                    :margin-bottom "4px"}}
+    [:div {:class "border-t border-surface-elevated pt-2 mt-2"}
+     [:div {:class "text-text-label text-[11px] uppercase tracking-widest mb-1"}
       "Branches"]
-     [:div {:style {:font-size "12px"
-                    :padding "2px 8px"
-                    :cursor (if (nil? current-branch) "default" "pointer")
-                    :color (if (nil? current-branch) "#4A9BD9" "#ccc")
-                    :font-weight (if (nil? current-branch) "bold" "normal")}
-            :on-click (when (some? current-branch)
-                        #(rf/dispatch [::events/switch-branch nil]))}
+     [:div {:class (str "text-xs px-2 py-0.5 "
+                        (if (nil? current-branch)
+                          "cursor-default text-accent font-bold"
+                          "cursor-pointer text-perm-text"))}
       "main"]
      (for [fork forks]
        (let [fork-id (:fork/id fork)
              active? (= fork-id current-branch)]
          ^{:key fork-id}
-         [:div {:style {:font-size "12px"
-                        :padding "2px 8px"
-                        :cursor (if active? "default" "pointer")
-                        :color (if active? "#4A9BD9" "#ccc")
-                        :font-weight (if active? "bold" "normal")}
+         [:div {:class (str "text-xs px-2 py-0.5 "
+                            (if active?
+                              "cursor-default text-accent font-bold"
+                              "cursor-pointer text-perm-text"))
                 :on-click (when-not active?
                             #(rf/dispatch [::events/switch-branch fork-id]))}
           (:fork/name fork)]))]))
@@ -253,22 +196,8 @@
 
 (defn history-sidebar
   []
-  [:div {:style {:width "250px"
-                 :min-width "250px"
-                 :height "100vh"
-                 :background "#1a1a2a"
-                 :border-left "1px solid #444"
-                 :padding "12px"
-                 :display "flex"
-                 :flex-direction "column"
-                 :font-family "monospace"
-                 :color "#eee"
-                 :overflow "hidden"}}
-   [:div {:style {:color "#999"
-                  :font-size "11px"
-                  :text-transform "uppercase"
-                  :letter-spacing "1px"
-                  :margin-bottom "8px"}}
+  [:div {:class "bg-surface-raised flex flex-col font-mono text-text overflow-hidden"}
+   [:div {:class "text-text-label text-[11px] uppercase tracking-widest mb-2"}
     "History"]
    [step-controls]
    [action-log]

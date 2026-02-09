@@ -146,7 +146,8 @@
                                                   {:effect/type :draw
                                                    :effect/amount 7})]
         (merge
-          {:game/db db-after-draw}
+          {:game/db db-after-draw
+           :active-screen :game}
           (history/init-history))))))
 
 
@@ -154,6 +155,19 @@
   ::init-game
   (fn [_ _]
     (init-game-state)))
+
+
+(defn set-active-screen-handler
+  "Set the active screen in app-db.
+   Pure function: (app-db, screen) -> app-db"
+  [db screen]
+  (assoc db :active-screen screen))
+
+
+(rf/reg-event-db
+  ::set-active-screen
+  (fn [db [_ screen]]
+    (set-active-screen-handler db screen)))
 
 
 (rf/reg-event-db

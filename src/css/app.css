@@ -1,23 +1,63 @@
 @import "tailwindcss";
 
 @theme {
-  /* Surface colors */
-  --color-surface: #0d0d1a;
-  --color-surface-raised: #1a1a2a;
-  --color-surface-hover: #2a2a3a;
+  /* Surface colors — wider gaps for visible contrast */
+  --color-surface: #0a0a14;
+  --color-surface-raised: #1e1e30;
+  --color-surface-hover: #2e2e45;
 
   /* Border colors */
-  --color-border: #555;
+  --color-border: #3a3a50;
   --color-border-accent: #4A9BD9;
   --color-border-selected: #FFD700;
 
   /* Text colors */
-  --color-text: #eee;
-  --color-text-muted: #AAA;
+  --color-text: #e8e8f0;
+  --color-text-muted: #b0b0c0;
+  --color-text-dim: #808098;
+  --color-text-label: #9898b0;
+
+  /* Health state colors */
+  --color-health-good: #5CB85C;
+  --color-health-danger: #F0AD4E;
+  --color-health-critical: #D9534F;
 
   /* Accent colors */
   --color-accent: #4A9BD9;
   --color-gold: #FFD700;
+
+  /* Permanent colors */
+  --color-perm-border: #6a6;
+  --color-perm-border-tapped: #3a3a50;
+  --color-perm-bg: #1a2a1a;
+  --color-perm-bg-tapped: #1a1a1a;
+  --color-perm-text-tapped: #666;
+
+  /* Ability colors */
+  --color-ability-bg: #4a3a2a;
+  --color-ability-text: #dd44aa;
+
+  /* Button colors */
+  --color-btn-enabled-bg: #2a6a2a;
+  --color-btn-disabled-bg: #181828;
+
+  /* Disabled/dim UI states */
+  --color-surface-dim: #282840;
+  --color-perm-text: #ccc;
+
+  /* Mana button backgrounds */
+  --color-mana-bg-white: #EEE;
+  --color-mana-bg-blue: #2a4a6a;
+  --color-mana-bg-black: #3a2a4a;
+  --color-mana-bg-red: #5a2a2a;
+  --color-mana-bg-green: #2a4a2a;
+
+  /* Graveyard state colors */
+  --color-gy-selected-bg: #3a2a5a;
+  --color-gy-card-bg: #2a1a2a;
+  --color-gy-flashback-border: #6a4a8a;
+  --color-gy-flashback-text: #cc88aa;
+  --color-flashback-badge-bg: #6a2a6a;
 
   /* MTG mana colors */
   --color-mana-white: #FFF;
@@ -26,4 +66,41 @@
   --color-mana-red: #D9534F;
   --color-mana-green: #5CB85C;
   --color-mana-colorless: #AAA;
+
+  /* Modal colors */
+  --color-modal-selected-bg: #1a3a5a;
+
+  /* Scry colors */
+  --color-scry-top-bg: #2a4a2a;
+  --color-scry-bottom-bg: #4a2a2a;
+  --color-scry-unassigned-bg: #1a2a3a;
+
+  /* Mode button */
+  --color-mode-btn-bg: #1a2a3a;
+  --color-mode-btn-hover: #2a3a5a;
+
+  /* Additional cost text */
+  --color-cost-text: #cc88aa;
+
+  /* Stepper/control button colors */
+  --color-surface-elevated: #3a3a55;
+}
+
+/* Game layout grid */
+.game-grid {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  grid-template-rows: 1fr auto;
+  flex: 1;
+}
+
+/* Right column states */
+.right-col-collapsed {
+  width: 2rem;
+  overflow: hidden;
+}
+
+.right-col-expanded {
+  width: 250px;
+  min-width: 200px;
 }
