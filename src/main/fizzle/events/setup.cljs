@@ -44,6 +44,7 @@
      :setup/main-deck (:deck/main cards/iggy-pop-decklist)
      :setup/sideboard (:deck/side cards/iggy-pop-decklist)
      :setup/clock-turns 4
+     :setup/must-contain {}
      :setup/presets presets
      :setup/last-preset last-preset
      :active-screen :setup}))
@@ -57,21 +58,37 @@
     (assoc db
            :setup/selected-deck :iggy-pop
            :setup/main-deck (:deck/main cards/iggy-pop-decklist)
-           :setup/sideboard (:deck/side cards/iggy-pop-decklist))
+           :setup/sideboard (:deck/side cards/iggy-pop-decklist)
+           :setup/must-contain {})
     ;; Unknown deck - no-op
     db))
 
 
 (defn move-to-side-handler
-  "Move one copy of card-id from main to side."
+  "Move one copy of card-id from main to side.
+   Clamps must-contain count if main deck copies drop below it."
   [db card-id]
   (let [main (:setup/main-deck db)
         has-card? (some #(when (= card-id (:card/id %)) %) main)]
     (if has-card?
-      (let [side (:setup/sideboard db)]
+      (let [side (:setup/sideboard db)
+            new-main (update-card-count main card-id -1)
+            new-main-count (or (:count (some #(when (= card-id (:card/id %)) %)
+                                             new-main))
+                               0)
+            must-contain (:setup/must-contain db)
+            mc-count (get must-contain card-id 0)
+            new-must-contain (if (pos? mc-count)
+                               (if (zero? new-main-count)
+                                 (dissoc must-contain card-id)
+                                 (if (> mc-count new-main-count)
+                                   (assoc must-contain card-id new-main-count)
+                                   must-contain))
+                               must-contain)]
         (assoc db
-               :setup/main-deck (update-card-count main card-id -1)
-               :setup/sideboard (update-card-count side card-id 1)))
+               :setup/main-deck new-main
+               :setup/sideboard (update-card-count side card-id 1)
+               :setup/must-contain new-must-contain))
       db)))
 
 
@@ -102,7 +119,8 @@
     (let [config {:main-deck (:setup/main-deck db)
                   :sideboard (:setup/sideboard db)
                   :clock-turns (:setup/clock-turns db)
-                  :selected-deck (:setup/selected-deck db)}
+                  :selected-deck (:setup/selected-deck db)
+                  :must-contain (:setup/must-contain db)}
           presets (assoc (:setup/presets db) name config)]
       (storage/save-presets! presets)
       (storage/save-last-preset! name)
@@ -120,6 +138,7 @@
            :setup/sideboard (:sideboard config)
            :setup/clock-turns (:clock-turns config)
            :setup/selected-deck (:selected-deck config)
+           :setup/must-contain (get config :must-contain {})
            :setup/last-preset name)
     db))
 
@@ -136,6 +155,41 @@
            :setup/last-preset last-preset)))
 
 
+(defn toggle-must-contain-handler
+  "Toggle must-contain for a card. Cycles count: 0->1->...->max->0.
+   No-op if card not in main deck or would exceed global cap of 7."
+  [db card-id]
+  (let [main-deck (:setup/main-deck db)
+        main-entry (some #(when (= card-id (:card/id %)) %) main-deck)]
+    (if-not main-entry
+      db
+      (let [max-copies (:count main-entry)
+            must-contain (or (:setup/must-contain db) {})
+            current (get must-contain card-id 0)
+            total (reduce + 0 (vals must-contain))]
+        (cond
+          ;; Not in must-contain yet — add with count 1 if under cap
+          (zero? current)
+          (if (< total 7)
+            (assoc db :setup/must-contain (assoc must-contain card-id 1))
+            db)
+
+          ;; At max copies or incrementing would exceed global cap — cycle to 0
+          (or (>= current max-copies)
+              (>= total 7))
+          (assoc db :setup/must-contain (dissoc must-contain card-id))
+
+          ;; Otherwise increment
+          :else
+          (assoc db :setup/must-contain (assoc must-contain card-id (inc current))))))))
+
+
+(defn clear-must-contain-handler
+  "Reset must-contain to empty map."
+  [db]
+  (assoc db :setup/must-contain {}))
+
+
 (defn- stash-setup-config
   "Extract setup config from db to stash in game state."
   [db]
@@ -143,6 +197,7 @@
    :setup/main-deck (:setup/main-deck db)
    :setup/sideboard (:setup/sideboard db)
    :setup/clock-turns (:setup/clock-turns db)
+   :setup/must-contain (:setup/must-contain db)
    :setup/presets (:setup/presets db)
    :setup/last-preset (:setup/last-preset db)})
 
@@ -238,6 +293,18 @@
   ::delete-preset
   (fn [db [_ name]]
     (delete-preset-handler db name)))
+
+
+(rf/reg-event-db
+  ::toggle-must-contain
+  (fn [db [_ card-id]]
+    (toggle-must-contain-handler db card-id)))
+
+
+(rf/reg-event-db
+  ::clear-must-contain
+  (fn [db _]
+    (clear-must-contain-handler db)))
 
 
 (rf/reg-event-db

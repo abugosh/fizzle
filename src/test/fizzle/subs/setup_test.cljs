@@ -68,3 +68,30 @@
       (let [land-ids (set (map :card/id (:land grouped)))]
         (is (contains? land-ids :island)
             "Island should be in land group")))))
+
+
+;; === Must-Contain Subscriptions ===
+
+(deftest test-must-contain-sub-returns-map
+  (testing "must-contain subscription returns the must-contain map from db"
+    (let [db (-> (setup/init-setup-handler {})
+                 (assoc :setup/must-contain {:dark-ritual 2 :cabal-ritual 1}))]
+      (is (= {:dark-ritual 2 :cabal-ritual 1}
+             (sub-value db [::subs/must-contain]))
+          "Should return the must-contain map"))))
+
+
+(deftest test-must-contain-cards-subscription
+  (testing "must-contain-cards returns enriched vec with card names and max counts"
+    (let [db (-> (setup/init-setup-handler {})
+                 (assoc :setup/must-contain {:dark-ritual 2 :cabal-ritual 1}))
+          result (sub-value db [::subs/must-contain-cards])
+          by-id (into {} (map (juxt :card/id identity) result))]
+      (is (= 2 (count result))
+          "Should have 2 entries")
+      (is (= "Dark Ritual" (:card/name (get by-id :dark-ritual)))
+          "Should include card name")
+      (is (= 2 (:count (get by-id :dark-ritual)))
+          "Should include count")
+      (is (= 4 (:max-count (get by-id :dark-ritual)))
+          "Should include max-count from main deck"))))

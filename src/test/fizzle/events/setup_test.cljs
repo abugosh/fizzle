@@ -350,3 +350,220 @@
           db-after (setup/new-game-handler db)]
       (is (= db db-after)
           "Should return db unchanged"))))
+
+
+;; === Toggle Must-Contain ===
+
+(deftest test-toggle-must-contain-adds-card
+  (testing "toggle-must-contain adds card with count 1 when not in must-contain"
+    (let [db (-> (setup/init-setup-handler {})
+                 (setup/toggle-must-contain-handler :dark-ritual))]
+      (is (= 1 (get-in db [:setup/must-contain :dark-ritual]))
+          "Should add dark-ritual with count 1"))))
+
+
+(deftest test-toggle-must-contain-increments
+  (testing "toggle-must-contain increments count when card already in must-contain"
+    (let [db (-> (setup/init-setup-handler {})
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/toggle-must-contain-handler :dark-ritual))]
+      (is (= 2 (get-in db [:setup/must-contain :dark-ritual]))
+          "Should increment to 2"))))
+
+
+(deftest test-toggle-must-contain-cycles-to-zero
+  (testing "toggle-must-contain removes card when count reaches max copies"
+    (let [db (-> (setup/init-setup-handler {})
+                 ;; dark-ritual has 4 copies in main
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 ;; now at 4 = max, next click should cycle to 0
+                 (setup/toggle-must-contain-handler :dark-ritual))]
+      (is (nil? (get-in db [:setup/must-contain :dark-ritual]))
+          "Should remove card from must-contain after reaching max"))))
+
+
+(deftest test-toggle-must-contain-noop-for-missing-card
+  (testing "toggle-must-contain is no-op for card not in main deck"
+    (let [db (-> (setup/init-setup-handler {})
+                 (setup/toggle-must-contain-handler :nonexistent-card))]
+      (is (= {} (:setup/must-contain db))
+          "Must-contain should remain empty for card not in deck"))))
+
+
+(deftest test-toggle-must-contain-global-cap-at-7
+  (testing "toggle-must-contain caps total must-contain at 7"
+    (let [db (-> (setup/init-setup-handler {})
+                 ;; Add 4 dark-ritual + 3 cabal-ritual = 7 total
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/toggle-must-contain-handler :cabal-ritual)
+                 (setup/toggle-must-contain-handler :cabal-ritual)
+                 (setup/toggle-must-contain-handler :cabal-ritual)
+                 ;; Total is 7, adding another should be no-op
+                 (setup/toggle-must-contain-handler :brain-freeze))]
+      (is (nil? (get-in db [:setup/must-contain :brain-freeze]))
+          "Should not add brain-freeze when total is already 7"))))
+
+
+(deftest test-toggle-must-contain-increment-respects-global-cap
+  (testing "toggle-must-contain prevents increment when it would exceed 7"
+    (let [db (-> (setup/init-setup-handler {})
+                 ;; Add 4 dark-ritual + 3 cabal-ritual = 7 total
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/toggle-must-contain-handler :cabal-ritual)
+                 (setup/toggle-must-contain-handler :cabal-ritual)
+                 (setup/toggle-must-contain-handler :cabal-ritual)
+                 ;; Total is 7, incrementing cabal-ritual would make 8
+                 ;; Should cycle to 0 instead
+                 (setup/toggle-must-contain-handler :cabal-ritual))]
+      (is (nil? (get-in db [:setup/must-contain :cabal-ritual]))
+          "Should cycle to 0 when incrementing would exceed cap"))))
+
+
+(deftest test-toggle-must-contain-single-copy-card
+  (testing "toggle-must-contain cycles 0->1->0 for card with 1 copy"
+    (let [db (-> (setup/init-setup-handler {})
+                 ;; orims-chant has 1 copy in main
+                 (setup/toggle-must-contain-handler :orims-chant))]
+      (is (= 1 (get-in db [:setup/must-contain :orims-chant]))
+          "First click adds with count 1"))
+    (let [db (-> (setup/init-setup-handler {})
+                 (setup/toggle-must-contain-handler :orims-chant)
+                 (setup/toggle-must-contain-handler :orims-chant))]
+      (is (nil? (get-in db [:setup/must-contain :orims-chant]))
+          "Second click removes (cycles back to 0)"))))
+
+
+;; === Clear Must-Contain ===
+
+(deftest test-clear-must-contain
+  (testing "clear-must-contain resets to empty map"
+    (let [db (-> (setup/init-setup-handler {})
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/toggle-must-contain-handler :cabal-ritual)
+                 (setup/clear-must-contain-handler))]
+      (is (= {} (:setup/must-contain db))
+          "Must-contain should be empty after clear"))))
+
+
+;; === Init Includes Must-Contain ===
+
+(deftest test-init-setup-includes-must-contain
+  (testing "init-setup includes empty must-contain map"
+    (let [db (setup/init-setup-handler {})]
+      (is (= {} (:setup/must-contain db))
+          "Should initialize with empty must-contain map"))))
+
+
+;; === Preset Save/Load with Must-Contain ===
+
+(deftest test-save-preset-includes-must-contain
+  (testing "save-preset includes must-contain in saved config"
+    (let [db (-> (setup/init-setup-handler {})
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/save-preset-handler "With Must-Contain"))]
+      (is (= {:dark-ritual 2}
+             (:must-contain (get (:setup/presets db) "With Must-Contain")))
+          "Saved preset should contain must-contain map"))))
+
+
+(deftest test-load-preset-restores-must-contain
+  (testing "load-preset restores must-contain from preset"
+    (let [db (-> (setup/init-setup-handler {})
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/save-preset-handler "Has MC")
+                 ;; Clear must-contain
+                 (setup/clear-must-contain-handler))
+          ;; Verify cleared
+          _ (is (= {} (:setup/must-contain db)))
+          ;; Load preset should restore
+          db-loaded (setup/load-preset-handler db "Has MC")]
+      (is (= {:dark-ritual 2} (:setup/must-contain db-loaded))
+          "Must-contain should be restored from preset"))))
+
+
+(deftest test-load-preset-backward-compat
+  (testing "load-preset defaults must-contain to {} for old presets"
+    (let [db (-> (setup/init-setup-handler {})
+                 ;; Manually inject an old-style preset without must-contain key
+                 (assoc-in [:setup/presets "Old Preset"]
+                           {:main-deck (:deck/main cards/iggy-pop-decklist)
+                            :sideboard (:deck/side cards/iggy-pop-decklist)
+                            :clock-turns 4
+                            :selected-deck :iggy-pop}))
+          db-loaded (setup/load-preset-handler db "Old Preset")]
+      (is (= {} (:setup/must-contain db-loaded))
+          "Must-contain should default to {} for old presets"))))
+
+
+;; === Move to Side Clamps Must-Contain ===
+
+(deftest test-move-to-side-clamps-must-contain
+  (testing "move-to-side clamps must-contain when main count drops below it"
+    (let [db (-> (setup/init-setup-handler {})
+                 ;; orims-chant has 1 copy in main, set must-contain to 1
+                 (setup/toggle-must-contain-handler :orims-chant)
+                 ;; Move it to side — main count drops to 0
+                 (setup/move-to-side-handler :orims-chant))]
+      (is (nil? (get-in db [:setup/must-contain :orims-chant]))
+          "Must-contain should be removed when card fully moved to side"))))
+
+
+(deftest test-move-to-side-clamps-must-contain-partial
+  (testing "move-to-side clamps must-contain to remaining main count"
+    (let [db (-> (setup/init-setup-handler {})
+                 ;; dark-ritual has 4 in main, set must-contain to 3
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 ;; Move 2 to side — main drops to 2
+                 (setup/move-to-side-handler :dark-ritual)
+                 (setup/move-to-side-handler :dark-ritual))]
+      (is (= 2 (get-in db [:setup/must-contain :dark-ritual]))
+          "Must-contain should clamp to 2 (remaining main count)"))))
+
+
+(deftest test-move-to-side-no-clamp-needed
+  (testing "move-to-side does not affect must-contain when count still valid"
+    (let [db (-> (setup/init-setup-handler {})
+                 ;; dark-ritual has 4 in main, set must-contain to 1
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 ;; Move 1 to side — main drops to 3, still >= must-contain 1
+                 (setup/move-to-side-handler :dark-ritual))]
+      (is (= 1 (get-in db [:setup/must-contain :dark-ritual]))
+          "Must-contain should stay at 1 when main still has 3"))))
+
+
+;; === Select Deck Resets Must-Contain ===
+
+(deftest test-select-deck-resets-must-contain
+  (testing "select-deck resets must-contain to empty map"
+    (let [db (-> (setup/init-setup-handler {})
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/select-deck-handler :iggy-pop))]
+      (is (= {} (:setup/must-contain db))
+          "Must-contain should reset on deck change"))))
+
+
+;; === Stash/Restore Preserves Must-Contain ===
+
+(deftest test-stash-preserves-must-contain
+  (testing "stashed config includes must-contain for restore-setup"
+    (let [db (-> (setup/init-setup-handler {})
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/toggle-must-contain-handler :dark-ritual)
+                 (setup/start-game-handler))]
+      (is (= {:dark-ritual 2}
+             (:setup/must-contain (:setup/stashed-config db)))
+          "Stashed config should include must-contain"))))

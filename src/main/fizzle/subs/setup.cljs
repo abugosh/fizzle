@@ -14,7 +14,8 @@
 (rf/reg-sub ::setup-config
             (fn [db _]
               (select-keys db [:setup/selected-deck :setup/main-deck :setup/sideboard
-                               :setup/clock-turns :setup/presets :setup/last-preset])))
+                               :setup/clock-turns :setup/must-contain
+                               :setup/presets :setup/last-preset])))
 
 
 (rf/reg-sub ::available-decks
@@ -98,3 +99,23 @@
                            :card/name (:card/name card-def)
                            :count count}))
                       side-deck))))
+
+
+(rf/reg-sub ::must-contain
+            (fn [db _]
+              (:setup/must-contain db)))
+
+
+(rf/reg-sub ::must-contain-cards
+            :<- [::must-contain]
+            :<- [::current-main]
+            (fn [[must-contain main-deck] _]
+              (let [main-by-id (into {} (map (juxt :card/id identity) main-deck))]
+                (mapv (fn [[card-id cnt]]
+                        (let [card-def (get card-lookup card-id)
+                              main-entry (get main-by-id card-id)]
+                          {:card/id card-id
+                           :card/name (:card/name card-def)
+                           :count cnt
+                           :max-count (:count main-entry)}))
+                      must-contain))))
