@@ -40,3 +40,23 @@
         (reader/read-string raw)))
     (catch :default _
       nil)))
+
+
+(defn save-imported-decks!
+  "Persist imported decks map to localStorage as EDN."
+  [decks]
+  (try
+    (.setItem js/localStorage "fizzle-imported-decks" (pr-str decks))
+    (catch :default _)))
+
+
+(defn load-imported-decks
+  "Load imported decks map from localStorage. Returns {} on missing or corrupt data."
+  []
+  (try
+    (let [raw (.getItem js/localStorage "fizzle-imported-decks")]
+      (if raw
+        (reader/read-string raw)
+        {}))
+    (catch :default _
+      {})))

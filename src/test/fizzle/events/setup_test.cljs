@@ -3,7 +3,8 @@
   (:require
     [cljs.test :refer-macros [deftest testing is use-fixtures]]
     [fizzle.cards.iggy-pop :as cards]
-    [fizzle.events.setup :as setup]))
+    [fizzle.events.setup :as setup]
+    [fizzle.storage :as storage]))
 
 
 ;; Mock localStorage for Node.js tests
@@ -567,3 +568,248 @@
       (is (= {:dark-ritual 2}
              (:setup/must-contain (:setup/stashed-config db)))
           "Stashed config should include must-contain"))))
+
+
+;; === Imported Deck Storage ===
+
+(deftest test-load-imported-decks-empty
+  (testing "load-imported-decks returns {} when nothing stored"
+    (is (= {} (storage/load-imported-decks))
+        "Should return empty map when no imported decks in localStorage")))
+
+
+(deftest test-save-and-load-imported-decks
+  (testing "save-imported-decks! persists and load-imported-decks retrieves"
+    (let [decks {:my-storm {:deck/id :my-storm
+                            :deck/name "My Storm"
+                            :deck/main [{:card/id :dark-ritual :count 4}]
+                            :deck/side []
+                            :deck/source :imported}}]
+      (storage/save-imported-decks! decks)
+      (is (= decks (storage/load-imported-decks))
+          "Should round-trip imported decks through localStorage"))))
+
+
+;; === Init Setup Loads Imported Decks ===
+
+(deftest test-init-setup-loads-imported-decks
+  (testing "init-setup includes imported decks from localStorage"
+    (let [decks {:my-storm {:deck/id :my-storm
+                            :deck/name "My Storm"
+                            :deck/main [{:card/id :dark-ritual :count 4}]
+                            :deck/side []
+                            :deck/source :imported}}]
+      (storage/save-imported-decks! decks)
+      (let [db (setup/init-setup-handler {})]
+        (is (= decks (:setup/imported-decks db))
+            "Should load imported decks on init")))))
+
+
+;; === Open/Close Import Modal ===
+
+(deftest test-open-import-modal
+  (testing "open-import-modal sets empty modal state"
+    (let [db (-> (setup/init-setup-handler {})
+                 (setup/open-import-modal-handler))]
+      (is (= {:name "" :text "" :errors nil :editing-deck-id nil}
+             (:setup/import-modal db))
+          "Should set empty import modal state"))))
+
+
+(deftest test-close-import-modal
+  (testing "close-import-modal clears modal state"
+    (let [db (-> (setup/init-setup-handler {})
+                 (setup/open-import-modal-handler)
+                 (setup/close-import-modal-handler))]
+      (is (nil? (:setup/import-modal db))
+          "Should clear import modal state"))))
+
+
+;; === Set Import Name/Text ===
+
+(deftest test-set-import-name
+  (testing "set-import-name updates modal name"
+    (let [db (-> (setup/init-setup-handler {})
+                 (setup/open-import-modal-handler)
+                 (setup/set-import-name-handler "My Deck"))]
+      (is (= "My Deck" (get-in db [:setup/import-modal :name]))
+          "Should update import modal name"))))
+
+
+(deftest test-set-import-text
+  (testing "set-import-text updates modal text and clears errors"
+    (let [db (-> (setup/init-setup-handler {})
+                 (setup/open-import-modal-handler)
+                 ;; Simulate having errors from a previous attempt
+                 (assoc-in [:setup/import-modal :errors] ["Some Card"])
+                 (setup/set-import-text-handler "4 Dark Ritual"))]
+      (is (= "4 Dark Ritual" (get-in db [:setup/import-modal :text]))
+          "Should update import modal text")
+      (is (nil? (get-in db [:setup/import-modal :errors]))
+          "Should clear errors when text changes"))))
+
+
+;; === Confirm Import ===
+
+(deftest test-confirm-import-success
+  (testing "confirm-import with valid text saves deck and populates setup"
+    (let [db (-> (setup/init-setup-handler {})
+                 (setup/open-import-modal-handler)
+                 (setup/set-import-name-handler "My Storm")
+                 (setup/set-import-text-handler "4 Dark Ritual\n4 Cabal Ritual"))
+          db-after (setup/confirm-import-handler db)]
+      (is (nil? (:setup/import-modal db-after))
+          "Should close modal on success")
+      (is (contains? (:setup/imported-decks db-after) :my-storm)
+          "Should add deck to imported-decks")
+      (is (= "My Storm"
+             (get-in db-after [:setup/imported-decks :my-storm :deck/name]))
+          "Should store original name")
+      (is (= :imported
+             (get-in db-after [:setup/imported-decks :my-storm :deck/source]))
+          "Should tag as imported")
+      (is (= :my-storm (:setup/selected-deck db-after))
+          "Should select the imported deck")
+      (is (seq (:setup/main-deck db-after))
+          "Should populate main deck")
+      (is (= {} (:setup/must-contain db-after))
+          "Should clear must-contain"))))
+
+
+(deftest test-confirm-import-error
+  (testing "confirm-import with unrecognized cards sets errors and keeps modal open"
+    (let [db (-> (setup/init-setup-handler {})
+                 (setup/open-import-modal-handler)
+                 (setup/set-import-name-handler "Bad Deck")
+                 (setup/set-import-text-handler "4 Nonexistent Card"))
+          db-after (setup/confirm-import-handler db)]
+      (is (some? (:setup/import-modal db-after))
+          "Should keep modal open on error")
+      (is (seq (get-in db-after [:setup/import-modal :errors]))
+          "Should have error list")
+      (is (not (contains? (:setup/imported-decks db-after) :bad-deck))
+          "Should not save deck on error"))))
+
+
+(deftest test-confirm-import-with-sideboard
+  (testing "confirm-import parses sideboard section"
+    (let [db (-> (setup/init-setup-handler {})
+                 (setup/open-import-modal-handler)
+                 (setup/set-import-name-handler "With Side")
+                 (setup/set-import-text-handler
+                   "4 Dark Ritual\n\nSideboard\n2 Merchant Scroll"))
+          db-after (setup/confirm-import-handler db)]
+      (is (nil? (:setup/import-modal db-after))
+          "Should close modal")
+      (let [deck (get-in db-after [:setup/imported-decks :with-side])]
+        (is (some #(= :dark-ritual (:card/id %)) (:deck/main deck))
+            "Main should have Dark Ritual")
+        (is (some #(= :merchant-scroll (:card/id %)) (:deck/side deck))
+            "Side should have Merchant Scroll")))))
+
+
+;; === Select Deck with Imported ===
+
+(deftest test-select-imported-deck
+  (testing "select-deck loads an imported deck's cards"
+    (let [imported-deck {:deck/id :my-storm
+                         :deck/name "My Storm"
+                         :deck/main [{:card/id :dark-ritual :count 4}
+                                     {:card/id :cabal-ritual :count 4}]
+                         :deck/side [{:card/id :merchant-scroll :count 2}]
+                         :deck/source :imported}
+          db (-> (setup/init-setup-handler {})
+                 (assoc :setup/imported-decks {:my-storm imported-deck})
+                 (setup/select-deck-handler :my-storm))]
+      (is (= :my-storm (:setup/selected-deck db))
+          "Should select imported deck")
+      (is (= (:deck/main imported-deck) (:setup/main-deck db))
+          "Should load imported deck main")
+      (is (= (:deck/side imported-deck) (:setup/sideboard db))
+          "Should load imported deck sideboard")
+      (is (= {} (:setup/must-contain db))
+          "Should clear must-contain"))))
+
+
+;; === Delete Imported Deck ===
+
+(deftest test-delete-imported-deck
+  (testing "delete-imported-deck removes deck and falls back to iggy-pop"
+    (let [imported-deck {:deck/id :my-storm
+                         :deck/name "My Storm"
+                         :deck/main [{:card/id :dark-ritual :count 4}]
+                         :deck/side []
+                         :deck/source :imported}
+          db (-> (setup/init-setup-handler {})
+                 (assoc :setup/imported-decks {:my-storm imported-deck})
+                 (assoc :setup/selected-deck :my-storm)
+                 (setup/delete-imported-deck-handler :my-storm))]
+      (is (not (contains? (:setup/imported-decks db) :my-storm))
+          "Should remove deck from imported-decks")
+      (is (= :iggy-pop (:setup/selected-deck db))
+          "Should fall back to iggy-pop when deleted deck was selected"))))
+
+
+(deftest test-delete-imported-deck-other-selected
+  (testing "delete-imported-deck does not change selection when different deck active"
+    (let [deck-a {:deck/id :deck-a :deck/name "A"
+                  :deck/main [{:card/id :dark-ritual :count 4}]
+                  :deck/side [] :deck/source :imported}
+          deck-b {:deck/id :deck-b :deck/name "B"
+                  :deck/main [{:card/id :cabal-ritual :count 4}]
+                  :deck/side [] :deck/source :imported}
+          db (-> (setup/init-setup-handler {})
+                 (assoc :setup/imported-decks {:deck-a deck-a :deck-b deck-b})
+                 (assoc :setup/selected-deck :deck-b)
+                 (setup/delete-imported-deck-handler :deck-a))]
+      (is (= :deck-b (:setup/selected-deck db))
+          "Should keep current selection when deleting a different deck"))))
+
+
+;; === Open Edit Modal ===
+
+(deftest test-open-edit-modal
+  (testing "open-edit-modal pre-populates name and text from existing deck"
+    (let [imported-deck {:deck/id :my-storm
+                         :deck/name "My Storm"
+                         :deck/main [{:card/id :dark-ritual :count 4}]
+                         :deck/side []
+                         :deck/source :imported}
+          db (-> (setup/init-setup-handler {})
+                 (assoc :setup/imported-decks {:my-storm imported-deck})
+                 (setup/open-edit-modal-handler :my-storm))]
+      (is (= "My Storm" (get-in db [:setup/import-modal :name]))
+          "Should pre-fill name")
+      (is (string? (get-in db [:setup/import-modal :text]))
+          "Should have regenerated text")
+      (is (= :my-storm (get-in db [:setup/import-modal :editing-deck-id]))
+          "Should set editing-deck-id"))))
+
+
+;; === Stash/Restore Preserves Imported Decks ===
+
+(deftest test-stash-preserves-imported-decks
+  (testing "stashed config includes imported-decks for restore"
+    (let [decks {:my-storm {:deck/id :my-storm
+                            :deck/name "My Storm"
+                            :deck/main [{:card/id :dark-ritual :count 4}]
+                            :deck/side []
+                            :deck/source :imported}}
+          db (-> (setup/init-setup-handler {})
+                 (assoc :setup/imported-decks decks)
+                 (setup/start-game-handler))]
+      (is (= decks (:setup/imported-decks (:setup/stashed-config db)))
+          "Stashed config should include imported-decks"))))
+
+
+;; === Slug Generation ===
+
+(deftest test-confirm-import-name-slugification
+  (testing "confirm-import slugifies deck name to keyword"
+    (let [db (-> (setup/init-setup-handler {})
+                 (setup/open-import-modal-handler)
+                 (setup/set-import-name-handler "My Storm Deck!")
+                 (setup/set-import-text-handler "4 Dark Ritual"))
+          db-after (setup/confirm-import-handler db)]
+      (is (contains? (:setup/imported-decks db-after) :my-storm-deck)
+          "Should slugify name: lowercase, spaces to hyphens, strip non-alphanum"))))

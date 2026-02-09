@@ -2,6 +2,7 @@
   (:require
     [clojure.string :as str]
     [fizzle.cards.iggy-pop :as cards]
+    [fizzle.engine.deck-parser :as deck-parser]
     [fizzle.events.game :as game]
     [fizzle.storage :as storage]
     [re-frame.core :as rf]))
@@ -39,7 +40,8 @@
   "Initialize setup state with defaults and presets from localStorage."
   [_db]
   (let [presets (storage/load-presets)
-        last-preset (storage/load-last-preset)]
+        last-preset (storage/load-last-preset)
+        imported-decks (storage/load-imported-decks)]
     {:setup/selected-deck :iggy-pop
      :setup/main-deck (:deck/main cards/iggy-pop-decklist)
      :setup/sideboard (:deck/side cards/iggy-pop-decklist)
@@ -47,6 +49,7 @@
      :setup/must-contain {}
      :setup/presets presets
      :setup/last-preset last-preset
+     :setup/imported-decks imported-decks
      :active-screen :setup}))
 
 
@@ -60,8 +63,14 @@
            :setup/main-deck (:deck/main cards/iggy-pop-decklist)
            :setup/sideboard (:deck/side cards/iggy-pop-decklist)
            :setup/must-contain {})
-    ;; Unknown deck - no-op
-    db))
+    ;; Check imported decks
+    (if-let [imported (get (:setup/imported-decks db) deck-id)]
+      (assoc db
+             :setup/selected-deck deck-id
+             :setup/main-deck (:deck/main imported)
+             :setup/sideboard (:deck/side imported)
+             :setup/must-contain {})
+      db)))
 
 
 (defn move-to-side-handler
@@ -199,7 +208,8 @@
    :setup/clock-turns (:setup/clock-turns db)
    :setup/must-contain (:setup/must-contain db)
    :setup/presets (:setup/presets db)
-   :setup/last-preset (:setup/last-preset db)})
+   :setup/last-preset (:setup/last-preset db)
+   :setup/imported-decks (:setup/imported-decks db)})
 
 
 (defn start-game-handler
@@ -245,6 +255,99 @@
           (load-preset-handler preset-name)
           (start-game-handler))
       db)))
+
+
+;; === Import Modal Handlers ===
+
+(defn- slugify
+  "Convert a name string to a keyword: lowercase, spaces to hyphens, strip non-alphanumeric."
+  [name]
+  (-> name
+      str/lower-case
+      str/trim
+      (str/replace #"[^a-z0-9\s-]" "")
+      (str/replace #"\s+" "-")
+      (str/replace #"-+" "-")
+      (str/replace #"^-|-$" "")
+      keyword))
+
+
+(defn open-import-modal-handler
+  "Open import modal with empty state."
+  [db]
+  (assoc db :setup/import-modal {:name "" :text "" :errors nil :editing-deck-id nil}))
+
+
+(defn open-edit-modal-handler
+  "Open import modal pre-populated with existing imported deck data."
+  [db deck-id]
+  (if-let [deck (get (:setup/imported-decks db) deck-id)]
+    (assoc db :setup/import-modal
+           {:name (:deck/name deck)
+            :text (deck-parser/deck->text deck)
+            :errors nil
+            :editing-deck-id deck-id})
+    db))
+
+
+(defn close-import-modal-handler
+  "Close the import modal."
+  [db]
+  (assoc db :setup/import-modal nil))
+
+
+(defn set-import-name-handler
+  "Update the import modal name field."
+  [db name]
+  (assoc-in db [:setup/import-modal :name] name))
+
+
+(defn set-import-text-handler
+  "Update the import modal text field and clear any errors."
+  [db text]
+  (-> db
+      (assoc-in [:setup/import-modal :text] text)
+      (assoc-in [:setup/import-modal :errors] nil)))
+
+
+(defn confirm-import-handler
+  "Parse import text and either save deck or set errors."
+  [db]
+  (let [modal (:setup/import-modal db)
+        text (:text modal)
+        name (:name modal)
+        editing-id (:editing-deck-id modal)
+        result (deck-parser/parse-decklist text)]
+    (if-let [errors (:error result)]
+      ;; Parse failed - show errors
+      (assoc-in db [:setup/import-modal :errors] (:unrecognized errors))
+      ;; Parse succeeded - save deck
+      (let [deck-data (:ok result)
+            deck-id (or editing-id (slugify name))
+            deck {:deck/id deck-id
+                  :deck/name name
+                  :deck/main (:deck/main deck-data)
+                  :deck/side (:deck/side deck-data)
+                  :deck/source :imported}
+            imported-decks (assoc (or (:setup/imported-decks db) {}) deck-id deck)]
+        (storage/save-imported-decks! imported-decks)
+        (assoc db
+               :setup/imported-decks imported-decks
+               :setup/selected-deck deck-id
+               :setup/main-deck (:deck/main deck-data)
+               :setup/sideboard (:deck/side deck-data)
+               :setup/must-contain {}
+               :setup/import-modal nil)))))
+
+
+(defn delete-imported-deck-handler
+  "Remove an imported deck. Falls back to iggy-pop if deleted deck was selected."
+  [db deck-id]
+  (let [imported-decks (dissoc (:setup/imported-decks db) deck-id)
+        was-selected? (= deck-id (:setup/selected-deck db))]
+    (storage/save-imported-decks! imported-decks)
+    (cond-> (assoc db :setup/imported-decks imported-decks)
+      was-selected? (select-deck-handler :iggy-pop))))
 
 
 ;; === Re-frame Event Registrations ===
@@ -331,3 +434,45 @@
   ::quick-start
   (fn [db _]
     (quick-start-handler db)))
+
+
+(rf/reg-event-db
+  ::open-import-modal
+  (fn [db _]
+    (open-import-modal-handler db)))
+
+
+(rf/reg-event-db
+  ::open-edit-modal
+  (fn [db [_ deck-id]]
+    (open-edit-modal-handler db deck-id)))
+
+
+(rf/reg-event-db
+  ::close-import-modal
+  (fn [db _]
+    (close-import-modal-handler db)))
+
+
+(rf/reg-event-db
+  ::set-import-name
+  (fn [db [_ name]]
+    (set-import-name-handler db name)))
+
+
+(rf/reg-event-db
+  ::set-import-text
+  (fn [db [_ text]]
+    (set-import-text-handler db text)))
+
+
+(rf/reg-event-db
+  ::confirm-import
+  (fn [db _]
+    (confirm-import-handler db)))
+
+
+(rf/reg-event-db
+  ::delete-imported-deck
+  (fn [db [_ deck-id]]
+    (delete-imported-deck-handler db deck-id)))

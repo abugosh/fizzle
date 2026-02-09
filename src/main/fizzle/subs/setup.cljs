@@ -1,5 +1,6 @@
 (ns fizzle.subs.setup
   (:require
+    [clojure.string :as str]
     [fizzle.cards.iggy-pop :as cards]
     [re-frame.core :as rf]))
 
@@ -18,9 +19,20 @@
                                :setup/presets :setup/last-preset])))
 
 
+(rf/reg-sub ::imported-decks
+            (fn [db _]
+              (:setup/imported-decks db)))
+
+
 (rf/reg-sub ::available-decks
-            (fn [_ _]
-              [{:deck/id :iggy-pop :deck/name "Iggy Pop"}]))
+            :<- [::imported-decks]
+            (fn [imported-decks _]
+              (into [{:deck/id :iggy-pop :deck/name "Iggy Pop"}]
+                    (map (fn [[_ deck]]
+                           {:deck/id (:deck/id deck)
+                            :deck/name (:deck/name deck)
+                            :deck/source :imported}))
+                    (or imported-decks {}))))
 
 
 (rf/reg-sub ::selected-deck
@@ -104,6 +116,19 @@
 (rf/reg-sub ::must-contain
             (fn [db _]
               (:setup/must-contain db)))
+
+
+(rf/reg-sub ::import-modal
+            (fn [db _]
+              (:setup/import-modal db)))
+
+
+(rf/reg-sub ::import-valid?
+            :<- [::import-modal]
+            (fn [modal _]
+              (and (some? modal)
+                   (not (str/blank? (:name modal)))
+                   (not (str/blank? (:text modal))))))
 
 
 (rf/reg-sub ::must-contain-cards
