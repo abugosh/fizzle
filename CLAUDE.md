@@ -6,7 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Fizzle is a ClojureScript-based Magic: The Gathering combo deck practice tool with fork/replay capabilities. It's designed for storm combo players to get efficient practice reps, with features like hand sculpting, simplified opponent AI, and tactics training (saving positions as puzzles).
 
-**Target Format:** Premodern (starting with Iggy Pop storm deck)
+**Target Format:** Premodern combo decks
+
+**Key docs:**
+- [fizzle-design.md](fizzle-design.md) — Design vision and technical architecture
+- [fizzle-roadmap.md](fizzle-roadmap.md) — Implementation roadmap and backlog
 
 ## Build Commands
 
@@ -136,7 +140,7 @@ adr list
 - Superseded ADRs remain in the repository for historical context
 - Store alongside code in version control
 
-ADRs complement `fizzle-design.md`—the design doc is the initial vision, ADRs document decisions that refine or deviate from it during implementation.
+ADRs complement `fizzle-design.md` (design vision) and `fizzle-roadmap.md` (implementation plan). ADRs document decisions that refine or deviate from either during implementation.
 
 ## Conventions
 

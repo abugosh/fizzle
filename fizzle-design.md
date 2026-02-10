@@ -4,9 +4,11 @@
 
 A ClojureScript-based Magic: The Gathering combo deck practice tool with fork/replay capabilities, simplified opponent AI, and tactics training.
 
-**Version:** 0.1.0-draft  
-**Last Updated:** January 2026  
-**Target Format:** Premodern (starting with Iggy Pop storm)
+**Version:** 0.3.0
+**Last Updated:** February 2026
+**Target Format:** Premodern combo decks
+
+> See [fizzle-roadmap.md](fizzle-roadmap.md) for the implementation roadmap.
 
 ---
 
@@ -28,13 +30,13 @@ A ClojureScript-based Magic: The Gathering combo deck practice tool with fork/re
 4. [Data Models](#4-data-models)
 5. [Game Engine](#5-game-engine)
 6. [Card Effect System](#6-card-effect-system)
-7. [Bot System](#7-bot-system)
+7. [Bot System](#7-bot-system) *(not yet implemented)*
 8. [Fork/Replay System](#8-forkreplay-system)
 9. [UI Components](#9-ui-components)
-10. [Future: Persistence & Sharing](#10-future-persistence--sharing)
-11. [Implementation Phases](#11-implementation-phases)
-12. [Starter Deck: Iggy Pop](#12-starter-deck-iggy-pop)
-13. [Testing Strategy](#13-testing-strategy)
+10. [Future: Persistence & Sharing](#10-future-persistence--sharing) *(not yet implemented)*
+11. [Starter Deck: Iggy Pop](#11-starter-deck-iggy-pop)
+12. [Testing Strategy](#12-testing-strategy)
+13. [Design Retrospective](#13-design-retrospective) *(new)*
 
 ---
 
@@ -147,79 +149,100 @@ fizzle/
 ├── deps.edn                    ; Clojure deps
 ├── shadow-cljs.edn             ; Build config
 ├── package.json                ; JS deps (tailwind, etc.)
+├── Makefile                    ; Build commands (make test, make validate, etc.)
+├── CLAUDE.md                   ; Claude Code project context
+├── fizzle-design.md            ; This document
+├── fizzle-roadmap.md           ; Implementation roadmap
+├── docs/
+│   └── adr/                    ; Architecture Decision Records
 ├── resources/
 │   └── public/
 │       ├── index.html
-│       ├── css/
-│       └── js/                 ; Compiled output
+│       └── css/
 ├── src/
-│   └── fizzle/
-│       ├── core.cljs           ; Entry point, app initialization
-│       ├── config.cljs         ; App configuration
-│       │
-│       ├── db/
-│       │   ├── schema.cljs     ; Datascript schema
-│       │   ├── init.cljs       ; Initial app-db state
-│       │   └── queries.cljs    ; Common Datalog queries
-│       │
-│       ├── events/
-│       │   ├── core.cljs       ; re-frame event registration
-│       │   ├── game.cljs       ; Game action events
-│       │   ├── ui.cljs         ; UI state events
-│       │   └── tactics.cljs    ; Puzzle/save events
-│       │
-│       ├── subs/
-│       │   ├── core.cljs       ; Subscription registration
-│       │   ├── game.cljs       ; Game state subscriptions
-│       │   └── derived.cljs    ; Computed values (castable cards, etc.)
-│       │
-│       ├── engine/
-│       │   ├── rules.cljs      ; Core game rules
-│       │   ├── mana.cljs       ; Mana pool logic
-│       │   ├── stack.cljs      ; Spell stack (simplified)
-│       │   ├── effects.cljs    ; Effect interpreter
-│       │   ├── keywords.cljs   ; Keyword abilities (storm, threshold)
-│       │   └── zones.cljs      ; Zone transitions
-│       │
-│       ├── cards/
-│       │   ├── core.cljs       ; Card definition helpers
-│       │   ├── iggy_pop.cljs   ; Iggy Pop card definitions
-│       │   └── registry.cljs   ; Card lookup by name
-│       │
-│       ├── bots/
-│       │   ├── protocol.cljs   ; Bot interface
-│       │   ├── goldfish.cljs   ; Non-interactive (clock only)
-│       │   ├── burn.cljs       ; Bolts + clock
-│       │   ├── control.cljs    ; Counterspells
-│       │   └── discard.cljs    ; Duress effects
-│       │
-│       ├── history/
-│       │   ├── core.cljs       ; Action history management
-│       │   ├── fork.cljs       ; Branching logic
-│       │   └── replay.cljs     ; Replay/rewind
-│       │
-│       ├── tactics/
-│       │   ├── puzzles.cljs    ; Puzzle data structures
-│       │   ├── storage.cljs    ; localStorage (for now)
-│       │   └── export.cljs     ; EDN export/import
-│       │
-│       └── views/
-│           ├── app.cljs        ; Root component
-│           ├── game.cljs       ; Main game view
-│           ├── hand.cljs       ; Hand display
-│           ├── battlefield.cljs; Permanents
-│           ├── graveyard.cljs  ; Graveyard viewer
-│           ├── stack.cljs      ; Spell stack display
-│           ├── mana.cljs       ; Mana pool display
-│           ├── history.cljs    ; Action log + fork UI
-│           ├── opponent.cljs   ; Opponent state/actions
-│           ├── setup.cljs      ; Game setup, hand sculpting
-│           └── tactics.cljs    ; Puzzle browser
-└── test/
-    └── fizzle/
-        ├── engine_test.cljs
-        ├── cards_test.cljs
-        └── history_test.cljs
+│   └── main/
+│       └── fizzle/
+│           ├── core.cljs           ; Entry point, 3-screen router, layout
+│           │
+│           ├── db/
+│           │   ├── schema.cljs     ; Datascript schema (5 entity types)
+│           │   └── queries.cljs    ; Common Datalog queries
+│           │
+│           ├── engine/             ; Pure game engine (17 files, ~3000 lines)
+│           │   ├── rules.cljs      ; Casting system, modes, spell resolution
+│           │   ├── effects.cljs    ; Effect interpreter (20+ effect types)
+│           │   ├── mana.cljs       ; Mana pool (add, pay, X-cost support)
+│           │   ├── stack.cljs      ; Unified stack-item entity (LIFO)
+│           │   ├── zones.cljs      ; Zone transitions, shuffle, remove
+│           │   ├── costs.cljs      ; Ability cost system (6 cost types)
+│           │   ├── grants.cljs     ; Temporary grants (alternate costs, restrictions)
+│           │   ├── abilities.cljs  ; Generic ability activation
+│           │   ├── targeting.cljs  ; Target requirements and validation
+│           │   ├── conditions.cljs ; Condition evaluators (threshold)
+│           │   ├── triggers.cljs   ; Turn-based triggers, spell copy creation
+│           │   ├── trigger_dispatch.cljs  ; Event dispatch routing
+│           │   ├── trigger_registry.cljs  ; Dynamic trigger registration
+│           │   ├── turn_based.cljs ; Turn-based action registration
+│           │   ├── state_based.cljs; State-based action framework
+│           │   ├── events.cljs     ; Event creation helpers
+│           │   └── deck_parser.cljs; Deck text parser (Moxfield/MTGGoldfish)
+│           │
+│           ├── events/             ; re-frame event handlers
+│           │   ├── game.cljs       ; Core game events (~770 lines)
+│           │   ├── selection.cljs  ; Selection/choice events (~1540 lines)
+│           │   ├── abilities.cljs  ; Ability activation events (~300 lines)
+│           │   ├── opening_hand.cljs ; Mulligan flow
+│           │   └── setup.cljs      ; Game setup, deck management
+│           │
+│           ├── subs/               ; re-frame subscriptions (60+)
+│           │   ├── game.cljs       ; Game state queries
+│           │   ├── history.cljs    ; Fork/replay subscriptions
+│           │   ├── opening_hand.cljs ; Mulligan state
+│           │   └── setup.cljs      ; Deck/preset queries
+│           │
+│           ├── cards/              ; Card definitions as EDN data
+│           │   ├── iggy_pop.cljs   ; Core Iggy Pop deck (26 cards)
+│           │   ├── cephalid_coliseum.cljs
+│           │   ├── deep_analysis.cljs
+│           │   ├── flash_of_insight.cljs
+│           │   ├── ill_gotten_gains.cljs
+│           │   ├── orims_chant.cljs
+│           │   ├── ray_of_revelation.cljs
+│           │   ├── recoup.cljs
+│           │   └── seal_of_cleansing.cljs
+│           │
+│           ├── history/            ; Fork/replay system
+│           │   ├── core.cljs       ; Fork tree, branch operations
+│           │   ├── descriptions.cljs ; Human-readable event descriptions
+│           │   ├── events.cljs     ; Step navigation events
+│           │   └── interceptor.cljs; re-frame interceptor for auto-tracking
+│           │
+│           └── views/              ; Reagent components (14 files)
+│               ├── setup.cljs      ; Deck selection, hand sculpting
+│               ├── import_modal.cljs ; Deck text import UI
+│               ├── opening_hand.cljs ; London mulligan interface
+│               ├── hand.cljs       ; Hand display with selection
+│               ├── battlefield.cljs; Permanents with mana/activated abilities
+│               ├── graveyard.cljs  ; Graveyard with threshold indicator
+│               ├── stack.cljs      ; Stack item display
+│               ├── mana_pool.cljs  ; Mana pool with color symbols
+│               ├── opponent.cljs   ; Opponent life display
+│               ├── controls.cljs   ; Cast, Play Land, Resolve buttons
+│               ├── phase_bar.cljs  ; Turn/phase indicators
+│               ├── history.cljs    ; Action log, fork controls
+│               ├── modals.cljs     ; Modal system (10+ modal types)
+│               └── common.cljs     ; Shared helpers (collapsible zones)
+│
+└── src/
+    └── test/
+        └── fizzle/                 ; 72 test files, 872+ tests
+            ├── cards/              ; Card-specific tests (22 files)
+            ├── engine/             ; Engine unit tests (22 files)
+            ├── events/             ; Event handler tests (16 files)
+            ├── history/            ; Fork/replay tests (5 files)
+            ├── subs/               ; Subscription tests (4 files)
+            ├── views/              ; Component tests (3 files)
+            └── db/                 ; Schema tests (2 files)
 ```
 
 ---
@@ -230,19 +253,27 @@ fizzle/
 
 ```clojure
 (def schema
-  {;; === Cards (definitions, immutable) ===
+  {;; === Cards (definitions, immutable templates) ===
    :card/id           {:db/unique :db.unique/identity}
    :card/name         {:db/index true}
    :card/cmc          {}
+   :card/mana-cost    {}  ; Map: {:black 1 :generic 2}
    :card/colors       {:db/cardinality :db.cardinality/many}
    :card/types        {:db/cardinality :db.cardinality/many}
    :card/subtypes     {:db/cardinality :db.cardinality/many}
    :card/supertypes   {:db/cardinality :db.cardinality/many}
    :card/text         {}
-   :card/effects      {}  ; EDN data structure
-   :card/abilities    {}  ; EDN for activated/triggered
+   :card/effects      {}  ; EDN vector of effect maps
+   :card/abilities    {}  ; EDN vector of activated abilities
+   :card/etb-effects  {}  ; Effects on entering battlefield
+   :card/triggers     {}  ; EDN vector of triggered abilities
    :card/keywords     {:db/cardinality :db.cardinality/many}
-   
+   :card/targeting    {}  ; Cast-time targeting requirements
+   :card/alternate-costs {}  ; Flashback, etc.
+   :card/conditional-effects {}  ; Map by condition: {:threshold -> [effects]}
+   :card/kicker       {}  ; Kicker cost map
+   :card/kicked-effects {}  ; Effects when kicked
+
    ;; === Game Objects (instances of cards in a game) ===
    :object/id         {:db/unique :db.unique/identity}
    :object/card       {:db/valueType :db.type/ref}
@@ -252,27 +283,52 @@ fizzle/
    :object/tapped     {}
    :object/counters   {}  ; Map of counter-type -> count
    :object/position   {}  ; Position in zone (for library order)
-   :object/targets    {:db/cardinality :db.cardinality/many
-                       :db/valueType :db.type/ref}
-   
+   :object/targets    {}  ; Map: target-ref-id -> target-id
+   :object/is-copy    {}  ; Boolean, marks storm copies
+   :object/grants     {}  ; Vector of grant maps (temporary abilities)
+   :object/x-value    {}  ; Value of X for X spells
+   :object/cast-mode  {}  ; Casting mode used (:flashback, :kicker)
+
    ;; === Players ===
    :player/id         {:db/unique :db.unique/identity}
    :player/name       {}
    :player/life       {}
    :player/is-opponent {}
-   :player/mana-pool  {}  ; Map of color -> amount
+   :player/mana-pool  {}  ; Map: {:white 0 :blue 0 :black 0 :red 0 :green 0 :colorless 0}
    :player/storm-count {}
-   :player/land-plays-remaining {}
-   
-   ;; === Game State ===
+   :player/land-plays-left {}
+   :player/max-hand-size {}  ; Default 7
+   :player/grants     {}  ; Vector of temporary restrictions/effects
+
+   ;; === Game State (singleton) ===
    :game/id           {:db/unique :db.unique/identity}
    :game/turn         {}
-   :game/phase        {}  ; :beginning, :main1, :combat, :main2, :end
+   :game/phase        {}  ; :main1, :main2, :combat, :end
    :game/step         {}  ; :untap, :upkeep, :draw, etc.
    :game/active-player {:db/valueType :db.type/ref}
    :game/priority     {:db/valueType :db.type/ref}
-   :game/winner       {:db/valueType :db.type/ref}})
+   :game/winner       {:db/valueType :db.type/ref}
+   :game/loss-condition {}  ; :empty-library, :life-zero
+
+   ;; === Stack Items (unified representation) ===
+   :stack-item/position    {}  ; Integer, LIFO ordering (higher = resolves first)
+   :stack-item/type        {}  ; :spell, :storm-copy, :activated-ability, :etb, etc.
+   :stack-item/controller  {:db/valueType :db.type/ref}
+   :stack-item/source      {}  ; Source object entity ID
+   :stack-item/effects     {}  ; Vector of effect maps
+   :stack-item/targets     {}  ; Targeting choices
+   :stack-item/description {}  ; Human-readable text
+   :stack-item/is-copy     {}  ; Boolean, marks storm copies
+   :stack-item/cast-mode   {}  ; Casting mode used
+   :stack-item/object-ref  {:db/valueType :db.type/ref}})  ; For spells
 ```
+
+**Key design decisions in the schema:**
+
+- **Dual representation**: Cards are immutable templates; Objects are game instances referencing their card.
+- **Unified stack-item**: A single entity type handles spells, storm copies, triggered abilities, and activated abilities. This simplified the stack engine significantly compared to the original design which had separate types.
+- **Grants system**: Temporary modifiers (alternate costs, restrictions, keywords) stored as grant vectors on objects and players, with turn/phase expiration.
+- **Targets as maps**: Changed from cardinality-many refs to a map of `{target-ref-id -> target-id}`, enabling named target slots (e.g., `:target-player`, `:target-object`).
 
 ### Card Definition Format (EDN)
 
@@ -362,16 +418,9 @@ Cards are defined as pure data. The engine interprets this data to execute game 
 {:choice 3 :choice-type :one-color}
 ```
 
-### Game State Snapshot (for fork/replay)
+### Game State Snapshots (for fork/replay)
 
-```clojure
-{:snapshot/id (random-uuid)
- :snapshot/name "Before Intuition"
- :snapshot/timestamp (js/Date.)
- :snapshot/db-value @conn  ; Datascript db value (immutable!)
- :snapshot/action-index 15  ; Position in action history
- :snapshot/tags #{:decision-point :intuition}}
-```
+Snapshots are stored as part of history entries (see Section 8). Each entry captures the complete Datascript db value after the action, enabling instant rewind to any point without event replay.
 
 ---
 
@@ -403,19 +452,28 @@ Turn Structure:
 - No instants during combat (main phase focus)
 - Mana abilities don't use the stack
 
-#### The Stack (Simplified)
+#### The Stack (Unified Stack-Item Model)
+
+The stack uses a single `:stack-item` entity type for all entries, with a `:stack-item/type` discriminator:
 
 ```clojure
-;; Stack is a vector of pending spells/abilities
-;; For storm, we mostly just need to track:
-;; 1. Spell goes on stack (increment storm count)
-;; 2. Spell resolves (execute effects)
-;; 3. Counterspells can target things on stack
+;; Stack-item types:
+;; :spell          - Cast from hand (or flashback from graveyard)
+;; :storm-copy     - Storm copies
+;; :activated-ability - Permanent abilities (Seal of Cleansing, etc.)
+;; :etb            - Enter-the-battlefield triggers
+;; :permanent-tapped - Tap triggers (City of Brass damage)
+;; :land-entered   - Land enters triggers (City of Traitors sacrifice)
 
-;; We skip:
+;; Resolution: LIFO via :stack-item/position (highest resolves first)
+;; Storm creates stack-items on cast with {:effect/type :storm-copies}
+;; Copies have :stack-item/is-copy true and don't re-trigger storm
+
+;; We still skip:
 ;; - Split second
-;; - Complex targeting restrictions
-;; - Most triggered abilities
+;; - Full priority system (player decides when to resolve)
+;; - Replacement effects
+;; - Layers / continuous effects
 ```
 
 #### Zones
@@ -432,100 +490,55 @@ Zones:
 
 ### Core Engine Functions
 
+The engine is split across 17 files in `engine/`. Key patterns:
+
 ```clojure
-(ns fizzle.engine.rules)
+;; engine/rules.cljs — Casting system
+;;
+;; get-casting-modes: Returns all valid modes (primary + alternate + kicked + granted)
+;; can-cast?: Checks timing, restrictions, costs, targets, zone
+;; cast-spell: Pay mana/additional costs, move to stack, create stack-item, storm
+;; resolve-spell: Execute effects, handle copies, place destination zone
+;; get-active-effects: Select effects by mode → conditional → default
 
-(defn can-cast?
-  "Check if player can cast this card from hand."
-  [db player-id object-id]
-  (let [card (get-card db object-id)
-        cost (:card/cmc card)
-        pool (get-mana-pool db player-id)
-        in-hand? (= :hand (get-zone db object-id))
-        is-sorcery-timing? (sorcery-timing? db player-id)]
-    (and in-hand?
-         (can-pay? pool cost)
-         (or (instant? card) is-sorcery-timing?))))
+;; engine/effects.cljs — Effect interpreter (multimethod on :effect/type)
+;; 20+ effect types, each (db, context, effect) -> db
+;; Effects that need player choices return db unchanged;
+;; the event layer (events/selection.cljs) handles the selection UI
 
-(defn sorcery-timing?
-  "Can we cast sorceries? (Main phase, stack empty, our turn)"
-  [db player-id]
-  (and (#{:main1 :main2} (get-phase db))
-       (empty? (get-stack db))
-       (= player-id (get-active-player db))))
+;; engine/mana.cljs — Mana pool
+;; add-mana, can-pay? (with X-cost support), pay-mana, empty-pool
+;; Generic mana paid from largest available pools in descending order
 
-(defn cast-spell
-  "Move card from hand to stack, pay costs."
-  [db player-id object-id & {:keys [targets mana-payment]}]
-  (-> db
-      (pay-mana player-id mana-payment)
-      (move-to-zone object-id :stack)
-      (increment-storm-count player-id)))
+;; engine/stack.cljs — Unified stack-item entity
+;; create-stack-item, get-top-stack-item, remove-stack-item, stack-empty?
+;; resolve-effect-target: resolves symbolic targets (:self, :controller, etc.)
 
-(defn resolve-top-of-stack
-  "Resolve the top spell/ability on the stack."
-  [db]
-  (let [spell (peek-stack db)
-        card (get-card db spell)
-        effects (:card/effects card)]
-    (-> db
-        (execute-effects spell effects)
-        (move-to-zone spell (destination-zone card))
-        (check-storm-trigger spell))))
+;; engine/costs.cljs — Ability cost system
+;; Multimethod: pay-cost, can-pay? dispatch on cost type
+;; Types: :tap, :remove-counter, :sacrifice-self, :discard-hand, :pay-life, :mana
+
+;; engine/grants.cljs — Temporary modifiers
+;; Grant types: :alternate-cost, :ability, :keyword, :static-effect, :restriction
+;; Grants expire at turn/phase boundaries (checked in cleanup)
+
+;; engine/targeting.cljs — Target validation
+;; get-targeting-requirements, find-valid-targets, has-valid-targets?
+;; target-still-legal? (for fizzle check on resolution)
 ```
 
 ### Effect Interpreter
 
+The effect system uses a multimethod `execute-effect-impl` dispatching on `:effect/type`. Each method receives `(db context effect)` where context includes the source object and controller information.
+
+Effects that require player interaction (tutor, discard choices, graveyard return) set up a `:pending-selection` in app-db. The event layer (`events/selection.cljs`) presents the appropriate modal, collects the player's choice, and resumes effect execution with the remaining effects.
+
 ```clojure
-(ns fizzle.engine.effects)
-
-(defmulti execute-effect
-  "Execute a single effect. Dispatches on :effect/type"
-  (fn [db caster effect] (:effect/type effect)))
-
-(defmethod execute-effect :add-mana
-  [db caster {:keys [effect/mana effect/condition]}]
-  (if (check-condition db caster condition)
-    (add-mana db (:object/controller caster) mana)
-    db))
-
-(defmethod execute-effect :draw
-  [db caster {:keys [effect/count]}]
-  (draw-cards db (:object/controller caster) count))
-
-(defmethod execute-effect :discard-hand
-  [db caster _]
-  (let [player (:object/controller caster)
-        hand (get-hand db player)]
-    (reduce #(move-to-zone %1 %2 :graveyard) db hand)))
-
-(defmethod execute-effect :mill
-  [db caster {:keys [effect/count effect/target]}]
-  (let [target-player (resolve-target db caster target)]
-    (mill db target-player count)))
-
-(defmethod execute-effect :return-from-graveyard
-  [db caster {:keys [effect/count effect/choice]}]
-  ;; This requires player interaction - we dispatch an event
-  ;; that waits for player to choose cards
-  (-> db
-      (assoc :pending-choice 
-             {:type :choose-cards-from-graveyard
-              :count count
-              :player (:object/controller caster)})))
-
-;; Condition checking
-(defmulti check-condition (fn [db caster condition] (:condition/type condition)))
-
-(defmethod check-condition nil [_ _ _] true)
-
-(defmethod check-condition :threshold
-  [db caster _]
-  (>= (count-graveyard db (:object/controller caster)) 7))
-
-(defmethod check-condition :threshold-not-met
-  [db caster _]
-  (< (count-graveyard db (:object/controller caster)) 7))
+;; Condition checking is separate (engine/conditions.cljs)
+;; threshold?: (>= graveyard-count 7)
+;; Conditional effects on cards use :card/conditional-effects map
+;; e.g., Cabal Ritual: {:threshold [{:effect/type :add-mana :effect/mana {:black 5}}]}
+;; Engine selects conditional or default effects via get-active-effects
 ```
 
 ---
@@ -537,70 +550,90 @@ Zones:
 | Effect Type | Parameters | Description |
 |-------------|------------|-------------|
 | `:add-mana` | `:mana`, `:condition` | Add mana to pool |
-| `:draw` | `:count` | Draw cards |
-| `:discard` | `:count`, `:choice` | Discard cards |
+| `:draw` | `:count` | Draw cards (loss on empty library) |
+| `:discard` | `:count`, `:choice` | Discard cards (player selects or random) |
 | `:discard-hand` | — | Discard entire hand |
-| `:mill` | `:count`, `:target` | Mill cards |
-| `:tutor` | `:zone`, `:destination`, `:reveal?` | Search library |
-| `:return-from-graveyard` | `:count`, `:card-type` | Return cards from GY |
-| `:exile-self` | — | Exile the spell |
-| `:sacrifice` | `:target` | Sacrifice permanent |
-| `:drain` | `:amount`, `:target` | Drain life |
+| `:mill` | `:count`, `:target` | Mill cards to graveyard |
+| `:tutor` | `:zone`, `:destination`, `:filter`, `:reveal` | Search library (selection UI) |
+| `:return-from-graveyard` | `:count`, `:destination` | Return cards from GY (selection UI) |
+| `:exile-self` | — | Exile the source spell |
+| `:sacrifice` | `:target` | Sacrifice permanent to graveyard |
+| `:destroy` | `:target`, `:target-ref` | Destroy target permanent |
+| `:lose-life` | `:amount`, `:target` | Reduce life total (auto-loss at ≤0) |
+| `:gain-life` | `:amount`, `:target` | Increase life total |
+| `:deal-damage` | `:amount`, `:target` | Deal damage with loss condition trigger |
+| `:add-counters` | `:counters`, `:target` | Add counters to permanent |
+| `:grant-flashback` | `:target` | Grant alternate cost to graveyard card |
+| `:add-restriction` | `:restriction` | Add restriction grant to player |
+| `:scry` | `:count` | Look at top N, assign to top/bottom (selection UI) |
+| `:peek-and-select` | `:count`, `:select-count` | Peek N cards, select some for hand |
+| `:storm-copies` | `:count` | Create storm copies on stack |
 | `:each-player` | `:player-effects` | Apply effects to each player |
 
 ### Targeting
 
-```clojure
-;; Target types
-:self           ; The card itself
-:chosen-player  ; Player chosen on cast
-:controller     ; Controller of the source
-:opponent       ; Opponent (for 1v1)
-:any-permanent  ; Chosen permanent
+The targeting system supports both cast-time and resolution-time targeting via a declarative requirements structure:
 
-;; Target resolution happens at cast time for spells
-;; and at resolution time for abilities
+```clojure
+;; Target requirement definition
+{:target/type :object | :player
+ :target/id :target-ref-keyword     ; Named slot for storing choice
+ :target/required true | false
+ :target/zone :hand | :battlefield  ; For object targets
+ :target/controller :self | :opponent | :any
+ :target/criteria {:card/types #{:artifact :enchantment}}}  ; OR logic
+
+;; Resolution-time symbolic targets (in effect maps)
+:self           ; The source object
+:controller     ; Controller of the source
+:any-player     ; Requires player target selection
+:target-ref     ; Resolve from stored targeting choice
 ```
+
+**Key functions:** `find-valid-targets`, `has-valid-targets?`, `target-still-legal?` (checks for fizzle on resolution), `all-targets-legal?`.
 
 ### Keyword Abilities
 
 ```clojure
-;; Storm implementation
-(defn check-storm-trigger
-  "After a storm spell resolves, copy it storm-count times."
-  [db spell]
-  (let [card (get-card db spell)
-        storm-count (get-storm-count db)]
-    (if (contains? (:card/keywords card) :storm)
-      (create-storm-copies db spell storm-count)
-      db)))
+;; Storm: creates stack-items on cast, not on resolution
+;; maybe-create-storm-trigger adds a stack-item with
+;; {:effect/type :storm-copies :effect/count (storm-count - 1)}
+;; Copies have :object/is-copy true and don't re-trigger storm
 
-;; Threshold is handled via conditions on effects (see Cabal Ritual)
+;; Threshold: handled via conditions on effects (see Cabal Ritual)
+;; Checked by engine/conditions.cljs: (>= graveyard-count 7)
+
+;; Flash: allows casting at instant speed (checked in rules/can-cast?)
 ```
 
-### Choice Resolution
+### Choice Resolution (Selection System)
 
-Some effects require player choices (Intuition, IGG, LED mana color). We handle this with a pending-choice system:
+Player choices (Intuition piles, IGG returns, LED color, tutor targets) are handled by the **selection system** in `events/selection.cljs`. Rather than a generic pending-choice, each choice type has a dedicated builder/confirm pattern:
 
 ```clojure
-;; When an effect needs a choice, we pause and wait
-{:pending-choice 
- {:id (random-uuid)
-  :type :choose-cards-from-graveyard
-  :player :player-1
-  :count {:up-to 3}
-  :source object-id
-  :continuation effect-continuation}}
+;; Engine effect sets up selection state in app-db:
+{:pending-selection
+ {:type :tutor | :discard | :graveyard-return | :pile-choice | :scry | ...
+  :source-id object-id
+  :candidates [card-ids...]
+  :selected #{}
+  :min-count 0
+  :max-count 3
+  :context {...}}}  ; Type-specific data
 
-;; UI shows the choice interface
-;; Player makes selection
-;; We dispatch [:resolve-choice choice-id selections]
-;; Engine continues with the continuation
+;; UI renders appropriate modal based on :type
+;; Player toggles selections via ::toggle-selection
+;; Confirms via ::confirm-*-selection (type-specific handler)
+;; Handler executes remaining effects and resumes game flow
 ```
+
+**10+ selection modal types:** tutor, discard, graveyard return, pile choice (Intuition), scry (top/bottom), peek-and-select (Flash of Insight), exile cost payment, X mana value, player target, object target, casting mode.
 
 ---
 
 ## 7. Bot System
+
+> **Status: Not yet implemented.** The bot system is planned for a future phase. The current goldfish mode uses a clock-based opponent (opponent "wins" after N turns) configured in the setup screen. Interactive bot decision-making (countering spells, casting Duress, etc.) has not been built. The designs below remain aspirational.
 
 ### Bot Protocol
 
@@ -827,82 +860,52 @@ For any bot, the player can choose to manually make decisions:
 
 ### Core Concept
 
-Every game action is an event. The game state is a pure reduction over the event history. This enables:
+Every game action creates a history entry with a **snapshot** of the complete game state. This enables:
 
-1. **Replay**: Reduce events 0..N to reconstruct any state
-2. **Fork**: Branch the event list at any point
-3. **Undo**: Pop events off the history
+1. **Instant replay**: Jump to any position by restoring its snapshot (no event reduction needed)
+2. **Fork**: Create a named branch at any point in the history
+3. **Step navigation**: Move forward/backward through effective entries
 
-### Event History Structure
+**Design deviation:** The original design proposed pure event replay (reduce events 0..N). The implementation uses **snapshot-based history** instead — each entry stores the full Datascript db value. This trades memory for instant state access, which is the right tradeoff for a practice tool where fast rewind matters more than memory efficiency.
+
+### History Data Structure
 
 ```clojure
-{:history/events 
- [{:event/id 0
-   :event/type :game-start
-   :event/timestamp #inst "..."
-   :event/data {:deck deck-list}}
-  
-  {:event/id 1
-   :event/type :draw-opening-hand
-   :event/data {:count 7}}
-  
-  {:event/id 2
-   :event/type :keep-hand
-   :event/data {}}
-  
-  {:event/id 3
-   :event/type :cast-spell
-   :event/data {:card :lotus-petal :from :hand}}
-  
-  {:event/id 4
-   :event/type :activate-ability
-   :event/data {:card :lotus-petal :ability 0 :choice {:blue 1}}}
-  
-  ...]
- 
- :history/forks
- [{:fork/id (uuid)
-   :fork/name "Try different Intuition pile"
-   :fork/branch-point 15  ; Event ID where we branched
-   :fork/events [...]}]   ; Events from branch point forward
- 
- :history/current-branch nil}  ; nil = main, or fork ID
+;; Stored in re-frame app-db (not Datascript)
+{:history/main []                  ; Main branch entries
+ :history/forks {}                 ; Fork map: fork-id -> fork-data
+ :history/current-branch nil       ; Active branch (nil = main)
+ :history/position -1}             ; Current position in effective entries
+
+;; Each history entry
+{:entry/description "Cast Dark Ritual"  ; Human-readable
+ :entry/turn 1                          ; Turn number
+ :entry/phase :main1                    ; Phase when action occurred
+ :entry/snapshot <datascript-db-value>} ; Complete game state
+
+;; Fork data
+{:fork/id (uuid)
+ :fork/name "Try different Intuition pile"
+ :fork/branch-point 5           ; Index in parent's entries
+ :fork/parent nil               ; Parent fork ID (nil = main)
+ :fork/entries [...]}           ; Entries from branch point forward
 ```
 
 ### Fork Operations
 
-```clojure
-(ns fizzle.history.fork)
+The fork system supports a **tree of branches** (forks can have child forks):
 
-(defn create-fork
-  "Create a new branch at the given event index."
-  [history event-index name]
-  (let [fork-id (random-uuid)
-        fork {:fork/id fork-id
-              :fork/name name
-              :fork/branch-point event-index
-              :fork/events []}]
-    (-> history
-        (update :history/forks conj fork)
-        (assoc :history/current-branch fork-id))))
+- **Create fork**: Branch at any position, auto-named or user-named
+- **Auto-fork**: Taking an action while not at the tip auto-creates a fork
+- **Switch branches**: Jump between main and any fork
+- **Delete fork**: Remove branch and all descendants
+- **Rename fork**: Change fork display name
 
-(defn get-effective-events
-  "Get the event sequence for the current branch."
-  [history]
-  (if-let [branch-id (:history/current-branch history)]
-    (let [fork (get-fork history branch-id)
-          main-events (take (:fork/branch-point fork) 
-                            (:history/events history))]
-      (concat main-events (:fork/events fork)))
-    (:history/events history)))
-
-(defn rewind-to
-  "Rewind to a specific event, creating a fork if needed."
-  [history event-index]
-  (if (< event-index (count (get-effective-events history)))
-    (create-fork history event-index (str "Fork at event " event-index))
-    history))
-```
+**Implementation files:**
+- `history/core.cljs` — Fork tree logic, effective entries computation
+- `history/descriptions.cljs` — Human-readable descriptions for each action type
+- `history/events.cljs` — re-frame events for step-back, step-forward, create-fork, etc.
+- `history/interceptor.cljs` — re-frame interceptor that auto-captures snapshots on game events
 
 ### UI Integration
 
@@ -973,37 +976,41 @@ Action History Panel:
 ### Component Hierarchy
 
 ```clojure
-;; views/app.cljs
+;; core.cljs — 3-screen router with responsive 3-column layout
 [app]
-├── [header]
-│   ├── [logo]
-│   └── [nav-buttons]  ; Setup, Tactics, Settings
-├── [game-view]  ; when in game
-│   ├── [opponent-panel]
-│   │   ├── [life-display]
-│   │   ├── [clock-display]
-│   │   └── [bot-actions]  ; Manual trigger buttons
-│   ├── [battlefield]
-│   │   └── [permanent-card]*
-│   ├── [mana-display]
-│   │   ├── [mana-pool]
-│   │   └── [storm-counter]
-│   ├── [action-log]
-│   │   ├── [log-entry]*
-│   │   └── [fork-controls]
-│   ├── [graveyard-panel]
-│   │   └── [card-list]
-│   ├── [hand]
-│   │   └── [card]*  ; Clickable to cast/play
-│   └── [phase-bar]
-│       └── [phase-button]*
-├── [setup-view]  ; Deck selection, hand sculpting
-│   ├── [deck-selector]
-│   ├── [hand-sculptor]
-│   └── [opponent-selector]
-└── [tactics-view]  ; Puzzle browser
-    ├── [puzzle-list]
-    └── [puzzle-detail]
+├── [nav-bar]               ; Setup / Game buttons, "New Game"
+├── [setup-view]            ; Screen: :setup
+│   ├── [deck-selector]     ; Preset/imported deck list
+│   ├── [deck-editor]       ; Main/sideboard card lists with swap
+│   ├── [hand-sculptor]     ; Must-contain cards for opening hand
+│   ├── [clock-config]      ; Goldfish clock turns
+│   ├── [preset-manager]    ; Save/load/delete presets
+│   └── [import-modal]      ; Deck text import (Moxfield/MTGGoldfish)
+├── [opening-hand-view]     ; Screen: :opening-hand
+│   ├── [hand-display]      ; 7-card hand with selection
+│   ├── [mulligan-controls] ; Keep / Mulligan buttons
+│   └── [bottom-selection]  ; London mulligan bottoming phase
+├── [game-view]             ; Screen: game (default)
+│   ├── [opponent-panel]    ; Life total with color-coded health
+│   ├── [battlefield]       ; Permanents with mana ability / activated ability buttons
+│   ├── [mana-pool]         ; Color symbols + storm counter
+│   ├── [controls]          ; Cast, Play Land, Resolve buttons
+│   ├── [hand]              ; Cards with selection highlighting
+│   ├── [phase-bar]         ; Turn counter, phase indicators, advance button
+│   │                       ; Right column (collapsible panels):
+│   ├── [stack-panel]       ; Stack items with source names
+│   ├── [graveyard-panel]   ; Threshold indicator, flashback badges
+│   └── [history-panel]     ; Action log grouped by turn, fork controls
+└── [modals]                ; Overlay modal system (10+ types)
+    ├── [selection-modal]   ; Tutor, discard, graveyard return
+    ├── [scry-modal]        ; Top/bottom pile assignment
+    ├── [pile-choice-modal] ; Intuition-style opponent choice
+    ├── [peek-select-modal] ; Flash of Insight peek
+    ├── [exile-cards-modal] ; Exile cost payment
+    ├── [x-mana-modal]      ; X cost value selection
+    ├── [player-target-modal]  ; Target player selection
+    ├── [object-target-modal]  ; Target object selection
+    └── [mode-selector-modal]  ; Casting mode selection
 ```
 
 ### Reagent Component Examples
@@ -1167,6 +1174,8 @@ Based on the specific needs of storm practice, here are the UX patterns for comp
 
 ## 10. Future: Persistence & Sharing
 
+> **Status: Not yet implemented.** The tactics/puzzle system (save positions, share EDN) has not been built. The fork/replay system handles most "rewind to interesting position" use cases for now. localStorage persistence for presets and imported decks is implemented in the setup system, but puzzle save/load is future work.
+
 ### Phase 1: Local Storage (v1)
 
 For offline-first MVP, use browser localStorage:
@@ -1241,103 +1250,7 @@ Rationale:
 
 ---
 
-## 11. Implementation Phases
-
-### Phase 1: Core Engine (Week 1-2)
-
-**Goal:** Goldfish a storm deck to completion
-
-- [ ] Project setup (shadow-cljs, deps, folder structure)
-- [ ] Datascript schema and initial state
-- [ ] Basic card definitions (lands, rituals, LED)
-- [ ] Mana system (pool, payment, floating)
-- [ ] Zone transitions (library → hand → battlefield/graveyard)
-- [ ] Spell casting (costs, stack, resolution)
-- [ ] Storm keyword implementation
-- [ ] Minimal UI (hand, battlefield, mana pool, cast button)
-
-**Milestone:** Cast Dark Ritual, Cabal Ritual, Brain Freeze with storm copies
-
-### Phase 2: Iggy Pop Complete (Week 3-4)
-
-**Goal:** All Iggy Pop cards implemented and playable
-
-- [ ] Implement all maindeck cards (see Section 12)
-- [ ] Implement key sideboard cards
-- [ ] Intuition with pile selection UI
-- [ ] Ill-Gotten Gains with card selection UI
-- [ ] Cunning Wish with wishboard UI
-- [ ] Threshold tracking
-- [ ] Graveyard view
-- [ ] Action log
-
-**Milestone:** Complete a full IGG loop and win with Brain Freeze
-
-### Phase 3: Fork/Replay (Week 5-6)
-
-**Goal:** Branch decision trees and rewind
-
-- [ ] Event history tracking
-- [ ] Fork creation
-- [ ] Rewind to event
-- [ ] Branch switching
-- [ ] Fork visualization in action log
-- [ ] Save snapshot as puzzle
-
-**Milestone:** Fork at Intuition, try two different piles, compare results
-
-### Phase 4: Hand Sculpting & Setup (Week 7)
-
-**Goal:** Configure starting conditions
-
-- [ ] Setup screen UI
-- [ ] Deck selection (load from EDN)
-- [ ] Hand sculpting interface
-- [ ] "Must contain" card selection
-- [ ] Sideboard integration
-- [ ] Mulligan decisions
-
-**Milestone:** Start game with LED + IGG + Ritual in hand
-
-### Phase 5: Bot System (Week 8-9)
-
-**Goal:** Practice against simplified opponents
-
-- [ ] Bot protocol implementation
-- [ ] Goldfish bot (clock only)
-- [ ] Burn bot (bolts + clock)
-- [ ] Control bot (counterspells)
-- [ ] Discard bot (Duress effects)
-- [ ] Manual override mode
-- [ ] Bot action UI integration
-
-**Milestone:** Win through 2 Duress effects from discard bot
-
-### Phase 6: Tactics & Polish (Week 10-11)
-
-**Goal:** Save, load, and drill puzzles
-
-- [ ] Puzzle data structure
-- [ ] localStorage persistence
-- [ ] Puzzle browser UI
-- [ ] EDN export/import
-- [ ] Success tracking
-- [ ] PWA setup (service worker, offline)
-- [ ] UI polish and mobile responsiveness
-
-**Milestone:** Create puzzle, close browser, reload, solve puzzle
-
-### Phase 7: Cloud Sync (Future)
-
-- [ ] Supabase integration
-- [ ] User authentication
-- [ ] Puzzle upload/download
-- [ ] Public puzzle library
-- [ ] Community features
-
----
-
-## 12. Starter Deck: Iggy Pop
+## 11. Starter Deck: Iggy Pop
 
 ### Decklist
 
@@ -1379,7 +1292,20 @@ Sideboard (15):
 2 Xantid Swarm
 ```
 
-### Card Implementations
+### Implementation Status
+
+58 cards implemented across `cards/iggy_pop.cljs` (core cards + opponent deck cards) and 8 individual card files. All 60 maindeck + 15 sideboard cards in the Iggy Pop list are playable, plus additional utility cards:
+
+| Status | Cards |
+|--------|-------|
+| **Implemented (maindeck)** | Dark Ritual, Cabal Ritual, Lotus Petal, Lion's Eye Diamond, Careful Study, Mental Note, Brain Freeze, Polluted Delta, Gemstone Mine, City of Brass, City of Traitors, Island, Swamp, Merchant Scroll, Opt |
+| **Implemented (individual files)** | Ill-Gotten Gains, Deep Analysis, Intuition, Recoup, Orim's Chant, Flash of Insight, Cephalid Coliseum, Ray of Revelation, Seal of Cleansing |
+| **Implemented (extra)** | Underground River, Gaea's Blessing, Counterspell, Duress, Lightning Bolt (opponent deck cards) |
+| **Not yet implemented** | Cunning Wish, Vision Charm, Urza's Bauble, Meditate, Chain of Vapor, Hurkyl's Recall, Hunting Pack, Tormod's Crypt, Abeyance, Cabal Therapy, Xantid Swarm |
+
+Cards marked "not yet implemented" are in the decklist but have no card definition yet. The game can still load these decklists — unimplemented cards are treated as vanilla cards with no effects.
+
+### Card Definition Examples
 
 #### Mana Sources
 
@@ -1858,7 +1784,7 @@ Sideboard (15):
 
 ---
 
-## 13. Testing Strategy
+## 12. Testing Strategy
 
 The architecture—pure functions, immutable state, event sourcing—lends itself to straightforward testing. This section outlines the testing approach.
 
@@ -1989,30 +1915,82 @@ The fork/replay system is core functionality. Test it explicitly:
 
 ### What We Don't Test
 
-- **UI component rendering** — Reagent components are thin; testing subscriptions covers the logic.
+- **UI component rendering** — Reagent components are thin; testing subscriptions covers the logic. A few key view tests exist for battlefield, mana pool, and opponent display.
 - **End-to-end browser tests** — High maintenance, low signal for a single-player tool.
 - **Visual regression** — Overkill for an MVP. Consider later if UI churn becomes a problem.
 
-### Test Infrastructure
+### Actual Test Infrastructure (as built)
+
+| Metric | Value |
+|--------|-------|
+| Test files | 69 |
+| Tests | 1148 |
+| Assertions | 2605 |
+
+| Area | Files | Coverage |
+|------|-------|----------|
+| `cards/` | 22 | Per-card scenario tests |
+| `engine/` | 22 | Mana, effects, stack, costs, grants, targeting, triggers, SBAs |
+| `events/` | 16 | Game events, selection flows, abilities |
+| `history/` | 5 | Fork tree, branch operations, step navigation |
+| `subs/` | 4 | Subscription derivations |
+| `views/` | 3 | Battlefield, mana pool, opponent display |
+| `db/` | 2 | Schema validation, queries |
 
 | Tool | Purpose |
 |------|---------|
 | `cljs.test` | Built-in test framework |
-| `test.check` | Property-based testing |
-| `shadow-cljs` | Test runner integration (`shadow-cljs watch test`) |
+| `shadow-cljs` | Test runner (`make test`) |
+| `clj-kondo` | Linter (`make lint`) |
+| `cljstyle` | Formatter (`make fmt`) |
 
-### Testing Phases
+**Validation workflow:** `make validate` runs lint + format-check + tests in sequence. Always run this, not just `make test`.
 
-Testing effort should match implementation phases:
+### Property-Based Tests
 
-| Phase | Testing Focus |
-|-------|---------------|
-| Phase 1 (Core Engine) | Effect interpreter, mana system, zone transitions |
-| Phase 2 (Iggy Pop) | Card scenarios for all implemented cards |
-| Phase 3 (Fork/Replay) | Fork/replay determinism, branch operations |
-| Phase 4 (Hand Sculpting) | Setup state generation |
-| Phase 5 (Bots) | Bot decision logic |
-| Phase 6 (Tactics) | Puzzle serialization/deserialization |
+The original design proposed `test.check` for property-based testing. This has **not been implemented** — all tests are example-based. The invariants listed (zone exclusivity, mana non-negative, storm monotonic, card conservation) are tested via targeted unit tests rather than generative testing. Revisiting property-based tests could add value for edge case discovery but hasn't been a priority.
+
+---
+
+## 13. Design Retrospective
+
+This section reflects on design choices after implementing the core system (~3000 lines of engine, ~2600 lines of events, 58 cards, 69 test files). What worked, what didn't, what we'd reconsider.
+
+### Validated Choices
+
+**re-frame event sourcing — Excellent fit.** The event model gave us fork/replay almost for free, exactly as predicted. The interceptor system was perfect for auto-capturing history entries. Subscriptions cleanly compute derived state (castable cards, threshold status, flashback availability). This was the best decision in the original design.
+
+**Datascript for game state — Good, with caveats.** Entity refs make card→object→player relationships clean. Datalog queries are expressive for "find all objects in zone X owned by player Y with type Z." However, Datascript adds cognitive overhead for simple operations — updating a counter or moving a card between zones requires understanding entity IDs, transactions, and pull syntax. A plain nested map might have been simpler for 80% of operations, but Datascript's query power pays off for the complex 20% (targeting validation, flashback detection, etc.). **Keep it.**
+
+**Data-driven cards — Validated.** Cards as EDN data with a multimethod effect interpreter was the right call. Adding a new card means defining data and maybe a new effect type, not writing card-specific engine code. The 20+ effect types cover a wide range of MTG effects.
+
+**Immutability for fork — Validated.** Structural sharing means keeping history snapshots is cheap. The fork tree works exactly as hoped.
+
+### Intentional Deviations
+
+**Snapshot-based history instead of event replay.** The design proposed reducing events 0..N to reconstruct state. We store full Datascript db values at each step instead. Tradeoff: more memory, but instant state access. For a practice tool where you frequently rewind, this was clearly correct. Event replay would require deterministic reduction (tricky with random elements like library shuffling) and would be slow for deep rewinds.
+
+**Unified stack-item entity instead of separate types.** The design had separate stack entry types (spell, ability, trigger). We use a single `:stack-item/*` entity with a `:stack-item/type` discriminator. This simplified queries, schema, and the resolution loop significantly. One `get-top-stack-item` function handles everything.
+
+**Three event namespaces instead of four.** Design: `core`, `game`, `ui`, `tactics`. Actual: `game`, `selection`, `abilities` (plus `setup`, `opening_hand`). The split by interaction pattern (game actions vs player choices vs ability activation) works better than the domain-based split. `selection.cljs` is large (~1540 lines) but cohesive — every function deals with the "player is making a choice" concern.
+
+**Grants system (emergent).** Not in the original design. Emerged from needing temporary effects: flashback grants alternate costs, Orim's Chant grants casting restrictions, Recoup grants flashback to graveyard cards. The grants system (`engine/grants.cljs`) handles all of these with turn/phase-based expiration. This is the biggest architectural addition not foreseen by the design.
+
+**Trigger registry (emergent).** The design sketched triggers for Gaea's Blessing but didn't design a general system. The implementation has a dynamic atom-based trigger registry (`engine/trigger_registry.cljs`) with event dispatch routing (`engine/trigger_dispatch.cljs`). Triggers register when permanents enter the battlefield, unregister when they leave. This is more complex than the design anticipated but necessary for cards like City of Brass, City of Traitors, and Cephalid Coliseum.
+
+### Choices to Revisit
+
+**selection.cljs size.** At ~1540 lines, it's the largest file in the project. Every selection type (tutor, discard, scry, pile-choice, graveyard-return, peek-select, exile-cost, x-mana, player-target, object-target) has its own builder/confirm pair. The pattern is consistent but the file is big. Consider splitting into `selection/tutor.cljs`, `selection/discard.cljs`, etc. if it grows further. The risk of splitting is losing the overview of how selections interact with each other.
+
+**No property-based tests.** The design proposed `test.check` for invariants like zone exclusivity and card conservation. We have 872+ example-based tests instead. Property-based tests could catch edge cases we haven't thought of, particularly around mana payment with X costs, zone transitions during complex effect chains, and stack interactions. Worth adding for the engine core.
+
+**Scryfall images — still absent.** The design included Scryfall integration for card images. Cards are text-only in the UI. This is fine for experienced players (the target audience knows what Dark Ritual does) but would improve the experience significantly. Low implementation effort; should probably just do it.
+
+**PWA/offline — still absent.** The design specified Workbox for service worker support. Not implemented and probably not needed yet — the app works fine as a regular web page. Revisit if users want to install it as an app.
+
+**Bot system — still absent.** Interactive opponents (burn, control, discard) remain unbuilt. The goldfish clock covers the primary use case (solo storm practice). Bots would add value for practicing against disruption but represent significant work (decision-making AI, priority system, interactive stack). Consider whether simpler approaches (e.g., "opponent has Duress — manually choose what they take") could provide 80% of the value at 20% of the cost.
+
+**Combat — intentionally minimal.** The phase exists for the turn structure but there's no creature combat. This is fine for storm (you rarely attack with creatures). If adding creature-based win conditions (Hunting Pack tokens, Xantid Swarm), basic combat would be needed.
 
 ---
 
@@ -2206,33 +2184,26 @@ This requires modeling:
 - Stack ordering (LIFO)
 - The shuffle resolving mid-storm-copies
 
-### Updated Stack Model
+### Stack Model (as implemented)
 
-The simplified stack from the original design won't work. We need:
+The unified `:stack-item` entity handles this. Gaea's Blessing would register a trigger via the trigger registry when in a zone, and zone-change events from milling would fire `trigger_dispatch.cljs` to create a new stack-item for the trigger:
 
 ```clojure
-;; Stack entry types
-(def stack-entry-types
-  #{:spell          ; Cast from hand
-    :spell-copy     ; Storm copies, Fork effects
-    :activated-ability
-    :triggered-ability})
-
-;; Stack entry structure
-{:entry/id (uuid)
- :entry/type :triggered-ability
- :entry/source object-id        ; Gaea's Blessing in graveyard
- :entry/controller player-id
- :entry/effects [...]
- :entry/targets [...]
- :entry/can-be-responded-to? true}  ; false for mana abilities
-
-;; Triggered ability definition (Gaea's Blessing)
+;; Gaea's Blessing trigger definition (on the card)
 {:trigger/type :zone-change
  :trigger/from :library
  :trigger/to :graveyard
+ :trigger/uses-stack? true   ; Goes on stack (can be responded to)
  :trigger/effects [{:effect/type :shuffle-graveyard-into-library
                     :effect/target :owner}]}
+
+;; When milled, trigger_dispatch.cljs creates:
+{:stack-item/type :triggered-ability
+ :stack-item/source blessing-eid
+ :stack-item/controller opponent-eid
+ :stack-item/effects [{:effect/type :shuffle-graveyard-into-library ...}]
+ :stack-item/description "Gaea's Blessing trigger"}
+;; This goes on top of remaining Brain Freeze copies (LIFO)
 ```
 
 ### Stack Resolution Flow
@@ -2390,6 +2361,6 @@ This is exactly the kind of interaction that makes storm practice interesting an
 
 ---
 
-*Document version: 0.1.1-draft*
-*Updated: January 2026*
+*Document version: 0.3.0*
+*Updated: February 2026*
 *For use with Claude Code to implement Fizzle*
