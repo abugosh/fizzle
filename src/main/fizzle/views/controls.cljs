@@ -40,4 +40,8 @@
      [:button {:class (btn-class (seq stack))
                :disabled (empty? stack)
                :on-click #(rf/dispatch [::events/resolve-top])}
-      "Yield"]]))
+      "Yield"]
+     [:button {:class (btn-class (> (count stack) 1))
+               :disabled (<= (count stack) 1)
+               :on-click #(rf/dispatch [::events/resolve-all])}
+      "Yield All"]]))

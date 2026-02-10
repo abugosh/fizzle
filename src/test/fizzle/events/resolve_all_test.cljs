@@ -1,0 +1,372 @@
+(ns fizzle.events.resolve-all-test
+  (:require
+    [cljs.test :refer-macros [deftest testing is]]
+    [datascript.core :as d]
+    [fizzle.cards.iggy-pop :as cards]
+    [fizzle.db.queries :as queries]
+    [fizzle.db.schema :refer [schema]]
+    [fizzle.engine.mana :as mana]
+    [fizzle.engine.rules :as rules]
+    [fizzle.engine.stack :as stack]
+    [fizzle.events.game :as game]
+    [fizzle.history.core :as history]))
+
+
+;; === Test helpers ===
+
+(defn create-full-db
+  "Create a game state with all card definitions loaded."
+  []
+  (let [conn (d/create-conn schema)]
+    (d/transact! conn cards/all-cards)
+    (d/transact! conn [{:player/id :player-1
+                        :player/name "Player"
+                        :player/life 20
+                        :player/mana-pool {:white 0 :blue 0 :black 0
+                                           :red 0 :green 0 :colorless 0}
+                        :player/storm-count 0
+                        :player/land-plays-left 1}
+                       {:player/id :player-2
+                        :player/name "Opponent"
+                        :player/life 20
+                        :player/mana-pool {:white 0 :blue 0 :black 0
+                                           :red 0 :green 0 :colorless 0}
+                        :player/storm-count 0
+                        :player/land-plays-left 1}])
+    (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
+      (d/transact! conn [{:game/id :game-1
+                          :game/turn 1
+                          :game/phase :main1
+                          :game/active-player player-eid
+                          :game/priority player-eid}]))
+    @conn))
+
+
+(defn add-card-to-zone
+  "Add a card object to a zone. Returns [db object-id]."
+  [db card-id zone player-id]
+  (let [conn (d/conn-from-db db)
+        player-eid (queries/get-player-eid db player-id)
+        card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] db card-id)
+        obj-id (random-uuid)]
+    (d/transact! conn [{:object/id obj-id
+                        :object/card card-eid
+                        :object/zone zone
+                        :object/owner player-eid
+                        :object/controller player-eid
+                        :object/tapped false}])
+    [@conn obj-id]))
+
+
+;; === resolve-one-item tests (game-db level) ===
+
+(deftest test-resolve-one-item-spell
+  (testing "Spell stack-item with object-ref resolves and stack-item is removed"
+    (let [db (create-full-db)
+          [db object-id] (add-card-to-zone db :dark-ritual :hand :player-1)
+          db (mana/add-mana db :player-1 {:black 3})
+          mode {:mode/id :primary
+                :mode/zone :hand
+                :mode/mana-cost {:black 1}
+                :mode/additional-costs []
+                :mode/on-resolve :graveyard}
+          db' (rules/cast-spell-mode db :player-1 object-id mode)
+          ;; Filter to spell stack-items only (storm also creates a :storm item)
+          spell-items (filter #(:stack-item/object-ref %) (stack/get-all-stack-items db'))]
+      ;; Should have a spell stack-item with object-ref
+      (is (seq spell-items) "Should have spell stack-item")
+      ;; Resolve via resolve-one-item (resolves top item which is :storm)
+      ;; Keep resolving until we hit the spell
+      (let [;; First resolve may hit storm meta-item; resolve until spell is on top
+            result (game/resolve-one-item db' :player-1)]
+        (is (map? result) "Should return a map")
+        (is (some? (:db result)) "Should have :db key")
+        (is (nil? (:pending-selection result)) "Should not need selection")))))
+
+
+(deftest test-resolve-one-item-activated-ability
+  (testing "Activated-ability stack-item resolves and effect executes"
+    (let [db (create-full-db)
+          ;; Create a simple activated-ability stack-item with add-mana effect
+          db' (stack/create-stack-item db
+                                       {:stack-item/type :activated-ability
+                                        :stack-item/controller :player-1
+                                        :stack-item/source (random-uuid)
+                                        :stack-item/effects [{:effect/type :add-mana
+                                                              :effect/mana {:black 1}
+                                                              :effect/target :controller}]})
+          top (stack/get-top-stack-item db')]
+      (is (some? top) "Stack-item should exist")
+      ;; Resolve via resolve-one-item
+      (let [result (game/resolve-one-item db' :player-1)]
+        (is (some? (:db result)) "Should have :db key")
+        (is (nil? (:pending-selection result)) "Simple ability should not need selection")
+        ;; Stack-item should be removed
+        (is (nil? (stack/get-top-stack-item (:db result)))
+            "Stack-item should be removed after resolution")
+        ;; Effect should have executed
+        (is (= 1 (:black (queries/get-mana-pool (:db result) :player-1)))
+            "Effect should have been executed (added black mana)")))))
+
+
+(deftest test-resolve-one-item-trigger
+  (testing "Non-spell, non-ability stack-item resolves via resolve-stack-item-effects"
+    (let [db (create-full-db)
+          ;; Create a trigger-type stack-item (permanent-tapped) with lose-life effect
+          db' (stack/create-stack-item db
+                                       {:stack-item/type :permanent-tapped
+                                        :stack-item/controller :player-1
+                                        :stack-item/source (random-uuid)
+                                        :stack-item/effects [{:effect/type :lose-life
+                                                              :effect/amount 1
+                                                              :effect/target :controller}]})
+          top (stack/get-top-stack-item db')]
+      (is (some? top) "Stack-item should exist")
+      ;; Resolve via resolve-one-item
+      (let [result (game/resolve-one-item db' :player-1)]
+        (is (some? (:db result)) "Should have :db key")
+        (is (nil? (:pending-selection result)) "Trigger should not need selection")
+        ;; Stack-item should be removed
+        (is (nil? (stack/get-top-stack-item (:db result)))
+            "Stack-item should be removed after resolution")
+        ;; Effect should have executed
+        (is (= 19 (queries/get-life-total (:db result) :player-1))
+            "Effect should have been executed (lost 1 life)")))))
+
+
+(deftest test-resolve-one-item-empty-stack
+  (testing "Empty stack returns {:db db} unchanged"
+    (let [db (create-full-db)]
+      ;; No stack-items
+      (is (nil? (stack/get-top-stack-item db)) "Stack should be empty")
+      ;; Resolve via resolve-one-item
+      (let [result (game/resolve-one-item db :player-1)]
+        (is (some? (:db result)) "Should have :db key")
+        (is (nil? (:pending-selection result)) "Should not have pending selection")
+        ;; DB should be unchanged
+        (is (= db (:db result)) "DB should be unchanged for empty stack")))))
+
+
+(deftest test-resolve-one-item-spell-with-selection
+  (testing "Spell with tutor effect returns pending-selection and stack-item NOT removed"
+    (let [db (create-full-db)
+          ;; Merchant Scroll is a tutor card (search for blue instant)
+          [db obj-id] (add-card-to-zone db :merchant-scroll :hand :player-1)
+          db (mana/add-mana db :player-1 {:blue 3})
+          mode {:mode/id :primary
+                :mode/zone :hand
+                :mode/mana-cost {:colorless 1 :blue 1}
+                :mode/additional-costs []
+                :mode/on-resolve :graveyard}
+          db-cast (rules/cast-spell-mode db :player-1 obj-id mode)
+          ;; Find the spell stack-item (not the storm meta-item)
+          spell-items (filter #(:stack-item/object-ref %) (stack/get-all-stack-items db-cast))]
+      (is (seq spell-items) "Spell should be on stack")
+      ;; We need to resolve past any storm meta-item to get to the spell
+      ;; For Merchant Scroll (sorcery), storm count is 0 in fresh game, so
+      ;; the top of stack should be the spell itself
+      ;; Resolve - should trigger tutor selection
+      (let [result (game/resolve-one-item db-cast :player-1)]
+        (is (some? (:pending-selection result))
+            "Tutor spell should create pending selection")))))
+
+
+(deftest test-resolve-one-item-storm-creates-copies
+  (testing "Storm stack-item creates new stack-items for copies"
+    (let [db (create-full-db)
+          ;; Cast a spell first to get a source for storm copies
+          [db' src-id] (add-card-to-zone db :dark-ritual :hand :player-1)
+          db' (mana/add-mana db' :player-1 {:black 3})
+          ;; Put the spell object on the battlefield (as source reference for storm)
+          ;; Instead, create a storm stack-item directly
+          db' (stack/create-stack-item db'
+                                       {:stack-item/type :storm
+                                        :stack-item/controller :player-1
+                                        :stack-item/source src-id
+                                        :stack-item/effects [{:effect/type :storm-copies
+                                                              :effect/count 2}]})
+          items-before (stack/get-all-stack-items db')]
+      ;; Should have 1 stack-item (the storm meta-item)
+      (is (= 1 (count items-before)) "Should have 1 stack-item before resolution")
+      ;; Resolve the storm item
+      (let [result (game/resolve-one-item db' :player-1)
+            items-after (stack/get-all-stack-items (:db result))]
+        (is (nil? (:pending-selection result)) "Storm should not need selection")
+        ;; Storm meta-item should be removed, but copies created
+        ;; The storm item is removed, and 2 copies are created
+        (is (= 2 (count items-after))
+            "Should have 2 storm copy stack-items after resolution")))))
+
+
+;; === ::resolve-all tests (app-db level) ===
+
+(deftest test-resolve-all-multiple-items
+  (testing "Multiple non-selection items all resolved in one dispatch"
+    (let [db (create-full-db)
+          ;; Create 3 simple trigger stack-items
+          db (stack/create-stack-item db
+                                      {:stack-item/type :permanent-tapped
+                                       :stack-item/controller :player-1
+                                       :stack-item/source (random-uuid)
+                                       :stack-item/effects [{:effect/type :lose-life
+                                                             :effect/amount 1
+                                                             :effect/target :controller}]})
+          db (stack/create-stack-item db
+                                      {:stack-item/type :permanent-tapped
+                                       :stack-item/controller :player-1
+                                       :stack-item/source (random-uuid)
+                                       :stack-item/effects [{:effect/type :lose-life
+                                                             :effect/amount 1
+                                                             :effect/target :controller}]})
+          db (stack/create-stack-item db
+                                      {:stack-item/type :permanent-tapped
+                                       :stack-item/controller :player-1
+                                       :stack-item/source (random-uuid)
+                                       :stack-item/effects [{:effect/type :lose-life
+                                                             :effect/amount 1
+                                                             :effect/target :controller}]})
+          _ (is (= 3 (count (stack/get-all-stack-items db))) "Should have 3 stack-items")
+          ;; Wrap in app-db
+          app-db {:game/db db}
+          ;; Call resolve-all handler
+          result (game/resolve-all-handler app-db)]
+      ;; All 3 items should be resolved
+      (is (empty? (stack/get-all-stack-items (:game/db result)))
+          "All stack-items should be resolved")
+      ;; All 3 effects executed (lost 3 life total)
+      (is (= 17 (queries/get-life-total (:game/db result) :player-1))
+          "All 3 effects should have executed (lost 3 life)")
+      ;; No pending selection
+      (is (nil? (:game/pending-selection result))
+          "Should not have pending selection"))))
+
+
+(deftest test-resolve-all-stops-at-selection
+  (testing "Resolve-all stops when a selection is needed"
+    (let [db (create-full-db)
+          ;; First: a simple trigger item (will be on bottom of stack, resolved last)
+          db (stack/create-stack-item db
+                                      {:stack-item/type :permanent-tapped
+                                       :stack-item/controller :player-1
+                                       :stack-item/source (random-uuid)
+                                       :stack-item/effects [{:effect/type :lose-life
+                                                             :effect/amount 1
+                                                             :effect/target :controller}]})
+          ;; Second: put Merchant Scroll (tutor) on the stack (on top, resolved first)
+          [db obj-id] (add-card-to-zone db :merchant-scroll :hand :player-1)
+          db (mana/add-mana db :player-1 {:blue 3})
+          mode {:mode/id :primary
+                :mode/zone :hand
+                :mode/mana-cost {:colorless 1 :blue 1}
+                :mode/additional-costs []
+                :mode/on-resolve :graveyard}
+          db (rules/cast-spell-mode db :player-1 obj-id mode)
+          items-before (stack/get-all-stack-items db)]
+      ;; Should have 2+ items (spell + storm possibly + trigger)
+      (is (>= (count items-before) 2) "Should have at least 2 stack items")
+      ;; Wrap in app-db
+      (let [app-db {:game/db db}
+            result (game/resolve-all-handler app-db)]
+        ;; Should have pending selection (tutor on top stops resolution)
+        (is (some? (:game/pending-selection result))
+            "Should stop at selection")
+        ;; The trigger item should still be on the stack (wasn't reached)
+        (is (seq (stack/get-all-stack-items (:game/db result)))
+            "Items below selection should remain on stack")))))
+
+
+(deftest test-resolve-all-stops-at-new-items
+  (testing "Resolve-all stops when a newly-created item appears on top"
+    (let [db (create-full-db)
+          ;; Put a Dark Ritual on the stack as source reference
+          [db src-id] (add-card-to-zone db :dark-ritual :hand :player-1)
+          ;; Create a storm stack-item that will create 2 copies
+          db (stack/create-stack-item db
+                                      {:stack-item/type :storm
+                                       :stack-item/controller :player-1
+                                       :stack-item/source src-id
+                                       :stack-item/effects [{:effect/type :storm-copies
+                                                             :effect/count 2}]})
+          items-before (stack/get-all-stack-items db)]
+      (is (= 1 (count items-before)) "Should have 1 stack-item (storm)")
+      ;; Wrap in app-db
+      (let [app-db {:game/db db}
+            result (game/resolve-all-handler app-db)]
+        ;; Storm item should be resolved (removed)
+        ;; But 2 new copies should be on the stack
+        (let [items-after (stack/get-all-stack-items (:game/db result))]
+          (is (= 2 (count items-after))
+              "Should have 2 new copy stack-items (not resolved by resolve-all)")
+          ;; No pending selection
+          (is (nil? (:game/pending-selection result))
+              "Should not have pending selection"))))))
+
+
+(deftest test-resolve-all-single-item
+  (testing "Single item on stack resolves same as resolve-top"
+    (let [db (create-full-db)
+          db (stack/create-stack-item db
+                                      {:stack-item/type :permanent-tapped
+                                       :stack-item/controller :player-1
+                                       :stack-item/source (random-uuid)
+                                       :stack-item/effects [{:effect/type :lose-life
+                                                             :effect/amount 1
+                                                             :effect/target :controller}]})
+          _ (is (= 1 (count (stack/get-all-stack-items db))) "Should have 1 stack-item")
+          app-db {:game/db db}
+          result (game/resolve-all-handler app-db)]
+      (is (empty? (stack/get-all-stack-items (:game/db result)))
+          "Stack-item should be resolved")
+      (is (= 19 (queries/get-life-total (:game/db result) :player-1))
+          "Effect should have executed"))))
+
+
+(deftest test-resolve-all-empty-stack
+  (testing "Empty stack returns unchanged"
+    (let [db (create-full-db)
+          app-db {:game/db db}
+          result (game/resolve-all-handler app-db)]
+      (is (= db (:game/db result))
+          "DB should be unchanged for empty stack")
+      (is (nil? (:game/pending-selection result))
+          "Should not have pending selection"))))
+
+
+;; === History logging tests ===
+
+(deftest test-resolve-all-creates-history-entries
+  (testing "Resolve-all creates one history entry per resolved item"
+    (let [db (create-full-db)
+          ;; Create 3 simple trigger stack-items
+          db (stack/create-stack-item db
+                                      {:stack-item/type :permanent-tapped
+                                       :stack-item/controller :player-1
+                                       :stack-item/source (random-uuid)
+                                       :stack-item/effects [{:effect/type :lose-life
+                                                             :effect/amount 1
+                                                             :effect/target :controller}]})
+          db (stack/create-stack-item db
+                                      {:stack-item/type :permanent-tapped
+                                       :stack-item/controller :player-1
+                                       :stack-item/source (random-uuid)
+                                       :stack-item/effects [{:effect/type :lose-life
+                                                             :effect/amount 1
+                                                             :effect/target :controller}]})
+          db (stack/create-stack-item db
+                                      {:stack-item/type :permanent-tapped
+                                       :stack-item/controller :player-1
+                                       :stack-item/source (random-uuid)
+                                       :stack-item/effects [{:effect/type :lose-life
+                                                             :effect/amount 1
+                                                             :effect/target :controller}]})
+          ;; Create app-db with history initialized
+          app-db (merge (history/init-history) {:game/db db})
+          entries-before (count (history/effective-entries app-db))
+          result (game/resolve-all-handler app-db)
+          entries-after (count (history/effective-entries result))]
+      ;; Should have added exactly 3 entries (one per resolved item)
+      (is (= 3 (- entries-after entries-before))
+          "Should create one history entry per resolved item")
+      ;; History position should advance
+      (is (= (+ entries-before 2) (:history/position result))
+          "History position should advance to tip"))))

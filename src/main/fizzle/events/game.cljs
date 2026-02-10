@@ -19,6 +19,7 @@
     [fizzle.events.abilities]
     [fizzle.events.selection :as selection]
     [fizzle.history.core :as history]
+    [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
 
 
@@ -319,6 +320,51 @@
       :else db)))
 
 
+(defn resolve-one-item
+  "Resolve the topmost stack-item with selection awareness.
+   Pure function: (game-db, player-id) -> {:db game-db'} or {:db game-db' :pending-selection data}
+
+   Handles all stack-item types:
+   - Spell/storm-copy (has :stack-item/object-ref): resolves via selection/resolve-spell-with-selection
+   - Activated ability: resolves via selection/resolve-stack-item-ability-with-selection
+   - Other (triggers, storm meta): resolves via resolve-stack-item-effects
+   - Empty stack: returns {:db game-db} unchanged
+
+   When pending-selection is returned, the stack-item is NOT removed
+   (it stays on the stack until the selection completes)."
+  [game-db player-id]
+  (let [top-stack-item (stack/get-top-stack-item game-db)]
+    (cond
+      ;; Spell or storm copy (has object-ref)
+      (and top-stack-item (:stack-item/object-ref top-stack-item))
+      (let [obj-ref-raw (:stack-item/object-ref top-stack-item)
+            obj-ref (if (map? obj-ref-raw) (:db/id obj-ref-raw) obj-ref-raw)
+            obj (d/pull game-db [:object/id] obj-ref)
+            object-id (:object/id obj)
+            stack-item-eid (:db/id top-stack-item)
+            result (selection/resolve-spell-with-selection game-db player-id object-id)]
+        (if (:pending-selection result)
+          {:db (:db result) :pending-selection (:pending-selection result)}
+          {:db (stack/remove-stack-item (:db result) stack-item-eid)}))
+
+      ;; Activated ability
+      (and top-stack-item (= :activated-ability (:stack-item/type top-stack-item)))
+      (let [stack-item-eid (:db/id top-stack-item)
+            result (selection/resolve-stack-item-ability-with-selection game-db top-stack-item)]
+        (if (:pending-selection result)
+          {:db (:db result) :pending-selection (:pending-selection result)}
+          {:db (stack/remove-stack-item (:db result) stack-item-eid)}))
+
+      ;; Other stack-items (triggers, storm meta, etc.)
+      top-stack-item
+      (let [stack-item-eid (:db/id top-stack-item)
+            db-resolved (resolve-stack-item-effects game-db top-stack-item)]
+        {:db (stack/remove-stack-item db-resolved stack-item-eid)})
+
+      ;; Empty stack
+      :else {:db game-db})))
+
+
 ;; === Cleanup Step (MTG Rule 514) ===
 ;; Cleanup is a multi-step process:
 ;;   1. Discard to hand size (514.1) - interactive, may require player selection
@@ -396,47 +442,85 @@
       app-db)))
 
 
+(defn- make-resolve-entry
+  "Create a history entry for a single stack-item resolution.
+   Uses pre-game-db to describe what was resolved, and game-db-after as the snapshot."
+  [pre-game-db game-db-after]
+  (let [event [::resolve-top]
+        description (or (descriptions/describe-event event pre-game-db game-db-after)
+                        "Resolve top of stack")
+        turn (try
+               (let [game-state (queries/get-game-state game-db-after)]
+                 (or (:game/turn game-state) 0))
+               (catch :default _ 0))]
+    (history/make-entry game-db-after ::resolve-top description turn)))
+
+
+(defn- apply-history-entries
+  "Apply a sequence of history entries to app-db.
+   First entry auto-forks if not at history tip; remaining entries append normally."
+  [app-db entries]
+  (if (empty? entries)
+    app-db
+    (let [first-entry (first entries)
+          db-with-first (if (or (= -1 (:history/position app-db))
+                                (history/at-tip? app-db))
+                          (history/append-entry app-db first-entry)
+                          (history/auto-fork app-db first-entry))]
+      (reduce history/append-entry db-with-first (rest entries)))))
+
+
+(defn resolve-all-handler
+  "Resolve all stack-items that were present when called, stopping at:
+   - A selection is needed (pending-selection)
+   - A newly-created item appears on top of stack (not in initial snapshot)
+   - The stack is empty
+
+   Creates a history entry for each resolved item, then applies them all.
+   Handles fork creation when not at history tip (same as interceptor).
+   Works at app-db level. Calls maybe-continue-cleanup at the end.
+   Pure function: (app-db) -> app-db"
+  [app-db]
+  (let [game-db (:game/db app-db)
+        initial-ids (set (map :db/id (stack/get-all-stack-items game-db)))]
+    (if (empty? initial-ids)
+      app-db
+      (loop [game-db game-db
+             entries []]
+        (let [top (stack/get-top-stack-item game-db)]
+          (if (and top (contains? initial-ids (:db/id top)))
+            (let [pre-game-db game-db
+                  result (resolve-one-item game-db :player-1)]
+              (if (:pending-selection result)
+                ;; Stop at selection — apply entries so far (no entry for unresolved item)
+                (-> (apply-history-entries app-db entries)
+                    (assoc :game/db (:db result))
+                    (assoc :game/pending-selection (:pending-selection result)))
+                ;; Resolved — accumulate entry and continue
+                (let [entry (make-resolve-entry pre-game-db (:db result))]
+                  (recur (:db result) (conj entries entry)))))
+            ;; Stack empty or new item on top — apply all entries
+            (-> (apply-history-entries app-db entries)
+                (assoc :game/db game-db)
+                (maybe-continue-cleanup))))))))
+
+
 (rf/reg-event-db
   ::resolve-top
   (fn [db _]
-    (let [game-db (:game/db db)
-          top-stack-item (stack/get-top-stack-item game-db)]
-      (cond
-        ;; Resolve stack-item with object-ref (spell/storm-copy)
-        (and top-stack-item (:stack-item/object-ref top-stack-item))
-        (let [obj-ref-raw (:stack-item/object-ref top-stack-item)
-              obj-ref (if (map? obj-ref-raw) (:db/id obj-ref-raw) obj-ref-raw)
-              obj (d/pull game-db [:object/id] obj-ref)
-              object-id (:object/id obj)
-              stack-item-eid (:db/id top-stack-item)
-              result (selection/resolve-spell-with-selection game-db :player-1 object-id)]
-          (if (:pending-selection result)
-            (-> db
-                (assoc :game/db (:db result))
-                (assoc :game/pending-selection (:pending-selection result)))
-            (maybe-continue-cleanup
-              (assoc db :game/db (stack/remove-stack-item (:db result) stack-item-eid)))))
+    (let [result (resolve-one-item (:game/db db) :player-1)]
+      (if (:pending-selection result)
+        (-> db
+            (assoc :game/db (:db result))
+            (assoc :game/pending-selection (:pending-selection result)))
+        (maybe-continue-cleanup
+          (assoc db :game/db (:db result)))))))
 
-        ;; Resolve stack-item with selection handling (activated-ability)
-        (and top-stack-item (= :activated-ability (:stack-item/type top-stack-item)))
-        (let [stack-item-eid (:db/id top-stack-item)
-              result (selection/resolve-stack-item-ability-with-selection game-db top-stack-item)]
-          (if (:pending-selection result)
-            (-> db
-                (assoc :game/db (:db result))
-                (assoc :game/pending-selection (:pending-selection result)))
-            (maybe-continue-cleanup
-              (assoc db :game/db (stack/remove-stack-item (:db result) stack-item-eid)))))
 
-        ;; Resolve non-spell stack-item without selection (trigger types, storm, etc.)
-        top-stack-item
-        (let [stack-item-eid (:db/id top-stack-item)
-              db-resolved (resolve-stack-item-effects game-db top-stack-item)]
-          (maybe-continue-cleanup
-            (assoc db :game/db (stack/remove-stack-item db-resolved stack-item-eid))))
-
-        ;; Empty stack
-        :else db))))
+(rf/reg-event-db
+  ::resolve-all
+  (fn [db _]
+    (resolve-all-handler db)))
 
 
 ;; === Turn Structure ===
