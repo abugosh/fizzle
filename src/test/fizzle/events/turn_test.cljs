@@ -495,3 +495,128 @@
           "should create pending selection for discard")
       (is (= 2 (:selection/select-count (:game/pending-selection result)))
           "should need to discard 2 cards (9 - 7)"))))
+
+
+;; === Opponent draw step helpers ===
+
+(defn add-opponent
+  "Add an opponent player to the game state."
+  [db]
+  (let [conn (d/conn-from-db db)]
+    (d/transact! conn [{:player/id :player-2
+                        :player/name "Opponent"
+                        :player/life 20
+                        :player/mana-pool {:white 0 :blue 0 :black 0
+                                           :red 0 :green 0 :colorless 0}
+                        :player/storm-count 0
+                        :player/land-plays-left 1
+                        :player/is-opponent true}])
+    @conn))
+
+
+(defn add-library-cards
+  "Add N cards to a player's library with sequential positions."
+  [db player-id n]
+  (let [conn (d/conn-from-db db)
+        player-eid (q/get-player-eid db player-id)
+        card-eid (d/q '[:find ?e . :where [?e :card/id :dark-ritual]] db)]
+    (d/transact! conn (vec (for [i (range n)]
+                             {:object/id (random-uuid)
+                              :object/card card-eid
+                              :object/zone :library
+                              :object/owner player-eid
+                              :object/controller player-eid
+                              :object/position i
+                              :object/tapped false})))
+    @conn))
+
+
+(defn count-zone
+  "Count objects in a zone for a player."
+  [db player-id zone]
+  (count (q/get-objects-in-zone db player-id zone)))
+
+
+(defn get-loss-condition
+  "Get the game loss condition."
+  [db]
+  (:game/loss-condition (q/get-game-state db)))
+
+
+(defn get-winner
+  "Get the winner player-id from game state."
+  [db]
+  (let [game (q/get-game-state db)
+        winner-ref (:game/winner game)]
+    (when winner-ref
+      (d/q '[:find ?pid .
+             :in $ ?eid
+             :where [?eid :player/id ?pid]]
+           db (:db/id winner-ref)))))
+
+
+;; === Opponent draw step tests ===
+
+(deftest test-opponent-draws-card-on-start-turn
+  (testing "Starting a new turn draws a card for the opponent"
+    (let [db (-> (init-game-state)
+                 (add-opponent)
+                 (add-library-cards :player-2 5)
+                 (set-phase :cleanup)
+                 (set-turn 1))
+          lib-before (count-zone db :player-2 :library)
+          hand-before (count-zone db :player-2 :hand)
+          db' (game/start-turn db :player-1)]
+      (is (= (dec lib-before) (count-zone db' :player-2 :library))
+          "opponent library should shrink by 1")
+      (is (= (inc hand-before) (count-zone db' :player-2 :hand))
+          "opponent hand should grow by 1"))))
+
+
+(deftest test-opponent-empty-library-draw-sets-loss
+  (testing "Opponent drawing from empty library sets loss condition and winner"
+    (let [db (-> (init-game-state)
+                 (add-opponent)
+                 ;; No library cards for opponent
+                 (set-phase :cleanup)
+                 (set-turn 1))
+          db' (game/start-turn db :player-1)]
+      (is (= :empty-library (get-loss-condition db'))
+          "loss condition should be :empty-library")
+      (is (= :player-1 (get-winner db'))
+          "player should win when opponent draws from empty library"))))
+
+
+(deftest test-opponent-partial-library-draws-until-empty
+  (testing "Opponent with 1 card draws it, next turn draw fails and triggers loss"
+    (let [db (-> (init-game-state)
+                 (add-opponent)
+                 (add-library-cards :player-2 1)
+                 (set-phase :cleanup)
+                 (set-turn 1))
+          ;; First start-turn: opponent draws last card
+          db-after-turn-2 (game/start-turn db :player-1)]
+      (is (= 0 (count-zone db-after-turn-2 :player-2 :library))
+          "opponent library should be empty after drawing last card")
+      (is (nil? (get-loss-condition db-after-turn-2))
+          "no loss condition yet — drawing last card is fine")
+      ;; Second start-turn: opponent draws from empty library → loss
+      (let [db-at-cleanup (-> db-after-turn-2
+                              (set-phase :cleanup))
+            db-after-turn-3 (game/start-turn db-at-cleanup :player-1)]
+        (is (= :empty-library (get-loss-condition db-after-turn-3))
+            "loss condition should fire on failed draw")
+        (is (= :player-1 (get-winner db-after-turn-3))
+            "player should win when opponent draws from empty library")))))
+
+
+(deftest test-existing-start-turn-unaffected-without-opponent
+  (testing "start-turn still works normally when no opponent exists"
+    (let [db (-> (init-game-state)
+                 (set-phase :cleanup)
+                 (set-turn 1))
+          db' (game/start-turn db :player-1)]
+      (is (= 2 (get-turn db'))
+          "turn should increment normally")
+      (is (= :untap (get-phase db'))
+          "phase should be :untap"))))

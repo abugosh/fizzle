@@ -159,7 +159,8 @@
          :opening-hand/mulligan-count 0
          :opening-hand/sculpted-ids sculpted-id-set
          :opening-hand/must-contain (or must-contain {})
-         :opening-hand/phase :viewing}
+         :opening-hand/phase :viewing
+         :game/game-over-dismissed false}
         (history/init-history)))))
 
 
@@ -188,6 +189,12 @@
   ::set-active-screen
   (fn [db [_ screen]]
     (set-active-screen-handler db screen)))
+
+
+(rf/reg-event-db
+  ::dismiss-game-over
+  (fn [db _]
+    (assoc db :game/game-over-dismissed true)))
 
 
 (rf/reg-event-db
@@ -587,18 +594,34 @@
       db)))
 
 
+(defn- opponent-draw
+  "Draw a card for the opponent (goldfish turn).
+   Uses the draw effect which naturally triggers loss condition on empty library.
+   No-op if no opponent exists.
+   Pure function: (db, player-id) -> db"
+  [db player-id]
+  (if-let [opponent-id (queries/get-opponent-id db player-id)]
+    (effects/execute-effect db opponent-id
+                            {:effect/type :draw :effect/amount 1})
+    db))
+
+
 (defn start-turn
-  "Start a new turn: increment turn counter, set phase to untap,
-   reset storm count and land plays to 1, clear mana pool.
+  "Start a new turn: draw for opponent (goldfish turn), increment turn counter,
+   set phase to untap, reset storm count and land plays to 1, clear mana pool.
    Pure function: (db, player-id) -> db
 
    Returns db unchanged if the stack is non-empty.
+   The opponent draws a card before the player's turn begins. If the opponent's
+   library is empty, the draw triggers a loss condition via the draw effect.
    Note: Untap happens via :untap-step trigger when phase changes to :untap.
    This dispatches the :phase-entered event to fire the turn-based action."
   [db player-id]
   (if-not (queries/stack-empty? db)
     db
-    (let [game-state (queries/get-game-state db)
+    (let [;; Opponent draws before player's turn begins
+          db (opponent-draw db player-id)
+          game-state (queries/get-game-state db)
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
           player-eid (queries/get-player-eid db player-id)
           current-turn (or (:game/turn game-state) 0)
@@ -644,7 +667,22 @@
       ;; Block start-turn if pending selection exists (e.g., cleanup discard)
       (if (:game/pending-selection db)
         db
-        (assoc db :game/db (start-turn game-db :player-1))))))
+        (let [;; Step 1: Opponent draw (before player's turn)
+              db-after-draw (opponent-draw game-db :player-1)
+              drew? (not (identical? game-db db-after-draw))
+              ;; Step 2: Full start-turn (includes opponent draw + turn mechanics)
+              db-after-turn (start-turn game-db :player-1)
+              ;; Step 3: Build history entries
+              game-state (queries/get-game-state db-after-turn)
+              turn (:game/turn game-state)
+              entries (cond-> []
+                        drew? (conj (history/make-entry db-after-draw ::start-turn
+                                                        "Opponent draws" turn))
+                        true (conj (history/make-entry db-after-turn ::start-turn
+                                                       (str "Start Turn " turn)
+                                                       turn)))]
+          ;; Step 4: Apply history entries to app-db (handles fork creation)
+          (apply-history-entries db entries))))))
 
 
 ;; === Play Land ===

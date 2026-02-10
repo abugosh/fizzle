@@ -14,7 +14,7 @@
     :fizzle.events.game/cast-spell
     :fizzle.events.game/resolve-top
     :fizzle.events.game/advance-phase
-    :fizzle.events.game/start-turn
+    ;; start-turn creates its own history entries (opponent draw + turn start)
     :fizzle.events.game/play-land
     :fizzle.events.abilities/activate-mana-ability
     :fizzle.events.abilities/activate-ability

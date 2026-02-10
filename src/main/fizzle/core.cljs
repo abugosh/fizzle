@@ -12,6 +12,7 @@
     [fizzle.subs.setup]
     [fizzle.views.battlefield :as battlefield]
     [fizzle.views.controls :as controls]
+    [fizzle.views.game-over :as game-over]
     [fizzle.views.graveyard :as graveyard]
     [fizzle.views.hand :as hand]
     [fizzle.views.history :as history]
@@ -74,7 +75,8 @@
    [:div {:class "col-span-full"}]
    ;; Modals (overlay, not in grid flow)
    [modals/selection-modal]
-   [modals/mode-selector-modal]])
+   [modals/mode-selector-modal]
+   [game-over/game-over-modal]])
 
 
 (defn app

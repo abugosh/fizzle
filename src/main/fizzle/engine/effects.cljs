@@ -133,12 +133,21 @@
 
 
 (defn- set-loss-condition
-  "Set the game loss condition. Returns db with :game/loss-condition set."
-  [db condition]
+  "Set the game loss condition and winner. Returns db with :game/loss-condition
+   and :game/winner set atomically. The winner is the other player (not the loser).
+   If no other player exists, only sets :game/loss-condition."
+  [db condition losing-player-id]
   (let [game-eid (d/q '[:find ?e .
                         :where [?e :game/id _]]
-                      db)]
-    (d/db-with db [[:db/add game-eid :game/loss-condition condition]])))
+                      db)
+        winner-eid (d/q '[:find ?e .
+                          :in $ ?loser-pid
+                          :where [?e :player/id ?pid]
+                          [(not= ?pid ?loser-pid)]]
+                        db losing-player-id)
+        txs (cond-> [[:db/add game-eid :game/loss-condition condition]]
+              winner-eid (conj [:db/add game-eid :game/winner winner-eid]))]
+    (d/db-with db txs)))
 
 
 (defmethod execute-effect-impl :lose-life
@@ -166,7 +175,7 @@
               db-after-life (d/db-with db [[:db/add player-eid :player/life new-life]])]
           ;; Check for loss condition
           (if (<= new-life 0)
-            (set-loss-condition db-after-life :life-zero)
+            (set-loss-condition db-after-life :life-zero target)
             db-after-life))
         db))))
 
@@ -226,7 +235,7 @@
               db-after-damage (d/db-with db [[:db/add player-eid :player/life new-life]])]
           ;; Check for loss condition
           (if (<= new-life 0)
-            (set-loss-condition db-after-damage :life-zero)
+            (set-loss-condition db-after-damage :life-zero target)
             db-after-damage))
         db))))
 
@@ -288,7 +297,7 @@
                                     cards-to-draw)]
           ;; If we couldn't draw all requested cards, set loss condition
           (if (< actual-drawn amount)
-            (set-loss-condition db-after-draw :empty-library)
+            (set-loss-condition db-after-draw :empty-library target)
             db-after-draw))
         ;; get-top-n-library returns nil if player doesn't exist
         db))))

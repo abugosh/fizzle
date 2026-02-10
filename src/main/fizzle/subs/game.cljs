@@ -1,5 +1,6 @@
 (ns fizzle.subs.game
   (:require
+    [datascript.core :as d]
     [fizzle.db.queries :as queries]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.rules :as rules]
@@ -13,6 +14,7 @@
 (rf/reg-sub ::game-db (fn [db _] (:game/db db)))
 (rf/reg-sub ::selected-card (fn [db _] (:game/selected-card db)))
 (rf/reg-sub ::active-screen (fn [db _] (:active-screen db)))
+(rf/reg-sub ::game-over-dismissed (fn [db _] (:game/game-over-dismissed db)))
 
 
 ;; Layer 3: derived subscriptions
@@ -108,6 +110,46 @@
   :<- [::game-db]
   (fn [game-db _]
     (when game-db (:game/turn (queries/get-game-state game-db)))))
+
+
+;; === Game Over Subscriptions ===
+
+(rf/reg-sub
+  ::game-over?
+  :<- [::game-db]
+  (fn [game-db _]
+    (if game-db
+      (some? (:game/winner (queries/get-game-state game-db)))
+      false)))
+
+
+(rf/reg-sub
+  ::game-result
+  :<- [::game-db]
+  (fn [game-db _]
+    (when game-db
+      (let [game-state (queries/get-game-state game-db)
+            winner-ref (:game/winner game-state)]
+        (when winner-ref
+          (let [winner-pid (:player/id (d/pull game-db [:player/id] (:db/id winner-ref)))
+                outcome (if (= :player-1 winner-pid) :win :loss)]
+            {:outcome outcome
+             :turn (:game/turn game-state)
+             :condition (:game/loss-condition game-state)
+             :storm-count (queries/get-storm-count game-db :player-1)
+             :opponent-life (queries/get-life-total game-db :opponent)
+             :opponent-library-size (count (queries/get-objects-in-zone game-db :opponent :library))}))))))
+
+
+(rf/reg-sub
+  ::show-game-over-modal?
+  :<- [::game-over?]
+  :<- [::game-over-dismissed]
+  :<- [::active-screen]
+  (fn [[game-over? dismissed screen] _]
+    (and (true? game-over?)
+         (not dismissed)
+         (= :game screen))))
 
 
 (rf/reg-sub

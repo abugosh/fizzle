@@ -137,12 +137,12 @@
   (testing "Entry uses description from describe-event when available"
     (let [pre-db (make-db-with-history :db-old)
           post-db (make-db-with-history :db-new)
-          event [:fizzle.events.game/start-turn]
+          event [:fizzle.events.game/advance-phase]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])
           entry (first (:history/main result-db))]
-      (is (= "Start new turn" (:entry/description entry))))))
+      (is (= "Advance phase" (:entry/description entry))))))
 
 
 (deftest test-priority-events-all-have-descriptions
@@ -150,7 +150,7 @@
     (doseq [event [[:fizzle.events.game/cast-spell]
                    [:fizzle.events.game/resolve-top]
                    [:fizzle.events.game/advance-phase]
-                   [:fizzle.events.game/start-turn]
+                   ;; start-turn creates its own history entries (not via interceptor)
                    [:fizzle.events.game/play-land :obj-1]
                    [:fizzle.events.game/init-game]
                    [:fizzle.events.abilities/activate-mana-ability :obj-1 :black]

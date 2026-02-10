@@ -259,6 +259,19 @@
   (:game/loss-condition (q/get-game-state db)))
 
 
+(defn get-winner
+  "Get the winner player-id from game state.
+   Returns nil if no winner set."
+  [db]
+  (let [game (q/get-game-state db)
+        winner-ref (:game/winner game)]
+    (when winner-ref
+      (d/q '[:find ?pid .
+             :in $ ?eid
+             :where [?eid :player/id ?pid]]
+           db (:db/id winner-ref)))))
+
+
 (deftest test-draw-single-card
   (testing "Draw 1 card moves top card from library to hand"
     (let [db (-> (init-game-state)
@@ -1480,3 +1493,99 @@
       ;; Should be no-op, no crash
       (is (= db db')
           "db should be unchanged when target doesn't exist"))))
+
+
+;; === Winner determination tests ===
+
+(deftest test-lose-life-lethal-sets-winner
+  (testing "lose-life reducing opponent to 0 sets :game/winner to player"
+    ;; Catches: winner not being set at all when loss condition fires
+    (let [db (-> (init-game-state)
+                 (add-opponent))
+          effect {:effect/type :lose-life
+                  :effect/amount 20
+                  :effect/target :player-2}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= :life-zero (get-loss-condition db'))
+          "Loss condition should be set")
+      (is (= :player-1 (get-winner db'))
+          "Player 1 should be the winner when opponent loses"))))
+
+
+(deftest test-deal-damage-lethal-sets-winner
+  (testing "deal-damage reducing opponent to 0 sets :game/winner to player"
+    ;; Catches: deal-damage call site not passing losing player
+    (let [db (-> (init-game-state)
+                 (add-opponent))
+          effect {:effect/type :deal-damage
+                  :effect/amount 20
+                  :effect/target :player-2}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= :life-zero (get-loss-condition db'))
+          "Loss condition should be set")
+      (is (= :player-1 (get-winner db'))
+          "Player 1 should be the winner when opponent takes lethal damage"))))
+
+
+(deftest test-draw-empty-library-sets-winner
+  (testing "draw from empty library sets :game/winner to opponent"
+    ;; Catches: draw call site not passing losing player
+    (let [db (-> (init-game-state)
+                 (add-opponent))
+          effect {:effect/type :draw
+                  :effect/amount 1}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= :empty-library (get-loss-condition db'))
+          "Loss condition should be empty-library")
+      (is (= :player-2 (get-winner db'))
+          "Opponent should win when player draws from empty library"))))
+
+
+(deftest test-player-self-loss-sets-opponent-as-winner
+  (testing "player losing own life to 0 sets opponent as winner"
+    ;; Catches: winner determination direction (loser vs winner confusion)
+    (let [db (-> (init-game-state)
+                 (add-opponent))
+          effect {:effect/type :lose-life
+                  :effect/amount 20}  ; targets self (player-1) by default
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= :life-zero (get-loss-condition db'))
+          "Loss condition should be set")
+      (is (= :player-2 (get-winner db'))
+          "Opponent should win when player loses own life"))))
+
+
+(deftest test-loss-condition-without-opponent-no-crash
+  (testing "loss condition without opponent sets loss but no winner, no crash"
+    ;; Catches: NPE when get-opponent-id returns nil
+    (let [db (init-game-state) ; no opponent in test init
+          effect {:effect/type :lose-life
+                  :effect/amount 20}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= :life-zero (get-loss-condition db'))
+          "Loss condition should still be set")
+      (is (nil? (get-winner db'))
+          "Winner should be nil when no opponent exists"))))
+
+
+(deftest test-loss-condition-idempotent
+  (testing "triggering loss condition twice doesn't corrupt state"
+    ;; Catches: double-trigger corruption when opponent already dead
+    (let [db (-> (init-game-state)
+                 (add-opponent))
+          ;; First hit: reduce opponent to 0
+          effect1 {:effect/type :lose-life
+                   :effect/amount 20
+                   :effect/target :player-2}
+          db' (fx/execute-effect db :player-1 effect1)
+          ;; Second hit: reduce opponent to -5
+          effect2 {:effect/type :lose-life
+                   :effect/amount 5
+                   :effect/target :player-2}
+          db'' (fx/execute-effect db' :player-1 effect2)]
+      (is (= :life-zero (get-loss-condition db''))
+          "Loss condition should still be :life-zero")
+      (is (= :player-1 (get-winner db''))
+          "Winner should still be player-1")
+      (is (= -5 (q/get-life-total db'' :player-2))
+          "Life should be -5 after second hit"))))
