@@ -83,6 +83,18 @@
 
 
 (rf/reg-sub
+  ::selected-card-info
+  :<- [::game-db]
+  :<- [::selected-card]
+  (fn [[game-db selected] _]
+    (when (and game-db selected)
+      (let [obj (queries/get-object game-db selected)]
+        (when obj
+          {:name (get-in obj [:object/card :card/name])
+           :land? (events/land-card? game-db selected)})))))
+
+
+(rf/reg-sub
   ::current-phase
   :<- [::game-db]
   (fn [game-db _]
