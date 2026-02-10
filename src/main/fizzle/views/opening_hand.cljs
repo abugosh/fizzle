@@ -1,5 +1,6 @@
 (ns fizzle.views.opening-hand
   (:require
+    [fizzle.engine.sorting :as sorting]
     [fizzle.events.opening-hand :as oh-events]
     [fizzle.subs.game :as game-subs]
     [fizzle.subs.opening-hand :as oh-subs]
@@ -34,7 +35,7 @@
       [:span (str "Mulligans: " mulligan-count)]
       [:span (str "Library: " library-count " cards")]]
      [:div {:class "flex flex-wrap justify-center mb-6"}
-      (for [obj (sort-by #(get-in % [:object/card :card/name]) hand)]
+      (for [obj (sorting/sort-cards hand)]
         ^{:key (:object/id obj)}
         [card-view obj
          (contains? sculpted-ids (:object/id obj))
@@ -63,7 +64,7 @@
      [:div {:class "text-text-muted text-sm mb-6"}
       (str "Selected: " (count bottom-selection) " / " mulligan-count)]
      [:div {:class "flex flex-wrap justify-center mb-6"}
-      (for [obj (sort-by #(get-in % [:object/card :card/name]) hand)]
+      (for [obj (sorting/sort-cards hand)]
         ^{:key (:object/id obj)}
         [card-view obj
          (contains? sculpted-ids (:object/id obj))

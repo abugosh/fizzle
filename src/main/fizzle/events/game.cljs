@@ -178,6 +178,13 @@
 
 
 (rf/reg-event-db
+  ::toggle-graveyard-sort
+  (fn [db _]
+    (let [current (get db :graveyard/sort-mode :entry)]
+      (assoc db :graveyard/sort-mode (if (= current :entry) :sorted :entry)))))
+
+
+(rf/reg-event-db
   ::set-active-screen
   (fn [db [_ screen]]
     (set-active-screen-handler db screen)))
