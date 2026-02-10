@@ -17,7 +17,13 @@
     :fizzle.events.game/start-turn
     :fizzle.events.game/play-land
     :fizzle.events.abilities/activate-mana-ability
-    :fizzle.events.abilities/activate-ability})
+    :fizzle.events.abilities/activate-ability
+    ;; Selection confirmations that complete a cast (targeted spells, X costs, exile costs)
+    :fizzle.events.selection/confirm-cast-time-target
+    :fizzle.events.selection/confirm-x-mana-selection
+    :fizzle.events.selection/confirm-exile-cards-selection
+    ;; Ability target confirmation (targeted activated abilities)
+    :fizzle.events.abilities/confirm-ability-target})
 
 
 (defn- get-turn
@@ -53,7 +59,7 @@
                    (if (and db-after
                             game-db-after
                             (not (identical? pre-game-db game-db-after)))
-                     (let [description (or (descriptions/describe-event event)
+                     (let [description (or (descriptions/describe-event event pre-game-db game-db-after)
                                            (name event-id))
                            turn (get-turn game-db-after)
                            entry (history/make-entry game-db-after event-id description turn)]

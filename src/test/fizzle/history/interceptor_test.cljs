@@ -154,7 +154,11 @@
                    [:fizzle.events.game/play-land :obj-1]
                    [:fizzle.events.game/init-game]
                    [:fizzle.events.abilities/activate-mana-ability :obj-1 :black]
-                   [:fizzle.events.abilities/activate-ability :obj-1 0]]]
+                   [:fizzle.events.abilities/activate-ability :obj-1 0]
+                   [:fizzle.events.selection/confirm-cast-time-target :target-1]
+                   [:fizzle.events.selection/confirm-x-mana-selection]
+                   [:fizzle.events.selection/confirm-exile-cards-selection]
+                   [:fizzle.events.abilities/confirm-ability-target :target-1]]]
       (let [pre-db (make-db-with-history :db-old)
             post-db (make-db-with-history :db-new)
             context (make-context pre-db post-db event)
