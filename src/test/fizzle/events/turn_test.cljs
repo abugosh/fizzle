@@ -566,7 +566,10 @@
                  (set-turn 1))
           lib-before (count-zone db :player-2 :library)
           hand-before (count-zone db :player-2 :hand)
-          db' (game/start-turn db :player-1)]
+          ;; Event handler calls opponent-draw then start-turn
+          db' (-> db
+                  (game/opponent-draw :player-1)
+                  (game/start-turn :player-1))]
       (is (= (dec lib-before) (count-zone db' :player-2 :library))
           "opponent library should shrink by 1")
       (is (= (inc hand-before) (count-zone db' :player-2 :hand))
@@ -580,7 +583,9 @@
                  ;; No library cards for opponent
                  (set-phase :cleanup)
                  (set-turn 1))
-          db' (game/start-turn db :player-1)]
+          db' (-> db
+                  (game/opponent-draw :player-1)
+                  (game/start-turn :player-1))]
       (is (= :empty-library (get-loss-condition db'))
           "loss condition should be :empty-library")
       (is (= :player-1 (get-winner db'))
@@ -595,7 +600,9 @@
                  (set-phase :cleanup)
                  (set-turn 1))
           ;; First start-turn: opponent draws last card
-          db-after-turn-2 (game/start-turn db :player-1)]
+          db-after-turn-2 (-> db
+                              (game/opponent-draw :player-1)
+                              (game/start-turn :player-1))]
       (is (= 0 (count-zone db-after-turn-2 :player-2 :library))
           "opponent library should be empty after drawing last card")
       (is (nil? (get-loss-condition db-after-turn-2))
@@ -603,7 +610,9 @@
       ;; Second start-turn: opponent draws from empty library → loss
       (let [db-at-cleanup (-> db-after-turn-2
                               (set-phase :cleanup))
-            db-after-turn-3 (game/start-turn db-at-cleanup :player-1)]
+            db-after-turn-3 (-> db-at-cleanup
+                                (game/opponent-draw :player-1)
+                                (game/start-turn :player-1))]
         (is (= :empty-library (get-loss-condition db-after-turn-3))
             "loss condition should fire on failed draw")
         (is (= :player-1 (get-winner db-after-turn-3))

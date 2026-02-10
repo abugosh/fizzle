@@ -594,7 +594,7 @@
       db)))
 
 
-(defn- opponent-draw
+(defn opponent-draw
   "Draw a card for the opponent (goldfish turn).
    Uses the draw effect which naturally triggers loss condition on empty library.
    No-op if no opponent exists.
@@ -607,27 +607,24 @@
 
 
 (defn start-turn
-  "Start a new turn: draw for opponent (goldfish turn), increment turn counter,
-   set phase to untap, reset storm count and land plays to 1, clear mana pool.
+  "Start a new turn: increment turn counter, set phase to untap,
+   reset storm count and land plays to 1, clear mana pool.
    Pure function: (db, player-id) -> db
 
    Returns db unchanged if the stack is non-empty.
-   The opponent draws a card before the player's turn begins. If the opponent's
-   library is empty, the draw triggers a loss condition via the draw effect.
-   Note: Untap happens via :untap-step trigger when phase changes to :untap.
+   Note: Opponent draw is handled by the ::start-turn event handler
+   (not here) so it can create a separate history entry.
+   Untap happens via :untap-step trigger when phase changes to :untap.
    This dispatches the :phase-entered event to fire the turn-based action."
   [db player-id]
   (if-not (queries/stack-empty? db)
     db
-    (let [;; Opponent draws before player's turn begins
-          db (opponent-draw db player-id)
-          game-state (queries/get-game-state db)
+    (let [game-state (queries/get-game-state db)
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
           player-eid (queries/get-player-eid db player-id)
           current-turn (or (:game/turn game-state) 0)
           new-turn (inc current-turn)]
       (-> db
-          ;; REMOVED: (untap-all-permanents player-id) - now via trigger
           (mana/empty-pool player-id)
           (d/db-with [[:db/add game-eid :game/turn new-turn]
                       [:db/add game-eid :game/phase :untap]
@@ -670,8 +667,8 @@
         (let [;; Step 1: Opponent draw (before player's turn)
               db-after-draw (opponent-draw game-db :player-1)
               drew? (not (identical? game-db db-after-draw))
-              ;; Step 2: Full start-turn (includes opponent draw + turn mechanics)
-              db-after-turn (start-turn game-db :player-1)
+              ;; Step 2: Turn mechanics (on post-draw state)
+              db-after-turn (start-turn db-after-draw :player-1)
               ;; Step 3: Build history entries
               game-state (queries/get-game-state db-after-turn)
               turn (:game/turn game-state)
@@ -681,8 +678,9 @@
                         true (conj (history/make-entry db-after-turn ::start-turn
                                                        (str "Start Turn " turn)
                                                        turn)))]
-          ;; Step 4: Apply history entries to app-db (handles fork creation)
-          (apply-history-entries db entries))))))
+          ;; Step 4: Apply history entries and set game-db
+          (-> (apply-history-entries db entries)
+              (assoc :game/db db-after-turn)))))))
 
 
 ;; === Play Land ===
