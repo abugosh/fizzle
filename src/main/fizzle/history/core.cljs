@@ -192,6 +192,63 @@
                {:turn turn :entries (vec es)}))))
 
 
+(defn can-pop?
+  [db]
+  (and (at-tip? db) (> (:history/position db) 0)))
+
+
+(defn- find-child-forks-at
+  "Returns set of fork-ids whose parent is the current branch and branch-point
+   equals the given position."
+  [db position]
+  (let [branch (:history/current-branch db)]
+    (into #{}
+          (comp (filter #(and (= branch (:fork/parent (val %)))
+                              (= position (:fork/branch-point (val %)))))
+                (map key))
+          (:history/forks db))))
+
+
+(defn pop-entry
+  [db]
+  (if-not (can-pop? db)
+    db
+    (let [position (:history/position db)
+          branch (:history/current-branch db)
+          ;; Cascade-delete child forks branching from the entry being popped
+          db (reduce (fn [d fid] (delete-fork d fid))
+                     db
+                     (find-child-forks-at db position))]
+      (if (nil? branch)
+        ;; On main: pop last entry, decrement position, restore snapshot
+        (let [new-main (pop (:history/main db))
+              new-pos (dec position)]
+          (-> db
+              (assoc :history/main new-main)
+              (assoc :history/position new-pos)
+              (assoc :game/db (:entry/snapshot (nth new-main new-pos)))))
+        ;; On fork: pop last fork entry
+        (let [fork (get-fork db branch)
+              new-entries (pop (:fork/entries fork))]
+          (if (empty? new-entries)
+            ;; Fork now empty — delete it and return to parent
+            (let [parent-id (:fork/parent fork)
+                  bp (:fork/branch-point fork)
+                  db' (delete-fork db branch)]
+              (-> db'
+                  (assoc :history/current-branch parent-id)
+                  (assoc :history/position bp)
+                  (assoc :game/db (:entry/snapshot
+                                    (nth (effective-entries-for-branch db' parent-id)
+                                         bp)))))
+            ;; Fork still has entries — decrement position, restore snapshot
+            (let [new-pos (dec position)]
+              (-> db
+                  (assoc-in [:history/forks branch :fork/entries] new-entries)
+                  (assoc :history/position new-pos)
+                  (assoc :game/db (:entry/snapshot (peek new-entries)))))))))))
+
+
 (defn current-entry
   [db]
   (let [pos (:history/position db)]

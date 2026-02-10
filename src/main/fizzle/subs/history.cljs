@@ -55,6 +55,14 @@
 
 
 (rf/reg-sub
+  ::can-pop?
+  :<- [::at-tip?]
+  :<- [::position]
+  (fn [[at-tip pos] _]
+    (and at-tip (some? pos) (> pos 0))))
+
+
+(rf/reg-sub
   ::fork-tree
   :<- [::forks-map]
   (fn [forks _]

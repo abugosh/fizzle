@@ -184,3 +184,32 @@
           ;; Delete parent — should cascade to child
           result (dispatch-sync-on-db with-child [::events/delete-fork parent-id])]
       (is (empty? (:history/forks result))))))
+
+
+(deftest test-pop-entry-on-main
+  (testing "pop-entry removes tip entry and restores previous snapshot"
+    (let [db (make-db-with-entries 3)
+          _ (is (= 2 (:history/position db)) "precondition: at tip")
+          result (dispatch-sync-on-db db [::events/pop-entry])]
+      (is (= 1 (:history/position result)))
+      (is (= :db-1 (:game/db result)))
+      (is (= 2 (count (:history/main result)))))))
+
+
+(deftest test-pop-entry-guard-at-position-zero
+  (testing "pop-entry at position 0 is a no-op (cannot undo past init)"
+    (let [db (make-db-with-entries 1)
+          _ (is (= 0 (:history/position db)) "precondition: at position 0")
+          result (dispatch-sync-on-db db [::events/pop-entry])]
+      (is (= 0 (:history/position result)))
+      (is (= (:game/db db) (:game/db result))))))
+
+
+(deftest test-pop-entry-guard-not-at-tip
+  (testing "pop-entry when not at tip is a no-op"
+    (let [db (-> (make-db-with-entries 3)
+                 (history/step-to 1))
+          _ (is (= 1 (:history/position db)) "precondition: not at tip")
+          result (dispatch-sync-on-db db [::events/pop-entry])]
+      (is (= 1 (:history/position result)))
+      (is (= (:game/db db) (:game/db result))))))

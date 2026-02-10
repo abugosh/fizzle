@@ -17,12 +17,17 @@
 (defn- step-controls
   []
   (let [can-back? @(rf/subscribe [::subs/can-step-back?])
-        can-fwd? @(rf/subscribe [::subs/can-step-forward?])]
+        can-fwd? @(rf/subscribe [::subs/can-step-forward?])
+        can-pop? @(rf/subscribe [::subs/can-pop?])]
     [:div {:class "flex gap-2 mb-3"}
      [:button {:class (step-btn-class can-back?)
                :disabled (not can-back?)
                :on-click #(rf/dispatch [::events/step-back])}
       "\u25C0 Back"]
+     [:button {:class (step-btn-class can-pop?)
+               :disabled (not can-pop?)
+               :on-click #(rf/dispatch [::events/pop-entry])}
+      "Undo"]
      [:button {:class (step-btn-class can-fwd?)
                :disabled (not can-fwd?)
                :on-click #(rf/dispatch [::events/step-forward])}

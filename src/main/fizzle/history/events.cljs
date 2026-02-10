@@ -48,3 +48,11 @@
   ::delete-fork
   (fn [db [_ fork-id]]
     (history/delete-fork db fork-id)))
+
+
+(rf/reg-event-db
+  ::pop-entry
+  (fn [db _]
+    (if (history/can-pop? db)
+      (history/pop-entry db)
+      db)))

@@ -627,3 +627,213 @@
         (is (= 2 (count (:children r1))))
         (is (= ["Child1" "Child2"] (mapv :fork/name (:children r1))))
         (is (= [] (:children r2)))))))
+
+
+;; === can-pop? tests ===
+
+(deftest test-can-pop?-empty-history
+  (testing "can-pop? returns false when position is -1 (no entries)"
+    (let [db (merge {:game/db nil} (history/init-history))]
+      (is (false? (history/can-pop? db))))))
+
+
+(deftest test-can-pop?-at-position-zero
+  (testing "can-pop? returns false when position is 0 (at init-game)"
+    (let [entry-0 (history/make-entry :db-0 :init "Start" 1)
+          db (-> (merge {:game/db :db-0} (history/init-history))
+                 (history/append-entry entry-0))]
+      (is (= 0 (:history/position db)))
+      (is (false? (history/can-pop? db))))))
+
+
+(deftest test-can-pop?-at-tip-position-gt-zero
+  (testing "can-pop? returns true when position > 0 and at tip"
+    (let [db (build-3-entry-db)]
+      (is (= 2 (:history/position db)))
+      (is (true? (history/can-pop? db))))))
+
+
+(deftest test-can-pop?-not-at-tip
+  (testing "can-pop? returns false when not at tip (stepped back)"
+    (let [db (-> (build-3-entry-db)
+                 (history/step-to 1))]
+      (is (= 1 (:history/position db)))
+      (is (false? (history/can-pop? db))))))
+
+
+;; === pop-entry tests ===
+
+(deftest test-pop-entry-main-3-entries
+  (testing "Pop from main with 3 entries: count 3->2, position 2->1, game/db restored"
+    (let [db (build-3-entry-db)
+          db' (history/pop-entry db)]
+      (is (= 2 (count (:history/main db'))))
+      (is (= 1 (:history/position db')))
+      (is (= :db-1 (:game/db db'))))))
+
+
+(deftest test-pop-entry-main-at-position-zero-noop
+  (testing "Pop from main at position 0 is a no-op (can-pop? is false)"
+    (let [entry-0 (history/make-entry :db-0 :init "Start" 1)
+          db (-> (merge {:game/db :db-0} (history/init-history))
+                 (history/append-entry entry-0))
+          db' (history/pop-entry db)]
+      (is (= db db')))))
+
+
+(deftest test-pop-entry-twice-in-succession
+  (testing "Pop twice: count 3->2->1, position 2->1->0"
+    (let [db (build-3-entry-db)
+          db' (history/pop-entry db)
+          db'' (history/pop-entry db')]
+      (is (= 1 (count (:history/main db''))))
+      (is (= 0 (:history/position db'')))
+      (is (= :db-0 (:game/db db''))))))
+
+
+(deftest test-pop-entry-fork-with-two-entries
+  (testing "Pop from fork with 2 entries: fork/entries shrinks, position decrements"
+    (let [db (-> (build-6-entry-db)
+                 (history/step-to 3))
+          entry-a (history/make-entry :db-fa0 :action "FA0" 2)
+          entry-a1 (history/make-entry :db-fa1 :action "FA1" 2)
+          db-fork (-> (history/auto-fork db entry-a)
+                      (history/append-entry entry-a1))
+          fork-id (:history/current-branch db-fork)
+          db' (history/pop-entry db-fork)
+          fork' (history/get-fork db' fork-id)]
+      (is (= 1 (count (:fork/entries fork'))))
+      (is (= 4 (:history/position db')))
+      (is (= :db-fa0 (:game/db db'))))))
+
+
+(deftest test-pop-entry-fork-last-entry-auto-deletes
+  (testing "Pop last entry on fork: fork deleted, returns to parent at branch-point"
+    (let [db (-> (build-6-entry-db)
+                 (history/step-to 3))
+          entry-a (history/make-entry :db-fa :action "FA" 2)
+          db-fork (history/auto-fork db entry-a)
+          fork-id (:history/current-branch db-fork)
+          db' (history/pop-entry db-fork)]
+      ;; Fork should be deleted
+      (is (nil? (history/get-fork db' fork-id)))
+      (is (empty? (:history/forks db')))
+      ;; Should be back on main at branch-point
+      (is (nil? (:history/current-branch db')))
+      (is (= 3 (:history/position db')))
+      (is (= :db-3 (:game/db db'))))))
+
+
+(deftest test-pop-entry-cascade-child-fork-at-tip
+  (testing "Pop entry on main that has a child fork at that position: child fork deleted"
+    (let [db (build-3-entry-db)
+          ;; Create a fork branching from position 2 (the tip we'll pop)
+          db-at-2 (history/step-to db 2)
+          entry-f (history/make-entry :db-fork :action "Fork" 2)
+          db-forked (history/auto-fork db-at-2 entry-f)
+          fork-id (:history/current-branch db-forked)
+          ;; Switch back to main (tip is position 2)
+          db-main (history/switch-branch db-forked nil)
+          db' (history/pop-entry db-main)]
+      ;; Child fork should be cascade-deleted
+      (is (nil? (history/get-fork db' fork-id)))
+      (is (empty? (:history/forks db')))
+      ;; Main should have 2 entries, position 1
+      (is (= 2 (count (:history/main db'))))
+      (is (= 1 (:history/position db')))
+      (is (= :db-1 (:game/db db'))))))
+
+
+(deftest test-pop-entry-preserves-child-fork-at-earlier-position
+  (testing "Pop entry on main preserves child fork branching from earlier position"
+    (let [db (build-3-entry-db)
+          ;; Create a fork branching from position 1 (earlier than tip)
+          db-at-1 (history/step-to db 1)
+          entry-f (history/make-entry :db-fork :action "Fork" 2)
+          db-forked (history/auto-fork db-at-1 entry-f)
+          fork-id (:history/current-branch db-forked)
+          ;; Switch back to main (tip is position 2)
+          db-main (history/switch-branch db-forked nil)
+          db' (history/pop-entry db-main)]
+      ;; Fork at position 1 should be preserved
+      (is (some? (history/get-fork db' fork-id)))
+      ;; Main should have 2 entries, position 1
+      (is (= 2 (count (:history/main db'))))
+      (is (= 1 (:history/position db'))))))
+
+
+(deftest test-pop-entry-fork-last-entry-with-child-forks-cascade
+  (testing "Pop last entry on fork that has child forks: all cascade-deleted"
+    (let [db (-> (build-6-entry-db)
+                 (history/step-to 3))
+          ;; Fork A from main at position 3
+          entry-a (history/make-entry :db-fa :action "FA" 2)
+          db-a (history/auto-fork db entry-a)
+          fork-a-id (:history/current-branch db-a)
+          ;; Fork B as child of Fork A at position 4
+          entry-a1 (history/make-entry :db-fa1 :action "FA1" 2)
+          db-a' (history/append-entry db-a entry-a1)
+          db-a-at-4 (history/step-to db-a' 4)
+          entry-b (history/make-entry :db-fb :action "FB" 3)
+          db-b (history/auto-fork db-a-at-4 entry-b)
+          fork-b-id (:history/current-branch db-b)
+          ;; Switch back to Fork A tip and pop down to empty
+          db-back-a (history/switch-branch db-b fork-a-id)
+          ;; Pop second entry on Fork A
+          db-pop1 (history/pop-entry db-back-a)]
+      ;; Fork B branched from position 4 of Fork A — that's the first
+      ;; fork entry. Since we popped the second entry (position 5),
+      ;; Fork B is at position 4 which still exists, so it's preserved
+      (is (some? (history/get-fork db-pop1 fork-b-id)))
+      ;; Pop the last entry on Fork A
+      (let [db-pop2 (history/pop-entry db-pop1)]
+        ;; Now Fork A is empty and gets deleted
+        ;; Fork B is a child of Fork A, so it gets cascade-deleted
+        (is (nil? (history/get-fork db-pop2 fork-a-id)))
+        (is (nil? (history/get-fork db-pop2 fork-b-id)))
+        (is (empty? (:history/forks db-pop2)))
+        ;; Should be back on main at branch-point 3
+        (is (nil? (:history/current-branch db-pop2)))
+        (is (= 3 (:history/position db-pop2)))
+        (is (= :db-3 (:game/db db-pop2)))))))
+
+
+(deftest test-pop-entry-nested-fork-returns-to-outer-fork
+  (testing "Pop all entries on fork-of-fork returns to outer fork, not main"
+    (let [db (-> (build-6-entry-db)
+                 (history/step-to 3))
+          ;; Fork A from main at position 3
+          entry-a (history/make-entry :db-fa0 :action "FA0" 2)
+          entry-a1 (history/make-entry :db-fa1 :action "FA1" 2)
+          db-a (-> (history/auto-fork db entry-a)
+                   (history/append-entry entry-a1))
+          fork-a-id (:history/current-branch db-a)
+          ;; Fork B from Fork A at position 5
+          entry-b (history/make-entry :db-fb0 :action "FB0" 3)
+          db-b (history/auto-fork (history/step-to db-a 5) entry-b)
+          ;; We added entry-b at new tip position 6 via auto-fork
+          ;; but auto-fork branches from step-to position 5
+          ;; so Fork B has branch-point 5, entries [entry-b], position 6
+          fork-b-id (:history/current-branch db-b)
+          ;; Pop Fork B's only entry
+          db' (history/pop-entry db-b)]
+      ;; Fork B deleted, return to Fork A (not main)
+      (is (nil? (history/get-fork db' fork-b-id)))
+      (is (= fork-a-id (:history/current-branch db')))
+      (is (= 5 (:history/position db')))
+      (is (= :db-fa1 (:game/db db'))))))
+
+
+(deftest test-pop-entry-noop-when-not-at-tip
+  (testing "Pop is no-op when not at tip"
+    (let [db (-> (build-3-entry-db)
+                 (history/step-to 1))
+          db' (history/pop-entry db)]
+      (is (= db db')))))
+
+
+(deftest test-pop-entry-noop-when-empty
+  (testing "Pop is no-op when history is empty (position -1)"
+    (let [db (merge {:game/db nil} (history/init-history))
+          db' (history/pop-entry db)]
+      (is (= db db')))))
