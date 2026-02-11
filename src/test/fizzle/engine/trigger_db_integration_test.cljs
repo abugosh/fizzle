@@ -1,16 +1,17 @@
 (ns fizzle.engine.trigger-db-integration-test
   "Integration tests verifying Datascript trigger entities are created
-   alongside atom registration (dual-write).
-
-   These tests verify that after play-land and game init, trigger entities
-   exist in Datascript. They do NOT test dispatch (that's Task 3)."
+   alongside atom registration (dual-write), and that dispatch reads
+   from Datascript."
   (:require
     [cljs.test :refer-macros [deftest testing is use-fixtures]]
     [datascript.core :as d]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
+    [fizzle.engine.events :as game-events]
+    [fizzle.engine.stack :as stack]
     [fizzle.engine.trigger-db :as trigger-db]
+    [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.engine.trigger-registry :as registry]
     [fizzle.engine.turn-based :as turn-based]
     [fizzle.events.game :as game]))
@@ -151,3 +152,24 @@
           "Atom registry should have one :permanent-tapped trigger")
       (is (= 1 (count ds-triggers))
           "Datascript should have one :permanent-tapped trigger entity"))))
+
+
+;; === Dispatch via Datascript path tests ===
+
+(deftest test-dispatch-uses-datascript-triggers
+  (testing "dispatch-event fires trigger from Datascript even with empty atom registry"
+    (let [db (create-test-db)
+          [db' obj-id] (add-card-to-hand db :city-of-brass :player-1)
+          ;; Play land creates Datascript triggers (dual-write also registers atom)
+          db-after-play (game/play-land db' :player-1 obj-id)
+          ;; Clear atom to isolate Datascript path
+          _ (registry/clear-registry!)
+          ;; Dispatch permanent-tapped event — should find trigger in Datascript
+          event (game-events/permanent-tapped-event obj-id :player-1)
+          db-after-dispatch (dispatch/dispatch-event db-after-play event)
+          items (stack/get-all-stack-items db-after-dispatch)]
+      (is (= 1 (count items))
+          "Dispatch should find trigger in Datascript even with empty atom registry")
+      (when (seq items)
+        (is (= :permanent-tapped (:stack-item/type (first items)))
+            "Stack item should be :permanent-tapped type")))))

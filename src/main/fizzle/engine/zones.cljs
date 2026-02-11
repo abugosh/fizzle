@@ -64,14 +64,23 @@
                              :in $ ?oid
                              :where [?e :object/id ?oid]]
                            db object-id)
+              ;; Retract Datascript trigger entities when leaving battlefield
+              trigger-retract-txs
+              (when (= current-zone :battlefield)
+                (let [trigger-eids (d/q '[:find [?t ...]
+                                          :in $ ?obj
+                                          :where [?obj :object/triggers ?t]]
+                                        db obj-eid)]
+                  (mapv (fn [teid] [:db.fn/retractEntity teid]) trigger-eids)))
               ;; Reset tapped state when entering or leaving battlefield
               ;; Leaving: card loses memory of being tapped
               ;; Entering: permanents enter untapped per MTG rule 110.6
-              txs (if (or (= current-zone :battlefield)
-                          (= new-zone :battlefield))
-                    [[:db/add obj-eid :object/zone new-zone]
-                     [:db/add obj-eid :object/tapped false]]
-                    [[:db/add obj-eid :object/zone new-zone]])]
+              base-txs (if (or (= current-zone :battlefield)
+                               (= new-zone :battlefield))
+                         [[:db/add obj-eid :object/zone new-zone]
+                          [:db/add obj-eid :object/tapped false]]
+                         [[:db/add obj-eid :object/zone new-zone]])
+              txs (into base-txs trigger-retract-txs)]
           (d/db-with db txs))))))
 
 
