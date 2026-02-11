@@ -41,6 +41,19 @@
       (:effect/type effect))))
 
 
+(defmethod build-selection-for-effect :default
+  [_db player-id object-id effect remaining-effects]
+  {:selection/zone :hand
+   :selection/select-count (:effect/count effect)
+   :selection/player-id player-id
+   :selection/selected #{}
+   :selection/spell-id object-id
+   :selection/remaining-effects remaining-effects
+   :selection/type (:effect/type effect)
+   :selection/validation :exact
+   :selection/auto-confirm? false})
+
+
 ;; =====================================================
 ;; Data-Driven Validation
 ;; =====================================================
@@ -145,7 +158,7 @@
           (assoc :game/db (:db result))
           (assoc :game/pending-selection (:pending-selection result)))
 
-      ;; Fully handled (pre-cast, ability, pile-choice, scry, cleanup-discard)
+      ;; Fully handled (pre-cast, ability, pile-choice, scry, discard with cleanup?)
       (:finalized? result)
       (cond-> app-db
         true (assoc :game/db (:db result))

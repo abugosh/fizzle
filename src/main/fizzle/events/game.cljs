@@ -22,6 +22,7 @@
     [fizzle.events.selection.library]
     [fizzle.events.selection.resolution :as resolution]
     [fizzle.events.selection.targeting :as sel-targeting]
+    [fizzle.events.selection.zone-ops]
     [fizzle.history.core :as history]
     [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
@@ -390,13 +391,15 @@
 ;; Grant expiration is NOT an auto-trigger; it's called explicitly after discard.
 
 (defn- build-cleanup-discard-selection
-  "Build pending selection state for cleanup discard-to-hand-size."
+  "Build pending selection state for cleanup discard-to-hand-size.
+   Uses unified :discard type with :selection/cleanup? flag."
   [player-id discard-count]
   {:selection/zone :hand
    :selection/select-count discard-count
    :selection/player-id player-id
    :selection/selected #{}
-   :selection/type :cleanup-discard
+   :selection/type :discard
+   :selection/cleanup? true
    :selection/validation :exact
    :selection/auto-confirm? false})
 

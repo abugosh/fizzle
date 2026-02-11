@@ -13,7 +13,7 @@
 
    Auto-confirm does NOT apply to:
    - tutor (select-count > 1, e.g. Intuition)
-   - discard, cleanup-discard, scry, pile-choice
+   - discard (including cleanup), scry, pile-choice
    - graveyard-return, peek-and-select, exile-cards-cost, x-mana-cost
    - Deselecting (clicking already-selected item)"
   (:require
