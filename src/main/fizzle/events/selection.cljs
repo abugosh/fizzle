@@ -1018,33 +1018,43 @@
 
 (rf/reg-event-db
   ::toggle-selection
-  (fn [db [_ object-id]]
+  (fn [db [_ id]]
     (let [selection (get db :game/pending-selection)
           selected (get selection :selection/selected #{})
-          selection-type (get selection :selection/type)
-          ;; Max count depends on selection type
-          max-count (cond
-                      (= selection-type :pile-choice)
+          valid-targets (:selection/valid-targets selection)
+          select-count (get selection :selection/select-count 0)
+          ;; Pile-choice uses :selection/hand-count for max
+          max-count (if (= (:selection/type selection) :pile-choice)
                       (get selection :selection/hand-count 1)
-                      :else
-                      (get selection :selection/select-count 0))
-          currently-selected? (contains? selected object-id)
-          new-selected (cond
-                         ;; Deselecting current selection
-                         currently-selected?
-                         (disj selected object-id)
+                      select-count)
+          currently-selected? (contains? selected id)]
+      (cond
+        ;; Reject invalid targets when valid-targets set exists
+        (and valid-targets (not (contains? (set valid-targets) id)))
+        db
 
-                         ;; For single-select tutors (max 1): replace current selection
-                         (and (= selection-type :tutor) (= max-count 1) (not= selection-type :pile-choice))
-                         #{object-id}
+        ;; Deselect: remove from set
+        currently-selected?
+        (assoc-in db [:game/pending-selection :selection/selected]
+                  (disj selected id))
 
-                         ;; Under limit: add to selection
-                         (< (count selected) max-count)
-                         (conj selected object-id)
+        ;; Single-select (select-count=1): replace current selection
+        (= max-count 1)
+        (assoc-in db [:game/pending-selection :selection/selected]
+                  #{id})
 
-                         ;; At limit: don't add
-                         :else selected)]
-      (assoc-in db [:game/pending-selection :selection/selected] new-selected))))
+        ;; Unlimited select (exact?=false, e.g. exile-cards): always add
+        (false? (:selection/exact? selection))
+        (assoc-in db [:game/pending-selection :selection/selected]
+                  (conj selected id))
+
+        ;; Multi-select under limit: add
+        (< (count selected) max-count)
+        (assoc-in db [:game/pending-selection :selection/selected]
+                  (conj selected id))
+
+        ;; At limit: ignore
+        :else db))))
 
 
 (rf/reg-event-db
@@ -1107,22 +1117,6 @@
 
 ;; === Peek-and-Select Selection ===
 ;; For :peek-and-select effects (e.g., Flash of Insight)
-
-(rf/reg-event-db
-  ::toggle-peek-card-selection
-  (fn [db [_ card-id]]
-    (let [selection (:game/pending-selection db)
-          current-selected (or (:selection/selected selection) #{})
-          select-count (:selection/select-count selection)]
-      (if (contains? current-selected card-id)
-        ;; Remove from selection
-        (assoc-in db [:game/pending-selection :selection/selected]
-                  (disj current-selected card-id))
-        ;; Add to selection (if not at max)
-        (if (< (count current-selected) select-count)
-          (assoc-in db [:game/pending-selection :selection/selected]
-                    (conj current-selected card-id))
-          db)))))
 
 
 (rf/reg-event-db
@@ -1341,12 +1335,6 @@
 ;; For effects with :effect/target :any-player (e.g., Deep Analysis "target player draws")
 
 (rf/reg-event-db
-  ::select-player-target
-  (fn [db [_ target-player-id]]
-    (assoc-in db [:game/pending-selection :selection/selected] #{target-player-id})))
-
-
-(rf/reg-event-db
   ::confirm-player-target-selection
   (fn [db _]
     (let [selection (:game/pending-selection db)
@@ -1405,17 +1393,6 @@
 
 ;; === X Cost Selection System ===
 ;; For spells with X in mana cost or exile-cards additional cost with :x count
-
-(rf/reg-event-db
-  ::toggle-exile-card-selection
-  (fn [db [_ card-id]]
-    (let [selection (:game/pending-selection db)
-          current-selected (or (:selection/selected selection) #{})]
-      (if (contains? current-selected card-id)
-        (assoc-in db [:game/pending-selection :selection/selected]
-                  (disj current-selected card-id))
-        (assoc-in db [:game/pending-selection :selection/selected]
-                  (conj current-selected card-id))))))
 
 
 (rf/reg-event-db
@@ -1524,19 +1501,3 @@
       (-> db
           (assoc :game/db new-game-db)
           (dissoc :game/pending-selection)))))
-
-
-(rf/reg-event-db
-  ::select-cast-time-object-target
-  (fn [db [_ object-id]]
-    (let [selection (:game/pending-selection db)
-          valid-targets (set (:selection/valid-targets selection))]
-      (if (contains? valid-targets object-id)
-        ;; Toggle selection: if already selected, deselect; otherwise select
-        (let [currently-selected (:selection/selected selection)
-              new-selected (if (contains? currently-selected object-id)
-                             #{}
-                             #{object-id})]
-          (assoc-in db [:game/pending-selection :selection/selected] new-selected))
-        ;; Invalid target - ignore
-        db))))

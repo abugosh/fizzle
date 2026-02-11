@@ -275,19 +275,3 @@
       (-> db
           (assoc :game/db (:db result))
           (dissoc :game/pending-selection)))))
-
-
-(rf/reg-event-db
-  ::select-ability-object-target
-  (fn [db [_ object-id]]
-    (let [selection (:game/pending-selection db)
-          valid-targets (set (:selection/valid-targets selection))]
-      (if (contains? valid-targets object-id)
-        ;; Toggle selection: if already selected, deselect; otherwise select
-        (let [currently-selected (:selection/selected selection)
-              new-selected (if (contains? currently-selected object-id)
-                             #{}
-                             #{object-id})]
-          (assoc-in db [:game/pending-selection :selection/selected] new-selected))
-        ;; Invalid target - ignore
-        db))))

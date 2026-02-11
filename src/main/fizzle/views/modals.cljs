@@ -76,7 +76,7 @@
                         (if selected?
                           "border-[3px] border-border-accent bg-modal-selected-bg"
                           "border-2 border-border bg-surface-raised"))
-            :on-click #(rf/dispatch [::selection-events/select-player-target player-id])}
+            :on-click #(rf/dispatch [::selection-events/toggle-selection player-id])}
    label])
 
 
@@ -342,7 +342,7 @@
          (for [obj cards]
            ^{:key (:object/id obj)}
            [selection-card-view obj (contains? selected (:object/id obj))
-            ::selection-events/toggle-exile-card-selection])
+            ::selection-events/toggle-selection])
          [:div {:class "text-perm-text-tapped"}
           "No eligible cards"])]
       ;; Buttons
@@ -378,7 +378,7 @@
          (for [obj cards]
            ^{:key (:object/id obj)}
            [selection-card-view obj (contains? selected (:object/id obj))
-            ::selection-events/toggle-peek-card-selection])
+            ::selection-events/toggle-selection])
          [:div {:class "text-perm-text-tapped"}
           "No cards to peek"])]
       ;; Buttons
@@ -633,7 +633,7 @@
           ;; Cast-time targeting an object (e.g., Recoup targeting graveyard sorcery)
           (and (= selection-type :cast-time-targeting) (not targets-player?))
           [object-target-modal selection cards
-           {:select-event ::selection-events/select-cast-time-object-target
+           {:select-event ::selection-events/toggle-selection
             :confirm-event ::selection-events/confirm-cast-time-target
             :default-zone :graveyard
             :selected-label "1 card selected"
@@ -646,7 +646,7 @@
           ;; Ability targeting an object (e.g., Seal of Cleansing targeting artifact/enchantment)
           (and (= selection-type :ability-targeting) (not targets-player?))
           [object-target-modal selection cards
-           {:select-event ::ability-events/select-ability-object-target
+           {:select-event ::selection-events/toggle-selection
             :confirm-event ::ability-events/confirm-ability-target
             :default-zone :battlefield
             :selected-label "1 target selected"
