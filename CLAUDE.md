@@ -85,11 +85,17 @@ src/
 
 ### Key Design Principles
 
-1. **Data over code** - Cards are data, effects are data, game state is data. The engine interprets data; it doesn't encode card-specific logic.
+*"What would Rich Hickey do?" — When making architectural decisions, ask whether you're adding essential complexity (inherent to the problem) or accidental complexity (artifact of your approach). Prefer values over places, data over code, composition over complecting.*
 
-2. **Simplify ruthlessly** - This is a practice tool, not MTGO. Skip rare/irrelevant rules interactions. Trust the player to know MTG rules.
+1. **Data over code** - Cards are data, effects are data, game state is data. The engine interprets data; it doesn't encode card-specific logic. If you're writing a `case` on a card name, you've gone wrong.
 
-3. **Immutability enables features** - Fork/replay is trivial because state is immutable.
+2. **Simplify ruthlessly** - This is a practice tool, not MTGO. Skip rare/irrelevant rules interactions. Trust the player to know MTG rules. But "simple" means decomplected (untangled), not "easy" (familiar). A simple design may take more thought upfront.
+
+3. **Immutability enables features** - Fork/replay is trivial because state is immutable. ALL game state belongs in the immutable Datascript db. Mutable state outside the db (atoms, vars) undermines time-travel and fork correctness. If you're reaching for an atom, ask whether this is really game state in disguise.
+
+4. **Separate mechanism from policy** - The selection system is a mechanism (show choices, collect player input). What happens with those choices is policy. Keep them apart. When adding new player-choice types, you should be registering policy with existing mechanism, not modifying mechanism.
+
+5. **Make protocols explicit** - If the engine and event layer must agree on something (e.g., which effects need player interaction), encode that agreement in data or types, not in comments and conventions. Implicit protocols drift apart silently.
 
 ### Effect System
 
