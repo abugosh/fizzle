@@ -21,7 +21,8 @@
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.zones :as zones]
-    [fizzle.events.selection :as selection]))
+    [fizzle.events.selection :as selection]
+    [fizzle.events.selection.resolution :as resolution]))
 
 
 ;; === Test helpers ===
@@ -202,7 +203,7 @@
           _ (is (= 2 (:object/x-value foi-obj))
                 "Spell should have X=2 stored")
           ;; Resolve spell - should create peek-and-select selection
-          result (selection/resolve-spell-with-selection db-with-x :player-1 foi-id)
+          result (resolution/resolve-spell-with-selection db-with-x :player-1 foi-id)
           sel (:pending-selection result)]
       ;; Selection type should be :peek-and-select
       (is (= :peek-and-select (:selection/type sel))

@@ -18,7 +18,8 @@
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.selection :as selection]))
+    [fizzle.events.selection :as selection]
+    [fizzle.events.selection.resolution :as resolution]))
 
 
 ;; === Test helpers ===
@@ -171,7 +172,7 @@
           _ (is (= :stack (:object/zone (q/get-object db-cast int-id)))
                 "Precondition: Intuition on stack")
           ;; Resolve - should create tutor selection with available cards
-          result (selection/resolve-spell-with-selection db-cast :player-1 int-id)
+          result (resolution/resolve-spell-with-selection db-cast :player-1 int-id)
           sel (:pending-selection result)]
       ;; Should have pending selection (tutor)
       (is (= :tutor (:selection/type sel))

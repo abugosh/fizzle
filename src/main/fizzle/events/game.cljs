@@ -18,6 +18,7 @@
     [fizzle.engine.zones :as zones]
     [fizzle.events.abilities]
     [fizzle.events.selection :as selection]
+    [fizzle.events.selection.resolution :as resolution]
     [fizzle.history.core :as history]
     [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
@@ -339,8 +340,8 @@
    Pure function: (game-db, player-id) -> {:db game-db'} or {:db game-db' :pending-selection data}
 
    Handles all stack-item types:
-   - Spell/storm-copy (has :stack-item/object-ref): resolves via selection/resolve-spell-with-selection
-   - Activated ability: resolves via selection/resolve-stack-item-ability-with-selection
+   - Spell/storm-copy (has :stack-item/object-ref): resolves via resolution/resolve-spell-with-selection
+   - Activated ability: resolves via resolution/resolve-stack-item-ability-with-selection
    - Other (triggers, storm meta): resolves via resolve-stack-item-effects
    - Empty stack: returns {:db game-db} unchanged
 
@@ -356,7 +357,7 @@
             obj (d/pull game-db [:object/id] obj-ref)
             object-id (:object/id obj)
             stack-item-eid (:db/id top-stack-item)
-            result (selection/resolve-spell-with-selection game-db player-id object-id)]
+            result (resolution/resolve-spell-with-selection game-db player-id object-id)]
         (if (:pending-selection result)
           {:db (:db result) :pending-selection (:pending-selection result)}
           {:db (stack/remove-stack-item (:db result) stack-item-eid)}))
@@ -364,7 +365,7 @@
       ;; Activated ability
       (and top-stack-item (= :activated-ability (:stack-item/type top-stack-item)))
       (let [stack-item-eid (:db/id top-stack-item)
-            result (selection/resolve-stack-item-ability-with-selection game-db top-stack-item)]
+            result (resolution/resolve-stack-item-ability-with-selection game-db top-stack-item)]
         (if (:pending-selection result)
           {:db (:db result) :pending-selection (:pending-selection result)}
           {:db (stack/remove-stack-item (:db result) stack-item-eid)}))

@@ -25,7 +25,7 @@
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.abilities :as ability-events]
-    [fizzle.events.selection :as selection]))
+    [fizzle.events.selection.resolution :as resolution]))
 
 
 ;; === Test helpers ===
@@ -563,7 +563,7 @@
           top-item (stack/get-top-stack-item db-after-confirm)
           _ (is (some? top-item) "Should have stack-item on stack")
           ;; Resolve the stack item ability (pass full entity, not eid)
-          resolve-result (selection/resolve-stack-item-ability-with-selection
+          resolve-result (resolution/resolve-stack-item-ability-with-selection
                            db-after-confirm top-item)]
       ;; After resolution, player should have drawn 3 cards
       (is (= 3 (get-hand-count (:db resolve-result) :player-1))
