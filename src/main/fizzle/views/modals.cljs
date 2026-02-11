@@ -3,6 +3,7 @@
     [clojure.string :as str]
     [fizzle.events.game :as events]
     [fizzle.events.selection :as selection-events]
+    [fizzle.events.selection.costs :as cost-events]
     [fizzle.subs.game :as subs]
     [re-frame.core :as rf]))
 
@@ -344,7 +345,7 @@
       ;; Buttons
       [:div {:class "flex justify-end gap-3"}
        [cancel-button {:label "Cancel"
-                       :on-cancel #(rf/dispatch [::selection-events/cancel-exile-cards-selection])}]
+                       :on-cancel #(rf/dispatch [::cost-events/cancel-exile-cards-selection])}]
        [confirm-button {:label (str "Exile " current-count " cards")
                         :valid? valid?
                         :on-confirm #(rf/dispatch [::selection-events/confirm-selection])
@@ -496,18 +497,18 @@
       [:div {:class "flex items-center justify-center gap-5 mb-5"}
        [:button {:class (stepper-button-class (pos? selected-x))
                  :disabled (not (pos? selected-x))
-                 :on-click #(rf/dispatch [::selection-events/decrement-x-value])}
+                 :on-click #(rf/dispatch [::cost-events/decrement-x-value])}
         "-"]
        [:div {:class "text-[32px] text-white font-bold min-w-[60px] text-center"}
         (str "X = " selected-x)]
        [:button {:class (stepper-button-class (< selected-x max-x))
                  :disabled (not (< selected-x max-x))
-                 :on-click #(rf/dispatch [::selection-events/increment-x-value])}
+                 :on-click #(rf/dispatch [::cost-events/increment-x-value])}
         "+"]]
       ;; Buttons
       [:div {:class "flex justify-end gap-3"}
        [cancel-button {:label "Cancel"
-                       :on-cancel #(rf/dispatch [::selection-events/cancel-x-mana-selection])}]
+                       :on-cancel #(rf/dispatch [::cost-events/cancel-x-mana-selection])}]
        [confirm-button {:label "Cast"
                         :valid? true
                         :on-confirm #(rf/dispatch [::selection-events/confirm-selection])

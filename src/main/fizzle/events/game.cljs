@@ -17,7 +17,8 @@
     [fizzle.engine.turn-based :as turn-based]
     [fizzle.engine.zones :as zones]
     [fizzle.events.abilities]
-    [fizzle.events.selection :as selection]
+    [fizzle.events.selection]
+    [fizzle.events.selection.costs :as sel-costs]
     [fizzle.events.selection.library]
     [fizzle.events.selection.resolution :as resolution]
     [fizzle.events.selection.targeting :as sel-targeting]
@@ -219,9 +220,9 @@
         targeting-reqs (targeting/get-targeting-requirements card)]
     (cond
       ;; Check for exile-cards X cost (flashback with exile)
-      (selection/has-exile-cards-x-cost? mode)
-      (let [exile-cost (selection/get-exile-cards-x-cost mode)
-            sel (selection/build-exile-cards-selection game-db player-id object-id mode exile-cost)]
+      (sel-costs/has-exile-cards-x-cost? mode)
+      (let [exile-cost (sel-costs/get-exile-cards-x-cost mode)
+            sel (sel-costs/build-exile-cards-selection game-db player-id object-id mode exile-cost)]
         (if sel
           (-> app-db
               (assoc :game/pending-selection sel)
@@ -230,8 +231,8 @@
           app-db))
 
       ;; Check for X mana cost (normal cast with X)
-      (selection/has-mana-x-cost? mode)
-      (let [sel (selection/build-x-mana-selection game-db player-id object-id mode)]
+      (sel-costs/has-mana-x-cost? mode)
+      (let [sel (sel-costs/build-x-mana-selection game-db player-id object-id mode)]
         (-> app-db
             (assoc :game/pending-selection sel)
             (dissoc :game/selected-card)))
