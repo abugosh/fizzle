@@ -1,7 +1,6 @@
 (ns fizzle.views.modals
   (:require
     [clojure.string :as str]
-    [fizzle.events.abilities :as ability-events]
     [fizzle.events.game :as events]
     [fizzle.events.selection :as selection-events]
     [fizzle.subs.game :as subs]
@@ -135,9 +134,8 @@
 (defn player-target-modal
   "Modal for selecting a player as target.
    Takes the selection map and a confirm-event keyword.
-   Used for spell effects (::confirm-player-target-selection),
-   ability targeting (::confirm-ability-target),
-   and cast-time targeting (::confirm-cast-time-target)."
+   Used for spell effects, ability targeting, and cast-time targeting.
+   All dispatch ::confirm-selection."
   [selection confirm-event]
   (let [selected (or (:selection/selected selection) #{})
         valid? (= 1 (count selected))]
@@ -195,9 +193,7 @@
 
                  :else
                  (= current-count required-count))
-        confirm-event (if is-tutor?
-                        ::selection-events/confirm-tutor-selection
-                        ::selection-events/confirm-selection)]
+        confirm-event ::selection-events/confirm-selection]
     [:div {:class overlay-class}
      [:div {:class (container-class {})}
       ;; Header
@@ -281,7 +277,7 @@
        ;; Confirm button
        [confirm-button {:label "Confirm"
                         :valid? valid?
-                        :on-confirm #(rf/dispatch [::selection-events/confirm-pile-choice-selection])}]]]]))
+                        :on-confirm #(rf/dispatch [::selection-events/confirm-selection])}]]]]))
 
 
 (defn graveyard-selection-modal
@@ -317,7 +313,7 @@
        ;; Confirm button (always valid since 0 is allowed)
        [confirm-button {:label "Confirm"
                         :valid? valid?
-                        :on-confirm #(rf/dispatch [::selection-events/confirm-graveyard-selection])
+                        :on-confirm #(rf/dispatch [::selection-events/confirm-selection])
                         :extra-class "bg-gy-flashback-border"}]]]]))
 
 
@@ -351,7 +347,7 @@
                        :on-cancel #(rf/dispatch [::selection-events/cancel-exile-cards-selection])}]
        [confirm-button {:label (str "Exile " current-count " cards")
                         :valid? valid?
-                        :on-confirm #(rf/dispatch [::selection-events/confirm-exile-cards-selection])
+                        :on-confirm #(rf/dispatch [::selection-events/confirm-selection])
                         :extra-class "bg-gy-flashback-border"}]]]]))
 
 
@@ -387,7 +383,7 @@
                        :on-cancel #(rf/dispatch [::selection-events/cancel-selection])}]
        [confirm-button {:label "Confirm"
                         :valid? valid?
-                        :on-confirm #(rf/dispatch [::selection-events/confirm-peek-selection])
+                        :on-confirm #(rf/dispatch [::selection-events/confirm-selection])
                         :extra-class "bg-gy-flashback-border"}]]]]))
 
 
@@ -463,7 +459,7 @@
 
       ;; Confirm button
       [:button {:class "w-full p-3 bg-accent border-none rounded-lg text-white text-base cursor-pointer"
-                :on-click #(rf/dispatch [::selection-events/confirm-scry-selection])}
+                :on-click #(rf/dispatch [::selection-events/confirm-selection])}
        "Confirm"]]]))
 
 
@@ -514,7 +510,7 @@
                        :on-cancel #(rf/dispatch [::selection-events/cancel-x-mana-selection])}]
        [confirm-button {:label "Cast"
                         :valid? true
-                        :on-confirm #(rf/dispatch [::selection-events/confirm-x-mana-selection])
+                        :on-confirm #(rf/dispatch [::selection-events/confirm-selection])
                         :extra-class "bg-gy-flashback-border"}]]]]))
 
 
@@ -628,33 +624,33 @@
 
           ;; Cast-time targeting a player (e.g., Deep Analysis when casting)
           (and (= selection-type :cast-time-targeting) targets-player?)
-          [player-target-modal selection ::selection-events/confirm-cast-time-target]
+          [player-target-modal selection ::selection-events/confirm-selection]
 
           ;; Cast-time targeting an object (e.g., Recoup targeting graveyard sorcery)
           (and (= selection-type :cast-time-targeting) (not targets-player?))
           [object-target-modal selection cards
            {:select-event ::selection-events/toggle-selection
-            :confirm-event ::selection-events/confirm-cast-time-target
+            :confirm-event ::selection-events/confirm-selection
             :default-zone :graveyard
             :selected-label "1 card selected"
             :unselected-label "Select a card"}]
 
           ;; Ability targeting a player (e.g., Cephalid Coliseum threshold)
           (and (= selection-type :ability-targeting) targets-player?)
-          [player-target-modal selection ::ability-events/confirm-ability-target]
+          [player-target-modal selection ::selection-events/confirm-selection]
 
           ;; Ability targeting an object (e.g., Seal of Cleansing targeting artifact/enchantment)
           (and (= selection-type :ability-targeting) (not targets-player?))
           [object-target-modal selection cards
            {:select-event ::selection-events/toggle-selection
-            :confirm-event ::ability-events/confirm-ability-target
+            :confirm-event ::selection-events/confirm-selection
             :default-zone :battlefield
             :selected-label "1 target selected"
             :unselected-label "Select a target"}]
 
           ;; Player target selection (for spell effects during resolution)
           (= selection-type :player-target)
-          [player-target-modal selection ::selection-events/confirm-player-target-selection]
+          [player-target-modal selection ::selection-events/confirm-selection]
 
           ;; Graveyard return selection (Ill-Gotten Gains style)
           (= selection-type :graveyard-return)

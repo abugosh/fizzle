@@ -17,13 +17,13 @@
     ;; start-turn creates its own history entries (opponent draw + turn start)
     :fizzle.events.game/play-land
     :fizzle.events.abilities/activate-mana-ability
-    :fizzle.events.abilities/activate-ability
-    ;; Selection confirmations that complete a cast (targeted spells, X costs, exile costs)
-    :fizzle.events.selection/confirm-cast-time-target
-    :fizzle.events.selection/confirm-x-mana-selection
-    :fizzle.events.selection/confirm-exile-cards-selection
-    ;; Ability target confirmation (targeted activated abilities)
-    :fizzle.events.abilities/confirm-ability-target})
+    :fizzle.events.abilities/activate-ability})
+
+
+(def ^:private priority-selection-types
+  "Selection types that create history entries when confirmed via ::confirm-selection.
+   These are pre-cast/ability confirmations (not mid-resolution choices)."
+  #{:cast-time-targeting :x-mana-cost :exile-cards-cost :ability-targeting})
 
 
 (defn- get-turn
@@ -38,6 +38,16 @@
       0)))
 
 
+(defn- priority-event?
+  "Check if an event should create a history entry.
+   Most events are checked against a static set. For ::confirm-selection,
+   checks if the selection type is a priority type (pre-cast/ability)."
+  [event-id selection-type]
+  (or (priority-events event-id)
+      (and (= event-id :fizzle.events.selection/confirm-selection)
+           (priority-selection-types selection-type))))
+
+
 (def history-interceptor
   "Global re-frame interceptor that captures Datascript db snapshots.
    Appends history entry whenever :game/db changes (excluding history events).
@@ -46,12 +56,16 @@
     :id :history/snapshot
     :before (fn [context]
               (let [db (get-in context [:coeffects :db])
-                    game-db (:game/db db)]
-                (assoc-in context [:coeffects :history/pre-game-db] game-db)))
+                    game-db (:game/db db)
+                    selection-type (get-in db [:game/pending-selection :selection/type])]
+                (-> context
+                    (assoc-in [:coeffects :history/pre-game-db] game-db)
+                    (assoc-in [:coeffects :history/selection-type] selection-type))))
     :after (fn [context]
              (let [event (get-in context [:coeffects :event])
-                   event-id (first event)]
-               (if-not (priority-events event-id)
+                   event-id (first event)
+                   selection-type (get-in context [:coeffects :history/selection-type])]
+               (if-not (priority-event? event-id selection-type)
                  context
                  (let [pre-game-db (get-in context [:coeffects :history/pre-game-db])
                        db-after (get-in context [:effects :db])
@@ -59,7 +73,7 @@
                    (if (and db-after
                             game-db-after
                             (not (identical? pre-game-db game-db-after)))
-                     (let [description (or (descriptions/describe-event event pre-game-db game-db-after)
+                     (let [description (or (descriptions/describe-event event pre-game-db game-db-after selection-type)
                                            (name event-id))
                            turn (get-turn game-db-after)
                            entry (history/make-entry game-db-after event-id description turn)]

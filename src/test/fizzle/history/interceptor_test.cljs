@@ -154,11 +154,7 @@
                    [:fizzle.events.game/play-land :obj-1]
                    [:fizzle.events.game/init-game]
                    [:fizzle.events.abilities/activate-mana-ability :obj-1 :black]
-                   [:fizzle.events.abilities/activate-ability :obj-1 0]
-                   [:fizzle.events.selection/confirm-cast-time-target :target-1]
-                   [:fizzle.events.selection/confirm-x-mana-selection]
-                   [:fizzle.events.selection/confirm-exile-cards-selection]
-                   [:fizzle.events.abilities/confirm-ability-target :target-1]]]
+                   [:fizzle.events.abilities/activate-ability :obj-1 0]]]
       (let [pre-db (make-db-with-history :db-old)
             post-db (make-db-with-history :db-new)
             context (make-context pre-db post-db event)
@@ -168,7 +164,21 @@
         (is (string? (:entry/description entry))
             (str (first event) " should have a description"))
         (is (not= (name (first event)) (:entry/description entry))
-            (str (first event) " should not use fallback name"))))))
+            (str (first event) " should not use fallback name")))))
+  (testing "Selection confirm events with priority selection types produce descriptions"
+    (doseq [selection-type [:cast-time-targeting :x-mana-cost :exile-cards-cost :ability-targeting]]
+      (let [pre-db (assoc (make-db-with-history :db-old)
+                          :game/pending-selection {:selection/type selection-type})
+            post-db (make-db-with-history :db-new)
+            event [:fizzle.events.selection/confirm-selection]
+            context (make-context pre-db post-db event)
+            result (run-interceptor context)
+            result-db (get-in result [:effects :db])
+            entry (first (:history/main result-db))]
+        (is (string? (:entry/description entry))
+            (str "confirm-selection with " selection-type " should have a description"))
+        (is (not= "confirm-selection" (:entry/description entry))
+            (str "confirm-selection with " selection-type " should not use fallback name"))))))
 
 
 (deftest test-init-game-creates-first-entry

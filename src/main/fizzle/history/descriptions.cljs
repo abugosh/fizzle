@@ -186,10 +186,12 @@
 
 (defn describe-event
   "Generate a human-readable description for a re-frame event.
-   Takes event vector [event-id & args] and optional game-db snapshots.
+   Takes event vector [event-id & args], optional game-db snapshots, and optional selection-type.
    Returns string or nil.
    Only priority-action events need descriptions (the interceptor filters others)."
   ([[event-id & _args] pre-game-db game-db-after]
+   (describe-event (into [event-id] _args) pre-game-db game-db-after nil))
+  ([[event-id & _args] pre-game-db game-db-after selection-type]
    (case event-id
      :fizzle.events.game/init-game
      "Game started"
@@ -215,17 +217,18 @@
      :fizzle.events.abilities/activate-ability
      (describe-activate-ability (first _args) (second _args) pre-game-db)
 
-     ;; Selection confirmations that complete a cast (targeted spells, X costs, exile costs)
-     (:fizzle.events.selection/confirm-cast-time-target
-       :fizzle.events.selection/confirm-x-mana-selection
-       :fizzle.events.selection/confirm-exile-cards-selection)
-     (describe-cast-spell game-db-after)
+     ;; Unified confirm-selection: description depends on selection type
+     :fizzle.events.selection/confirm-selection
+     (case selection-type
+       (:cast-time-targeting :x-mana-cost :exile-cards-cost)
+       (describe-cast-spell game-db-after)
 
-     ;; Ability target confirmation (targeted activated abilities like Cephalid Coliseum)
-     :fizzle.events.abilities/confirm-ability-target
-     (describe-activate-from-stack game-db-after)
+       :ability-targeting
+       (describe-activate-from-stack game-db-after)
+
+       nil)
 
      nil))
   ;; Backward-compatible 1-arity: no game-dbs available
   ([event]
-   (describe-event event nil nil)))
+   (describe-event event nil nil nil)))

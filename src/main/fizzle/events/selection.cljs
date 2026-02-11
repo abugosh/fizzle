@@ -1007,6 +1007,241 @@
 
 
 ;; =====================================================
+;; Confirm Selection Multimethod
+;; =====================================================
+
+(defmulti execute-confirmed-selection
+  "Execute the type-specific logic for a confirmed selection.
+   Dispatches on :selection/type.
+
+   Arguments:
+     game-db - Datascript database
+     selection - Selection state map
+
+   Returns one of:
+     {:db game-db} — standard, wrapper handles remaining-effects + cleanup
+     {:db game-db :pending-selection next-sel} — chain to next selection
+     {:db game-db :finalized? true} — fully handled (pre-cast, ability)"
+  (fn [_game-db selection] (:selection/type selection)))
+
+
+(defmethod execute-confirmed-selection :discard
+  [game-db selection]
+  (let [selected (:selection/selected selection)]
+    {:db (reduce (fn [gdb obj-id]
+                   (zones/move-to-zone gdb obj-id :graveyard))
+                 game-db
+                 selected)}))
+
+
+(defmethod execute-confirmed-selection :cleanup-discard
+  [game-db selection]
+  (let [selected (:selection/selected selection)
+        db-after-discard (reduce (fn [d obj-id]
+                                   (zones/move-to-zone d obj-id :graveyard))
+                                 game-db
+                                 selected)
+        game-state (queries/get-game-state db-after-discard)
+        current-turn (:game/turn game-state)
+        db-final (grants/expire-grants db-after-discard current-turn :cleanup)]
+    {:db db-final :finalized? true}))
+
+
+(defmethod execute-confirmed-selection :tutor
+  [game-db selection]
+  (let [selected (:selection/selected selection)
+        pile-choice (:selection/pile-choice selection)
+        player-id (:selection/player-id selection)
+        spell-id (:selection/spell-id selection)
+        remaining-effects (:selection/remaining-effects selection)]
+    (if (and pile-choice (seq selected))
+      ;; Chain to pile-choice phase
+      {:db game-db
+       :pending-selection (build-pile-choice-selection
+                            selected pile-choice player-id spell-id remaining-effects)}
+      ;; Normal tutor flow
+      {:db (execute-tutor-selection game-db selection)})))
+
+
+(defmethod execute-confirmed-selection :peek-and-select
+  [game-db selection]
+  {:db (execute-peek-selection game-db selection)})
+
+
+(defmethod execute-confirmed-selection :graveyard-return
+  [game-db selection]
+  (let [selected (:selection/selected selection)]
+    {:db (reduce (fn [gdb obj-id]
+                   (zones/move-to-zone gdb obj-id :hand))
+                 game-db
+                 selected)}))
+
+
+(defmethod execute-confirmed-selection :player-target
+  [game-db selection]
+  (let [selected-target (first (:selection/selected selection))
+        target-effect (:selection/target-effect selection)
+        remaining-effects (vec (or (:selection/remaining-effects selection) []))
+        player-id (:selection/player-id selection)
+        source-type (:selection/source-type selection)
+        spell-id (:selection/spell-id selection)
+        ;; Replace :any-player with selected target
+        resolved-effect (assoc target-effect :effect/target selected-target)
+        db-after-effect (effects/execute-effect game-db player-id resolved-effect)
+        ;; Check if remaining effects need selection
+        next-selection-idx (find-selection-effect-index remaining-effects)]
+    (if next-selection-idx
+      ;; Chain to next selection (e.g., discard after draw)
+      (let [[effects-before-next next-selection-effect effects-after-next]
+            (split-effects-around-index remaining-effects next-selection-idx)
+            db-after-before (reduce (fn [d effect]
+                                      (effects/execute-effect d player-id effect))
+                                    db-after-effect
+                                    effects-before-next)
+            next-selection (when (= :player (:effect/selection next-selection-effect))
+                             (cond-> {:selection/type :discard
+                                      :selection/player-id selected-target
+                                      :selection/select-count (:effect/count next-selection-effect)
+                                      :selection/selected #{}
+                                      :selection/source-type source-type
+                                      :selection/remaining-effects effects-after-next}
+                               spell-id (assoc :selection/spell-id spell-id)
+                               (:selection/stack-item-eid selection)
+                               (assoc :selection/stack-item-eid (:selection/stack-item-eid selection))))]
+        {:db db-after-before :pending-selection next-selection})
+      ;; No more selections - execute all remaining (wrapper will handle cleanup)
+      {:db (reduce (fn [d effect]
+                     (effects/execute-effect d player-id effect))
+                   db-after-effect
+                   remaining-effects)})))
+
+
+(defmethod execute-confirmed-selection :cast-time-targeting
+  [game-db selection]
+  {:db (confirm-cast-time-target game-db selection)
+   :finalized? true})
+
+
+(defmethod execute-confirmed-selection :exile-cards-cost
+  [game-db selection]
+  (let [selected (:selection/selected selection)
+        selected-count (count selected)
+        player-id (:selection/player-id selection)
+        object-id (:selection/spell-id selection)
+        mode (:selection/mode selection)
+        db-after-exile (reduce (fn [d card-id]
+                                 (zones/move-to-zone d card-id :exile))
+                               game-db
+                               selected)
+        obj-eid (d/q '[:find ?e .
+                       :in $ ?oid
+                       :where [?e :object/id ?oid]]
+                     db-after-exile object-id)
+        db-with-x (d/db-with db-after-exile
+                             [[:db/add obj-eid :object/x-value selected-count]])
+        db-after-cast (rules/cast-spell-mode db-with-x player-id object-id mode)]
+    {:db db-after-cast :finalized? true :clear-selected-card? true}))
+
+
+(defmethod execute-confirmed-selection :x-mana-cost
+  [game-db selection]
+  (let [x-value (:selection/selected-x selection)
+        player-id (:selection/player-id selection)
+        object-id (:selection/spell-id selection)
+        mode (:selection/mode selection)
+        obj-eid (d/q '[:find ?e .
+                       :in $ ?oid
+                       :where [?e :object/id ?oid]]
+                     game-db object-id)
+        db-with-x (d/db-with game-db
+                             [[:db/add obj-eid :object/x-value x-value]])
+        resolved-mana-cost (mana/resolve-x-cost (:mode/mana-cost mode) x-value)
+        mode-with-resolved-cost (assoc mode :mode/mana-cost resolved-mana-cost)
+        db-after-cast (rules/cast-spell-mode db-with-x player-id object-id mode-with-resolved-cost)]
+    {:db db-after-cast :finalized? true :clear-selected-card? true}))
+
+
+(defmethod execute-confirmed-selection :pile-choice
+  [game-db selection]
+  (let [player-id (:selection/player-id selection)
+        spell-id (:selection/spell-id selection)
+        db-after-pile (execute-pile-choice game-db selection)
+        db-after-shuffle (zones/shuffle-library db-after-pile player-id)
+        remaining-effects (:selection/remaining-effects selection)
+        db-after-effects (reduce (fn [d effect]
+                                   (effects/execute-effect d player-id effect))
+                                 db-after-shuffle
+                                 (or remaining-effects []))
+        spell-obj (queries/get-object db-after-effects spell-id)
+        current-zone (:object/zone spell-obj)
+        db-after-move (if (= current-zone :stack)
+                        (let [cast-mode (:object/cast-mode spell-obj)
+                              destination (or (:mode/on-resolve cast-mode) :graveyard)]
+                          (zones/move-to-zone db-after-effects spell-id destination))
+                        db-after-effects)
+        db-final (remove-spell-stack-item db-after-move spell-id)]
+    {:db db-final :finalized? true}))
+
+
+(defmethod execute-confirmed-selection :scry
+  [game-db selection]
+  (let [spell-id (:selection/spell-id selection)
+        remaining-effects (:selection/remaining-effects selection)
+        player-id (:selection/player-id selection)
+        db-after-reorder (reorder-library-for-scry game-db player-id selection)
+        db-after-remaining (reduce (fn [d effect]
+                                     (effects/execute-effect d player-id effect))
+                                   db-after-reorder
+                                   (or remaining-effects []))
+        db-after-move (zones/move-to-zone db-after-remaining spell-id :graveyard)
+        db-final (remove-spell-stack-item db-after-move spell-id)]
+    {:db db-final :finalized? true}))
+
+
+;; =====================================================
+;; Confirm Selection Wrapper
+;; =====================================================
+
+(defn confirm-selection-impl
+  "Shared wrapper for all selection confirmations.
+   1. Gets game-db and selection from app-db
+   2. Calls execute-confirmed-selection multimethod
+   3. Handles remaining-effects, cleanup, and chaining based on result
+
+   Returns updated app-db."
+  [app-db]
+  (let [selection (:game/pending-selection app-db)
+        game-db (:game/db app-db)
+        result (execute-confirmed-selection game-db selection)]
+    (cond
+      ;; Chain to next selection
+      (:pending-selection result)
+      (-> app-db
+          (assoc :game/db (:db result))
+          (assoc :game/pending-selection (:pending-selection result)))
+
+      ;; Fully handled (pre-cast, ability, pile-choice, scry, cleanup-discard)
+      (:finalized? result)
+      (cond-> app-db
+        true (assoc :game/db (:db result))
+        true (dissoc :game/pending-selection)
+        (:clear-selected-card? result) (dissoc :game/selected-card))
+
+      ;; Standard: execute remaining-effects and cleanup
+      :else
+      (let [remaining-effects (:selection/remaining-effects selection)
+            player-id (:selection/player-id selection)
+            db-after-remaining (reduce (fn [d effect]
+                                         (effects/execute-effect d player-id effect))
+                                       (:db result)
+                                       (or remaining-effects []))
+            db-final (cleanup-selection-source db-after-remaining selection)]
+        (-> app-db
+            (assoc :game/db db-final)
+            (dissoc :game/pending-selection))))))
+
+
+;; =====================================================
 ;; Re-frame Event Handlers
 ;; =====================================================
 
@@ -1061,49 +1296,59 @@
   ::confirm-selection
   (fn [db _]
     (let [selection (:game/pending-selection db)
-          selected (:selection/selected selection)
-          count-required (:selection/select-count selection)
-          remaining-effects (:selection/remaining-effects selection)
-          selection-type (:selection/type selection)
-          player-id (:selection/player-id selection)]
-      (if (= (count selected) count-required)
-        ;; Valid selection - execute the effect on selected cards
-        (if (= selection-type :cleanup-discard)
-          ;; Cleanup discard: move cards to graveyard, expire grants, no spell cleanup
-          (let [game-db (:game/db db)
-                ;; Move selected cards to graveyard
-                db-after-discard (reduce (fn [d obj-id]
-                                           (zones/move-to-zone d obj-id :graveyard))
-                                         game-db
-                                         selected)
-                ;; Now expire grants (Rule 514.2 - after discard)
-                game-state (queries/get-game-state db-after-discard)
-                current-turn (:game/turn game-state)
-                db-final (grants/expire-grants db-after-discard current-turn :cleanup)]
-            (-> db
-                (assoc :game/db db-final)
-                (dissoc :game/pending-selection)))
-          ;; Normal selection (spell/trigger based)
-          (let [game-db (:game/db db)
-                ;; Move selected cards based on selection type
-                db-after-effect (case selection-type
-                                  :discard (reduce (fn [gdb obj-id]
-                                                     (zones/move-to-zone gdb obj-id :graveyard))
-                                                   game-db
-                                                   selected)
-                                  ;; Default: no-op
-                                  game-db)
-                ;; Execute remaining effects
-                db-after-remaining (reduce (fn [d effect]
-                                             (effects/execute-effect d player-id effect))
-                                           db-after-effect
-                                           (or remaining-effects []))
-                ;; Clean up source (stack-item, trigger, or spell)
-                db-final (cleanup-selection-source db-after-remaining selection)]
-            (-> db
-                (assoc :game/db db-final)
-                (dissoc :game/pending-selection))))
-        ;; Invalid count - do nothing
+          selection-type (:selection/type selection)]
+      ;; Validation depends on selection type
+      (if (case selection-type
+            ;; Types with flexible selection counts
+            (:peek-and-select :graveyard-return)
+            (let [selected (:selection/selected selection)
+                  candidates (or (:selection/candidates selection)
+                                 (:selection/candidate-ids selection))
+                  max-count (:selection/select-count selection)]
+              (and (<= (count selected) max-count)
+                   (every? #(contains? candidates %) selected)))
+
+            ;; Tutor: empty (fail-to-find) or exact count
+            :tutor
+            (let [selected (:selection/selected selection)
+                  candidates (:selection/candidates selection)
+                  select-count (or (:selection/select-count selection) 1)]
+              (or (empty? selected)
+                  (and (= (count selected) select-count)
+                       (every? #(contains? candidates %) selected))))
+
+            ;; Pile choice: exact hand-count
+            :pile-choice
+            (let [selected (:selection/selected selection)
+                  hand-count (:selection/hand-count selection)
+                  candidates (:selection/candidates selection)]
+              (and (= hand-count (count selected))
+                   (every? #(contains? candidates %) selected)))
+
+            ;; Exile cards: at least 1
+            :exile-cards-cost
+            (pos? (count (:selection/selected selection)))
+
+            ;; Scry: always valid
+            :scry true
+
+            ;; X mana: always valid
+            :x-mana-cost true
+
+            ;; Player target: need a target
+            :player-target
+            (some? (first (:selection/selected selection)))
+
+            ;; Cast-time and ability targeting: need a target
+            (:cast-time-targeting :ability-targeting)
+            (= 1 (count (:selection/selected selection)))
+
+            ;; Cleanup-discard and discard: exact count
+            (= (count (:selection/selected selection))
+               (:selection/select-count selection)))
+        ;; Valid - delegate to multimethod wrapper
+        (confirm-selection-impl db)
+        ;; Invalid - do nothing
         db))))
 
 
@@ -1115,131 +1360,6 @@
     (assoc-in db [:game/pending-selection :selection/selected] #{})))
 
 
-;; === Peek-and-Select Selection ===
-;; For :peek-and-select effects (e.g., Flash of Insight)
-
-
-(rf/reg-event-db
-  ::confirm-peek-selection
-  (fn [db _]
-    (let [selection (:game/pending-selection db)
-          selected (:selection/selected selection)
-          candidates (:selection/candidates selection)
-          select-count (:selection/select-count selection)
-          spell-id (:selection/spell-id selection)
-          remaining-effects (:selection/remaining-effects selection)
-          player-id (:selection/player-id selection)
-          game-db (:game/db db)
-          ;; Validate: selected cards are from candidates, count <= select-count
-          valid-selection? (and (<= (count selected) select-count)
-                                (every? #(contains? candidates %) selected))]
-      (if valid-selection?
-        (let [;; Execute peek selection - moves cards to hand/bottom
-              db-after-peek (execute-peek-selection game-db selection)
-              ;; Execute remaining effects
-              db-after-remaining (reduce (fn [d effect]
-                                           (effects/execute-effect d player-id effect))
-                                         db-after-peek
-                                         (or remaining-effects []))
-              ;; Move spell to appropriate zone (graveyard or exile for flashback)
-              spell-obj (queries/get-object db-after-remaining spell-id)
-              current-zone (:object/zone spell-obj)
-              db-after-move (if (= current-zone :stack)
-                              (let [cast-mode (:object/cast-mode spell-obj)
-                                    destination (or (:mode/on-resolve cast-mode) :graveyard)]
-                                (zones/move-to-zone db-after-remaining spell-id destination))
-                              db-after-remaining)
-              ;; Remove stack-item for spell
-              db-final (remove-spell-stack-item db-after-move spell-id)]
-          (-> db
-              (assoc :game/db db-final)
-              (dissoc :game/pending-selection)))
-        ;; Invalid selection - do nothing
-        db))))
-
-
-;; === Graveyard Selection ===
-;; For :return-from-graveyard effects with player selection
-
-(rf/reg-event-db
-  ::confirm-graveyard-selection
-  (fn [db _]
-    (let [selection (:game/pending-selection db)
-          selected (:selection/selected selection)
-          max-count (:selection/select-count selection)
-          candidates (:selection/candidate-ids selection)
-          remaining-effects (:selection/remaining-effects selection)
-          player-id (:selection/player-id selection)
-          game-db (:game/db db)
-          ;; Validate: 0 to max-count cards, all from candidate set
-          valid-selection? (and (<= (count selected) max-count)
-                                (every? #(contains? candidates %) selected))]
-      (if valid-selection?
-        (let [;; Move selected cards from graveyard to hand
-              db-after-effect (reduce (fn [gdb obj-id]
-                                        (zones/move-to-zone gdb obj-id :hand))
-                                      game-db
-                                      selected)
-              ;; Execute remaining effects
-              db-after-remaining (reduce (fn [d effect]
-                                           (effects/execute-effect d player-id effect))
-                                         db-after-effect
-                                         (or remaining-effects []))
-              ;; Clean up source (stack-item, trigger, or spell)
-              db-final (cleanup-selection-source db-after-remaining selection)]
-          (-> db
-              (assoc :game/db db-final)
-              (dissoc :game/pending-selection)))
-        ;; Invalid selection - do nothing (player must fix selection)
-        db))))
-
-
-;; === Tutor Selection ===
-
-(rf/reg-event-db
-  ::confirm-tutor-selection
-  (fn [db _]
-    (let [selection (:game/pending-selection db)
-          selected (:selection/selected selection)
-          candidates (:selection/candidates selection)
-          select-count (or (:selection/select-count selection) 1)
-          spell-id (:selection/spell-id selection)
-          remaining-effects (:selection/remaining-effects selection)
-          player-id (:selection/player-id selection)
-          pile-choice (:selection/pile-choice selection)
-          game-db (:game/db db)
-          ;; Validate: empty (fail-to-find) OR correct count of valid candidates
-          valid-selection? (or (empty? selected)
-                               (and (= (count selected) select-count)
-                                    (every? #(contains? candidates %) selected)))]
-      (if valid-selection?
-        ;; Valid tutor selection - check if pile-choice needed
-        (if (and pile-choice (seq selected))
-          ;; Pile-choice present and cards selected: chain to pile-choice phase
-          ;; Cards stay in library, spell stays on stack until pile-choice confirms
-          (let [pile-selection (build-pile-choice-selection
-                                 selected
-                                 pile-choice
-                                 player-id
-                                 spell-id
-                                 remaining-effects)]
-            (assoc db :game/pending-selection pile-selection))
-          ;; No pile-choice OR fail-to-find: normal tutor flow
-          (let [db-after-tutor (execute-tutor-selection game-db selection)
-                ;; Execute remaining effects
-                db-after-remaining (reduce (fn [d effect]
-                                             (effects/execute-effect d player-id effect))
-                                           db-after-tutor
-                                           (or remaining-effects []))
-                ;; Clean up source (stack-item, trigger, or spell)
-                db-final (cleanup-selection-source db-after-remaining selection)]
-            (-> db
-                (assoc :game/db db-final)
-                (dissoc :game/pending-selection))))
-        ;; Invalid selection - do nothing
-        db))))
-
-
 ;; === Pile Choice Selection ===
 ;; For Intuition-style effects where player distributes cards to hand/graveyard
 
@@ -1247,57 +1367,6 @@
   ::select-random-pile-choice
   (fn [db _]
     (select-random-pile-choice db)))
-
-
-(rf/reg-event-db
-  ::confirm-pile-choice-selection
-  (fn [db _]
-    (let [selection (:game/pending-selection db)
-          hand-count (:selection/hand-count selection)
-          selected (:selection/selected selection)
-          candidates (:selection/candidates selection)
-          player-id (:selection/player-id selection)
-          spell-id (:selection/spell-id selection)
-          remaining-effects (:selection/remaining-effects selection)
-          game-db (:game/db db)
-          ;; Validate: correct number selected and all are candidates
-          valid? (and (= hand-count (count selected))
-                      (every? #(contains? candidates %) selected))]
-      (if valid?
-        (let [;; Execute pile choice: move cards to hand/graveyard
-              db-after-pile (execute-pile-choice game-db selection)
-              ;; Shuffle library AFTER pile choice (tutor requirement)
-              db-after-shuffle (zones/shuffle-library db-after-pile player-id)
-              ;; Execute remaining effects
-              db-after-effects (reduce (fn [d effect]
-                                         (effects/execute-effect d player-id effect))
-                                       db-after-shuffle
-                                       (or remaining-effects []))
-              ;; Move spell to graveyard (or exile for flashback)
-              ;; BUT only if the spell is still on the stack (effects like :exile-self may have moved it)
-              spell-obj (queries/get-object db-after-effects spell-id)
-              current-zone (:object/zone spell-obj)
-              db-after-move (if (= current-zone :stack)
-                              (let [cast-mode (:object/cast-mode spell-obj)
-                                    destination (or (:mode/on-resolve cast-mode) :graveyard)]
-                                (zones/move-to-zone db-after-effects spell-id destination))
-                              db-after-effects)
-              ;; Remove stack-item for spell
-              db-final (remove-spell-stack-item db-after-move spell-id)]
-          (-> db
-              (assoc :game/db db-final)
-              (dissoc :game/pending-selection)))
-        ;; Invalid - do nothing
-        db))))
-
-
-;; === Scry Selection ===
-;; For scry effects that reveal top N cards for rearrangement
-
-(rf/reg-event-db
-  ::confirm-scry-selection
-  (fn [db _]
-    (confirm-scry-selection db)))
 
 
 ;; === Scry Pile Assignment Events ===
@@ -1331,102 +1400,8 @@
                    (fn [pile] (vec (remove #{obj-id} pile)))))))
 
 
-;; === Player Target Selection ===
-;; For effects with :effect/target :any-player (e.g., Deep Analysis "target player draws")
-
-(rf/reg-event-db
-  ::confirm-player-target-selection
-  (fn [db _]
-    (let [selection (:game/pending-selection db)
-          selected-target (first (:selection/selected selection))
-          spell-id (:selection/spell-id selection)
-          source-type (:selection/source-type selection)
-          target-effect (:selection/target-effect selection)
-          remaining-effects (vec (or (:selection/remaining-effects selection) []))
-          player-id (:selection/player-id selection)
-          game-db (:game/db db)]
-      (if selected-target
-        ;; Valid target - execute effect with resolved target
-        (let [;; Replace :any-player with selected target
-              resolved-effect (assoc target-effect :effect/target selected-target)
-              ;; Execute the targeted effect
-              db-after-effect (effects/execute-effect game-db player-id resolved-effect)
-              ;; Check if remaining effects need selection
-              next-selection-idx (find-selection-effect-index remaining-effects)]
-          (if next-selection-idx
-            ;; Chain to next selection (e.g., discard after draw)
-            (let [[effects-before-next next-selection-effect effects-after-next]
-                  (split-effects-around-index remaining-effects next-selection-idx)
-                  ;; Execute effects before the next selection
-                  db-after-before (reduce (fn [d effect]
-                                            (effects/execute-effect d player-id effect))
-                                          db-after-effect
-                                          effects-before-next)
-                  ;; Build selection state for discard (targeting the same player)
-                  ;; The selected-target becomes the player who must discard
-                  next-selection (when (= :player (:effect/selection next-selection-effect))
-                                   (cond-> {:selection/type :discard
-                                            :selection/player-id selected-target  ; Target player discards
-                                            :selection/select-count (:effect/count next-selection-effect)
-                                            :selection/selected #{}
-                                            :selection/source-type source-type
-                                            :selection/remaining-effects effects-after-next}
-                                     spell-id (assoc :selection/spell-id spell-id)
-                                     (:selection/stack-item-eid selection)
-                                     (assoc :selection/stack-item-eid (:selection/stack-item-eid selection))))]
-              (-> db
-                  (assoc :game/db db-after-before)
-                  (assoc :game/pending-selection next-selection)))
-            ;; No more selections - execute all remaining and clean up
-            (let [db-after-remaining (reduce (fn [d effect]
-                                               (effects/execute-effect d player-id effect))
-                                             db-after-effect
-                                             remaining-effects)
-                  ;; Clean up source (stack-item, trigger, or spell)
-                  db-final (cleanup-selection-source db-after-remaining selection)]
-              (-> db
-                  (assoc :game/db db-final)
-                  (dissoc :game/pending-selection)))))
-        ;; No target selected - do nothing
-        db))))
-
-
 ;; === X Cost Selection System ===
 ;; For spells with X in mana cost or exile-cards additional cost with :x count
-
-
-(rf/reg-event-db
-  ::confirm-exile-cards-selection
-  (fn [db _]
-    (let [selection (:game/pending-selection db)
-          selected (:selection/selected selection)
-          selected-count (count selected)]
-      (if (pos? selected-count)
-        ;; Have at least 1 card selected - proceed with casting
-        (let [game-db (:game/db db)
-              player-id (:selection/player-id selection)
-              object-id (:selection/spell-id selection)
-              mode (:selection/mode selection)
-              ;; Exile the selected cards
-              db-after-exile (reduce (fn [d card-id]
-                                       (zones/move-to-zone d card-id :exile))
-                                     game-db
-                                     selected)
-              ;; Store X value on the spell object
-              obj-eid (d/q '[:find ?e .
-                             :in $ ?oid
-                             :where [?e :object/id ?oid]]
-                           db-after-exile object-id)
-              db-with-x (d/db-with db-after-exile
-                                   [[:db/add obj-eid :object/x-value selected-count]])
-              ;; Now cast the spell with the mode
-              db-after-cast (rules/cast-spell-mode db-with-x player-id object-id mode)]
-          (-> db
-              (assoc :game/db db-after-cast)
-              (dissoc :game/pending-selection)
-              (dissoc :game/selected-card)))
-        ;; No cards selected - can't proceed
-        db))))
 
 
 (rf/reg-event-db
@@ -1457,47 +1432,6 @@
 
 
 (rf/reg-event-db
-  ::confirm-x-mana-selection
-  (fn [db _]
-    (let [selection (:game/pending-selection db)
-          x-value (:selection/selected-x selection)
-          game-db (:game/db db)
-          player-id (:selection/player-id selection)
-          object-id (:selection/spell-id selection)
-          mode (:selection/mode selection)
-          ;; Store X value on the spell object
-          obj-eid (d/q '[:find ?e .
-                         :in $ ?oid
-                         :where [?e :object/id ?oid]]
-                       game-db object-id)
-          db-with-x (d/db-with game-db
-                               [[:db/add obj-eid :object/x-value x-value]])
-          ;; Cast the spell - pay-mana needs the x-value
-          ;; We need to modify cast-spell-mode to use the stored X, or pass it
-          ;; For now, update the mode's mana cost with resolved X
-          resolved-mana-cost (mana/resolve-x-cost (:mode/mana-cost mode) x-value)
-          mode-with-resolved-cost (assoc mode :mode/mana-cost resolved-mana-cost)
-          db-after-cast (rules/cast-spell-mode db-with-x player-id object-id mode-with-resolved-cost)]
-      (-> db
-          (assoc :game/db db-after-cast)
-          (dissoc :game/pending-selection)
-          (dissoc :game/selected-card)))))
-
-
-(rf/reg-event-db
   ::cancel-x-mana-selection
   (fn [db _]
     (dissoc db :game/pending-selection)))
-
-
-;; === Cast-Time Targeting Event Handlers ===
-
-(rf/reg-event-db
-  ::confirm-cast-time-target
-  (fn [db _]
-    (let [selection (get db :game/pending-selection)
-          game-db (:game/db db)
-          new-game-db (confirm-cast-time-target game-db selection)]
-      (-> db
-          (assoc :game/db new-game-db)
-          (dissoc :game/pending-selection)))))

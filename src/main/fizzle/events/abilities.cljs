@@ -8,6 +8,7 @@
     [fizzle.engine.state-based :as state-based]
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.trigger-dispatch :as dispatch]
+    [fizzle.events.selection :as selection]
     [re-frame.core :as rf]))
 
 
@@ -266,12 +267,7 @@
         (:pending-selection result) (assoc :game/pending-selection (:pending-selection result))))))
 
 
-(rf/reg-event-db
-  ::confirm-ability-target
-  (fn [db _]
-    (let [selection (get db :game/pending-selection)
-          game-db (:game/db db)
-          result (confirm-ability-target game-db selection)]
-      (-> db
-          (assoc :game/db (:db result))
-          (dissoc :game/pending-selection)))))
+(defmethod selection/execute-confirmed-selection :ability-targeting
+  [game-db selection]
+  (let [result (confirm-ability-target game-db selection)]
+    {:db (:db result) :finalized? true}))

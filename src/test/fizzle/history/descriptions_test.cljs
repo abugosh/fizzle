@@ -170,7 +170,7 @@
 
 
 (deftest test-confirm-cast-time-target-shows-card-name
-  (testing "confirm-cast-time-target shows the cast card name with target (targeted spells)"
+  (testing "confirm-selection with cast-time-targeting shows the cast card name with target"
     (let [db (make-db)
           [db card-eid] (add-card db {:card/id :test-targeted-spell
                                       :card/name "Orim's Chant"
@@ -189,12 +189,12 @@
           db-after (d/db-with db-on-stack [[:db/add obj-eid :object/targets {:player :player-2}]])]
       (is (= "Cast Orim's Chant targeting opponent"
              (descriptions/describe-event
-               [:fizzle.events.selection/confirm-cast-time-target :player-2]
-               nil db-after))))))
+               [:fizzle.events.selection/confirm-selection]
+               nil db-after :cast-time-targeting))))))
 
 
 (deftest test-confirm-x-mana-selection-shows-card-name
-  (testing "confirm-x-mana-selection shows the cast card name (X-cost spells)"
+  (testing "confirm-selection with x-mana-cost shows the cast card name"
     (let [db (make-db)
           [db card-eid] (add-card db {:card/id :test-x-spell
                                       :card/name "Flash of Insight"
@@ -212,12 +212,12 @@
                                                 :stack-item/description "Flash of Insight"})]
       (is (= "Cast Flash of Insight"
              (descriptions/describe-event
-               [:fizzle.events.selection/confirm-x-mana-selection]
-               nil db-after))))))
+               [:fizzle.events.selection/confirm-selection]
+               nil db-after :x-mana-cost))))))
 
 
 (deftest test-confirm-exile-cards-selection-shows-card-name
-  (testing "confirm-exile-cards-selection shows the cast card name (exile-cost spells)"
+  (testing "confirm-selection with exile-cards-cost shows the cast card name"
     (let [db (make-db)
           [db card-eid] (add-card db {:card/id :test-exile-spell
                                       :card/name "Flash of Insight"
@@ -235,25 +235,25 @@
                                                 :stack-item/description "Flash of Insight"})]
       (is (= "Cast Flash of Insight"
              (descriptions/describe-event
-               [:fizzle.events.selection/confirm-exile-cards-selection]
-               nil db-after))))))
+               [:fizzle.events.selection/confirm-selection]
+               nil db-after :exile-cards-cost))))))
 
 
 (deftest test-selection-cast-events-nil-db-fall-back
   (testing "Selection cast events fall back to generic with nil db"
     (is (= "Cast spell"
            (descriptions/describe-event
-             [:fizzle.events.selection/confirm-cast-time-target :t] nil nil)))
+             [:fizzle.events.selection/confirm-selection] nil nil :cast-time-targeting)))
     (is (= "Cast spell"
            (descriptions/describe-event
-             [:fizzle.events.selection/confirm-x-mana-selection] nil nil)))
+             [:fizzle.events.selection/confirm-selection] nil nil :x-mana-cost)))
     (is (= "Cast spell"
            (descriptions/describe-event
-             [:fizzle.events.selection/confirm-exile-cards-selection] nil nil)))))
+             [:fizzle.events.selection/confirm-selection] nil nil :exile-cards-cost)))))
 
 
 (deftest test-confirm-ability-target-shows-card-and-target
-  (testing "confirm-ability-target shows card name and target"
+  (testing "confirm-selection with ability-targeting shows card name and target"
     (let [db (make-db)
           [db card-eid] (add-card db test-multi-ability-land)
           [db obj-id] (add-object db card-eid :battlefield)
@@ -267,12 +267,12 @@
                                                 :stack-item/description "Target player draws 3 cards, then discards 3 cards"})]
       (is (= "Activate Cephalid Coliseum targeting opponent"
              (descriptions/describe-event
-               [:fizzle.events.abilities/confirm-ability-target :player-2]
-               nil db-after))))))
+               [:fizzle.events.selection/confirm-selection]
+               nil db-after :ability-targeting))))))
 
 
 (deftest test-confirm-ability-target-self
-  (testing "confirm-ability-target targeting self shows 'targeting self'"
+  (testing "confirm-selection with ability-targeting targeting self shows 'targeting self'"
     (let [db (make-db)
           [db card-eid] (add-card db test-multi-ability-land)
           [db obj-id] (add-object db card-eid :battlefield)
@@ -285,15 +285,15 @@
                                                 :stack-item/description "Target player draws 3 cards, then discards 3 cards"})]
       (is (= "Activate Cephalid Coliseum targeting self"
              (descriptions/describe-event
-               [:fizzle.events.abilities/confirm-ability-target :player-1]
-               nil db-after))))))
+               [:fizzle.events.selection/confirm-selection]
+               nil db-after :ability-targeting))))))
 
 
 (deftest test-confirm-ability-target-nil-db-falls-back
-  (testing "confirm-ability-target with nil db falls back to generic"
+  (testing "confirm-selection with ability-targeting and nil db falls back to generic"
     (is (= "Activate ability"
            (descriptions/describe-event
-             [:fizzle.events.abilities/confirm-ability-target :t] nil nil)))))
+             [:fizzle.events.selection/confirm-selection] nil nil :ability-targeting)))))
 
 
 ;; ============================================================
@@ -606,8 +606,8 @@
 (deftest test-selection-events-return-nil
   (testing "Non-cast selection events are mid-resolution choices — return nil"
     (is (nil? (descriptions/describe-event [:fizzle.events.selection/confirm-selection] nil nil)))
-    (is (nil? (descriptions/describe-event [:fizzle.events.selection/confirm-tutor-selection] nil nil)))
-    (is (nil? (descriptions/describe-event [:fizzle.events.selection/confirm-scry-selection] nil nil)))))
+    (is (nil? (descriptions/describe-event [:fizzle.events.selection/confirm-selection] nil nil :tutor)))
+    (is (nil? (descriptions/describe-event [:fizzle.events.selection/confirm-selection] nil nil :scry)))))
 
 
 (deftest test-unknown-event-returns-nil
@@ -637,11 +637,13 @@
                   [:fizzle.events.game/start-turn]
                   [:fizzle.events.game/play-land :obj-1]
                   [:fizzle.events.abilities/activate-mana-ability :obj-1 :black]
-                  [:fizzle.events.abilities/activate-ability :obj-1 0]
-                  [:fizzle.events.selection/confirm-cast-time-target :t]
-                  [:fizzle.events.selection/confirm-x-mana-selection]
-                  [:fizzle.events.selection/confirm-exile-cards-selection]
-                  [:fizzle.events.abilities/confirm-ability-target :t]]]
+                  [:fizzle.events.abilities/activate-ability :obj-1 0]]]
       (doseq [event events]
         (let [desc (descriptions/describe-event event nil nil)]
-          (is (pos? (count desc)) (str "Description for " (first event) " should be non-empty")))))))
+          (is (pos? (count desc)) (str "Description for " (first event) " should be non-empty"))))))
+  (testing "Priority selection types produce non-empty descriptions (with nil dbs = fallback)"
+    (doseq [sel-type [:cast-time-targeting :x-mana-cost :exile-cards-cost :ability-targeting]]
+      (let [desc (descriptions/describe-event
+                   [:fizzle.events.selection/confirm-selection] nil nil sel-type)]
+        (is (pos? (count desc))
+            (str "Description for confirm-selection/" sel-type " should be non-empty"))))))
