@@ -1,28 +1,16 @@
 (ns fizzle.engine.trigger-dispatch-test
   (:require
-    [cljs.test :refer-macros [deftest testing is use-fixtures]]
+    [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.db.init :refer [init-game-state]]
-    [fizzle.engine.trigger-dispatch :as dispatch]
-    [fizzle.engine.trigger-registry :as registry]))
-
-
-;; === Test fixtures ===
-
-(defn reset-registry
-  [f]
-  (registry/clear-registry!)
-  (f)
-  (registry/clear-registry!))
-
-
-(use-fixtures :each reset-registry)
+    [fizzle.engine.trigger-db :as trigger-db]
+    [fizzle.engine.trigger-dispatch :as dispatch]))
 
 
 ;; === Test helpers ===
 
 (defn make-trigger
-  "Create a trigger for testing."
+  "Create a trigger map for pure function tests (matches-filter?)."
   ([id event-type]
    (make-trigger id event-type nil nil true))
   ([id event-type source]
@@ -40,11 +28,44 @@
 
 
 (defn get-stack-items
-  "Get all stack-items on the stack (migrated from trigger entities)."
+  "Get all stack-items on the stack."
   [db]
   (d/q '[:find [(pull ?e [*]) ...]
          :where [?e :stack-item/position _]]
        db))
+
+
+(defn get-player-eid
+  [db]
+  (d/q '[:find ?e . :where [?e :player/id :player-1]] db))
+
+
+(defn add-source-object
+  "Add a battlefield object to db. Returns [new-db obj-id obj-eid]."
+  [db player-eid]
+  (let [obj-id (random-uuid)
+        db (d/db-with db [{:object/id obj-id
+                           :object/zone :battlefield
+                           :object/tapped false
+                           :object/owner player-eid
+                           :object/controller player-eid}])
+        obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)]
+    [db obj-id obj-eid]))
+
+
+(defn add-trigger
+  "Add a trigger entity to db. Returns new db."
+  [db {:keys [trigger-type event-type source-eid controller-eid
+              filter-map uses-stack?]
+       :or {trigger-type :test-trigger
+            uses-stack? true}}]
+  (d/db-with db (trigger-db/create-trigger-tx
+                  (cond-> {:trigger/type trigger-type
+                           :trigger/event-type event-type
+                           :trigger/source source-eid
+                           :trigger/controller controller-eid
+                           :trigger/uses-stack? uses-stack?}
+                    filter-map (assoc :trigger/filter filter-map)))))
 
 
 ;; === matches-filter? tests ===
@@ -139,10 +160,13 @@
 
 (deftest test-dispatch-event-stacked-goes-to-stack
   (testing "triggers with uses-stack? true go on stack"
-    (let [source-id (random-uuid)
-          trigger (make-trigger :t1 :phase-entered source-id nil true)
-          _ (registry/register-trigger! trigger)
-          db (init-game-state)
+    (let [db (init-game-state)
+          player-eid (get-player-eid db)
+          [db _obj-id obj-eid] (add-source-object db player-eid)
+          db (add-trigger db {:event-type :phase-entered
+                              :source-eid obj-eid
+                              :controller-eid player-eid
+                              :uses-stack? true})
           event {:event/type :phase-entered :event/phase :draw}
           result (dispatch/dispatch-event db event)
           stack-items (get-stack-items result)]
@@ -152,14 +176,14 @@
 
 (deftest test-dispatch-event-default-uses-stack-true
   (testing "triggers without uses-stack? default to using stack"
-    (let [source-id (random-uuid)
-          trigger {:trigger/id :t1
-                   :trigger/type :test-trigger
-                   :trigger/event-type :phase-entered
-                   :trigger/source source-id
-                   :trigger/controller :player-1}
-          _ (registry/register-trigger! trigger)
-          db (init-game-state)
+    (let [db (init-game-state)
+          player-eid (get-player-eid db)
+          [db _obj-id obj-eid] (add-source-object db player-eid)
+          db (d/db-with db (trigger-db/create-trigger-tx
+                             {:trigger/type :test-trigger
+                              :trigger/event-type :phase-entered
+                              :trigger/source obj-eid
+                              :trigger/controller player-eid}))
           event {:event/type :phase-entered :event/phase :draw}
           result (dispatch/dispatch-event db event)
           stack-items (get-stack-items result)]
@@ -169,12 +193,13 @@
 
 (deftest test-dispatch-event-immediate-executes-without-stack
   (testing "triggers with uses-stack? false execute immediately without going on stack"
-    ;; Create a trigger that would add to stack if it used stack
-    ;; Since resolve-trigger :default returns db unchanged, we verify it didn't go on stack
-    (let [source-id (random-uuid)
-          trigger (make-trigger :t1 :phase-entered source-id nil false)
-          _ (registry/register-trigger! trigger)
-          db (init-game-state)
+    (let [db (init-game-state)
+          player-eid (get-player-eid db)
+          [db _obj-id obj-eid] (add-source-object db player-eid)
+          db (add-trigger db {:event-type :phase-entered
+                              :source-eid obj-eid
+                              :controller-eid player-eid
+                              :uses-stack? false})
           event {:event/type :phase-entered :event/phase :draw}
           result (dispatch/dispatch-event db event)
           stack-items (get-stack-items result)]
@@ -184,13 +209,20 @@
 
 (deftest test-dispatch-event-filters-matching
   (testing "only triggers matching filter are dispatched"
-    (let [source-id-1 (random-uuid)
-          source-id-2 (random-uuid)
-          t1 (make-trigger :t1 :phase-entered source-id-1 {:event/phase :draw} true)
-          t2 (make-trigger :t2 :phase-entered source-id-2 {:event/phase :upkeep} true)
-          _ (registry/register-trigger! t1)
-          _ (registry/register-trigger! t2)
-          db (init-game-state)
+    (let [db (init-game-state)
+          player-eid (get-player-eid db)
+          [db _obj-id-1 obj-eid-1] (add-source-object db player-eid)
+          [db _obj-id-2 obj-eid-2] (add-source-object db player-eid)
+          db (add-trigger db {:event-type :phase-entered
+                              :source-eid obj-eid-1
+                              :controller-eid player-eid
+                              :filter-map {:event/phase :draw}
+                              :uses-stack? true})
+          db (add-trigger db {:event-type :phase-entered
+                              :source-eid obj-eid-2
+                              :controller-eid player-eid
+                              :filter-map {:event/phase :upkeep}
+                              :uses-stack? true})
           event {:event/type :phase-entered :event/phase :draw}
           result (dispatch/dispatch-event db event)
           stack-items (get-stack-items result)]
@@ -199,13 +231,18 @@
 
 (deftest test-dispatch-event-multiple-triggers
   (testing "multiple matching triggers all get dispatched"
-    (let [source-id-1 (random-uuid)
-          source-id-2 (random-uuid)
-          t1 (make-trigger :t1 :phase-entered source-id-1 nil true)
-          t2 (make-trigger :t2 :phase-entered source-id-2 nil true)
-          _ (registry/register-trigger! t1)
-          _ (registry/register-trigger! t2)
-          db (init-game-state)
+    (let [db (init-game-state)
+          player-eid (get-player-eid db)
+          [db _obj-id-1 obj-eid-1] (add-source-object db player-eid)
+          [db _obj-id-2 obj-eid-2] (add-source-object db player-eid)
+          db (add-trigger db {:event-type :phase-entered
+                              :source-eid obj-eid-1
+                              :controller-eid player-eid
+                              :uses-stack? true})
+          db (add-trigger db {:event-type :phase-entered
+                              :source-eid obj-eid-2
+                              :controller-eid player-eid
+                              :uses-stack? true})
           event {:event/type :phase-entered :event/phase :draw}
           result (dispatch/dispatch-event db event)
           stack-items (get-stack-items result)]
@@ -214,19 +251,24 @@
 
 (deftest test-dispatch-event-order-immediate-before-stacked
   (testing "immediate triggers execute, stacked triggers go on stack"
-    (let [source-id-1 (random-uuid)
-          source-id-2 (random-uuid)
-          immediate-trigger (make-trigger :t-immediate :phase-entered source-id-1 nil false)
-          stacked-trigger (make-trigger :t-stacked :phase-entered source-id-2 nil true)
-          _ (registry/register-trigger! immediate-trigger)
-          _ (registry/register-trigger! stacked-trigger)
-          db (init-game-state)
+    (let [db (init-game-state)
+          player-eid (get-player-eid db)
+          [db _obj-id-1 obj-eid-1] (add-source-object db player-eid)
+          [db obj-id-2 obj-eid-2] (add-source-object db player-eid)
+          db (add-trigger db {:event-type :phase-entered
+                              :source-eid obj-eid-1
+                              :controller-eid player-eid
+                              :uses-stack? false})
+          db (add-trigger db {:event-type :phase-entered
+                              :source-eid obj-eid-2
+                              :controller-eid player-eid
+                              :uses-stack? true})
           event {:event/type :phase-entered :event/phase :draw}
           result (dispatch/dispatch-event db event)
           stack-items (get-stack-items result)]
       (is (= 1 (count stack-items))
           "Only stacked trigger should be on stack")
-      (is (= source-id-2 (:stack-item/source (first stack-items)))
+      (is (= obj-id-2 (:stack-item/source (first stack-items)))
           "Stack item should be from the stacked trigger, not the immediate one"))))
 
 

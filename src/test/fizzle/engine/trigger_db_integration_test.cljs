@@ -1,9 +1,8 @@
 (ns fizzle.engine.trigger-db-integration-test
   "Integration tests verifying Datascript trigger entities are created
-   alongside atom registration (dual-write), and that dispatch reads
-   from Datascript."
+   and that dispatch reads from Datascript."
   (:require
-    [cljs.test :refer-macros [deftest testing is use-fixtures]]
+    [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
@@ -12,23 +11,7 @@
     [fizzle.engine.stack :as stack]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
-    [fizzle.engine.trigger-registry :as registry]
-    [fizzle.engine.turn-based :as turn-based]
     [fizzle.events.game :as game]))
-
-
-;; === Test fixtures ===
-
-(defn reset-registry
-  "Clear trigger registry before and after each test."
-  [f]
-  (registry/clear-registry!)
-  (turn-based/register-turn-based-actions!)
-  (f)
-  (registry/clear-registry!))
-
-
-(use-fixtures :each reset-registry)
 
 
 ;; === Test helpers ===
@@ -135,41 +118,20 @@
           "Object should have one linked trigger entity"))))
 
 
-;; === Dual-write verification ===
-
-(deftest test-both-atom-and-datascript-triggers-exist
-  (testing "After play-land, both atom registry and Datascript have triggers"
-    (let [db (create-test-db)
-          [db' obj-id] (add-card-to-hand db :city-of-brass :player-1)
-          db-after (game/play-land db' :player-1 obj-id)
-          ;; Atom registry triggers
-          atom-triggers (filter #(= :permanent-tapped (:trigger/event-type %))
-                                (registry/get-all-triggers))
-          ;; Datascript triggers
-          ds-triggers (filter #(= :permanent-tapped (:trigger/event-type %))
-                              (trigger-db/get-all-triggers db-after))]
-      (is (= 1 (count atom-triggers))
-          "Atom registry should have one :permanent-tapped trigger")
-      (is (= 1 (count ds-triggers))
-          "Datascript should have one :permanent-tapped trigger entity"))))
-
-
 ;; === Dispatch via Datascript path tests ===
 
 (deftest test-dispatch-uses-datascript-triggers
-  (testing "dispatch-event fires trigger from Datascript even with empty atom registry"
+  (testing "dispatch-event fires trigger from Datascript"
     (let [db (create-test-db)
           [db' obj-id] (add-card-to-hand db :city-of-brass :player-1)
-          ;; Play land creates Datascript triggers (dual-write also registers atom)
+          ;; Play land creates Datascript triggers
           db-after-play (game/play-land db' :player-1 obj-id)
-          ;; Clear atom to isolate Datascript path
-          _ (registry/clear-registry!)
           ;; Dispatch permanent-tapped event — should find trigger in Datascript
           event (game-events/permanent-tapped-event obj-id :player-1)
           db-after-dispatch (dispatch/dispatch-event db-after-play event)
           items (stack/get-all-stack-items db-after-dispatch)]
       (is (= 1 (count items))
-          "Dispatch should find trigger in Datascript even with empty atom registry")
+          "Dispatch should find trigger in Datascript")
       (when (seq items)
         (is (= :permanent-tapped (:stack-item/type (first items)))
             "Stack item should be :permanent-tapped type")))))

@@ -13,32 +13,16 @@
    - Multiple CoTs interact correctly
    - Trigger uses stack (can respond)"
   (:require
-    [cljs.test :refer-macros [deftest testing is use-fixtures]]
+    [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.stack :as stack]
-    [fizzle.engine.trigger-registry :as registry]
-    [fizzle.engine.turn-based :as turn-based]
+    [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.zones :as zones]
     [fizzle.events.abilities :as ability-events]
     [fizzle.events.game :as game]))
-
-
-;; === Test fixtures ===
-
-(defn reset-registry
-  "Clear trigger registry before and after each test.
-   Re-registers turn-based actions after clearing."
-  [f]
-  (registry/clear-registry!)
-  (turn-based/register-turn-based-actions!)
-  (f)
-  (registry/clear-registry!))
-
-
-(use-fixtures :each reset-registry)
 
 
 ;; === Test helpers ===
@@ -132,7 +116,7 @@
           [db' obj-id] (add-land-to-hand db :city-of-traitors :player-1)
           ;; Count land-entered triggers before
           initial-triggers (filter #(= :land-entered (:trigger/event-type %))
-                                   (registry/get-all-triggers))
+                                   (trigger-db/get-all-triggers db'))
           _ (is (empty? initial-triggers) "Precondition: no land-entered triggers")
           ;; Play the land
           db-after-play (game/play-land db' :player-1 obj-id)]
@@ -264,21 +248,20 @@
 (deftest test-land-entered-event-dispatched
   (testing "Playing a land dispatches :land-entered event"
     (let [db (create-test-db)
-          ;; Register a test trigger that listens for :land-entered
           [db' island-id] (add-land-to-hand db :island :player-1)
-          ;; Register a trigger that will put something on stack when land enters
-          _ (registry/register-trigger!
-              {:trigger/id (random-uuid)
-               :trigger/event-type :land-entered
-               :trigger/source :test-source
-               :trigger/controller :player-1
-               :trigger/filter {}  ; Match all land-entered events
-               :trigger/uses-stack? true
-               :trigger/effects [{:effect/type :deal-damage
-                                  :effect/amount 0
-                                  :effect/target :controller}]})
+          ;; Create a Datascript trigger that listens for :land-entered
+          player-eid (q/get-player-eid db' :player-1)
+          tx-data (trigger-db/create-trigger-tx
+                    {:trigger/event-type :land-entered
+                     :trigger/controller player-eid
+                     :trigger/filter {}  ; Match all land-entered events
+                     :trigger/uses-stack? true
+                     :trigger/effects [{:effect/type :deal-damage
+                                        :effect/amount 0
+                                        :effect/target :controller}]})
+          db'' (d/db-with db' tx-data)
           ;; Play the land
-          db-after-play (game/play-land db' :player-1 island-id)]
+          db-after-play (game/play-land db'' :player-1 island-id)]
       ;; A trigger should be on stack (proving event was dispatched)
       (is (= 1 (count (stack/get-all-stack-items db-after-play)))
           ":land-entered event should be dispatched when land enters"))))

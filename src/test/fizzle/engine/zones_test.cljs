@@ -4,7 +4,7 @@
     [datascript.core :as d]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
-    [fizzle.engine.trigger-registry :as registry]
+    [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.zones :as zones]))
 
 
@@ -256,51 +256,53 @@
 ;; =====================================================
 
 (deftest test-move-from-battlefield-unregisters-triggers
-  (testing "move-to-zone from battlefield unregisters triggers for that source"
+  (testing "move-to-zone from battlefield retracts trigger entities"
     (let [db (init-game-state)
           hand (q/get-hand db :player-1)
           obj-id (:object/id (first hand))
           ;; Move to battlefield first
           db-bf (zones/move-to-zone db obj-id :battlefield)
-          ;; Register a trigger for this object
-          trigger {:trigger/id :test-trigger-1
-                   :trigger/type :test-type
-                   :trigger/event-type :permanent-tapped
-                   :trigger/source obj-id
-                   :trigger/controller :player-1}
-          _ (registry/register-trigger! trigger)
-          ;; Verify trigger is registered
-          _ (is (= 1 (count (registry/get-triggers-for-event {:event/type :permanent-tapped})))
-                "Precondition: trigger should be registered")
+          ;; Create a Datascript trigger entity linked to this object
+          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db-bf obj-id)
+          player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] db-bf)
+          db-with-trigger (d/db-with db-bf
+                                     [{:db/id obj-eid
+                                       :object/triggers [{:trigger/type :test-type
+                                                          :trigger/event-type :permanent-tapped
+                                                          :trigger/source obj-eid
+                                                          :trigger/controller player-eid}]}])
+          ;; Verify trigger exists
+          _ (is (= 1 (count (trigger-db/get-all-triggers db-with-trigger)))
+                "Precondition: trigger should exist")
           ;; Move off battlefield to graveyard
-          db-gy (zones/move-to-zone db-bf obj-id :graveyard)]
-      ;; Trigger should be unregistered
-      (is (= 0 (count (registry/get-triggers-for-event {:event/type :permanent-tapped})))
-          "Trigger should be unregistered when source leaves battlefield")
-      ;; Object should be in graveyard
-      (is (= :graveyard (:object/zone (q/get-object db-gy obj-id)))
-          "Object should be in graveyard")
-      ;; Clean up
-      (registry/clear-registry!))))
+          db-gy (zones/move-to-zone db-with-trigger obj-id :graveyard)]
+      ;; Trigger should be retracted
+      (is (= 0 (count (trigger-db/get-all-triggers db-gy)))
+          "Trigger should be retracted when source leaves battlefield")
+      (is (= :graveyard (:object/zone (q/get-object db-gy obj-id)))))))
 
 
 (deftest test-move-non-battlefield-doesnt-unregister
-  (testing "move-to-zone from non-battlefield zone does NOT unregister triggers"
-    (registry/clear-registry!)
+  (testing "move-to-zone from non-battlefield zone does NOT retract triggers"
     (let [db (init-game-state)
           hand (q/get-hand db :player-1)
           obj-id (:object/id (first hand))
-          ;; Register a trigger for a different source (battlefield object)
+          ;; Create a trigger on a DIFFERENT object on battlefield
           other-id (random-uuid)
-          trigger {:trigger/id :test-trigger-2
-                   :trigger/type :test-type
-                   :trigger/event-type :permanent-tapped
-                   :trigger/source other-id
-                   :trigger/controller :player-1}
-          _ (registry/register-trigger! trigger)
+          player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] db)
+          db (d/db-with db [{:object/id other-id
+                             :object/zone :battlefield
+                             :object/tapped false
+                             :object/owner player-eid
+                             :object/controller player-eid}])
+          other-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db other-id)
+          db (d/db-with db [{:db/id other-eid
+                             :object/triggers [{:trigger/type :test-type
+                                                :trigger/event-type :permanent-tapped
+                                                :trigger/source other-eid
+                                                :trigger/controller player-eid}]}])
           ;; Move hand card to graveyard (not from battlefield)
-          _db-gy (zones/move-to-zone db obj-id :graveyard)]
-      ;; Trigger for other source should still be registered
-      (is (= 1 (count (registry/get-triggers-for-event {:event/type :permanent-tapped})))
-          "Trigger for other source should survive non-battlefield zone change")
-      (registry/clear-registry!))))
+          db-gy (zones/move-to-zone db obj-id :graveyard)]
+      ;; Trigger for other source should still exist
+      (is (= 1 (count (trigger-db/get-all-triggers db-gy)))
+          "Trigger for other source should survive non-battlefield zone change"))))

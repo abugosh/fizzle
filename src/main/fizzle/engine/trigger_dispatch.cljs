@@ -4,13 +4,11 @@
    Handles both immediate (turn-based) and stacked (card) triggers.
    Order: immediate triggers first, then stacked triggers.
 
-   Reads triggers from Datascript first (primary). Falls back to atom
-   registry when Datascript returns empty (backward compat for tests)."
+   All triggers are Datascript entities. Dispatch queries Datascript directly."
   (:require
     [datascript.core :as d]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.trigger-db :as trigger-db]
-    [fizzle.engine.trigger-registry :as registry]
     [fizzle.engine.triggers :as triggers]))
 
 
@@ -107,8 +105,7 @@
 (defn dispatch-event
   "Dispatch event to all matching triggers. Returns new db.
 
-   Queries Datascript first (primary path). Falls back to atom registry
-   when Datascript returns empty results (backward compat for tests).
+   Queries Datascript for all trigger entities matching the event.
 
    Turn-based actions (uses-stack? false) execute immediately.
    Card triggers (uses-stack? true) go on stack.
@@ -121,15 +118,9 @@
    Returns:
      New db after all triggers processed"
   [db event]
-  (let [;; Try Datascript first (enriched event for entity ID matching)
-        enriched-event (enrich-event-ids db event)
+  (let [enriched-event (enrich-event-ids db event)
         ds-triggers (trigger-db/get-triggers-for-event db enriched-event)
-        ;; If Datascript has triggers, use them (convert format).
-        ;; Otherwise, fall back to atom (backward compat for tests).
-        matching (if (seq ds-triggers)
-                   (mapv #(datascript-trigger->dispatch-format db %) ds-triggers)
-                   (filter #(matches-filter? % event)
-                           (registry/get-triggers-for-event event)))
+        matching (mapv #(datascript-trigger->dispatch-format db %) ds-triggers)
         ;; Group by uses-stack? - note: false = immediate, true = stacked
         ;; Default to true (card triggers use stack) if not specified
         {stacked true, immediate false} (group-by #(get % :trigger/uses-stack? true) matching)]
@@ -143,8 +134,9 @@
                       (stack/create-stack-item d
                                                (cond-> {:stack-item/type (:trigger/type st)
                                                         :stack-item/controller (:trigger/controller st)
-                                                        :stack-item/source (:trigger/source st)
                                                         :stack-item/effects (get-in st [:trigger/data :effects] [])}
+                                                 (:trigger/source st)
+                                                 (assoc :stack-item/source (:trigger/source st))
                                                  (:trigger/description st)
                                                  (assoc :stack-item/description (:trigger/description st))))))
                   db'

@@ -1,6 +1,6 @@
 (ns fizzle.events.tap-land-test
   (:require
-    [cljs.test :refer-macros [deftest testing is use-fixtures]]
+    [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
@@ -8,25 +8,10 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.state-based :as state-based]
-    [fizzle.engine.trigger-registry :as registry]
+    [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.turn-based :as turn-based]
     [fizzle.events.abilities :as ability-events]
     [fizzle.events.game :as game]))
-
-
-;; === Test fixtures ===
-
-(defn reset-registry
-  "Clear trigger registry before and after each test.
-   Re-registers turn-based actions after clearing."
-  [f]
-  (registry/clear-registry!)
-  (turn-based/register-turn-based-actions!)
-  (f)
-  (registry/clear-registry!))
-
-
-(use-fixtures :each reset-registry)
 
 
 ;; === Test helpers ===
@@ -45,19 +30,20 @@
                                            :red 0 :green 0 :colorless 0}
                         :player/storm-count 0
                         :player/land-plays-left 1}])
-    ;; Transact game state
+    ;; Transact game state and game-rule triggers
     (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
       (d/transact! conn [{:game/id :game-1
                           :game/turn 1
                           :game/phase :main1
                           :game/active-player player-eid
-                          :game/priority player-eid}]))
+                          :game/priority player-eid}])
+      (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid)))
     @conn))
 
 
 (defn add-land-to-battlefield
   "Add a land card to the battlefield for a player.
-   Also registers any card triggers (e.g., City of Brass).
+   Also creates Datascript trigger entities for cards with triggers.
    Returns [db object-id] tuple."
   [db card-id player-id]
   (let [conn (d/conn-from-db db)
@@ -73,11 +59,14 @@
                         :object/owner player-eid
                         :object/controller player-eid
                         :object/tapped false}])
-    ;; Register triggers for this card (e.g., City of Brass :becomes-tapped)
+    ;; Create Datascript trigger entities for this card
     (let [result-db @conn
           card (d/pull result-db '[*] card-eid)]
       (when (seq (:card/triggers card))
-        (game/register-card-triggers! obj-id player-id card)))
+        (let [obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]]
+                           result-db obj-id)
+              tx (trigger-db/create-triggers-for-card-tx result-db obj-eid player-eid (:card/triggers card))]
+          (d/transact! conn tx))))
     [@conn obj-id]))
 
 

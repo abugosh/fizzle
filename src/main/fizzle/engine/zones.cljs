@@ -6,8 +6,7 @@
    Valid zones: :hand, :library, :graveyard, :stack, :battlefield, :exile"
   (:require
     [datascript.core :as d]
-    [fizzle.db.queries :as q]
-    [fizzle.engine.trigger-registry :as registry]))
+    [fizzle.db.queries :as q]))
 
 
 (defn shuffle-library
@@ -47,41 +46,34 @@
    Returns:
      New db with object in new zone, or same db if already in that zone.
 
-   Side effects:
-     When leaving :battlefield, unregisters any triggers sourced from this object.
-
    Note: Caller must ensure object-id exists. If object doesn't exist,
    behavior is undefined (query fails). This is a programming error."
   [db object-id new-zone]
   (let [current-zone (:object/zone (q/get-object db object-id))]
     (if (= current-zone new-zone)
       db
-      (do
-        ;; When leaving battlefield, unregister any triggers from this permanent
-        (when (= current-zone :battlefield)
-          (registry/unregister-by-source! object-id))
-        (let [obj-eid (d/q '[:find ?e .
-                             :in $ ?oid
-                             :where [?e :object/id ?oid]]
-                           db object-id)
-              ;; Retract Datascript trigger entities when leaving battlefield
-              trigger-retract-txs
-              (when (= current-zone :battlefield)
-                (let [trigger-eids (d/q '[:find [?t ...]
-                                          :in $ ?obj
-                                          :where [?obj :object/triggers ?t]]
-                                        db obj-eid)]
-                  (mapv (fn [teid] [:db.fn/retractEntity teid]) trigger-eids)))
-              ;; Reset tapped state when entering or leaving battlefield
-              ;; Leaving: card loses memory of being tapped
-              ;; Entering: permanents enter untapped per MTG rule 110.6
-              base-txs (if (or (= current-zone :battlefield)
-                               (= new-zone :battlefield))
-                         [[:db/add obj-eid :object/zone new-zone]
-                          [:db/add obj-eid :object/tapped false]]
-                         [[:db/add obj-eid :object/zone new-zone]])
-              txs (into base-txs trigger-retract-txs)]
-          (d/db-with db txs))))))
+      (let [obj-eid (d/q '[:find ?e .
+                           :in $ ?oid
+                           :where [?e :object/id ?oid]]
+                         db object-id)
+            ;; Retract Datascript trigger entities when leaving battlefield
+            trigger-retract-txs
+            (when (= current-zone :battlefield)
+              (let [trigger-eids (d/q '[:find [?t ...]
+                                        :in $ ?obj
+                                        :where [?obj :object/triggers ?t]]
+                                      db obj-eid)]
+                (mapv (fn [teid] [:db.fn/retractEntity teid]) trigger-eids)))
+            ;; Reset tapped state when entering or leaving battlefield
+            ;; Leaving: card loses memory of being tapped
+            ;; Entering: permanents enter untapped per MTG rule 110.6
+            base-txs (if (or (= current-zone :battlefield)
+                             (= new-zone :battlefield))
+                       [[:db/add obj-eid :object/zone new-zone]
+                        [:db/add obj-eid :object/tapped false]]
+                       [[:db/add obj-eid :object/zone new-zone]])
+            txs (into base-txs trigger-retract-txs)]
+        (d/db-with db txs)))))
 
 
 (defn remove-object

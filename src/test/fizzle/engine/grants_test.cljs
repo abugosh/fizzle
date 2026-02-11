@@ -7,15 +7,13 @@
    - Expiration at specific turn/phase
    - Source tracking for removal"
   (:require
-    [cljs.test :refer-macros [deftest testing is use-fixtures]]
+    [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
-    [fizzle.engine.trigger-registry :as registry]
-    [fizzle.engine.turn-based :as turn-based]
     [fizzle.events.game :as game]))
 
 
@@ -362,20 +360,8 @@
 
 ;; === End-of-turn cleanup integration ===
 
-(defn reset-registry
-  "Fixture to clear trigger registry before/after each test."
-  [f]
-  (registry/clear-registry!)
-  (f)
-  (registry/clear-registry!))
-
-
-(use-fixtures :each reset-registry)
-
-
 (deftest cleanup-phase-expires-grants-integration-test
   (testing "Cleanup begin-cleanup expires grants (hand under max, no discard needed)"
-    (turn-based/register-turn-based-actions!)
     (let [db (init-game-state)
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
           ;; Start at main1 for pre-cleanup castability check
@@ -414,7 +400,6 @@
 
 (deftest cleanup-phase-preserves-future-grants-integration-test
   (testing "Cleanup phase preserves grants that expire on future turns"
-    (turn-based/register-turn-based-actions!)
     (let [db (init-game-state)
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
           ;; Set game to turn 1 at cleanup phase

@@ -10,7 +10,6 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.trigger-dispatch :as dispatch]
-    [fizzle.engine.trigger-registry :as registry]
     [fizzle.engine.triggers :as triggers]
     [fizzle.events.abilities :as ability-events]
     [fizzle.events.game :as game]))
@@ -561,19 +560,26 @@
 
 (deftest test-dispatch-stacked-trigger-creates-stack-item
   (testing "dispatch-event creates stack-items for stacked triggers (not trigger entities)"
-    (registry/clear-registry!)
-    (let [source-id (random-uuid)
-          trigger {:trigger/id :test-t1
-                   :trigger/type :test-trigger
-                   :trigger/event-type :permanent-tapped
-                   :trigger/source source-id
-                   :trigger/controller :player-1
-                   :trigger/effects [{:effect/type :add-mana
-                                      :effect/mana {:black 1}
-                                      :effect/target :controller}]
-                   :trigger/uses-stack? true}
-          _ (registry/register-trigger! trigger)
-          db (init-game-state)
+    (let [db (init-game-state)
+          source-id (random-uuid)
+          player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] db)
+          ;; Create source object
+          db (d/db-with db [{:object/id source-id
+                             :object/zone :battlefield
+                             :object/tapped false
+                             :object/owner player-eid
+                             :object/controller player-eid}])
+          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db source-id)
+          ;; Create Datascript trigger entity linked to source object
+          db (d/db-with db [{:db/id obj-eid
+                             :object/triggers [{:trigger/type :test-trigger
+                                                :trigger/event-type :permanent-tapped
+                                                :trigger/source obj-eid
+                                                :trigger/controller player-eid
+                                                :trigger/effects [{:effect/type :add-mana
+                                                                   :effect/mana {:black 1}
+                                                                   :effect/target :controller}]
+                                                :trigger/uses-stack? true}]}])
           event {:event/type :permanent-tapped
                  :event/object-id source-id
                  :event/controller :player-1}
@@ -589,8 +595,7 @@
         (is (= :player-1 (:stack-item/controller item)))
         (is (= source-id (:stack-item/source item)))
         (is (seq (:stack-item/effects item))
-            "Stack-item should have effects"))
-      (registry/clear-registry!))))
+            "Stack-item should have effects")))))
 
 
 (deftest test-resolve-top-handles-ability-stack-item

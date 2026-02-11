@@ -13,7 +13,6 @@
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
-    [fizzle.engine.trigger-registry :as registry]
     [fizzle.engine.triggers :as triggers]
     [fizzle.engine.turn-based :as turn-based]
     [fizzle.engine.zones :as zones]
@@ -152,9 +151,7 @@
                           :game/phase :main1
                           :game/active-player player-eid
                           :game/priority player-eid}])
-      ;; Register turn-based actions (draw, untap triggers)
-      (turn-based/register-turn-based-actions!)
-      ;; Also create Datascript game-rule trigger entities (dual-write, atom removed in Task 4)
+      ;; Create game-rule trigger entities in Datascript (draw, untap)
       (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid))
       (merge
         {:game/db @conn
@@ -688,47 +685,6 @@
 
 ;; === Play Land ===
 
-(defn- trigger-type->event-type
-  "Map card trigger type to event type for registration.
-   E.g., :becomes-tapped in card data becomes :permanent-tapped event."
-  [trigger-type]
-  (case trigger-type
-    :becomes-tapped :permanent-tapped
-    :land-entered :land-entered
-    ;; Add more mappings as needed
-    trigger-type))
-
-
-(defn register-card-triggers!
-  "Register all triggers from a card when it enters the battlefield.
-
-   Arguments:
-     object-id     - The permanent's object ID (becomes :trigger/source)
-     controller-id - Player ID who controls this permanent
-     card          - Card map with optional :card/triggers
-
-   Side effect: Registers triggers in the trigger registry.
-   Returns nil."
-  [object-id controller-id card]
-  (doseq [trigger (:card/triggers card)]
-    (let [trigger-type (:trigger/type trigger)
-          event-type (trigger-type->event-type trigger-type)
-          ;; Use card's filter if specified, otherwise default to :self matching
-          ;; City of Brass uses {:event/object-id :self} (fires when THIS taps)
-          ;; City of Traitors uses {:exclude-self true} (fires when OTHER lands enter)
-          trigger-filter (or (:trigger/filter trigger)
-                             {:event/object-id :self})]
-      (registry/register-trigger!
-        {:trigger/id (random-uuid)
-         :trigger/event-type event-type
-         :trigger/source object-id
-         :trigger/controller controller-id
-         :trigger/filter trigger-filter
-         :trigger/uses-stack? true
-         :trigger/effects (:trigger/effects trigger)
-         :trigger/description (:trigger/description trigger)}))))
-
-
 (defn land-card?
   "Check if an object's card has :land in its types.
    Returns false if object or card not found."
@@ -813,10 +769,7 @@
             obj-after (queries/get-object db-after-move object-id)
             card (:object/card obj-after)
             etb-effects (:card/etb-effects card)
-            ;; Register card triggers (e.g., City of Brass :becomes-tapped, City of Traitors :land-entered)
-            _ (when (seq (:card/triggers card))
-                (register-card-triggers! object-id player-id card))
-            ;; Also create Datascript trigger entities (dual-write, atom removed in Task 4)
+            ;; Create Datascript trigger entities for card triggers
             db-after-triggers (if (seq (:card/triggers card))
                                 (let [obj-eid (d/q '[:find ?e .
                                                      :in $ ?oid

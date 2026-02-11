@@ -1,26 +1,14 @@
 (ns fizzle.engine.turn-based-test
   (:require
-    [cljs.test :refer-macros [deftest testing is use-fixtures]]
+    [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.cards.iggy-pop :refer [dark-ritual]]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.events :as game-events]
+    [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
-    [fizzle.engine.trigger-registry :as registry]
     [fizzle.engine.turn-based :as turn-based]))
-
-
-;; === Test fixtures ===
-
-(defn reset-registry
-  [f]
-  (registry/clear-registry!)
-  (f)
-  (registry/clear-registry!))
-
-
-(use-fixtures :each reset-registry)
 
 
 ;; === Test helpers ===
@@ -30,7 +18,7 @@
 
 
 (defn init-test-game
-  "Create a test game state with a player and library.
+  "Create a test game state with a player, library, and turn-based triggers.
    Returns immutable db value."
   []
   (let [conn (d/create-conn schema)]
@@ -60,7 +48,9 @@
                           :game/turn 1
                           :game/phase :main1
                           :game/active-player player-eid
-                          :game/priority player-eid}]))
+                          :game/priority player-eid}])
+      ;; Turn-based triggers in Datascript
+      (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid)))
     @conn))
 
 
@@ -145,42 +135,42 @@
 ;; === Registration tests ===
 
 (deftest test-register-turn-based-actions
-  (testing "register-turn-based-actions! registers draw and untap triggers"
-    (turn-based/register-turn-based-actions!)
-    (let [all-triggers (registry/get-all-triggers)
-          trigger-ids (set (map :trigger/id all-triggers))]
-      (is (contains? trigger-ids :game-rule-draw))
-      (is (contains? trigger-ids :game-rule-untap)))))
+  (testing "init-test-game creates draw and untap triggers in Datascript"
+    (let [db (init-test-game)
+          all-triggers (trigger-db/get-all-triggers db)
+          trigger-types (set (map :trigger/type all-triggers))]
+      (is (contains? trigger-types :draw-step))
+      (is (contains? trigger-types :untap-step)))))
 
 
 (deftest test-draw-trigger-has-correct-filter
   (testing "draw trigger has filter for draw phase"
-    (turn-based/register-turn-based-actions!)
-    (let [all-triggers (registry/get-all-triggers)
-          draw-trigger (first (filter #(= :game-rule-draw (:trigger/id %)) all-triggers))]
+    (let [db (init-test-game)
+          all-triggers (trigger-db/get-all-triggers db)
+          draw-trigger (first (filter #(= :draw-step (:trigger/type %)) all-triggers))]
       (is (= {:event/phase :draw} (:trigger/filter draw-trigger))))))
 
 
 (deftest test-untap-trigger-has-correct-filter
   (testing "untap trigger has filter for untap phase"
-    (turn-based/register-turn-based-actions!)
-    (let [all-triggers (registry/get-all-triggers)
-          untap-trigger (first (filter #(= :game-rule-untap (:trigger/id %)) all-triggers))]
+    (let [db (init-test-game)
+          all-triggers (trigger-db/get-all-triggers db)
+          untap-trigger (first (filter #(= :untap-step (:trigger/type %)) all-triggers))]
       (is (= {:event/phase :untap} (:trigger/filter untap-trigger))))))
 
 
 (deftest test-turn-based-triggers-dont-use-stack
   (testing "turn-based actions execute immediately (uses-stack? false)"
-    (turn-based/register-turn-based-actions!)
-    (let [all-triggers (registry/get-all-triggers)]
+    (let [db (init-test-game)
+          all-triggers (trigger-db/get-all-triggers db)]
       (is (every? #(false? (:trigger/uses-stack? %)) all-triggers)))))
 
 
 (deftest test-cleanup-grants-handled-by-advance-phase
   (testing "cleanup grant expiration is handled by advance-phase handler, not auto-trigger"
-    (turn-based/register-turn-based-actions!)
-    (let [all-triggers (registry/get-all-triggers)
-          cleanup-trigger (first (filter #(= :cleanup-expire-grants (:trigger/id %)) all-triggers))]
+    (let [db (init-test-game)
+          all-triggers (trigger-db/get-all-triggers db)
+          cleanup-trigger (first (filter #(= :cleanup-expire-grants (:trigger/type %)) all-triggers))]
       (is (nil? cleanup-trigger)
           "Cleanup expire-grants trigger should NOT be registered (handled by advance-phase)"))))
 
@@ -189,7 +179,6 @@
 
 (deftest test-draw-step-skips-turn-1
   (testing "draw step doesn't draw on turn 1 (play/draw rule)"
-    (turn-based/register-turn-based-actions!)
     (let [db (-> (init-test-game)
                  (set-turn 1))
           initial-hand (get-hand-count db :player-1)
@@ -201,7 +190,6 @@
 
 (deftest test-draw-step-draws-card-turn-2
   (testing "draw step draws one card on turn 2+"
-    (turn-based/register-turn-based-actions!)
     (let [db (-> (init-test-game)
                  (set-turn 2))
           initial-hand (get-hand-count db :player-1)
@@ -216,7 +204,6 @@
 
 (deftest test-draw-step-draws-card-turn-10
   (testing "draw step draws one card on later turns"
-    (turn-based/register-turn-based-actions!)
     (let [db (-> (init-test-game)
                  (set-turn 10))
           initial-hand (get-hand-count db :player-1)
@@ -227,7 +214,6 @@
 
 (deftest test-draw-step-empty-library-sets-loss-condition
   (testing "draw step with empty library sets loss condition"
-    (turn-based/register-turn-based-actions!)
     (let [db (-> (init-test-game)
                  (set-turn 2)
                  (clear-library :player-1))
@@ -239,7 +225,6 @@
 
 (deftest test-draw-step-doesnt-fire-on-other-phases
   (testing "draw trigger doesn't fire on non-draw phases"
-    (turn-based/register-turn-based-actions!)
     (let [db (-> (init-test-game)
                  (set-turn 2))
           initial-hand (get-hand-count db :player-1)]
@@ -259,7 +244,6 @@
 
 (deftest test-untap-step-untaps-all-permanents
   (testing "untap step untaps all tapped permanents"
-    (turn-based/register-turn-based-actions!)
     (let [db (-> (init-test-game)
                  (add-tapped-permanent :player-1)
                  (add-tapped-permanent :player-1)
@@ -275,7 +259,6 @@
 
 (deftest test-untap-step-empty-battlefield
   (testing "untap step handles empty battlefield gracefully"
-    (turn-based/register-turn-based-actions!)
     (let [db (init-test-game)
           tapped-before (get-tapped-permanents db :player-1)
           _ (is (= 0 (count tapped-before)) "Should have no permanents")
@@ -287,7 +270,6 @@
 
 (deftest test-untap-step-only-untaps-controlled-permanents
   (testing "untap step only untaps permanents controlled by active player"
-    (turn-based/register-turn-based-actions!)
     (let [conn (d/create-conn schema)
           _ (d/transact! conn [dark-ritual])
           _ (d/transact! conn [{:player/id :player-1
@@ -306,6 +288,8 @@
                                 :game/phase :untap
                                 :game/active-player p1-eid
                                 :game/priority p1-eid}])
+          ;; Turn-based triggers for player 1
+          _ (d/transact! conn (turn-based/create-turn-based-triggers-tx p1-eid))
           ;; Add tapped permanent for player 1
           _ (d/transact! conn [{:object/id (random-uuid)
                                 :object/card card-eid
@@ -337,7 +321,6 @@
 
 (deftest test-untap-step-doesnt-fire-on-other-phases
   (testing "untap trigger doesn't fire on non-untap phases"
-    (turn-based/register-turn-based-actions!)
     (let [db (-> (init-test-game)
                  (add-tapped-permanent :player-1))
           tapped-before (get-tapped-permanents db :player-1)
@@ -360,7 +343,6 @@
 
 (deftest test-advance-multiple-phases-fires-each-event
   (testing "each phase entry produces independent event dispatch"
-    (turn-based/register-turn-based-actions!)
     (let [db (-> (init-test-game)
                  (set-turn 2)
                  (add-tapped-permanent :player-1))

@@ -2,28 +2,12 @@
   "Tests for Underground River - pain land with 3 mana abilities.
    {T}: Add {C}. {T}: Add {U} or {B}. Underground River deals 1 damage to you."
   (:require
-    [cljs.test :refer-macros [deftest testing is use-fixtures]]
+    [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
-    [fizzle.engine.trigger-registry :as registry]
-    [fizzle.engine.turn-based :as turn-based]
     [fizzle.events.abilities :as ability-events]))
-
-
-;; === Test fixtures ===
-
-(defn reset-registry
-  "Clear trigger registry before and after each test."
-  [f]
-  (registry/clear-registry!)
-  (turn-based/register-turn-based-actions!)
-  (f)
-  (registry/clear-registry!))
-
-
-(use-fixtures :each reset-registry)
 
 
 ;; === Test helpers ===
