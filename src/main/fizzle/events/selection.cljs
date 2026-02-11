@@ -1251,6 +1251,12 @@
     (assoc db :game/pending-selection selection-state)))
 
 
+(def ^:private auto-confirm-types
+  "Selection types that auto-confirm when single-select is complete.
+   These types always have select-count=1 (except tutor which may be multi)."
+  #{:tutor :cast-time-targeting :player-target :ability-targeting})
+
+
 (rf/reg-event-db
   ::toggle-selection
   (fn [db [_ id]]
@@ -1262,34 +1268,45 @@
           max-count (if (= (:selection/type selection) :pile-choice)
                       (get selection :selection/hand-count 1)
                       select-count)
-          currently-selected? (contains? selected id)]
-      (cond
-        ;; Reject invalid targets when valid-targets set exists
-        (and valid-targets (not (contains? (set valid-targets) id)))
-        db
+          currently-selected? (contains? selected id)
+          [new-db selected?]
+          (cond
+            ;; Reject invalid targets when valid-targets set exists
+            (and valid-targets (not (contains? (set valid-targets) id)))
+            [db false]
 
-        ;; Deselect: remove from set
-        currently-selected?
-        (assoc-in db [:game/pending-selection :selection/selected]
-                  (disj selected id))
+            ;; Deselect: remove from set
+            currently-selected?
+            [(assoc-in db [:game/pending-selection :selection/selected]
+                       (disj selected id))
+             false]
 
-        ;; Single-select (select-count=1): replace current selection
-        (= max-count 1)
-        (assoc-in db [:game/pending-selection :selection/selected]
-                  #{id})
+            ;; Single-select (select-count=1): replace current selection
+            (= max-count 1)
+            [(assoc-in db [:game/pending-selection :selection/selected]
+                       #{id})
+             true]
 
-        ;; Unlimited select (exact?=false, e.g. exile-cards): always add
-        (false? (:selection/exact? selection))
-        (assoc-in db [:game/pending-selection :selection/selected]
-                  (conj selected id))
+            ;; Unlimited select (exact?=false, e.g. exile-cards): always add
+            (false? (:selection/exact? selection))
+            [(assoc-in db [:game/pending-selection :selection/selected]
+                       (conj selected id))
+             true]
 
-        ;; Multi-select under limit: add
-        (< (count selected) max-count)
-        (assoc-in db [:game/pending-selection :selection/selected]
-                  (conj selected id))
+            ;; Multi-select under limit: add
+            (< (count selected) max-count)
+            [(assoc-in db [:game/pending-selection :selection/selected]
+                       (conj selected id))
+             true]
 
-        ;; At limit: ignore
-        :else db))))
+            ;; At limit: ignore
+            :else [db false])]
+      ;; Auto-confirm: when single-select completes on an auto-confirmable type
+      (if (and selected?
+               (= max-count 1)
+               (contains? auto-confirm-types (:selection/type selection)))
+        (confirm-selection-impl new-db)
+        new-db))))
 
 
 (rf/reg-event-db
