@@ -134,7 +134,9 @@
                    :selection/spell-id (random-uuid)
                    :selection/target-zone :hand
                    :selection/shuffle? true
-                   :selection/allow-fail-to-find? true}
+                   :selection/allow-fail-to-find? true
+                   :selection/validation :exact-or-zero
+                   :selection/auto-confirm? true}
           app-db {:game/db game-db'
                   :game/pending-selection pending}
           result (dispatch-sync-on-db app-db [::selection/toggle-selection bf-id])]
@@ -161,7 +163,9 @@
                    :selection/spell-id (random-uuid)
                    :selection/target-zone :hand
                    :selection/shuffle? true
-                   :selection/allow-fail-to-find? true}
+                   :selection/allow-fail-to-find? true
+                   :selection/validation :exact-or-zero
+                   :selection/auto-confirm? true}
           app-db {:game/db game-db'
                   :game/pending-selection pending}
           result (dispatch-sync-on-db app-db [::selection/toggle-selection obj1])]
@@ -185,7 +189,9 @@
                    :selection/spell-id (random-uuid)
                    :selection/target-zone :hand
                    :selection/shuffle? true
-                   :selection/allow-fail-to-find? true}
+                   :selection/allow-fail-to-find? true
+                   :selection/validation :exact-or-zero
+                   :selection/auto-confirm? true}
           app-db {:game/db game-db'
                   :game/pending-selection pending}
           result (dispatch-sync-on-db app-db [::selection/toggle-selection bf-id])]
@@ -208,7 +214,9 @@
                    :selection/target-effect {:effect/type :drain
                                              :effect/amount 2
                                              :effect/target :any-player}
-                   :selection/remaining-effects []}
+                   :selection/remaining-effects []
+                   :selection/validation :exact
+                   :selection/auto-confirm? true}
           app-db {:game/db game-db
                   :game/pending-selection pending}
           result (dispatch-sync-on-db app-db [::selection/toggle-selection :opponent])]
@@ -229,7 +237,9 @@
                    :selection/target-effect {:effect/type :drain
                                              :effect/amount 2
                                              :effect/target :any-player}
-                   :selection/remaining-effects []}
+                   :selection/remaining-effects []
+                   :selection/validation :exact
+                   :selection/auto-confirm? true}
           app-db {:game/db game-db
                   :game/pending-selection pending}
           result (dispatch-sync-on-db app-db [::selection/toggle-selection :opponent])]
@@ -250,7 +260,9 @@
                    :selection/target-effect {:effect/type :drain
                                              :effect/amount 2
                                              :effect/target :any-player}
-                   :selection/remaining-effects []}
+                   :selection/remaining-effects []
+                   :selection/validation :exact
+                   :selection/auto-confirm? true}
           app-db {:game/db game-db
                   :game/pending-selection pending}
           result (dispatch-sync-on-db app-db [::selection/toggle-selection :invalid-id])]
@@ -268,7 +280,9 @@
           pending {:selection/type :discard
                    :selection/player-id :player-1
                    :selection/selected #{}
-                   :selection/select-count 1}
+                   :selection/select-count 1
+                   :selection/validation :exact
+                   :selection/auto-confirm? false}
           app-db {:game/db game-db'
                   :game/pending-selection pending}
           result (dispatch-sync-on-db app-db [::selection/toggle-selection card-id])]
@@ -285,8 +299,11 @@
                    :selection/player-id :player-1
                    :selection/selected #{}
                    :selection/hand-count 1
+                   :selection/select-count 1
                    :selection/candidates #{card-id}
-                   :selection/bottom-pile []}
+                   :selection/bottom-pile []
+                   :selection/validation :exact
+                   :selection/auto-confirm? false}
           app-db {:game/db game-db
                   :game/pending-selection pending}
           result (dispatch-sync-on-db app-db [::selection/toggle-selection card-id])]
@@ -305,7 +322,9 @@
                    :selection/select-count 1
                    :selection/min-count 0
                    :selection/target-zone :hand
-                   :selection/candidate-ids #{card-id}}
+                   :selection/candidate-ids #{card-id}
+                   :selection/validation :at-most
+                   :selection/auto-confirm? false}
           app-db {:game/db game-db'
                   :game/pending-selection pending}
           result (dispatch-sync-on-db app-db [::selection/toggle-selection card-id])]
@@ -329,7 +348,9 @@
                    :selection/spell-id (random-uuid)
                    :selection/target-zone :hand
                    :selection/shuffle? true
-                   :selection/allow-fail-to-find? true}
+                   :selection/allow-fail-to-find? true
+                   :selection/validation :exact-or-zero
+                   :selection/auto-confirm? true}
           app-db {:game/db game-db'
                   :game/pending-selection pending}
           ;; Dispatch confirm directly with empty selection (Find Nothing)
@@ -359,7 +380,9 @@
                    :selection/spell-id (random-uuid)
                    :selection/target-zone :hand
                    :selection/shuffle? true
-                   :selection/allow-fail-to-find? true}
+                   :selection/allow-fail-to-find? true
+                   :selection/validation :exact-or-zero
+                   :selection/auto-confirm? true}
           app-db {:game/db game-db'
                   :game/pending-selection pending}
           ;; Click a different card (not deselect — replace)

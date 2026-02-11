@@ -8,7 +8,7 @@
     [fizzle.engine.state-based :as state-based]
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.trigger-dispatch :as dispatch]
-    [fizzle.events.selection :as selection]
+    [fizzle.events.selection.core :as selection-core]
     [re-frame.core :as rf]))
 
 
@@ -146,7 +146,9 @@
      :selection/target-requirement target-req
      :selection/valid-targets valid-targets
      :selection/selected #{}
-     :selection/select-count 1}))
+     :selection/select-count 1
+     :selection/validation :exact
+     :selection/auto-confirm? true}))
 
 
 (defn confirm-ability-target
@@ -267,7 +269,7 @@
         (:pending-selection result) (assoc :game/pending-selection (:pending-selection result))))))
 
 
-(defmethod selection/execute-confirmed-selection :ability-targeting
+(defmethod selection-core/execute-confirmed-selection :ability-targeting
   [game-db selection]
   (let [result (confirm-ability-target game-db selection)]
     {:db (:db result) :finalized? true}))

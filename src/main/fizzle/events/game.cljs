@@ -392,7 +392,9 @@
    :selection/select-count discard-count
    :selection/player-id player-id
    :selection/selected #{}
-   :selection/type :cleanup-discard})
+   :selection/type :cleanup-discard
+   :selection/validation :exact
+   :selection/auto-confirm? false})
 
 
 (defn begin-cleanup

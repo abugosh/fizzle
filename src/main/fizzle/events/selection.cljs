@@ -49,25 +49,13 @@
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.zones :as zones]
+    [fizzle.events.selection.core :as core]
     [re-frame.core :as rf]))
 
 
 ;; =====================================================
-;; Stack-Item Cleanup Helper
+;; Stack-Item Cleanup Helper (delegated to core)
 ;; =====================================================
-
-(defn- remove-spell-stack-item
-  "Remove the stack-item for a spell after resolution.
-   Looks up the stack-item by the spell's object EID and removes it.
-   Returns updated db. Safe to call when no stack-item exists."
-  [game-db spell-id]
-  (let [obj-eid (d/q '[:find ?e .
-                       :in $ ?oid
-                       :where [?e :object/id ?oid]]
-                     game-db spell-id)]
-    (if-let [si (when obj-eid (stack/get-stack-item-by-object-ref game-db obj-eid))]
-      (stack/remove-stack-item game-db (:db/id si))
-      game-db)))
 
 
 ;; =====================================================
@@ -178,7 +166,9 @@
      :selection/candidates candidate-ids
      :selection/shuffle? (get tutor-effect :effect/shuffle? true)
      :selection/enters-tapped (:effect/enters-tapped tutor-effect)
-     :selection/pile-choice (:effect/pile-choice tutor-effect)}))
+     :selection/pile-choice (:effect/pile-choice tutor-effect)
+     :selection/validation :exact-or-zero
+     :selection/auto-confirm? true}))
 
 
 (defn build-pile-choice-selection
@@ -208,11 +198,14 @@
     {:selection/type :pile-choice
      :selection/candidates candidates
      :selection/hand-count hand-count
+     :selection/select-count hand-count  ; Normalized for toggle-selection-impl
      :selection/selected auto-selected
      :selection/player-id player-id
      :selection/spell-id spell-id
      :selection/remaining-effects remaining-effects
-     :selection/allow-random true}))
+     :selection/allow-random true
+     :selection/validation :exact
+     :selection/auto-confirm? false}))
 
 
 (defn select-random-pile-choice
@@ -244,7 +237,9 @@
            :selection/top-pile []
            :selection/bottom-pile []
            :selection/spell-id object-id
-           :selection/remaining-effects (vec effects-after)})))))
+           :selection/remaining-effects (vec effects-after)
+           :selection/validation :always
+           :selection/auto-confirm? false})))))
 
 
 (defn build-peek-selection
@@ -290,7 +285,9 @@
              :selection/remaining-effects (vec effects-after)
              :selection/selected-zone (or (:effect/selected-zone effect) :hand)
              :selection/remainder-zone (or (:effect/remainder-zone effect) :bottom-of-library)
-             :selection/shuffle-remainder? (:effect/shuffle-remainder? effect)}))))))
+             :selection/shuffle-remainder? (:effect/shuffle-remainder? effect)
+             :selection/validation :at-most
+             :selection/auto-confirm? false}))))))
 
 
 (defn build-exile-cards-selection
@@ -324,7 +321,9 @@
        :selection/player-id player-id
        :selection/spell-id object-id
        :selection/mode mode       ; Store mode for casting after selection
-       :selection/exile-cost exile-cost})))
+       :selection/exile-cost exile-cost
+       :selection/validation :at-least-one
+       :selection/auto-confirm? false})))
 
 
 (defn build-x-mana-selection
@@ -355,7 +354,9 @@
      :selection/spell-id object-id
      :selection/mode mode
      :selection/max-x max-x
-     :selection/selected-x 0}))  ; Default to 0, player increments
+     :selection/selected-x 0  ; Default to 0, player increments
+     :selection/validation :always
+     :selection/auto-confirm? false}))
 
 
 (defn- build-discard-selection
@@ -367,7 +368,9 @@
    :selection/selected #{}
    :selection/spell-id object-id
    :selection/remaining-effects effects-after
-   :selection/type :discard})
+   :selection/type :discard
+   :selection/validation :exact
+   :selection/auto-confirm? false})
 
 
 (defn build-graveyard-selection
@@ -402,7 +405,9 @@
      :selection/selected #{}
      :selection/spell-id object-id
      :selection/remaining-effects effects-after
-     :selection/candidate-ids candidate-ids}))
+     :selection/candidate-ids candidate-ids
+     :selection/validation :at-most
+     :selection/auto-confirm? false}))
 
 
 (defn- build-player-target-selection
@@ -416,7 +421,9 @@
    :selection/valid-targets #{:player-1 :opponent}
    :selection/spell-id object-id
    :selection/target-effect target-effect  ; The effect needing a target
-   :selection/remaining-effects effects-after})
+   :selection/remaining-effects effects-after
+   :selection/validation :exact
+   :selection/auto-confirm? true})
 
 
 ;; =====================================================
@@ -705,28 +712,8 @@
 
 
 ;; =====================================================
-;; Source Cleanup Helper
+;; Source Cleanup Helper (delegated to core)
 ;; =====================================================
-
-(defn- cleanup-selection-source
-  "Clean up the source of a resolved selection.
-   Handles 2 source types:
-   - :stack-item → remove the stack-item entity
-   - nil/spell → move spell to destination zone + remove stack-item"
-  [game-db selection]
-  (let [source-type (:selection/source-type selection)]
-    (if (= source-type :stack-item)
-      (let [si-eid (:selection/stack-item-eid selection)]
-        (stack/remove-stack-item game-db si-eid))
-      (let [spell-id (:selection/spell-id selection)
-            spell-obj (queries/get-object game-db spell-id)
-            current-zone (:object/zone spell-obj)
-            db-after-move (if (= current-zone :stack)
-                            (let [cast-mode (:object/cast-mode spell-obj)
-                                  destination (or (:mode/on-resolve cast-mode) :graveyard)]
-                              (zones/move-to-zone game-db spell-id destination))
-                            game-db)]
-        (remove-spell-stack-item db-after-move spell-id)))))
 
 
 ;; =====================================================
@@ -897,7 +884,7 @@
             ;; Move spell to graveyard
             db-after-move (zones/move-to-zone db-after-remaining spell-id :graveyard)
             ;; Remove stack-item for spell
-            db-final (remove-spell-stack-item db-after-move spell-id)]
+            db-final (core/remove-spell-stack-item db-after-move spell-id)]
         (-> app-db
             (assoc :game/db db-final)
             (dissoc :game/pending-selection)))
@@ -930,7 +917,9 @@
      :selection/target-requirement target-req
      :selection/valid-targets valid-targets
      :selection/selected #{}
-     :selection/select-count 1}))
+     :selection/select-count 1
+     :selection/validation :exact
+     :selection/auto-confirm? true}))
 
 
 (defn cast-spell-with-targeting
@@ -1010,22 +999,10 @@
 ;; Confirm Selection Multimethod
 ;; =====================================================
 
-(defmulti execute-confirmed-selection
-  "Execute the type-specific logic for a confirmed selection.
-   Dispatches on :selection/type.
-
-   Arguments:
-     game-db - Datascript database
-     selection - Selection state map
-
-   Returns one of:
-     {:db game-db} — standard, wrapper handles remaining-effects + cleanup
-     {:db game-db :pending-selection next-sel} — chain to next selection
-     {:db game-db :finalized? true} — fully handled (pre-cast, ability)"
-  (fn [_game-db selection] (:selection/type selection)))
+;; Multimethod definition moved to core.cljs — defmethods register on core/execute-confirmed-selection
 
 
-(defmethod execute-confirmed-selection :discard
+(defmethod core/execute-confirmed-selection :discard
   [game-db selection]
   (let [selected (:selection/selected selection)]
     {:db (reduce (fn [gdb obj-id]
@@ -1034,7 +1011,7 @@
                  selected)}))
 
 
-(defmethod execute-confirmed-selection :cleanup-discard
+(defmethod core/execute-confirmed-selection :cleanup-discard
   [game-db selection]
   (let [selected (:selection/selected selection)
         db-after-discard (reduce (fn [d obj-id]
@@ -1047,7 +1024,7 @@
     {:db db-final :finalized? true}))
 
 
-(defmethod execute-confirmed-selection :tutor
+(defmethod core/execute-confirmed-selection :tutor
   [game-db selection]
   (let [selected (:selection/selected selection)
         pile-choice (:selection/pile-choice selection)
@@ -1063,12 +1040,12 @@
       {:db (execute-tutor-selection game-db selection)})))
 
 
-(defmethod execute-confirmed-selection :peek-and-select
+(defmethod core/execute-confirmed-selection :peek-and-select
   [game-db selection]
   {:db (execute-peek-selection game-db selection)})
 
 
-(defmethod execute-confirmed-selection :graveyard-return
+(defmethod core/execute-confirmed-selection :graveyard-return
   [game-db selection]
   (let [selected (:selection/selected selection)]
     {:db (reduce (fn [gdb obj-id]
@@ -1077,7 +1054,7 @@
                  selected)}))
 
 
-(defmethod execute-confirmed-selection :player-target
+(defmethod core/execute-confirmed-selection :player-target
   [game-db selection]
   (let [selected-target (first (:selection/selected selection))
         target-effect (:selection/target-effect selection)
@@ -1116,13 +1093,13 @@
                    remaining-effects)})))
 
 
-(defmethod execute-confirmed-selection :cast-time-targeting
+(defmethod core/execute-confirmed-selection :cast-time-targeting
   [game-db selection]
   {:db (confirm-cast-time-target game-db selection)
    :finalized? true})
 
 
-(defmethod execute-confirmed-selection :exile-cards-cost
+(defmethod core/execute-confirmed-selection :exile-cards-cost
   [game-db selection]
   (let [selected (:selection/selected selection)
         selected-count (count selected)
@@ -1143,7 +1120,7 @@
     {:db db-after-cast :finalized? true :clear-selected-card? true}))
 
 
-(defmethod execute-confirmed-selection :x-mana-cost
+(defmethod core/execute-confirmed-selection :x-mana-cost
   [game-db selection]
   (let [x-value (:selection/selected-x selection)
         player-id (:selection/player-id selection)
@@ -1161,7 +1138,7 @@
     {:db db-after-cast :finalized? true :clear-selected-card? true}))
 
 
-(defmethod execute-confirmed-selection :pile-choice
+(defmethod core/execute-confirmed-selection :pile-choice
   [game-db selection]
   (let [player-id (:selection/player-id selection)
         spell-id (:selection/spell-id selection)
@@ -1179,11 +1156,11 @@
                               destination (or (:mode/on-resolve cast-mode) :graveyard)]
                           (zones/move-to-zone db-after-effects spell-id destination))
                         db-after-effects)
-        db-final (remove-spell-stack-item db-after-move spell-id)]
+        db-final (core/remove-spell-stack-item db-after-move spell-id)]
     {:db db-final :finalized? true}))
 
 
-(defmethod execute-confirmed-selection :scry
+(defmethod core/execute-confirmed-selection :scry
   [game-db selection]
   (let [spell-id (:selection/spell-id selection)
         remaining-effects (:selection/remaining-effects selection)
@@ -1194,51 +1171,13 @@
                                    db-after-reorder
                                    (or remaining-effects []))
         db-after-move (zones/move-to-zone db-after-remaining spell-id :graveyard)
-        db-final (remove-spell-stack-item db-after-move spell-id)]
+        db-final (core/remove-spell-stack-item db-after-move spell-id)]
     {:db db-final :finalized? true}))
 
 
 ;; =====================================================
-;; Confirm Selection Wrapper
+;; Confirm Selection Wrapper (delegated to core)
 ;; =====================================================
-
-(defn confirm-selection-impl
-  "Shared wrapper for all selection confirmations.
-   1. Gets game-db and selection from app-db
-   2. Calls execute-confirmed-selection multimethod
-   3. Handles remaining-effects, cleanup, and chaining based on result
-
-   Returns updated app-db."
-  [app-db]
-  (let [selection (:game/pending-selection app-db)
-        game-db (:game/db app-db)
-        result (execute-confirmed-selection game-db selection)]
-    (cond
-      ;; Chain to next selection
-      (:pending-selection result)
-      (-> app-db
-          (assoc :game/db (:db result))
-          (assoc :game/pending-selection (:pending-selection result)))
-
-      ;; Fully handled (pre-cast, ability, pile-choice, scry, cleanup-discard)
-      (:finalized? result)
-      (cond-> app-db
-        true (assoc :game/db (:db result))
-        true (dissoc :game/pending-selection)
-        (:clear-selected-card? result) (dissoc :game/selected-card))
-
-      ;; Standard: execute remaining-effects and cleanup
-      :else
-      (let [remaining-effects (:selection/remaining-effects selection)
-            player-id (:selection/player-id selection)
-            db-after-remaining (reduce (fn [d effect]
-                                         (effects/execute-effect d player-id effect))
-                                       (:db result)
-                                       (or remaining-effects []))
-            db-final (cleanup-selection-source db-after-remaining selection)]
-        (-> app-db
-            (assoc :game/db db-final)
-            (dissoc :game/pending-selection))))))
 
 
 ;; =====================================================
@@ -1251,122 +1190,16 @@
     (assoc db :game/pending-selection selection-state)))
 
 
-(def ^:private auto-confirm-types
-  "Selection types that auto-confirm when single-select is complete.
-   These types always have select-count=1 (except tutor which may be multi)."
-  #{:tutor :cast-time-targeting :player-target :ability-targeting})
-
-
 (rf/reg-event-db
   ::toggle-selection
   (fn [db [_ id]]
-    (let [selection (get db :game/pending-selection)
-          selected (get selection :selection/selected #{})
-          valid-targets (:selection/valid-targets selection)
-          select-count (get selection :selection/select-count 0)
-          ;; Pile-choice uses :selection/hand-count for max
-          max-count (if (= (:selection/type selection) :pile-choice)
-                      (get selection :selection/hand-count 1)
-                      select-count)
-          currently-selected? (contains? selected id)
-          [new-db selected?]
-          (cond
-            ;; Reject invalid targets when valid-targets set exists
-            (and valid-targets (not (contains? (set valid-targets) id)))
-            [db false]
-
-            ;; Deselect: remove from set
-            currently-selected?
-            [(assoc-in db [:game/pending-selection :selection/selected]
-                       (disj selected id))
-             false]
-
-            ;; Single-select (select-count=1): replace current selection
-            (= max-count 1)
-            [(assoc-in db [:game/pending-selection :selection/selected]
-                       #{id})
-             true]
-
-            ;; Unlimited select (exact?=false, e.g. exile-cards): always add
-            (false? (:selection/exact? selection))
-            [(assoc-in db [:game/pending-selection :selection/selected]
-                       (conj selected id))
-             true]
-
-            ;; Multi-select under limit: add
-            (< (count selected) max-count)
-            [(assoc-in db [:game/pending-selection :selection/selected]
-                       (conj selected id))
-             true]
-
-            ;; At limit: ignore
-            :else [db false])]
-      ;; Auto-confirm: when single-select completes on an auto-confirmable type
-      (if (and selected?
-               (= max-count 1)
-               (contains? auto-confirm-types (:selection/type selection)))
-        (confirm-selection-impl new-db)
-        new-db))))
+    (core/toggle-selection-impl db id)))
 
 
 (rf/reg-event-db
   ::confirm-selection
   (fn [db _]
-    (let [selection (:game/pending-selection db)
-          selection-type (:selection/type selection)]
-      ;; Validation depends on selection type
-      (if (case selection-type
-            ;; Types with flexible selection counts
-            (:peek-and-select :graveyard-return)
-            (let [selected (:selection/selected selection)
-                  candidates (or (:selection/candidates selection)
-                                 (:selection/candidate-ids selection))
-                  max-count (:selection/select-count selection)]
-              (and (<= (count selected) max-count)
-                   (every? #(contains? candidates %) selected)))
-
-            ;; Tutor: empty (fail-to-find) or exact count
-            :tutor
-            (let [selected (:selection/selected selection)
-                  candidates (:selection/candidates selection)
-                  select-count (or (:selection/select-count selection) 1)]
-              (or (empty? selected)
-                  (and (= (count selected) select-count)
-                       (every? #(contains? candidates %) selected))))
-
-            ;; Pile choice: exact hand-count
-            :pile-choice
-            (let [selected (:selection/selected selection)
-                  hand-count (:selection/hand-count selection)
-                  candidates (:selection/candidates selection)]
-              (and (= hand-count (count selected))
-                   (every? #(contains? candidates %) selected)))
-
-            ;; Exile cards: at least 1
-            :exile-cards-cost
-            (pos? (count (:selection/selected selection)))
-
-            ;; Scry: always valid
-            :scry true
-
-            ;; X mana: always valid
-            :x-mana-cost true
-
-            ;; Player target: need a target
-            :player-target
-            (some? (first (:selection/selected selection)))
-
-            ;; Cast-time and ability targeting: need a target
-            (:cast-time-targeting :ability-targeting)
-            (= 1 (count (:selection/selected selection)))
-
-            ;; Cleanup-discard and discard: exact count
-            (= (count (:selection/selected selection))
-               (:selection/select-count selection)))
-        ;; Valid - delegate to multimethod wrapper
-        (confirm-selection-impl db)
-        ;; Invalid - do nothing
-        db))))
+    (core/confirm-selection-handler db)))
 
 
 (rf/reg-event-db
