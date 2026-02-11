@@ -11,6 +11,7 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
+    [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.engine.trigger-registry :as registry]
     [fizzle.engine.triggers :as triggers]
@@ -153,6 +154,8 @@
                           :game/priority player-eid}])
       ;; Register turn-based actions (draw, untap triggers)
       (turn-based/register-turn-based-actions!)
+      ;; Also create Datascript game-rule trigger entities (dual-write, atom removed in Task 4)
+      (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid))
       (merge
         {:game/db @conn
          :active-screen :opening-hand
@@ -813,6 +816,16 @@
             ;; Register card triggers (e.g., City of Brass :becomes-tapped, City of Traitors :land-entered)
             _ (when (seq (:card/triggers card))
                 (register-card-triggers! object-id player-id card))
+            ;; Also create Datascript trigger entities (dual-write, atom removed in Task 4)
+            db-after-triggers (if (seq (:card/triggers card))
+                                (let [obj-eid (d/q '[:find ?e .
+                                                     :in $ ?oid
+                                                     :where [?e :object/id ?oid]]
+                                                   db-after-move object-id)
+                                      tx (trigger-db/create-triggers-for-card-tx
+                                           db-after-move obj-eid player-eid (:card/triggers card))]
+                                  (d/db-with db-after-move tx))
+                                db-after-move)
             ;; Fire ETB effects if any
             db-after-etb (if (seq etb-effects)
                            (reduce (fn [db' effect]
@@ -821,9 +834,9 @@
                                                              (assoc effect :effect/target object-id)
                                                              effect)]
                                        (effects/execute-effect db' player-id resolved-effect)))
-                                   db-after-move
+                                   db-after-triggers
                                    etb-effects)
-                           db-after-move)]
+                           db-after-triggers)]
         ;; Dispatch :land-entered event (triggers City of Traitors sacrifice when another land enters)
         (dispatch/dispatch-event db-after-etb (game-events/land-entered-event object-id player-id)))
       db)))
