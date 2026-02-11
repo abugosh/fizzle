@@ -23,6 +23,7 @@
     [fizzle.views.phase-bar :as phase-bar]
     [fizzle.views.setup :as setup-view]
     [fizzle.views.stack :as stack]
+    [fizzle.views.zone-counts :as zone-counts]
     [re-frame.core :as rf]
     [reagent.core :as r]
     [reagent.dom :as rdom]))
@@ -66,7 +67,8 @@
     [controls/controls-view]
     [:div {:class "flex gap-8"}
      [mana-pool/mana-pool-view]
-     [mana-pool/storm-count-view]]]
+     [mana-pool/storm-count-view]]
+    [zone-counts/zone-counts-view]]
    ;; Right columns: reference panels
    [collapsible-right-column "Stack" stack-collapsed? [stack/stack-view]]
    [collapsible-right-column "Graveyard" gy-collapsed? [graveyard/graveyard-view]]

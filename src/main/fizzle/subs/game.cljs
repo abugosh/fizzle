@@ -245,6 +245,35 @@
            :remainder all})))))
 
 
+;; === Zone Count Subscriptions ===
+
+(rf/reg-sub
+  ::player-zone-counts
+  :<- [::game-db]
+  (fn [game-db _]
+    (when game-db
+      (let [gy-count (count (queries/get-objects-in-zone game-db :player-1 :graveyard))
+            lib-count (count (queries/get-objects-in-zone game-db :player-1 :library))
+            exile-count (count (queries/get-objects-in-zone game-db :player-1 :exile))]
+        {:graveyard gy-count
+         :library lib-count
+         :exile exile-count
+         :threshold? (>= gy-count 7)}))))
+
+
+(rf/reg-sub
+  ::opponent-zone-counts
+  :<- [::game-db]
+  (fn [game-db _]
+    (when game-db
+      (let [gy-count (count (queries/get-objects-in-zone game-db :opponent :graveyard))
+            lib-count (count (queries/get-objects-in-zone game-db :opponent :library))
+            exile-count (count (queries/get-objects-in-zone game-db :opponent :exile))]
+        {:graveyard gy-count
+         :library lib-count
+         :exile exile-count}))))
+
+
 ;; === Selection System Subscriptions ===
 
 (rf/reg-sub
