@@ -84,10 +84,10 @@
 
 (defn- object-target-card-view
   "A card in the object-target modal, showing selected state."
-  [obj selected-target select-event]
+  [obj selected select-event]
   (let [card-name (get-in obj [:object/card :card/name])
         object-id (:object/id obj)
-        is-selected? (= object-id selected-target)]
+        is-selected? (contains? selected object-id)]
     ^{:key object-id}
     [:div {:class (selectable-card-class is-selected?)
            :on-click #(rf/dispatch [select-event object-id])}
@@ -105,10 +105,10 @@
      :unselected-label - text when no target is selected"
   [selection cards {:keys [select-event confirm-event default-zone
                            selected-label unselected-label]}]
-  (let [selected-target (:selection/selected-target selection)
+  (let [selected (or (:selection/selected selection) #{})
         target-req (:selection/target-requirement selection)
         zone-name (name (or (:target/zone target-req) default-zone))
-        valid? (some? selected-target)]
+        valid? (= 1 (count selected))]
     [:div {:class overlay-class}
      [:div {:class (container-class {})}
       ;; Header
@@ -122,14 +122,14 @@
       [:div {:class "flex flex-wrap gap-2.5 mb-5 min-h-[60px]"}
        (if (seq cards)
          (for [obj cards]
-           [object-target-card-view obj selected-target select-event])
+           [object-target-card-view obj selected select-event])
          [:div {:class "text-perm-text-tapped"}
           "No valid targets"])]
       ;; Confirm button
       [:div {:class "flex justify-end"}
        [confirm-button {:label "Confirm"
                         :valid? valid?
-                        :on-confirm #(rf/dispatch [confirm-event selected-target])}]]]]))
+                        :on-confirm #(rf/dispatch [confirm-event])}]]]]))
 
 
 (defn player-target-modal
@@ -139,20 +139,20 @@
    ability targeting (::confirm-ability-target),
    and cast-time targeting (::confirm-cast-time-target)."
   [selection confirm-event]
-  (let [selected-target (:selection/selected-target selection)
-        valid? (some? selected-target)]
+  (let [selected (or (:selection/selected selection) #{})
+        valid? (= 1 (count selected))]
     [modal-wrapper {:title "Choose target player"
                     :max-width "400px"
                     :text-align "center"}
      ;; Player buttons
      [:div {:class "flex justify-center mb-5"}
-      [player-target-button :player-1 "You" (= selected-target :player-1)]
-      [player-target-button :opponent "Opponent" (= selected-target :opponent)]]
+      [player-target-button :player-1 "You" (contains? selected :player-1)]
+      [player-target-button :opponent "Opponent" (contains? selected :opponent)]]
      ;; Confirm button
      [:div {:class "flex justify-center"}
       [confirm-button {:label "Confirm"
                        :valid? valid?
-                       :on-confirm #(rf/dispatch [confirm-event selected-target])
+                       :on-confirm #(rf/dispatch [confirm-event])
                        :extra-class "py-2.5 px-8"}]]]))
 
 

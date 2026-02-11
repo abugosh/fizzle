@@ -31,10 +31,10 @@
      max-x, selected-x
 
   10. Targeting (:type :cast-time-targeting / :ability-targeting)
-      target-requirement, valid-targets, selected-target
+      target-requirement, valid-targets, selected, select-count
 
   11. Player Target (:type :player-target)
-      selected-target, target-effect
+      selected, select-count, valid-targets, target-effect
 
   Common keys (all namespaced :selection/*):
     selected, spell-id, remaining-effects, player-id, source-type, stack-item-eid"
@@ -411,7 +411,9 @@
   [player-id object-id target-effect effects-after]
   {:selection/type :player-target
    :selection/player-id player-id
-   :selection/selected-target nil  ; Will be :player-1 or :opponent
+   :selection/selected #{}
+   :selection/select-count 1
+   :selection/valid-targets #{:player-1 :opponent}
    :selection/spell-id object-id
    :selection/target-effect target-effect  ; The effect needing a target
    :selection/remaining-effects effects-after})
@@ -927,7 +929,8 @@
      :selection/mode mode
      :selection/target-requirement target-req
      :selection/valid-targets valid-targets
-     :selection/selected-target nil}))
+     :selection/selected #{}
+     :selection/select-count 1}))
 
 
 (defn cast-spell-with-targeting
@@ -977,7 +980,7 @@
 
    Arguments:
      game-db - Datascript database
-     selection - Cast-time target selection state with :selection/selected-target set
+     selection - Cast-time target selection state with :selection/selected set
 
    Returns updated db with spell on stack and target stored."
   [game-db selection]
@@ -985,7 +988,7 @@
         object-id (:selection/object-id selection)
         mode (:selection/mode selection)
         target-req (:selection/target-requirement selection)
-        selected-target (:selection/selected-target selection)
+        selected-target (first (:selection/selected selection))
         target-id (:target/id target-req)]
     (if selected-target
       ;; Cast spell and store target
@@ -1340,14 +1343,14 @@
 (rf/reg-event-db
   ::select-player-target
   (fn [db [_ target-player-id]]
-    (assoc-in db [:game/pending-selection :selection/selected-target] target-player-id)))
+    (assoc-in db [:game/pending-selection :selection/selected] #{target-player-id})))
 
 
 (rf/reg-event-db
   ::confirm-player-target-selection
   (fn [db _]
     (let [selection (:game/pending-selection db)
-          selected-target (:selection/selected-target selection)
+          selected-target (first (:selection/selected selection))
           spell-id (:selection/spell-id selection)
           source-type (:selection/source-type selection)
           target-effect (:selection/target-effect selection)
@@ -1514,11 +1517,10 @@
 
 (rf/reg-event-db
   ::confirm-cast-time-target
-  (fn [db [_ target-id]]
+  (fn [db _]
     (let [selection (get db :game/pending-selection)
-          selection-with-target (assoc selection :selection/selected-target target-id)
           game-db (:game/db db)
-          new-game-db (confirm-cast-time-target game-db selection-with-target)]
+          new-game-db (confirm-cast-time-target game-db selection)]
       (-> db
           (assoc :game/db new-game-db)
           (dissoc :game/pending-selection)))))
@@ -1531,10 +1533,10 @@
           valid-targets (set (:selection/valid-targets selection))]
       (if (contains? valid-targets object-id)
         ;; Toggle selection: if already selected, deselect; otherwise select
-        (let [currently-selected (:selection/selected-target selection)
-              new-selection (if (= currently-selected object-id)
-                              nil
-                              object-id)]
-          (assoc-in db [:game/pending-selection :selection/selected-target] new-selection))
+        (let [currently-selected (:selection/selected selection)
+              new-selected (if (contains? currently-selected object-id)
+                             #{}
+                             #{object-id})]
+          (assoc-in db [:game/pending-selection :selection/selected] new-selected))
         ;; Invalid target - ignore
         db))))

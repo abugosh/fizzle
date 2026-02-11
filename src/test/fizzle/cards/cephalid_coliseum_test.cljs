@@ -348,7 +348,7 @@
           _ (is (= :battlefield (get-object-zone (:db result) obj-id))
                 "Coliseum should still be on battlefield before target confirmed")
           ;; Confirm target selection (targeting self)
-          selection-with-target (assoc selection :selection/selected-target :player-1)
+          selection-with-target (assoc selection :selection/selected #{:player-1})
           final-result (ability-events/confirm-ability-target (:db result) selection-with-target)]
       ;; After confirmation, land should be in graveyard (sacrifice paid as cost)
       (is (= :graveyard (get-object-zone (:db final-result) obj-id))
@@ -405,7 +405,7 @@
           _ (is (true? (stack/stack-empty? (:db result)))
                 "Stack should be empty before target selected")
           ;; Confirm target selection (targeting self)
-          selection-with-target (assoc selection :selection/selected-target :player-1)
+          selection-with-target (assoc selection :selection/selected #{:player-1})
           final-result (ability-events/confirm-ability-target (:db result) selection-with-target)
           ;; Check that ability was put on stack after target confirmation
           top-item (stack/get-top-stack-item (:db final-result))]
@@ -513,7 +513,7 @@
           result (ability-events/activate-ability db'''' :player-1 obj-id 1)
           selection (:pending-selection result)
           ;; Confirm with target
-          selection-with-target (assoc selection :selection/selected-target :player-1)
+          selection-with-target (assoc selection :selection/selected #{:player-1})
           final-result (ability-events/confirm-ability-target (:db result) selection-with-target)
           ;; Get the stack-item from stack
           item (stack/get-top-stack-item (:db final-result))
@@ -540,7 +540,7 @@
           result (ability-events/activate-ability db''' :player-1 obj-id 1)
           selection (:pending-selection result)
           ;; Cancel by confirming with nil target
-          selection-cancelled (assoc selection :selection/selected-target nil)
+          selection-cancelled (assoc selection :selection/selected #{})
           final-result (ability-events/confirm-ability-target (:db result) selection-cancelled)]
       ;; Land should still be on battlefield (not sacrificed)
       (is (= :battlefield (get-object-zone (:db final-result) obj-id))
@@ -578,7 +578,7 @@
           selection (:pending-selection result)
           _ (is (some? selection) "Should have pending target selection")
           ;; Confirm target (self)
-          selection-with-target (assoc selection :selection/selected-target :player-1)
+          selection-with-target (assoc selection :selection/selected #{:player-1})
           final-result (ability-events/confirm-ability-target (:db result) selection-with-target)
           db-after-confirm (:db final-result)
           ;; Stack should have the ability

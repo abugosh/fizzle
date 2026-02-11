@@ -243,7 +243,7 @@
           ;; Cast Recoup with targeting
           result (selection/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
-                           :selection/selected-target sorcery-id)
+                           :selection/selected #{sorcery-id})
           db-cast (selection/confirm-cast-time-target (:db result) selection)
           ;; Resolve Recoup
           resolve-result (selection/resolve-spell-with-selection db-cast :player-1 recoup-id)
@@ -266,7 +266,7 @@
           ;; Cast and resolve Recoup
           result (selection/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
-                           :selection/selected-target sorcery-id)
+                           :selection/selected #{sorcery-id})
           db-cast (selection/confirm-cast-time-target (:db result) selection)
           resolve-result (selection/resolve-spell-with-selection db-cast :player-1 recoup-id)
           db-resolved (:db resolve-result)
@@ -287,7 +287,7 @@
           ;; Cast and resolve Recoup
           result (selection/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
-                           :selection/selected-target sorcery-id)
+                           :selection/selected #{sorcery-id})
           db-cast (selection/confirm-cast-time-target (:db result) selection)
           resolve-result (selection/resolve-spell-with-selection db-cast :player-1 recoup-id)
           db-resolved (:db resolve-result)]
@@ -307,7 +307,7 @@
           ;; Cast and resolve Recoup
           result (selection/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
-                           :selection/selected-target sorcery-id)
+                           :selection/selected #{sorcery-id})
           db-cast (selection/confirm-cast-time-target (:db result) selection)
           resolve-result (selection/resolve-spell-with-selection db-cast :player-1 recoup-id)
           db-recoup-resolved (:db resolve-result)
@@ -340,7 +340,7 @@
           ;; Cast Recoup with targeting
           result (selection/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
-                           :selection/selected-target sorcery-id)
+                           :selection/selected #{sorcery-id})
           db-cast (selection/confirm-cast-time-target (:db result) selection)
           ;; Remove the target before resolution (simulate Tormod's Crypt)
           db-target-exiled (zones/move-to-zone db-cast sorcery-id :exile)
@@ -366,7 +366,7 @@
           ;; Target sorcery1
           result (selection/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
-                           :selection/selected-target sorcery1-id)
+                           :selection/selected #{sorcery1-id})
           db-cast (selection/confirm-cast-time-target (:db result) selection)
           ;; Remove sorcery1 (even though sorcery2 still exists)
           db-target-exiled (zones/move-to-zone db-cast sorcery1-id :exile)
@@ -392,7 +392,7 @@
           ;; Cast and resolve Recoup
           result (selection/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
-                           :selection/selected-target sorcery-id)
+                           :selection/selected #{sorcery-id})
           db-cast (selection/confirm-cast-time-target (:db result) selection)
           resolve-result (selection/resolve-spell-with-selection db-cast :player-1 recoup-id)
           db-resolved (:db resolve-result)
@@ -415,7 +415,7 @@
           ;; Cast and resolve Recoup
           result (selection/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
-                           :selection/selected-target sorcery-id)
+                           :selection/selected #{sorcery-id})
           db-cast (selection/confirm-cast-time-target (:db result) selection)
           resolve-result (selection/resolve-spell-with-selection db-cast :player-1 recoup-id)
           db-resolved (:db resolve-result)
@@ -452,7 +452,7 @@
           ;; Cast Recoup via flashback
           result (selection/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
-                           :selection/selected-target sorcery-id)
+                           :selection/selected #{sorcery-id})
           db-cast (selection/confirm-cast-time-target (:db result) selection)
           ;; Verify it's on stack with flashback mode
           _ (is (= :flashback (:mode/id (:object/cast-mode (q/get-object db-cast recoup-id))))
@@ -473,7 +473,7 @@
           ;; Cast and resolve flashback Recoup
           result (selection/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
-                           :selection/selected-target sorcery-id)
+                           :selection/selected #{sorcery-id})
           db-cast (selection/confirm-cast-time-target (:db result) selection)
           resolve-result (selection/resolve-spell-with-selection db-cast :player-1 recoup-id)
           db-resolved (:db resolve-result)
@@ -496,7 +496,7 @@
           ;; Step 1: Cast Recoup targeting Careful Study
           result (selection/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
-                           :selection/selected-target sorcery-id)
+                           :selection/selected #{sorcery-id})
           db-cast (selection/confirm-cast-time-target (:db result) selection)
           ;; Step 2: Resolve Recoup
           resolve-result (selection/resolve-spell-with-selection db-cast :player-1 recoup-id)

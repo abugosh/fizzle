@@ -280,7 +280,7 @@
       (is (= :ability-targeting (:selection/type sel))
           "Selection type should be :ability-targeting")
       ;; Confirm target selection
-      (let [selection-with-target (assoc sel :selection/selected-target target-id)
+      (let [selection-with-target (assoc sel :selection/selected #{target-id})
             final-result (ability-events/confirm-ability-target (:db result) selection-with-target)
             db-after-confirm (:db final-result)]
         ;; Seal should be sacrificed (cost paid)

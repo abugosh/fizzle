@@ -284,7 +284,7 @@
           selection (:pending-selection result)]
       (is (= :player-1 (:selection/player-id selection))
           "Caster should be tracked")
-      (is (nil? (:selection/selected-target selection))
+      (is (= #{} (:selection/selected selection))
           "No target should be selected initially")
       (is (some? (:selection/target-effect selection))
           "Should store the effect needing a target")
@@ -360,13 +360,13 @@
           db-cast (rules/cast-spell db :player-1 obj-id)
           result (selection/resolve-spell-with-selection db-cast :player-1 obj-id)
           ;; Confirm with player target
-          selection (assoc (:pending-selection result) :selection/selected-target :player-1)
+          selection (assoc (:pending-selection result) :selection/selected #{:player-1})
           app-db {:game/db (:db result)
                   :game/pending-selection selection}
           ;; Simulate confirm - must use cast-mode for destination
           confirm-handler (fn [db _]
                             (let [sel (:game/pending-selection db)
-                                  target (:selection/selected-target sel)
+                                  target (first (:selection/selected sel))
                                   spell-id (:selection/spell-id sel)
                                   target-effect (:selection/target-effect sel)
                                   player-id (:selection/player-id sel)
@@ -443,7 +443,7 @@
           ;; Start casting - get pending selection
           result (selection/cast-spell-with-targeting db :player-1 obj-id)
           selection (assoc (:pending-target-selection result)
-                           :selection/selected-target :player-1)
+                           :selection/selected #{:player-1})
           ;; Confirm the target selection
           db-after (selection/confirm-cast-time-target (:db result) selection)]
       ;; Spell should be on stack
@@ -464,7 +464,7 @@
           ;; Cast with targeting flow
           result (selection/cast-spell-with-targeting db :player-1 obj-id)
           selection (assoc (:pending-target-selection result)
-                           :selection/selected-target :player-1)
+                           :selection/selected #{:player-1})
           db-cast (selection/confirm-cast-time-target (:db result) selection)
           ;; Count cards before resolution
           initial-hand-count (count (q/get-hand db-cast :player-1))
@@ -490,7 +490,7 @@
           ;; Cast with targeting flow
           result (selection/cast-spell-with-targeting db :player-1 obj-id)
           selection (assoc (:pending-target-selection result)
-                           :selection/selected-target :player-1)
+                           :selection/selected #{:player-1})
           db-cast (selection/confirm-cast-time-target (:db result) selection)]
       ;; Check that all targets are legal (player targets always are)
       (is (targeting/all-targets-legal? db-cast obj-id)

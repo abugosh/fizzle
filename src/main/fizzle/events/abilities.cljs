@@ -144,7 +144,8 @@
      :selection/ability-index ability-index
      :selection/target-requirement target-req
      :selection/valid-targets valid-targets
-     :selection/selected-target nil}))
+     :selection/selected #{}
+     :selection/select-count 1}))
 
 
 (defn confirm-ability-target
@@ -156,7 +157,7 @@
 
    Arguments:
      db - Datascript database
-     selection - Ability target selection state with :selection/selected-target set
+     selection - Ability target selection state with :selection/selected set
 
    Returns {:db db :pending-selection nil}"
   [db selection]
@@ -164,7 +165,7 @@
         object-id (:selection/object-id selection)
         ability-index (:selection/ability-index selection)
         target-req (:selection/target-requirement selection)
-        target-id (:selection/selected-target selection)
+        target-id (first (:selection/selected selection))
         target-ref (:target/id target-req)]
     (if target-id
       (let [obj (queries/get-object db object-id)
@@ -267,11 +268,10 @@
 
 (rf/reg-event-db
   ::confirm-ability-target
-  (fn [db [_ target-id]]
+  (fn [db _]
     (let [selection (get db :game/pending-selection)
-          selection-with-target (assoc selection :selection/selected-target target-id)
           game-db (:game/db db)
-          result (confirm-ability-target game-db selection-with-target)]
+          result (confirm-ability-target game-db selection)]
       (-> db
           (assoc :game/db (:db result))
           (dissoc :game/pending-selection)))))
@@ -284,10 +284,10 @@
           valid-targets (set (:selection/valid-targets selection))]
       (if (contains? valid-targets object-id)
         ;; Toggle selection: if already selected, deselect; otherwise select
-        (let [currently-selected (:selection/selected-target selection)
-              new-selection (if (= currently-selected object-id)
-                              nil
-                              object-id)]
-          (assoc-in db [:game/pending-selection :selection/selected-target] new-selection))
+        (let [currently-selected (:selection/selected selection)
+              new-selected (if (contains? currently-selected object-id)
+                             #{}
+                             #{object-id})]
+          (assoc-in db [:game/pending-selection :selection/selected] new-selected))
         ;; Invalid target - ignore
         db))))
