@@ -17,7 +17,7 @@
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
-    [fizzle.events.selection :as selection]))
+    [fizzle.events.selection.library :as library]))
 
 
 ;; === Test helpers ===
@@ -114,7 +114,7 @@
           player-id :player-1
           spell-id (random-uuid)
           remaining-effects []
-          result (selection/build-pile-choice-selection card-ids pile-choice player-id spell-id remaining-effects)]
+          result (library/build-pile-choice-selection card-ids pile-choice player-id spell-id remaining-effects)]
       (is (= :pile-choice (:selection/type result))
           "Selection type must be :pile-choice")
       (is (= card-ids (:selection/candidates result))
@@ -137,7 +137,7 @@
     (let [single-id (random-uuid)
           card-ids #{single-id}
           pile-choice {:hand 1 :graveyard :rest}
-          result (selection/build-pile-choice-selection card-ids pile-choice :player-1 (random-uuid) [])]
+          result (library/build-pile-choice-selection card-ids pile-choice :player-1 (random-uuid) [])]
       (is (= #{single-id} (:selection/selected result))
           "Single card must be auto-selected")
       (is (= :pile-choice (:selection/type result))
@@ -148,7 +148,7 @@
   ;; Bug caught: Remaining effects lost during pile-choice phase
   (testing "Remaining effects are preserved in pile-choice selection"
     (let [remaining [{:effect/type :shuffle}]
-          result (selection/build-pile-choice-selection
+          result (library/build-pile-choice-selection
                    #{(random-uuid)} {:hand 1} :player-1 (random-uuid) remaining)]
       (is (= remaining (:selection/remaining-effects result))
           "Remaining effects must be preserved"))))
@@ -169,7 +169,7 @@
                      :selection/selected #{obj1}  ; obj1 goes to hand
                      :selection/hand-count 1
                      :selection/player-id :player-1}
-          db-after (selection/execute-pile-choice db' selection)]
+          db-after (library/execute-pile-choice db' selection)]
       (is (= :hand (get-object-zone db-after obj1))
           "Selected card must be in hand"))))
 
@@ -187,7 +187,7 @@
                      :selection/selected #{obj1}  ; obj1 goes to hand
                      :selection/hand-count 1
                      :selection/player-id :player-1}
-          db-after (selection/execute-pile-choice db' selection)]
+          db-after (library/execute-pile-choice db' selection)]
       (is (= :graveyard (get-object-zone db-after obj2))
           "Non-selected card 2 must be in graveyard")
       (is (= :graveyard (get-object-zone db-after obj3))
@@ -212,7 +212,7 @@
                      :selection/selected #{obj1}
                      :selection/hand-count 1
                      :selection/player-id :player-1}
-          db-after (selection/execute-pile-choice db' selection)
+          db-after (library/execute-pile-choice db' selection)
           ;; Check positions preserved (no shuffle)
           new-pos4 (:object/position (q/get-object db-after obj4))
           new-pos5 (:object/position (q/get-object db-after obj5))]
@@ -232,7 +232,7 @@
                      :selection/selected #{obj1}
                      :selection/hand-count 1
                      :selection/player-id :player-1}
-          db-after (selection/execute-pile-choice db' selection)]
+          db-after (library/execute-pile-choice db' selection)]
       (is (= :hand (get-object-zone db-after obj1))
           "Single card should go to hand")
       (is (= 0 (get-graveyard-count db-after :player-1))
@@ -253,7 +253,7 @@
                   :effect/select-count 3
                   :effect/target-zone :hand
                   :effect/pile-choice {:hand 1 :graveyard :rest}}
-          result (selection/build-tutor-selection db' :player-1 (random-uuid) effect [])]
+          result (library/build-tutor-selection db' :player-1 (random-uuid) effect [])]
       (is (= {:hand 1 :graveyard :rest} (:selection/pile-choice result))
           "pile-choice config must be in selection state"))))
 
@@ -265,7 +265,7 @@
           [db' _] (add-cards-to-library db [:dark-ritual] :player-1)
           effect {:effect/type :tutor
                   :effect/target-zone :hand}
-          result (selection/build-tutor-selection db' :player-1 (random-uuid) effect [])]
+          result (library/build-tutor-selection db' :player-1 (random-uuid) effect [])]
       (is (nil? (:selection/pile-choice result))
           "Normal tutors should not have pile-choice"))))
 
@@ -284,7 +284,7 @@
                    :selection/hand-count 1
                    :selection/selected #{}}}
           ;; Run multiple times to verify count is always correct
-          results (repeatedly 10 #(selection/select-random-pile-choice app-db))]
+          results (repeatedly 10 #(library/select-random-pile-choice app-db))]
       (doseq [result results]
         (let [selected (get-in result [:game/pending-selection :selection/selected])]
           (is (= 1 (count selected))
@@ -304,7 +304,7 @@
                    :selection/candidates #{id1 id2 id3}
                    :selection/hand-count 1
                    :selection/selected #{}}}
-          result (selection/select-random-pile-choice app-db)]
+          result (library/select-random-pile-choice app-db)]
       (is (= :pile-choice (get-in result [:game/pending-selection :selection/type]))
           "Selection type must still be pile-choice"))))
 
@@ -318,7 +318,7 @@
     ;; Should skip pile-choice entirely and just shuffle
     (let [empty-candidates #{}
           pile-choice {:hand 1 :graveyard :rest}
-          result (selection/build-pile-choice-selection empty-candidates pile-choice :player-1 (random-uuid) [])]
+          result (library/build-pile-choice-selection empty-candidates pile-choice :player-1 (random-uuid) [])]
       ;; Even with 0 candidates, function should return valid selection
       ;; But caller (confirm-tutor-selection) should skip pile-choice when empty
       (is (= #{} (:selection/candidates result))

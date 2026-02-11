@@ -14,7 +14,7 @@
     [datascript.core :as d]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
-    [fizzle.events.selection :as selection]))
+    [fizzle.events.selection.library :as library]))
 
 
 ;; === Test helpers ===
@@ -50,7 +50,7 @@
     (let [db (-> (init-game-state)
                  (add-library-cards :player-1 [:a :b :c]))
           effect {:effect/type :scry :effect/amount 1}
-          result (selection/build-scry-selection db :player-1 (random-uuid) effect [])]
+          result (library/build-scry-selection db :player-1 (random-uuid) effect [])]
       (is (= :scry (:selection/type result))
           "Selection type must be :scry")
       (is (= 1 (count (:selection/cards result)))
@@ -65,7 +65,7 @@
     (let [db (-> (init-game-state)
                  (add-library-cards :player-1 [:top :second :third]))
           effect {:effect/type :scry :effect/amount 2}
-          result (selection/build-scry-selection db :player-1 (random-uuid) effect [])
+          result (library/build-scry-selection db :player-1 (random-uuid) effect [])
           card-ids (:selection/cards result)
           ;; Get the actual top 2 cards from library for comparison
           expected-ids (q/get-top-n-library db :player-1 2)]
@@ -81,7 +81,7 @@
     (let [db (-> (init-game-state)
                  (add-library-cards :player-1 [:only-card]))
           effect {:effect/type :scry :effect/amount 3}
-          result (selection/build-scry-selection db :player-1 (random-uuid) effect [])]
+          result (library/build-scry-selection db :player-1 (random-uuid) effect [])]
       (is (= 1 (count (:selection/cards result)))
           "Scry 3 with 1 card in library should scry 1"))))
 
@@ -91,7 +91,7 @@
   (testing "Empty library returns nil (no selection needed)"
     (let [db (init-game-state)  ; no library cards
           effect {:effect/type :scry :effect/amount 2}
-          result (selection/build-scry-selection db :player-1 (random-uuid) effect [])]
+          result (library/build-scry-selection db :player-1 (random-uuid) effect [])]
       (is (nil? result)
           "Empty library should return nil (no selection needed)"))))
 
@@ -103,7 +103,7 @@
                  (add-library-cards :player-1 [:a :b]))
           scry-effect {:effect/type :scry :effect/amount 1}
           draw-effect {:effect/type :draw :effect/amount 1}
-          result (selection/build-scry-selection db :player-1 (random-uuid) scry-effect [draw-effect])]
+          result (library/build-scry-selection db :player-1 (random-uuid) scry-effect [draw-effect])]
       (is (= [draw-effect] (:selection/remaining-effects result))
           "Remaining effects must be preserved for execution after scry"))))
 
@@ -114,7 +114,7 @@
     (let [db (-> (init-game-state)
                  (add-library-cards :player-1 [:a :b]))
           effect {:effect/type :scry :effect/amount 1}
-          result (selection/build-scry-selection db :player-1 (random-uuid) effect [])]
+          result (library/build-scry-selection db :player-1 (random-uuid) effect [])]
       (is (= [] (:selection/top-pile result))
           "Top pile should be initialized to empty vector")
       (is (= [] (:selection/bottom-pile result))
@@ -128,7 +128,7 @@
                  (add-library-cards :player-1 [:a :b]))
           effect {:effect/type :scry :effect/amount 1}
           spell-id (random-uuid)
-          result (selection/build-scry-selection db :player-1 spell-id effect [])]
+          result (library/build-scry-selection db :player-1 spell-id effect [])]
       (is (= spell-id (:selection/spell-id result))
           "Spell ID must be preserved for cleanup"))))
 
@@ -139,7 +139,7 @@
     (let [db (-> (init-game-state)
                  (add-library-cards :player-1 [:a :b]))
           effect {:effect/type :scry :effect/amount 0}
-          result (selection/build-scry-selection db :player-1 (random-uuid) effect [])]
+          result (library/build-scry-selection db :player-1 (random-uuid) effect [])]
       (is (nil? result)
           "Scry 0 should return nil (no selection needed)"))))
 
@@ -150,7 +150,7 @@
     (let [db (-> (init-game-state)
                  (add-library-cards :player-1 [:a :b]))
           effect {:effect/type :scry}  ; no :effect/amount
-          result (selection/build-scry-selection db :player-1 (random-uuid) effect [])]
+          result (library/build-scry-selection db :player-1 (random-uuid) effect [])]
       (is (nil? result)
           "Missing amount should return nil (no selection needed)"))))
 
@@ -162,7 +162,7 @@
                  (add-library-cards :player-1
                                     [:a :b :c :d :e :f :g :h :i :j]))
           effect {:effect/type :scry :effect/amount 5}
-          result (selection/build-scry-selection db :player-1 (random-uuid) effect [])
+          result (library/build-scry-selection db :player-1 (random-uuid) effect [])
           expected-top-5 (q/get-top-n-library db :player-1 5)]
       (is (= 5 (count (:selection/cards result)))
           "Scry 5 should have exactly 5 cards")

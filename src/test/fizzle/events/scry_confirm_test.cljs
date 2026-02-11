@@ -12,7 +12,7 @@
     [datascript.core :as d]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
-    [fizzle.events.selection :as selection]))
+    [fizzle.events.selection.library :as library]))
 
 
 ;; === Test helpers ===
@@ -87,7 +87,7 @@
                      :selection/spell-id spell-id
                      :selection/remaining-effects []}
           app-db (create-app-db-with-scry-selection db selection)
-          result-app-db (selection/confirm-scry-selection app-db)
+          result-app-db (library/confirm-scry-selection app-db)
           result-db (:game/db result-app-db)
           library-order (get-library-order result-db :player-1)]
       (is (= a (first library-order))
@@ -109,7 +109,7 @@
                      :selection/spell-id spell-id
                      :selection/remaining-effects []}
           app-db (create-app-db-with-scry-selection db selection)
-          result-app-db (selection/confirm-scry-selection app-db)
+          result-app-db (library/confirm-scry-selection app-db)
           result-db (:game/db result-app-db)
           library-order (get-library-order result-db :player-1)]
       (is (= a (last library-order))
@@ -131,7 +131,7 @@
                      :selection/spell-id spell-id
                      :selection/remaining-effects []}
           app-db (create-app-db-with-scry-selection db selection)
-          result-app-db (selection/confirm-scry-selection app-db)
+          result-app-db (library/confirm-scry-selection app-db)
           result-db (:game/db result-app-db)
           library-order (get-library-order result-db :player-1)]
       (is (= [a b c] library-order)
@@ -151,7 +151,7 @@
                      :selection/spell-id spell-id
                      :selection/remaining-effects []}
           app-db (create-app-db-with-scry-selection db selection)
-          result-app-db (selection/confirm-scry-selection app-db)
+          result-app-db (library/confirm-scry-selection app-db)
           result-db (:game/db result-app-db)
           library-order (get-library-order result-db :player-1)]
       (is (= [c a b] library-order)
@@ -171,7 +171,7 @@
                      :selection/spell-id spell-id
                      :selection/remaining-effects []}
           app-db (create-app-db-with-scry-selection db selection)
-          result-app-db (selection/confirm-scry-selection app-db)
+          result-app-db (library/confirm-scry-selection app-db)
           result-db (:game/db result-app-db)
           library-order (get-library-order result-db :player-1)]
       (is (= [b c a] library-order)
@@ -192,7 +192,7 @@
                      :selection/spell-id spell-id
                      :selection/remaining-effects [{:effect/type :draw :effect/amount 1}]}
           app-db (create-app-db-with-scry-selection db selection)
-          result-app-db (selection/confirm-scry-selection app-db)
+          result-app-db (library/confirm-scry-selection app-db)
           result-db (:game/db result-app-db)
           final-hand-count (count (q/get-objects-in-zone result-db :player-1 :hand))]
       (is (= (inc initial-hand-count) final-hand-count)
@@ -212,7 +212,7 @@
                      :selection/spell-id spell-id
                      :selection/remaining-effects []}
           app-db (create-app-db-with-scry-selection db selection)
-          result-app-db (selection/confirm-scry-selection app-db)]
+          result-app-db (library/confirm-scry-selection app-db)]
       (is (nil? (:game/pending-selection result-app-db))
           "Pending selection should be nil after confirm"))))
 
@@ -230,7 +230,7 @@
                      :selection/spell-id spell-id
                      :selection/remaining-effects []}
           app-db (create-app-db-with-scry-selection db selection)
-          result-app-db (selection/confirm-scry-selection app-db)
+          result-app-db (library/confirm-scry-selection app-db)
           result-db (:game/db result-app-db)
           spell-obj (q/get-object result-db spell-id)]
       (is (= :graveyard (:object/zone spell-obj))
@@ -251,7 +251,7 @@
                      :selection/spell-id spell-id
                      :selection/remaining-effects []}
           app-db (create-app-db-with-scry-selection db selection)
-          result-app-db (selection/confirm-scry-selection app-db)
+          result-app-db (library/confirm-scry-selection app-db)
           result-db (:game/db result-app-db)
           library-order (get-library-order result-db :player-1)]
       (is (= a (first library-order))

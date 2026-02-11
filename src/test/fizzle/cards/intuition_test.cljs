@@ -18,7 +18,7 @@
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.selection :as selection]
+    [fizzle.events.selection.library :as library]
     [fizzle.events.selection.resolution :as resolution]))
 
 
@@ -130,8 +130,8 @@
           intuition-card (some #(when (= :intuition (:card/id %)) %)
                                cards/all-cards)
           intuition-effect (first (:card/effects intuition-card))
-          selection (selection/build-tutor-selection db' :player-1 (random-uuid)
-                                                     intuition-effect [])]
+          selection (library/build-tutor-selection db' :player-1 (random-uuid)
+                                                   intuition-effect [])]
       ;; Verify multi-select tutor
       (is (= 3 (:selection/select-count selection))
           "Intuition must require 3 cards")

@@ -16,7 +16,7 @@
     [datascript.core :as d]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
-    [fizzle.events.selection :as selection]))
+    [fizzle.events.selection.library :as library]))
 
 
 ;; === Test helpers ===
@@ -99,7 +99,7 @@
                   :effect/selected-zone :hand
                   :effect/remainder-zone :bottom-of-library
                   :effect/shuffle-remainder? true}
-          result (selection/build-peek-selection db :player-1 (random-uuid) effect [])]
+          result (library/build-peek-selection db :player-1 (random-uuid) effect [])]
       (is (= 3 (count (:selection/candidates result)))
           "Should have 3 candidates from top of library")
       (is (= 1 (:selection/select-count result))
@@ -116,7 +116,7 @@
           effect {:effect/type :peek-and-select
                   :effect/count 0
                   :effect/select-count 1}
-          result (selection/build-peek-selection db :player-1 (random-uuid) effect [])]
+          result (library/build-peek-selection db :player-1 (random-uuid) effect [])]
       (is (nil? result)
           "Should return nil for count=0 (no selection needed)"))))
 
@@ -129,7 +129,7 @@
           effect {:effect/type :peek-and-select
                   :effect/count 5  ; asking for 5
                   :effect/select-count 1}
-          result (selection/build-peek-selection db :player-1 (random-uuid) effect [])]
+          result (library/build-peek-selection db :player-1 (random-uuid) effect [])]
       (is (= 2 (count (:selection/candidates result)))
           "Should peek all 2 available cards"))))
 
@@ -141,7 +141,7 @@
           effect {:effect/type :peek-and-select
                   :effect/count 3
                   :effect/select-count 1}
-          result (selection/build-peek-selection db :player-1 (random-uuid) effect [])]
+          result (library/build-peek-selection db :player-1 (random-uuid) effect [])]
       (is (nil? result)
           "Should return nil for empty library (no selection needed)"))))
 
@@ -154,7 +154,7 @@
           effect {:effect/type :peek-and-select
                   :effect/count 3
                   :effect/select-count 1}
-          result (selection/build-peek-selection db :player-1 (random-uuid) effect [])]
+          result (library/build-peek-selection db :player-1 (random-uuid) effect [])]
       (is (true? (:selection/allow-fail-to-find? result))
           "Must allow player to select 0 cards"))))
 
@@ -167,7 +167,7 @@
           effect {:effect/type :peek-and-select
                   :effect/count 1
                   :effect/select-count 1}
-          result (selection/build-peek-selection db :player-1 (random-uuid) effect [])]
+          result (library/build-peek-selection db :player-1 (random-uuid) effect [])]
       (is (= 1 (count (:selection/candidates result)))
           "Should have 1 candidate")
       (is (empty? (:selection/selected result))
@@ -183,7 +183,7 @@
           effect {:effect/type :peek-and-select
                   :effect/count 2
                   :effect/select-count 1}
-          result (selection/build-peek-selection db :player-1 (random-uuid) effect [])
+          result (library/build-peek-selection db :player-1 (random-uuid) effect [])
           expected-ids (set (take 2 obj-ids))]  ; First 2 are positions 0 and 1
       (is (= expected-ids (:selection/candidates result))
           "Candidates should be the top 2 cards by position"))))
@@ -198,7 +198,7 @@
                        :effect/count 2
                        :effect/select-count 1}
           draw-effect {:effect/type :draw :effect/amount 1}
-          result (selection/build-peek-selection db :player-1 (random-uuid) peek-effect [draw-effect])]
+          result (library/build-peek-selection db :player-1 (random-uuid) peek-effect [draw-effect])]
       (is (= [draw-effect] (:selection/remaining-effects result))
           "Remaining effects must be preserved"))))
 
@@ -212,7 +212,7 @@
                   :effect/count 2
                   :effect/select-count 1}
           spell-id (random-uuid)
-          result (selection/build-peek-selection db :player-1 spell-id effect [])]
+          result (library/build-peek-selection db :player-1 spell-id effect [])]
       (is (= spell-id (:selection/spell-id result))
           "Spell ID must be preserved for cleanup"))))
 
@@ -228,7 +228,7 @@
                   :effect/selected-zone :hand
                   :effect/remainder-zone :bottom-of-library
                   :effect/shuffle-remainder? true}
-          result (selection/build-peek-selection db :player-1 (random-uuid) effect [])]
+          result (library/build-peek-selection db :player-1 (random-uuid) effect [])]
       (is (= :hand (:selection/selected-zone result))
           "Selected zone should be :hand")
       (is (= :bottom-of-library (:selection/remainder-zone result))
@@ -244,7 +244,7 @@
                  (add-library-cards :player-1 [:a :b :c]))
           effect {:effect/type :peek-and-select
                   :effect/count 2}  ; minimal effect, no select-count or zones
-          result (selection/build-peek-selection db :player-1 (random-uuid) effect [])]
+          result (library/build-peek-selection db :player-1 (random-uuid) effect [])]
       (is (= 1 (:selection/select-count result))
           "Should default to selecting 1 card")
       (is (= :hand (:selection/selected-zone result))
@@ -269,7 +269,7 @@
                      :selection/remainder-zone :bottom-of-library
                      :selection/shuffle-remainder? false
                      :selection/player-id :player-1}
-          db' (selection/execute-peek-selection db selection)]
+          db' (library/execute-peek-selection db selection)]
       (is (= :hand (get-object-zone db' selected-id))
           "Selected card should be in hand"))))
 
@@ -293,7 +293,7 @@
                      :selection/remainder-zone :bottom-of-library
                      :selection/shuffle-remainder? false
                      :selection/player-id :player-1}
-          db' (selection/execute-peek-selection db selection)]
+          db' (library/execute-peek-selection db selection)]
       (doseq [rem-id remainder-ids]
         (is (= :library (get-object-zone db' rem-id))
             "Remainder cards should stay in library"))
@@ -318,7 +318,7 @@
                      :selection/remainder-zone :bottom-of-library
                      :selection/shuffle-remainder? false
                      :selection/player-id :player-1}
-          db' (selection/execute-peek-selection db selection)]
+          db' (library/execute-peek-selection db selection)]
       (doseq [obj-id obj-ids]
         (is (= :library (get-object-zone db' obj-id))
             "All cards should stay in library when fail-to-find"))
@@ -347,7 +347,7 @@
                      :selection/remainder-zone :bottom-of-library
                      :selection/shuffle-remainder? false
                      :selection/player-id :player-1}
-          db' (selection/execute-peek-selection db selection)
+          db' (library/execute-peek-selection db selection)
           ;; Get positions of all library cards after execution
           extra-positions (mapv #(get-object-position db' %) extra-ids)
           remainder-positions (mapv #(get-object-position db' %) remainder-ids)]

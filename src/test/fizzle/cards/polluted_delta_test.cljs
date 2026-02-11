@@ -19,7 +19,7 @@
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.stack :as stack]
     [fizzle.events.abilities :as ability-events]
-    [fizzle.events.selection :as selection]
+    [fizzle.events.selection.library :as library]
     [fizzle.events.selection.resolution :as resolution]))
 
 
@@ -190,7 +190,7 @@
                      :selection/type :tutor
                      :selection/enters-tapped true
                      :selection/allow-fail-to-find? true}
-          db-after (selection/execute-tutor-selection db' selection)]
+          db-after (library/execute-tutor-selection db' selection)]
       ;; Island should be on battlefield
       (is (= :battlefield (get-object-zone db-after island-id))
           "Selected card should move to battlefield")
@@ -215,7 +215,7 @@
                      :selection/type :tutor
                      :selection/enters-tapped true
                      :selection/allow-fail-to-find? true}
-          db-after (selection/execute-tutor-selection db' selection)]
+          db-after (library/execute-tutor-selection db' selection)]
       ;; Island should be tapped
       (is (true? (get-object-tapped db-after island-id))
           "Fetched land should enter battlefield tapped"))))
@@ -234,7 +234,7 @@
                      :selection/type :tutor
                      :selection/enters-tapped false  ; Not tapped
                      :selection/allow-fail-to-find? true}
-          db-after (selection/execute-tutor-selection db' selection)]
+          db-after (library/execute-tutor-selection db' selection)]
       ;; Island should be untapped
       (is (false? (get-object-tapped db-after island-id))
           "Card should enter untapped when enters-tapped is false"))))
@@ -253,7 +253,7 @@
                      :selection/type :tutor
                      :selection/enters-tapped true  ; Should be ignored for hand
                      :selection/allow-fail-to-find? true}
-          db-after (selection/execute-tutor-selection db' selection)]
+          db-after (library/execute-tutor-selection db' selection)]
       ;; Island should be in hand
       (is (= :hand (get-object-zone db-after island-id))
           "Card should go to hand")
@@ -333,7 +333,7 @@
                      :selection/type :tutor
                      :selection/enters-tapped true
                      :selection/allow-fail-to-find? true}
-          db-after (selection/execute-tutor-selection db' selection)]
+          db-after (library/execute-tutor-selection db' selection)]
       ;; Library count unchanged
       (is (= library-before (get-library-count db-after :player-1))
           "Library count should not change on fail-to-find")
@@ -360,7 +360,7 @@
                      :selection/enters-tapped true
                      :selection/shuffle? true
                      :selection/allow-fail-to-find? true}
-          db-after (selection/execute-tutor-selection db' selection)]
+          db-after (library/execute-tutor-selection db' selection)]
       ;; Island should be on battlefield
       (is (= :battlefield (get-object-zone db-after island-id))
           "Selected card should be on battlefield")

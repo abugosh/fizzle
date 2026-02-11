@@ -16,7 +16,7 @@
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.selection :as selection]
+    [fizzle.events.selection.library :as library]
     [fizzle.events.selection.resolution :as resolution]))
 
 
@@ -212,7 +212,7 @@
           app-db {:game/db db-before-confirm
                   :game/pending-selection scry-state}
           ;; Confirm scry selection - should trigger draw
-          result-app-db (selection/confirm-scry-selection app-db)
+          result-app-db (library/confirm-scry-selection app-db)
           result-db (:game/db result-app-db)]
       ;; After scry + draw, hand should have 1 card (drew the top card after reorder)
       (is (= 1 (get-hand-count result-db :player-1))

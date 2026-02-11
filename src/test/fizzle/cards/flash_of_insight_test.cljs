@@ -21,7 +21,7 @@
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.zones :as zones]
-    [fizzle.events.selection :as selection]
+    [fizzle.events.selection.library :as library]
     [fizzle.events.selection.resolution :as resolution]))
 
 
@@ -220,7 +220,7 @@
           "Should select exactly 1 card")
       ;; Simulate selecting the first peeked card
       (let [selected-card (first lib-ids)
-            db-after-peek (selection/execute-peek-selection
+            db-after-peek (library/execute-peek-selection
                             (:db result)
                             (assoc sel :selection/selected #{selected-card}))
             ;; Move spell off stack (simulating confirm handler cleanup)

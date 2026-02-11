@@ -16,7 +16,7 @@
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
-    [fizzle.events.selection :as selection]))
+    [fizzle.events.selection.library :as library]))
 
 
 ;; === Test helpers ===
@@ -110,7 +110,7 @@
           effect {:effect/type :tutor
                   :effect/select-count 3
                   :effect/target-zone :hand}
-          result (selection/build-tutor-selection db' :player-1 (random-uuid) effect [])]
+          result (library/build-tutor-selection db' :player-1 (random-uuid) effect [])]
       (is (= 3 (:selection/select-count result))
           "Selection state must have :selection/select-count = 3")
       (is (= true (:selection/exact? result))
@@ -134,7 +134,7 @@
           effect {:effect/type :tutor
                   :effect/select-count 3
                   :effect/target-zone :hand}
-          result (selection/build-tutor-selection db' :player-1 (random-uuid) effect [])]
+          result (library/build-tutor-selection db' :player-1 (random-uuid) effect [])]
       (is (= 2 (:selection/select-count result))
           "Selection count must be min(3, 2) = 2")
       (is (= 2 (count (:selection/candidates result)))
@@ -151,7 +151,7 @@
           effect {:effect/type :tutor
                   :effect/select-count 3
                   :effect/target-zone :hand}
-          result (selection/build-tutor-selection db' :player-1 (random-uuid) effect [])]
+          result (library/build-tutor-selection db' :player-1 (random-uuid) effect [])]
       (is (= 1 (:selection/select-count result))
           "Selection count must be 1 when library has 1 card"))))
 
@@ -164,7 +164,7 @@
           effect {:effect/type :tutor
                   :effect/select-count 3
                   :effect/target-zone :hand}
-          result (selection/build-tutor-selection db :player-1 (random-uuid) effect [])]
+          result (library/build-tutor-selection db :player-1 (random-uuid) effect [])]
       (is (= 0 (:selection/select-count result))
           "Selection count must be 0 when library is empty")
       (is (empty? (:selection/candidates result))
@@ -184,7 +184,7 @@
           effect {:effect/type :tutor
                   :effect/criteria {:card/types #{:instant} :card/colors #{:blue}}
                   :effect/target-zone :hand}
-          result (selection/build-tutor-selection db' :player-1 (random-uuid) effect [])]
+          result (library/build-tutor-selection db' :player-1 (random-uuid) effect [])]
       (is (= 1 (:selection/select-count result))
           "Default select-count must be 1 for backwards compatibility")
       ;; Only blue instants are candidates (brain-freeze, mental-note)
@@ -207,7 +207,7 @@
                      :selection/target-zone :hand
                      :selection/player-id :player-1
                      :selection/shuffle? true}
-          db-after (selection/execute-tutor-selection db' selection)]
+          db-after (library/execute-tutor-selection db' selection)]
       ;; All 3 selected cards should be in hand
       (is (= :hand (get-object-zone db-after obj1))
           "First selected card must be in hand")
@@ -241,7 +241,7 @@
                      :selection/target-zone :hand
                      :selection/player-id :player-1
                      :selection/shuffle? true}
-          db-after (selection/execute-tutor-selection db' selection)]
+          db-after (library/execute-tutor-selection db' selection)]
       ;; Verify library still has cards (shuffle doesn't remove them)
       (is (= 2 (get-library-count db-after :player-1))
           "Library should have 2 cards after shuffle")
@@ -265,7 +265,7 @@
                      :selection/target-zone :hand
                      :selection/player-id :player-1
                      :selection/shuffle? true}
-          db-after (selection/execute-tutor-selection db' selection)]
+          db-after (library/execute-tutor-selection db' selection)]
       (is (= :hand (get-object-zone db-after obj1))
           "Selected card must be in hand")
       (is (= :library (get-object-zone db-after obj2))
@@ -290,7 +290,7 @@
                      :selection/target-zone :hand
                      :selection/player-id :player-1
                      :selection/shuffle? true}
-          db-after (selection/execute-tutor-selection db' selection)]
+          db-after (library/execute-tutor-selection db' selection)]
       ;; All cards should remain in library
       (is (= :library (get-object-zone db-after obj1))
           "Cards should remain in library")

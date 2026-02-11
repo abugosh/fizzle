@@ -18,6 +18,7 @@
     [fizzle.engine.zones :as zones]
     [fizzle.events.abilities]
     [fizzle.events.selection :as selection]
+    [fizzle.events.selection.library]
     [fizzle.events.selection.resolution :as resolution]
     [fizzle.history.core :as history]
     [fizzle.history.descriptions :as descriptions]

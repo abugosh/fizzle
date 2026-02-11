@@ -19,7 +19,7 @@
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.zones :as zones]
-    [fizzle.events.selection :as selection]
+    [fizzle.events.selection.library :as library]
     [fizzle.events.selection.resolution :as resolution]))
 
 
@@ -279,7 +279,7 @@
                      :selection/target-zone :hand
                      :selection/type :tutor
                      :selection/allow-fail-to-find? true}
-          db-after (selection/execute-tutor-selection db' selection)]
+          db-after (library/execute-tutor-selection db' selection)]
       ;; Hand should not change
       (is (= hand-before (get-hand-count db-after :player-1))
           "Hand should not gain cards on fail-to-find")
@@ -304,7 +304,7 @@
                      :selection/target-zone :hand
                      :selection/type :tutor
                      :selection/allow-fail-to-find? true}
-          db-after (selection/execute-tutor-selection db' selection)]
+          db-after (library/execute-tutor-selection db' selection)]
       ;; Brain Freeze should be in hand
       (is (= :hand (get-object-zone db-after bf-id))
           "Selected card should move to hand")
@@ -333,7 +333,7 @@
                      :selection/target-zone :hand
                      :selection/type :tutor
                      :selection/allow-fail-to-find? true}
-          db-after (selection/execute-tutor-selection db' selection)]
+          db-after (library/execute-tutor-selection db' selection)]
       ;; Brain Freeze should be in hand (moved before shuffle)
       (is (= :hand (get-object-zone db-after bf-id))
           "Selected card should be in hand")
