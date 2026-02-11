@@ -78,4 +78,19 @@
    :stack-item/is-copy     {}  ; Boolean, true for storm copies
    :stack-item/cast-mode   {}  ; Map, the casting mode used
    :stack-item/object-ref  {:db/valueType :db.type/ref}  ; Reference to game object entity (spells only)
-   })
+
+   ;; === Trigger Entities (trigger registry in Datascript) ===
+   ;; Triggers represent event-driven abilities stored as immutable DB values.
+   ;; Component of source object -- auto-retracted when source is retracted (tokens).
+   :trigger/event-type     {}              ; Keyword: :permanent-tapped, :zone-change, :card-cycled, :phase-entered
+   :trigger/source         {:db/valueType :db.type/ref}  ; Ref to source object entity (nil for game-rule triggers)
+   :trigger/controller     {:db/valueType :db.type/ref}  ; Ref to controlling player entity
+   :trigger/filter         {}              ; EDN map: {:event/object-id :self}, {:event/phase :draw}, etc.
+   :trigger/effects        {}              ; Vector of effect maps [{:effect/type :deal-damage :effect/amount 1}]
+   :trigger/description    {}              ; String, human-readable for UI/log
+   :trigger/uses-stack?    {}              ; Boolean (default true when nil)
+   :trigger/always-active? {}              ; Boolean, true for game-rule triggers (no source zone check)
+   :trigger/type           {}              ; Original trigger type keyword from card def (:becomes-tapped, :land-entered, :draw-step)
+   :object/triggers        {:db/valueType   :db.type/ref
+                            :db/cardinality :db.cardinality/many
+                            :db/isComponent true}})
