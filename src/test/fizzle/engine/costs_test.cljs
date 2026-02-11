@@ -43,8 +43,6 @@
     (let [[db object-id] (add-permanent (init-game-state) :player-1)
           cost {:tap true}
           db' (costs/pay-cost db object-id cost)]
-      ;; Should return new db (not nil)
-      (is (some? db'))
       ;; Permanent should be tapped
       (is (= true (:object/tapped (q/get-object db' object-id)))))))
 
@@ -94,8 +92,6 @@
     (let [[db object-id] (add-permanent (init-game-state) :player-1 {:mining 3})
           cost {:remove-counter {:mining 1}}
           db' (costs/pay-cost db object-id cost)]
-      ;; Should return new db
-      (is (some? db'))
       ;; Counter should be decremented
       (is (= {:mining 2} (:object/counters (q/get-object db' object-id)))))))
 
@@ -105,8 +101,6 @@
     (let [[db object-id] (add-permanent (init-game-state) :player-1 {:mining 1})
           cost {:remove-counter {:mining 1}}
           db' (costs/pay-cost db object-id cost)]
-      ;; Should return new db
-      (is (some? db'))
       ;; Counter should be 0 (not removed entirely)
       (is (= {:mining 0} (:object/counters (q/get-object db' object-id)))))))
 
@@ -202,8 +196,6 @@
           life-before (:player/life (d/entity db player-eid))
           db' (costs/pay-cost db object-id cost)
           life-after (:player/life (d/entity db' player-eid))]
-      ;; Should return new db
-      (is (some? db'))
       ;; Life should be decremented by 1
       (is (= (dec life-before) life-after)))))
 
@@ -232,7 +224,6 @@
     (let [[db object-id] (add-permanent (init-game-state) :player-1)
           cost {:sacrifice-self true}
           db' (costs/pay-cost db object-id cost)]
-      (is (some? db'))
       (is (= :graveyard (:object/zone (q/get-object db' object-id)))
           "Sacrificed permanent should be in graveyard")
       (is (= 0 (count (q/get-objects-in-zone db' :player-1 :battlefield)))
@@ -264,7 +255,6 @@
                 "Precondition: 1 card in hand")
           cost {:discard-hand true}
           db' (costs/pay-cost db object-id cost)]
-      (is (some? db'))
       (is (= 0 (count (q/get-hand db' :player-1)))
           "Hand should be empty after discard")
       (is (= 1 (count (q/get-objects-in-zone db' :player-1 :graveyard)))
@@ -322,6 +312,5 @@
           cost {:mana {:black 2}}
           db' (costs/pay-cost db object-id cost)
           pool-after (q/get-mana-pool db' :player-1)]
-      (is (some? db'))
       (is (= 1 (:black pool-after))
           "Should have 1 black mana remaining after paying 2"))))

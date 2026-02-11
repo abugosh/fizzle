@@ -66,28 +66,18 @@
 ;; === Card Definition Tests ===
 
 (deftest deep-analysis-card-definition-test
-  (testing "Deep Analysis has correct mana cost"
+  (testing "Deep Analysis type, cost, and color"
     (is (= {:colorless 3 :blue 1} (:card/mana-cost deep-analysis/deep-analysis))
-        "Deep Analysis should cost {3}{U}"))
-
-  (testing "Deep Analysis is a sorcery"
+        "Deep Analysis should cost {3}{U}")
     (is (= #{:sorcery} (:card/types deep-analysis/deep-analysis))
-        "Deep Analysis should be a sorcery"))
-
-  (testing "Deep Analysis has correct cmc"
+        "Deep Analysis should be a sorcery")
     (is (= 4 (:card/cmc deep-analysis/deep-analysis))
-        "Deep Analysis should have CMC 4"))
-
-  (testing "Deep Analysis is blue"
+        "Deep Analysis should have CMC 4")
     (is (= #{:blue} (:card/colors deep-analysis/deep-analysis))
-        "Deep Analysis should be blue")))
+        "Deep Analysis should be blue"))
 
-
-(deftest deep-analysis-flashback-definition-test
   (testing "Deep Analysis has flashback alternate cost"
     (let [flashback (first (:card/alternate-costs deep-analysis/deep-analysis))]
-      (is (some? flashback)
-          "Deep Analysis should have alternate costs")
       (is (= :flashback (:alternate/id flashback))
           "Alternate should be flashback")
       (is (= :graveyard (:alternate/zone flashback))
@@ -97,10 +87,8 @@
       (is (= [{:cost/type :pay-life :cost/amount 3}] (:alternate/additional-costs flashback))
           "Flashback should require paying 3 life")
       (is (= :exile (:alternate/on-resolve flashback))
-          "Flashback should exile on resolve"))))
+          "Flashback should exile on resolve")))
 
-
-(deftest deep-analysis-effects-test
   (testing "Deep Analysis has draw effect"
     (let [effects (:card/effects deep-analysis/deep-analysis)
           draw-effect (first effects)]
@@ -121,8 +109,6 @@
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
           modes (rules/get-casting-modes db :player-1 obj-id)
           primary-mode (first (filter #(= :primary (:mode/id %)) modes))]
-      (is (some? primary-mode)
-          "Should have primary mode")
       (is (rules/can-cast-mode? db :player-1 obj-id primary-mode)
           "Should be castable with {3}{U}"))))
 
@@ -256,8 +242,6 @@
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
           db-cast (rules/cast-spell db :player-1 obj-id)
           result (selection/resolve-spell-with-selection db-cast :player-1 obj-id)]
-      (is (some? (:pending-selection result))
-          "Should have pending selection")
       (is (= :player-target (:selection/type (:pending-selection result)))
           "Selection type should be :player-target")
       (is (= obj-id (:selection/spell-id (:pending-selection result)))
@@ -286,8 +270,6 @@
           "Caster should be tracked")
       (is (= #{} (:selection/selected selection))
           "No target should be selected initially")
-      (is (some? (:selection/target-effect selection))
-          "Should store the effect needing a target")
       (is (= :draw (:effect/type (:selection/target-effect selection)))
           "Stored effect should be the draw effect"))))
 
@@ -429,8 +411,6 @@
           ;; for cards with :card/targeting
           result (selection/cast-spell-with-targeting db :player-1 obj-id)]
       ;; Should have pending target selection (not yet on stack)
-      (is (some? (:pending-target-selection result))
-          "Should return pending target selection for Deep Analysis")
       (is (= :cast-time-targeting (:selection/type (:pending-target-selection result)))
           "Selection type should be :cast-time-targeting"))))
 
@@ -505,8 +485,6 @@
           ;; Cast via cast-spell-with-targeting (should work from graveyard too)
           result (selection/cast-spell-with-targeting db :player-1 obj-id)]
       ;; Should have pending target selection
-      (is (some? (:pending-target-selection result))
-          "Flashback cast should also prompt for target selection")
       (is (= :cast-time-targeting (:selection/type (:pending-target-selection result)))
           "Selection type should be :cast-time-targeting")
       ;; Mode should be flashback

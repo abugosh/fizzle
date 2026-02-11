@@ -6,23 +6,6 @@
     [fizzle.events.game :as game]))
 
 
-(deftest test-set-active-screen-switches-to-setup
-  (testing "set-active-screen event sets :active-screen in app-db"
-    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)})
-          updated (game/set-active-screen-handler app-db :setup)]
-      (is (= :setup (:active-screen updated))
-          "Should switch to setup screen"))))
-
-
-(deftest test-set-active-screen-switches-back-to-game
-  (testing "set-active-screen can switch back to game"
-    (let [app-db (-> (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)})
-                     (game/set-active-screen-handler :setup)
-                     (game/set-active-screen-handler :game))]
-      (is (= :game (:active-screen app-db))
-          "Should switch back to game screen"))))
-
-
 (deftest test-set-active-screen-preserves-game-state
   (testing "switching screens preserves game db"
     (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)})

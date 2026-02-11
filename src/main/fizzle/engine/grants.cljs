@@ -183,10 +183,15 @@
 
    Expiration format:
    - {:expires/turn N :expires/phase :cleanup} - expires at turn N, phase
-   - {:expires/permanent true} - never expires"
+   - {:expires/permanent true} - never expires
+   - nil / missing - never expires"
   [grant current-turn current-phase]
   (let [expires (:grant/expires grant)]
     (cond
+      ;; No expiration data = never expires
+      (nil? expires)
+      false
+
       ;; Permanent grants never expire
       (:expires/permanent expires)
       false

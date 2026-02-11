@@ -121,19 +121,13 @@
 
 ;; === Card Definition Tests ===
 
-(deftest test-careful-study-is-sorcery-type
-  (testing "Careful Study has :sorcery in types"
+(deftest test-careful-study-card-definition
+  (testing "Careful Study type and cost"
     (is (= #{:sorcery} (:card/types cards/careful-study))
-        "Careful Study should be a sorcery")))
-
-
-(deftest test-careful-study-costs-one-blue
-  (testing "Careful Study costs one blue mana"
+        "Careful Study should be a sorcery")
     (is (= {:blue 1} (:card/mana-cost cards/careful-study))
-        "Careful Study should cost {U}")))
+        "Careful Study should cost {U}"))
 
-
-(deftest test-careful-study-has-draw-and-discard-effects
   (testing "Careful Study has draw 2 and discard 2 effects"
     (let [card-effects (:card/effects cards/careful-study)]
       (is (= 2 (count card-effects))
@@ -176,8 +170,8 @@
       ;; After resolution, spell is in graveyard and cards were drawn
       ;; (discard effect is pending selection, so doesn't auto-discard yet)
       ;; For now without selection system, cards stay in hand
-      (is (>= (get-hand-count db-after-resolve :player-1) 2)
-          "Hand should have at least 2 cards after drawing"))))
+      (is (= 2 (get-hand-count db-after-resolve :player-1))
+          "Hand should have 2 cards after drawing (discard is pending selection)"))))
 
 
 ;; === Selection State Tests ===
@@ -221,9 +215,6 @@
                 "Precondition: Careful Study on stack")
           ;; Resolve with selection system
           result (selection/resolve-spell-with-selection db-after-cast :player-1 cs-id)]
-      ;; Should have pending selection
-      (is (some? (:pending-selection result))
-          "Should return pending selection state")
       ;; Selection state should require 2 cards
       (is (= 2 (get-in result [:pending-selection :selection/select-count]))
           "Selection should require exactly 2 cards")
@@ -265,51 +256,6 @@
 
 
 ;; === Selection System Corner Cases ===
-
-(deftest test-selection-with-invalid-object-ids
-  (testing "Selection containing non-existent object IDs is handled gracefully"
-    ;; When a selection contains object IDs that don't exist, the system should
-    ;; not crash and should handle this edge case
-    (let [db (create-test-db)
-          ;; Add one real card to hand
-          [db' real-id] (add-card-to-zone db :dark-ritual :hand :player-1)
-          ;; Create an invalid object ID (doesn't exist in db)
-          fake-id (random-uuid)
-          ;; Try to get the fake object - should return nil
-          fake-obj (q/get-object db' fake-id)]
-      ;; Verify the fake object doesn't exist
-      (is (nil? fake-obj)
-          "Non-existent object ID should return nil from get-object")
-      ;; The real object should exist
-      (is (some? (q/get-object db' real-id))
-          "Real object ID should return object from get-object"))))
-
-
-(deftest test-empty-selection-confirmation
-  (testing "Confirming empty selection when cards required doesn't proceed"
-    ;; When selection count is 0 but required count is 2, confirm should not proceed
-    (let [db (create-test-db)
-          ;; Add cards to hand
-          [db' id1] (add-card-to-zone db :dark-ritual :hand :player-1)
-          [db'' id2] (add-card-to-zone db' :cabal-ritual :hand :player-1)
-          ;; Set up pending selection requiring 2 cards but with empty selection
-          pending-selection {:selection/zone :hand
-                             :selection/select-count 2
-                             :selection/player-id :player-1
-                             :selection/selected #{}  ; Empty selection
-                             :selection/spell-id (random-uuid)
-                             :selection/type :discard}
-          ;; Selection count mismatch - should not allow confirmation
-          selected-count (count (:selection/selected pending-selection))
-          required-count (:selection/select-count pending-selection)]
-      (is (not= selected-count required-count)
-          "Empty selection should not match required count of 2")
-      ;; Cards should still be in hand (not discarded)
-      (is (= :hand (get-object-zone db'' id1))
-          "First card should still be in hand")
-      (is (= :hand (get-object-zone db'' id2))
-          "Second card should still be in hand"))))
-
 
 (deftest test-careful-study-empty-library
   (testing "Careful Study with empty library draws nothing, still requires discard of what's in hand"
@@ -396,8 +342,6 @@
       (is (= 2 (get-hand-count db-after-draw :player-1))
           "Should have 2 cards in hand after draw")
       ;; Should have pending discard selection
-      (is (some? sel)
-          "Should have pending discard selection")
       (is (= :discard (:selection/type sel))
           "Selection type should be :discard")
       (is (= 2 (:selection/select-count sel))

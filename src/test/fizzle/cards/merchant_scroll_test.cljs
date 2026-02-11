@@ -250,8 +250,6 @@
                 "Merchant Scroll should be on stack")
           ;; Resolve with selection system
           result (selection/resolve-spell-with-selection db-after-cast :player-1 ms-id)]
-      (is (some? (:pending-selection result))
-          "Should return pending selection state")
       (is (= :tutor (get-in result [:pending-selection :selection/type]))
           "Selection effect type should be :tutor")
       (is (= :library (get-in result [:pending-selection :selection/zone]))
@@ -349,19 +347,13 @@
 
 ;; === Merchant Scroll Card Definition Tests ===
 
-(deftest test-merchant-scroll-is-sorcery
-  (testing "Merchant Scroll has :sorcery in types"
+(deftest test-merchant-scroll-card-definition
+  (testing "Merchant Scroll type and cost"
     (is (= #{:sorcery} (:card/types cards/merchant-scroll))
-        "Merchant Scroll should be a sorcery")))
-
-
-(deftest test-merchant-scroll-costs-1u
-  (testing "Merchant Scroll costs 1U"
+        "Merchant Scroll should be a sorcery")
     (is (= {:colorless 1 :blue 1} (:card/mana-cost cards/merchant-scroll))
-        "Merchant Scroll should cost {1}{U}")))
+        "Merchant Scroll should cost {1}{U}"))
 
-
-(deftest test-merchant-scroll-has-tutor-effect
   (testing "Merchant Scroll has tutor effect for blue instant"
     (let [effects (:card/effects cards/merchant-scroll)]
       (is (= 1 (count effects))
@@ -455,9 +447,6 @@
           [db' ms-id] (add-card-to-zone db :merchant-scroll :hand :player-1)
           db-after-cast (rules/cast-spell db' :player-1 ms-id)
           result (selection/resolve-spell-with-selection db-after-cast :player-1 ms-id)]
-      ;; Should still have pending selection (for fail-to-find)
-      (is (some? (:pending-selection result))
-          "Should have pending selection even with empty library")
       ;; No candidates
       (is (empty? (get-in result [:pending-selection :selection/candidates]))
           "Should have no candidates in empty library")
@@ -474,8 +463,6 @@
           [db'' ms-id] (add-card-to-zone db' :merchant-scroll :hand :player-1)
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
           result (selection/resolve-spell-with-selection db-after-cast :player-1 ms-id)]
-      (is (some? (:pending-selection result))
-          "Should have pending selection")
       (is (empty? (get-in result [:pending-selection :selection/candidates]))
           "Should have no candidates (no blue instants)")
       (is (true? (get-in result [:pending-selection :selection/allow-fail-to-find?]))

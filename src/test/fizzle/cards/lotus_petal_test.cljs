@@ -187,9 +187,6 @@
 (deftest test-lotus-petal-card-definition
   (testing "Lotus Petal card definition is complete and correct"
     (let [card cards/lotus-petal]
-      ;; Card must exist
-      (is (some? card)
-          "Lotus Petal card definition should exist")
       ;; Core attributes
       (is (= :lotus-petal (:card/id card))
           "Card ID should be :lotus-petal")

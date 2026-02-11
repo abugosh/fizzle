@@ -963,8 +963,6 @@
           flashback-mode (first modes)
           db' (rules/cast-spell-mode db :player-1 obj-id flashback-mode)
           obj' (q/get-object db' obj-id)]
-      (is (some? (:object/cast-mode obj'))
-          "Cast mode should be stored on object")
       (is (= :exile (get-in obj' [:object/cast-mode :mode/on-resolve]))
           "Flashback mode should have :exile on-resolve"))))
 
@@ -1296,6 +1294,38 @@
           "Object should have kicked mode stored")
       (is (some? (:mode/effects (:object/cast-mode obj)))
           "Stored mode should have effects"))))
+
+
+(def kicked-resolution-card
+  "Card with kicker that has verifiable kicked effects (life loss)."
+  {:card/id :kicked-resolution-test
+   :card/name "Kicked Resolution Test"
+   :card/cmc 1
+   :card/mana-cost {:white 1}
+   :card/colors #{:white}
+   :card/types #{:instant}
+   :card/text "Kicker {W}. Lose 1 life. If kicked, lose 3 life instead."
+   :card/kicker {:white 1}
+   :card/effects [{:effect/type :lose-life :effect/amount 1}]
+   :card/kicked-effects [{:effect/type :lose-life :effect/amount 3}]})
+
+
+(deftest kicked-spell-resolves-with-kicked-effects-test
+  (testing "Kicked spell resolution uses kicked effects, not default effects"
+    (let [db (init-game-state)
+          [obj-id db] (add-card-to-zone db :player-1 kicked-resolution-card :hand)
+          db (mana/add-mana db :player-1 {:white 2})
+          modes (rules/get-casting-modes db :player-1 obj-id)
+          kicked-mode (first (filter #(= :kicked (:mode/id %)) modes))
+          _ (is (some? kicked-mode) "Precondition: kicked mode exists")
+          ;; Cast with kicked mode
+          db-cast (rules/cast-spell-mode db :player-1 obj-id kicked-mode)
+          ;; Resolve spell - should use kicked effects (lose 3) not default (lose 1)
+          db-resolved (rules/resolve-spell db-cast :player-1 obj-id)]
+      (is (= 17 (q/get-life-total db-resolved :player-1))
+          "Should lose 3 life (kicked effects), not 1 life (default effects)")
+      (is (= :graveyard (:object/zone (q/get-object db-resolved obj-id)))
+          "Spell should be in graveyard after resolution"))))
 
 
 (deftest kicker-with-flashback-independent-test

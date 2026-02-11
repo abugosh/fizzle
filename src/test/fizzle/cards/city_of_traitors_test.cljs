@@ -280,5 +280,5 @@
           ;; Play the land
           db-after-play (game/play-land db' :player-1 island-id)]
       ;; A trigger should be on stack (proving event was dispatched)
-      (is (>= (count (stack/get-all-stack-items db-after-play)) 1)
+      (is (= 1 (count (stack/get-all-stack-items db-after-play)))
           ":land-entered event should be dispatched when land enters"))))

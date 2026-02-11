@@ -240,8 +240,6 @@
                 "Precondition: storm count is 1")
           storm-trigger (first (filter #(= :storm (:stack-item/type %))
                                        (stack/get-all-stack-items db-cast)))]
-      (is (some? storm-trigger)
-          "Storm trigger should still be created")
       (is (= 0 (get-in storm-trigger [:stack-item/effects 0 :effect/count]))
           "Storm trigger count should be 0 (no previous spells)")
       ;; Resolve storm stack-item (creates 0 copies) then resolve original
@@ -269,7 +267,6 @@
           stack-objects (q/get-objects-in-zone db-with-copy :player-1 :stack)
           copy (first (filter :object/is-copy stack-objects))
           copy-id (:object/id copy)]
-      (is (some? copy) "Copy should exist on stack")
       (is (true? (:object/is-copy copy)) "Copy should have :object/is-copy true")
       ;; Resolve the copy
       (let [db-resolved (rules/resolve-spell db-with-copy :player-1 copy-id)]
@@ -340,3 +337,22 @@
           "All available cards should be milled")
       (is (= 1 (get-zone-count db-resolved :opponent :graveyard))
           "Only 1 card milled (all that was available)"))))
+
+
+(deftest brain-freeze-mills-opponent-empty-library-test
+  (testing "Milling opponent with empty library is no-op, no loss condition"
+    (let [db (-> (create-test-db)
+                 (add-opponent))
+          ;; Opponent has 0 library cards
+          _ (is (= 0 (get-zone-count db :opponent :library))
+                "Precondition: opponent library is empty")
+          [db' bf-id] (add-card-to-zone db :brain-freeze :hand :player-1)
+          db-m (mana/add-mana db' :player-1 {:blue 1 :colorless 1})
+          db-cast (rules/cast-spell db-m :player-1 bf-id)
+          db-resolved (rules/resolve-spell db-cast :player-1 bf-id)]
+      (is (= 0 (get-zone-count db-resolved :opponent :library))
+          "Opponent library should still be empty")
+      (is (= 0 (get-zone-count db-resolved :opponent :graveyard))
+          "Nothing should be milled to graveyard")
+      (is (nil? (:game/loss-condition (q/get-game-state db-resolved)))
+          "Mill should not set loss condition (only draw does)"))))

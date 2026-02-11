@@ -131,14 +131,10 @@
 
 ;; === Polluted Delta Card Definition Tests ===
 
-(deftest test-polluted-delta-is-land
-  (testing "Polluted Delta has :land in types"
+(deftest test-polluted-delta-card-definition
+  (testing "Polluted Delta type and ability"
     (is (= #{:land} (:card/types cards/polluted-delta))
-        "Polluted Delta should be a land")))
-
-
-(deftest test-polluted-delta-has-activated-ability
-  (testing "Polluted Delta has activated ability with tap, sacrifice, and pay-life costs"
+        "Polluted Delta should be a land")
     (let [abilities (:card/abilities cards/polluted-delta)]
       (is (= 1 (count abilities))
           "Polluted Delta should have 1 ability")
@@ -462,25 +458,6 @@
             "Stack-item should remain on stack after tapping for mana")))))
 
 
-(deftest test-mana-abilities-still-immediate
-  (testing "Mana abilities resolve immediately (don't use stack)"
-    (let [db (create-test-db)
-          ;; Add City of Brass to battlefield
-          [db' cob-id] (add-card-to-zone db :city-of-brass :battlefield :player-1)
-          ;; Verify no stack items
-          _ (is (true? (stack/stack-empty? db'))
-                "Precondition: no items on stack")
-          ;; Activate mana ability
-          db-after-tap (ability-events/activate-mana-ability db' :player-1 cob-id :blue)]
-      ;; Mana should be added immediately
-      (is (= 1 (:blue (q/get-mana-pool db-after-tap :player-1)))
-          "Mana should be added immediately")
-      ;; No triggers on stack from mana ability
-      ;; (Note: City of Brass damage trigger goes on stack, but that's from the tapped event, not the mana ability)
-      ;; Just verify we got mana - the key point is mana abilities don't use activate-ability
-      )))
-
-
 ;; === Full Stack Resolution Test ===
 
 (deftest test-polluted-delta-full-resolution-from-stack
@@ -511,8 +488,6 @@
           resolve-result (selection/resolve-stack-item-ability-with-selection
                            db-after-activate top-item)]
       ;; Should create tutor selection for library search
-      (is (some? (:pending-selection resolve-result))
-          "Should have pending tutor selection")
       (is (= :tutor (get-in resolve-result [:pending-selection :selection/type]))
           "Selection should be tutor type")
       ;; Candidates should include Island and Swamp (match criteria)

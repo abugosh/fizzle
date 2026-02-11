@@ -85,8 +85,6 @@
   (testing "Intuition is in all-cards"
     (let [intuition-card (some #(when (= "Intuition" (:card/name %)) %)
                                cards/all-cards)]
-      (is (some? intuition-card)
-          "Intuition must be in cards/all-cards")
       (is (= :intuition (:card/id intuition-card))
           "Card ID must be :intuition"))))
 
@@ -176,8 +174,6 @@
           result (selection/resolve-spell-with-selection db-cast :player-1 int-id)
           sel (:pending-selection result)]
       ;; Should have pending selection (tutor)
-      (is (some? sel)
-          "Should have pending tutor selection")
       (is (= :tutor (:selection/type sel))
           "Selection type should be :tutor")
       ;; With only 2 cards, can only find up to 2

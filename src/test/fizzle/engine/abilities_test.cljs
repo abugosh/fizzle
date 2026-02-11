@@ -91,8 +91,6 @@
     (let [[db object-id] (add-permanent (init-game-state) :player-1)
           costs {:tap true}
           db' (abilities/pay-all-costs db object-id costs)]
-      ;; Should return new db
-      (is (some? db'))
       ;; Permanent should be tapped
       (is (= true (:object/tapped (q/get-object db' object-id)))))))
 
@@ -102,8 +100,6 @@
     (let [[db object-id] (add-permanent (init-game-state) :player-1 {:mining 3})
           costs {:tap true :remove-counter {:mining 1}}
           db' (abilities/pay-all-costs db object-id costs)]
-      ;; Should return new db
-      (is (some? db'))
       ;; Permanent should be tapped
       (is (= true (:object/tapped (q/get-object db' object-id))))
       ;; Counters should be decremented
@@ -124,9 +120,6 @@
     (let [[db object-id] (add-permanent (init-game-state) :player-1)
           db-nil (abilities/pay-all-costs db object-id nil)
           db-empty (abilities/pay-all-costs db object-id {})]
-      ;; Should return original db
-      (is (some? db-nil))
-      (is (some? db-empty))
       ;; Permanent should still be untapped
       (is (= false (:object/tapped (q/get-object db-nil object-id))))
       (is (= false (:object/tapped (q/get-object db-empty object-id)))))))
@@ -140,8 +133,6 @@
           ability {:ability/cost {:tap true}
                    :ability/effects [{:effect/type :add-mana :effect/mana {:black 1}}]}
           db' (abilities/activate-ability db object-id ability :player-1)]
-      ;; Should return new db
-      (is (some? db'))
       ;; Permanent should be tapped
       (is (= true (:object/tapped (q/get-object db' object-id))))
       ;; Player should have 1 black mana
@@ -167,8 +158,6 @@
           ability {:ability/cost {:remove-counter {:mining 1}}
                    :ability/effects [{:effect/type :add-mana :effect/mana {:green 1}}]}
           db' (abilities/activate-ability db object-id ability :player-1)]
-      ;; Should return new db
-      (is (some? db'))
       ;; Counters should be decremented
       (is (= {:mining 2} (:object/counters (q/get-object db' object-id))))
       ;; Player should have 1 green mana
@@ -181,8 +170,6 @@
           ability {:ability/cost {:tap true}
                    :ability/effects []}
           db' (abilities/activate-ability db object-id ability :player-1)]
-      ;; Should return db (not nil)
-      (is (some? db'))
       ;; Permanent should be tapped
       (is (= true (:object/tapped (q/get-object db' object-id)))))))
 

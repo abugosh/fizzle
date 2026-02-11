@@ -80,8 +80,7 @@
 
 ;; === Card Definition Tests ===
 
-(deftest card-properties-test
-  ;; Bug caught: Incorrect oracle properties break card behavior
+(deftest orims-chant-card-definition-test
   (testing "card has correct oracle properties"
     (let [card orims-chant/orims-chant]
       (is (= :orims-chant (:card/id card))
@@ -95,22 +94,12 @@
       (is (= #{:white} (:card/colors card))
           "Card should be white")
       (is (= #{:instant} (:card/types card))
-          "Card should be an instant"))))
-
-
-(deftest kicker-cost-test
-  ;; Bug caught: Missing kicker breaks kicked mode generation in get-casting-modes
-  (testing "card has kicker cost defined"
-    (let [card orims-chant/orims-chant]
+          "Card should be an instant")
       (is (= {:white 1} (:card/kicker card))
-          "Kicker cost should be {W}"))))
+          "Kicker cost should be {W}")))
 
-
-(deftest targeting-format-test
-  ;; Bug caught: Wrong attribute (:card/targets vs :card/targeting) breaks targeting system
-  (testing "card uses correct targeting format for targeting system"
-    (let [card orims-chant/orims-chant
-          targeting (:card/targeting card)]
+  (testing "card uses correct targeting format"
+    (let [targeting (:card/targeting orims-chant/orims-chant)]
       (is (vector? targeting)
           "Targeting must be a vector for targeting system")
       (is (= 1 (count targeting))
@@ -123,14 +112,10 @@
         (is (contains? (:target/options req) :any-player)
             "Should allow targeting any player")
         (is (:target/required req)
-            "Target should be required")))))
+            "Target should be required"))))
 
-
-(deftest base-effects-test
-  ;; Bug caught: Missing restriction type in base effects breaks cannot-cast enforcement
   (testing "base effects add cannot-cast-spells restriction"
-    (let [card orims-chant/orims-chant
-          effects (:card/effects card)]
+    (let [effects (:card/effects orims-chant/orims-chant)]
       (is (= 1 (count effects))
           "Should have exactly one base effect")
       (let [effect (first effects)]
@@ -139,14 +124,10 @@
         (is (= :targeted-player (:effect/target effect))
             "Effect target should be :targeted-player")
         (is (= :cannot-cast-spells (:restriction/type effect))
-            "Restriction type should be :cannot-cast-spells")))))
+            "Restriction type should be :cannot-cast-spells"))))
 
-
-(deftest kicked-effects-test
-  ;; Bug caught: Kicked effects missing one restriction (replace semantics)
   (testing "kicked effects add both restrictions"
-    (let [card orims-chant/orims-chant
-          effects (:card/kicked-effects card)]
+    (let [effects (:card/kicked-effects orims-chant/orims-chant)]
       (is (= 2 (count effects))
           "Should have two kicked effects")
       (is (= #{:cannot-cast-spells :cannot-attack}
@@ -156,51 +137,19 @@
 
 ;; === Kicker Mode Tests ===
 
-(deftest casting-modes-test
-  ;; Bug caught: Kicker mode not generated when card in hand
-  (testing "get-casting-modes returns primary and kicked modes"
+(deftest orims-chant-casting-modes-test
+  (testing "get-casting-modes returns primary and kicked with correct costs and effects"
     (let [db (create-test-db)
           [obj-id db] (add-card-to-zone db :orims-chant :hand :player-1)
-          modes (rules/get-casting-modes db :player-1 obj-id)]
+          modes (rules/get-casting-modes db :player-1 obj-id)
+          primary (first (filter #(= :primary (:mode/id %)) modes))
+          kicked (first (filter #(= :kicked (:mode/id %)) modes))]
       (is (= 2 (count modes))
           "Should return 2 casting modes")
-      (is (some #(= :primary (:mode/id %)) modes)
-          "Should include primary mode")
-      (is (some #(= :kicked (:mode/id %)) modes)
-          "Should include kicked mode"))))
-
-
-(deftest primary-mode-cost-test
-  ;; Bug caught: Primary mode has wrong cost (using kicked cost instead)
-  (testing "primary mode costs {W}"
-    (let [db (create-test-db)
-          [obj-id db] (add-card-to-zone db :orims-chant :hand :player-1)
-          modes (rules/get-casting-modes db :player-1 obj-id)
-          primary (first (filter #(= :primary (:mode/id %)) modes))]
       (is (= {:white 1} (:mode/mana-cost primary))
-          "Primary mode should cost {W}"))))
-
-
-(deftest kicked-mode-cost-test
-  ;; Bug caught: Kicked mode cost not merged correctly (base + kicker)
-  (testing "kicked mode costs {WW}"
-    (let [db (create-test-db)
-          [obj-id db] (add-card-to-zone db :orims-chant :hand :player-1)
-          modes (rules/get-casting-modes db :player-1 obj-id)
-          kicked (first (filter #(= :kicked (:mode/id %)) modes))]
+          "Primary mode should cost {W}")
       (is (= {:white 2} (:mode/mana-cost kicked))
-          "Kicked mode should cost {WW} (base {W} + kicker {W})"))))
-
-
-(deftest kicked-mode-effects-test
-  ;; Bug caught: Kicked effects not attached to mode
-  (testing "kicked mode carries kicked effects"
-    (let [db (create-test-db)
-          [obj-id db] (add-card-to-zone db :orims-chant :hand :player-1)
-          modes (rules/get-casting-modes db :player-1 obj-id)
-          kicked (first (filter #(= :kicked (:mode/id %)) modes))]
-      (is (seq (:mode/effects kicked))
-          "Kicked mode should have effects")
+          "Kicked mode should cost {WW} (base {W} + kicker {W})")
       (is (= 2 (count (:mode/effects kicked)))
           "Kicked mode should have 2 effects"))))
 

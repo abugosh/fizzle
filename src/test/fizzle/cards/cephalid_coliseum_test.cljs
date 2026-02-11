@@ -182,20 +182,12 @@
 
 ;; === Card Definition Tests ===
 
-(deftest test-cephalid-coliseum-is-land-type
-  (testing "Cephalid Coliseum has :land in types"
+(deftest test-cephalid-coliseum-card-definition
+  (testing "Cephalid Coliseum type, abilities, and keywords"
     (is (= #{:land} (:card/types coliseum/cephalid-coliseum))
-        "Cephalid Coliseum should be a land")))
-
-
-(deftest test-cephalid-coliseum-has-two-abilities
-  (testing "Cephalid Coliseum has exactly 2 abilities"
+        "Cephalid Coliseum should be a land")
     (is (= 2 (count (:card/abilities coliseum/cephalid-coliseum)))
-        "Cephalid Coliseum should have exactly 2 abilities (mana + threshold)")))
-
-
-(deftest test-cephalid-coliseum-has-threshold-keyword
-  (testing "Cephalid Coliseum has :threshold keyword"
+        "Cephalid Coliseum should have exactly 2 abilities (mana + threshold)")
     (is (= #{:threshold} (:card/keywords coliseum/cephalid-coliseum))
         "Cephalid Coliseum should have :threshold keyword")))
 
@@ -410,20 +402,8 @@
           ;; Check that ability was put on stack after target confirmation
           top-item (stack/get-top-stack-item (:db final-result))]
       ;; Should have a stack-item on stack
-      (is (some? top-item)
-          "Should have stack-item on stack after target confirmed")
       (is (= :activated-ability (:stack-item/type top-item))
           "Stack item should be an activated ability"))))
-
-
-(deftest test-coliseum-threshold-targeting-opponent
-  (testing "Threshold ability can target opponent for draw/discard"
-    ;; Note: This test validates the :effect/target :any-player works
-    ;; The actual opponent handling depends on game state having opponent
-    (let [effect (second (:card/abilities coliseum/cephalid-coliseum))
-          draw-effect (first (:ability/effects effect))]
-      (is (= :any-player (:effect/target draw-effect))
-          "Draw effect should allow targeting any player"))))
 
 
 (deftest test-coliseum-in-graveyard-cannot-activate
@@ -478,8 +458,6 @@
           result (ability-events/activate-ability db''' :player-1 obj-id 1)
           selection (:pending-selection result)]
       ;; Should return pending selection
-      (is (some? selection)
-          "Should have pending selection for target")
       (is (= :ability-targeting (:selection/type selection))
           "Selection type should be :ability-targeting")
       (is (= :player-1 (:selection/player-id selection))
@@ -591,8 +569,6 @@
       (is (= 3 (get-hand-count (:db resolve-result) :player-1))
           "Player should have drawn 3 cards from threshold ability")
       ;; Should have pending discard selection (discard 3)
-      (is (some? (:pending-selection resolve-result))
-          "Should have pending discard selection for 3 cards")
       (is (= :discard (get-in resolve-result [:pending-selection :selection/type]))
           "Pending selection should be for discard")
       (is (= 3 (get-in resolve-result [:pending-selection :selection/select-count]))

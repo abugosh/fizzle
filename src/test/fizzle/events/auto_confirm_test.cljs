@@ -166,8 +166,6 @@
                   :game/pending-selection pending}
           result (dispatch-sync-on-db app-db [::selection/toggle-selection obj1])]
       ;; Pending selection should still be present
-      (is (some? (:game/pending-selection result))
-          "Multi-select tutor should NOT auto-confirm")
       (is (= #{obj1} (get-in result [:game/pending-selection :selection/selected]))
           "Card should be added to selection"))))
 
@@ -192,8 +190,6 @@
                   :game/pending-selection pending}
           result (dispatch-sync-on-db app-db [::selection/toggle-selection bf-id])]
       ;; Deselecting should NOT auto-confirm
-      (is (some? (:game/pending-selection result))
-          "Deselecting should NOT auto-confirm")
       (is (= #{} (get-in result [:game/pending-selection :selection/selected]))
           "Card should be deselected"))))
 
@@ -238,8 +234,6 @@
                   :game/pending-selection pending}
           result (dispatch-sync-on-db app-db [::selection/toggle-selection :opponent])]
       ;; Deselect should NOT auto-confirm
-      (is (some? (:game/pending-selection result))
-          "Deselecting player target should NOT auto-confirm")
       (is (= #{} (get-in result [:game/pending-selection :selection/selected]))
           "Player should be deselected"))))
 
@@ -261,8 +255,6 @@
                   :game/pending-selection pending}
           result (dispatch-sync-on-db app-db [::selection/toggle-selection :invalid-id])]
       ;; Selection should be unchanged
-      (is (some? (:game/pending-selection result))
-          "Invalid target should keep selection open")
       (is (= #{} (get-in result [:game/pending-selection :selection/selected]))
           "Selection should remain empty"))))
 
@@ -281,8 +273,6 @@
                   :game/pending-selection pending}
           result (dispatch-sync-on-db app-db [::selection/toggle-selection card-id])]
       ;; Discard should NOT auto-confirm
-      (is (some? (:game/pending-selection result))
-          "Discard should NOT auto-confirm")
       (is (= #{card-id} (get-in result [:game/pending-selection :selection/selected]))
           "Card should be selected but not confirmed"))))
 

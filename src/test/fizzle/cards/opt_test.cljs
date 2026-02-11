@@ -110,22 +110,13 @@
 
 ;; === Card Definition Tests ===
 
-(deftest test-opt-is-instant-type
-  ;; Bug caught: Wrong card type (e.g., sorcery instead of instant)
-  (testing "Opt has :instant in types"
+(deftest test-opt-card-definition
+  (testing "Opt type and cost"
     (is (= #{:instant} (:card/types cards/opt))
-        "Opt should be an instant")))
-
-
-(deftest test-opt-costs-one-blue
-  ;; Bug caught: Wrong mana cost
-  (testing "Opt costs one blue mana"
+        "Opt should be an instant")
     (is (= {:blue 1} (:card/mana-cost cards/opt))
-        "Opt should cost {U}")))
+        "Opt should cost {U}"))
 
-
-(deftest test-opt-has-scry-then-draw-effects
-  ;; Bug caught: Missing/wrong effect order - scry MUST be first
   (testing "Opt has scry 1 first, then draw 1"
     (let [effects (:card/effects cards/opt)]
       (is (= 2 (count effects))
@@ -161,9 +152,6 @@
                 "Opt should be on stack after casting")
           ;; Resolve spell - should create scry selection
           result (selection/resolve-spell-with-selection db-after-cast :player-1 opt-id)]
-      ;; Should have pending selection for scry
-      (is (some? (:pending-selection result))
-          "Should return pending selection state")
       ;; Selection type should be :scry
       (is (= :scry (get-in result [:pending-selection :selection/type]))
           "Selection type should be :scry")

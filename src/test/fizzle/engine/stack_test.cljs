@@ -115,7 +115,6 @@
                                             :stack-item/controller :player-1
                                             :stack-item/description "third"}))
           top (stack/get-top-stack-item db')]
-      (is (some? top))
       (is (= "third" (:stack-item/description top))))))
 
 
@@ -247,7 +246,6 @@
                                            :stack-item/controller :player-1
                                            :stack-item/object-ref obj-eid})
           result (stack/get-stack-item-by-object-ref db' obj-eid)]
-      (is (some? result))
       (is (= :spell (:stack-item/type result)))
       (is (= obj-eid (:stack-item/object-ref result))))))
 
@@ -294,7 +292,6 @@
                          :where [?e :object/id ?oid]]
                        db' object-id)
           stack-item (stack/get-stack-item-by-object-ref db' obj-eid)]
-      (is (some? stack-item) "Stack-item should be created for cast spell")
       (is (= :spell (:stack-item/type stack-item)))
       (is (= :player-1 (:stack-item/controller stack-item)))
       (is (= object-id (:stack-item/source stack-item)))
@@ -380,7 +377,6 @@
           copy (first copy-objs)
           copy-eid (:db/id copy)
           copy-stack-item (stack/get-stack-item-by-object-ref db'' copy-eid)]
-      (is (some? copy-stack-item) "Storm copy should have a stack-item")
       (is (= :storm-copy (:stack-item/type copy-stack-item)))
       (is (true? (:stack-item/is-copy copy-stack-item)))
       ;; Copy's stack-item position should match the copy object's position

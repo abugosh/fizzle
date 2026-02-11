@@ -162,7 +162,6 @@
       ;; Copy should have a stack-item
       (let [copy-eid (:db/id copy)
             si (stack/get-stack-item-by-object-ref db-with-copy copy-eid)]
-        (is (some? si) "Copy should have an associated stack-item")
         (is (= :storm-copy (:stack-item/type si))
             "Stack-item type should be :storm-copy")
         (is (true? (:stack-item/is-copy si))

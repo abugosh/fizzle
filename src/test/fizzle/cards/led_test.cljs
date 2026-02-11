@@ -196,9 +196,6 @@
 (deftest test-led-card-definition
   (testing "Lion's Eye Diamond card definition is complete and correct"
     (let [card cards/lions-eye-diamond]
-      ;; Card must exist
-      (is (some? card)
-          "LED card definition should exist")
       ;; Core attributes
       (is (= :lions-eye-diamond (:card/id card))
           "Card ID should be :lions-eye-diamond")

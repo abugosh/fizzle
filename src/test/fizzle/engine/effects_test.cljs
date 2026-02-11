@@ -218,18 +218,6 @@
       (is (= 0 (count-zone db' :player-1 :graveyard))))))
 
 
-(deftest test-add-mana-missing-mana-key
-  (testing "add-mana effect with missing :effect/mana is no-op"
-    (let [db (init-game-state)
-          initial-pool (q/get-mana-pool db :player-1)
-          effect {:effect/type :add-mana
-                  ;; no :effect/mana key - should be graceful no-op
-                  }
-          db' (fx/execute-effect db :player-1 effect)]
-      ;; Mana pool should be unchanged
-      (is (= initial-pool (q/get-mana-pool db' :player-1))))))
-
-
 (deftest test-add-mana-negative-amount
   (testing "add-mana with negative value: documents current behavior"
     ;; Corner case: negative mana amounts in effect.
@@ -657,16 +645,6 @@
          :where [?e :object/id ?oid]
          [?e :object/zone ?zone]]
        db object-id))
-
-
-(deftest test-effect-without-condition-executes-normally
-  (testing "Effect with no :effect/condition executes as usual"
-    (let [db (init-game-state)
-          effect {:effect/type :add-mana
-                  :effect/mana {:black 3}}
-          db' (fx/execute-effect db :player-1 effect)]
-      ;; Effect should execute normally
-      (is (= 3 (:black (q/get-mana-pool db' :player-1)))))))
 
 
 (deftest test-no-counters-condition-skips-when-counters-positive

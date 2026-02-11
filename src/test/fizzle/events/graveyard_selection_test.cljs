@@ -111,9 +111,6 @@
                   :effect/count 3
                   :effect/selection :player}
           result (selection/build-graveyard-selection db :player-1 (random-uuid) effect [])]
-      ;; Should return valid state, not nil or crash
-      (is (some? result)
-          "Should return valid state, not nil")
       ;; Candidate IDs should be empty set (not nil)
       (is (= #{} (:selection/candidate-ids result))
           "Candidate IDs must be empty set, not nil")

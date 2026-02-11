@@ -132,10 +132,8 @@
     (is (= #{:sorcery} (:card/types recoup/recoup))
         "Recoup should be a sorcery")
     (is (= #{:red} (:card/colors recoup/recoup))
-        "Recoup should be red")))
+        "Recoup should be red"))
 
-
-(deftest test-recoup-has-targeting-requirement
   (testing "Recoup has :card/targeting for graveyard sorcery"
     (let [reqs (targeting/get-targeting-requirements recoup/recoup)]
       (is (= 1 (count reqs))
@@ -151,10 +149,8 @@
       (is (= {:card/types #{:sorcery}} (:target/criteria (first reqs)))
           "Target criteria should require sorcery type")
       (is (true? (:target/required (first reqs)))
-          "Target should be required"))))
+          "Target should be required")))
 
-
-(deftest test-recoup-has-grant-flashback-effect
   (testing "Recoup has :grant-flashback effect"
     (let [effects (:card/effects recoup/recoup)
           effect (first effects)]
@@ -163,14 +159,10 @@
       (is (= :grant-flashback (:effect/type effect))
           "Effect type should be :grant-flashback")
       (is (= :graveyard-sorcery (:effect/target-ref effect))
-          "Effect target-ref should match targeting id"))))
+          "Effect target-ref should match targeting id")))
 
-
-(deftest test-recoup-has-own-flashback
   (testing "Recoup has its own flashback for {3}{R}"
     (let [flashback (first (:card/alternate-costs recoup/recoup))]
-      (is (some? flashback)
-          "Recoup should have alternate costs")
       (is (= :flashback (:alternate/id flashback))
           "Alternate should be flashback")
       (is (= :graveyard (:alternate/zone flashback))
@@ -318,14 +310,12 @@
           modes (rules/get-casting-modes db-recoup-resolved :player-1 sorcery-id)
           flashback-mode (first (filter #(= :granted-flashback (:mode/id %)) modes))]
       ;; Mode should exist and have :exile on-resolve
-      (is (some? flashback-mode) "Should find granted-flashback mode")
       (is (= :exile (:mode/on-resolve flashback-mode)) "Mode should have :exile on-resolve")
       ;; Cast with the flashback mode
       (let [db-fb-cast (rules/cast-spell-mode db-recoup-resolved :player-1 sorcery-id flashback-mode)
             ;; Verify cast mode stored on object
             sorcery-obj (q/get-object db-fb-cast sorcery-id)
             stored-mode (:object/cast-mode sorcery-obj)]
-        (is (some? stored-mode) "Cast mode should be stored on object")
         (is (= :exile (:mode/on-resolve stored-mode)) "Stored mode should have :exile on-resolve")))))
 
 

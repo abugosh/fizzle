@@ -108,7 +108,6 @@
       ;; Should have spell + storm on stack
       (is (= 1 (count storm-items)) "Should have exactly 1 storm stack-item")
       (let [storm-trigger (first storm-items)]
-        (is (some? storm-trigger) "Should have a :storm trigger")
         (is (= :storm-obj-1 (:stack-item/source storm-trigger)))))))
 
 

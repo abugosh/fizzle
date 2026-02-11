@@ -279,3 +279,40 @@
             "Selection should have 0 candidates with empty graveyard")
         ;; If no selection (empty GY shortcut), spell resolved fully
         (is (true? true) "Spell resolved fully with empty graveyard (no selection needed)")))))
+
+
+(deftest ill-gotten-gains-opponent-empty-graveyard-test
+  ;; Corner case: opponent has no cards, so after discard their GY is still empty
+  (testing "Opponent with empty hand/graveyard: remaining random return is structured correctly"
+    (let [db (-> (create-test-db)
+                 (add-opponent))
+          ;; Opponent has NO hand or graveyard cards
+          _ (is (= 0 (get-zone-count db :opponent :hand))
+                "Precondition: opponent hand is empty")
+          _ (is (= 0 (get-zone-count db :opponent :graveyard))
+                "Precondition: opponent graveyard is empty")
+          ;; Add IGG to caster's hand (only card)
+          [db' igg-id] (add-card-to-zone db :ill-gotten-gains :hand :player-1)
+          db-m (mana/add-mana db' :player-1 {:black 4})
+          db-cast (rules/cast-spell db-m :player-1 igg-id)
+          result (selection/resolve-spell-with-selection db-cast :player-1 igg-id)]
+      ;; IGG should be exiled
+      (is (= :exile (:object/zone (q/get-object (:db result) igg-id)))
+          "IGG should be exiled")
+      ;; Opponent's hand should be empty (nothing to discard)
+      (is (= 0 (get-zone-count (:db result) :opponent :hand))
+          "Opponent hand should remain empty")
+      ;; Opponent's graveyard should be empty (nothing was discarded)
+      (is (= 0 (get-zone-count (:db result) :opponent :graveyard))
+          "Opponent graveyard should remain empty after discard of empty hand")
+      ;; Remaining effects should include opponent's random return
+      (when-let [sel (:pending-selection result)]
+        (is (= 1 (count (:selection/remaining-effects sel)))
+            "Should have opponent's random return in remaining effects")
+        (let [remaining (first (:selection/remaining-effects sel))]
+          (is (= :return-from-graveyard (:effect/type remaining))
+              "Remaining effect should be graveyard return")
+          (is (= :opponent (:effect/target remaining))
+              "Remaining effect targets opponent")
+          (is (= :random (:effect/selection remaining))
+              "Remaining effect uses random selection"))))))

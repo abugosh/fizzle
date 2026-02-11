@@ -122,19 +122,13 @@
 
 ;; === Card Definition Tests ===
 
-(deftest test-mental-note-is-instant-type
-  (testing "Mental Note has :instant in types"
+(deftest test-mental-note-card-definition
+  (testing "Mental Note type and cost"
     (is (= #{:instant} (:card/types cards/mental-note))
-        "Mental Note should be an instant")))
-
-
-(deftest test-mental-note-costs-one-blue
-  (testing "Mental Note costs one blue mana"
+        "Mental Note should be an instant")
     (is (= {:blue 1} (:card/mana-cost cards/mental-note))
-        "Mental Note should cost {U}")))
+        "Mental Note should cost {U}"))
 
-
-(deftest test-mental-note-has-mill-and-draw-effects
   (testing "Mental Note has mill 2 and draw 1 effects in correct order"
     (let [card-effects (:card/effects cards/mental-note)]
       (is (= 2 (count card-effects))

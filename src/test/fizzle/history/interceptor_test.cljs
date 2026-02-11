@@ -1,6 +1,12 @@
 (ns fizzle.history.interceptor-test
   (:require
     [cljs.test :refer-macros [deftest is testing]]
+    [datascript.core :as d]
+    [fizzle.cards.iggy-pop :as cards]
+    [fizzle.db.queries :as queries]
+    [fizzle.db.schema :refer [schema]]
+    [fizzle.engine.mana :as mana]
+    [fizzle.engine.rules :as rules]
     [fizzle.history.core :as history]
     [fizzle.history.interceptor :as interceptor]))
 
@@ -208,3 +214,101 @@
           result-effects (:effects result)]
       (is (not (contains? result-effects :db))
           "Should not add :db to effects"))))
+
+
+;; === Description generation tests with real Datascript dbs ===
+
+(defn- create-game-db
+  "Create a real Datascript game-db for testing descriptions."
+  []
+  (let [conn (d/create-conn schema)]
+    (d/transact! conn cards/all-cards)
+    (d/transact! conn [{:player/id :player-1
+                        :player/name "Player"
+                        :player/life 20
+                        :player/mana-pool {:white 0 :blue 0 :black 0
+                                           :red 0 :green 0 :colorless 0}
+                        :player/storm-count 0
+                        :player/land-plays-left 1}])
+    (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
+      (d/transact! conn [{:game/id :game-1
+                          :game/turn 1
+                          :game/phase :main1
+                          :game/active-player player-eid
+                          :game/priority player-eid}]))
+    @conn))
+
+
+(defn- add-card-to-zone
+  "Add a card object to a zone. Returns [db object-id]."
+  [db card-id zone player-id]
+  (let [conn (d/conn-from-db db)
+        player-eid (queries/get-player-eid db player-id)
+        card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] db card-id)
+        obj-id (random-uuid)]
+    (d/transact! conn [{:object/id obj-id
+                        :object/card card-eid
+                        :object/zone zone
+                        :object/owner player-eid
+                        :object/controller player-eid
+                        :object/tapped false}])
+    [@conn obj-id]))
+
+
+(deftest test-cast-spell-description-with-real-db
+  (testing "Cast spell description includes card name with real Datascript db"
+    (let [db-before (create-game-db)
+          [db-with-card obj-id] (add-card-to-zone db-before :dark-ritual :hand :player-1)
+          db-mana (mana/add-mana db-with-card :player-1 {:black 1})
+          db-after-cast (rules/cast-spell db-mana :player-1 obj-id)
+          pre-db (make-db-with-history db-before)
+          post-db (make-db-with-history db-after-cast)
+          event [:fizzle.events.game/cast-spell]
+          context (make-context pre-db post-db event)
+          result (run-interceptor context)
+          result-db (get-in result [:effects :db])
+          entry (first (:history/main result-db))]
+      (is (= "Cast Dark Ritual" (:entry/description entry))
+          "Should include card name when real db has spell on stack")
+      (is (= 1 (:entry/turn entry))
+          "Turn should be 1 from real game state"))))
+
+
+(deftest test-advance-phase-description-with-real-db
+  (testing "Advance phase description includes phase name with real Datascript db"
+    (let [db-before (create-game-db)
+          ;; Simulate advancing to combat phase
+          conn (d/conn-from-db db-before)
+          game-eid (d/q '[:find ?e . :where [?e :game/id :game-1]] db-before)
+          _ (d/transact! conn [[:db/add game-eid :game/phase :combat]])
+          db-after @conn
+          pre-db (make-db-with-history db-before)
+          post-db (make-db-with-history db-after)
+          event [:fizzle.events.game/advance-phase]
+          context (make-context pre-db post-db event)
+          result (run-interceptor context)
+          result-db (get-in result [:effects :db])
+          entry (first (:history/main result-db))]
+      (is (= "Advance to Combat" (:entry/description entry))
+          "Should include phase name from real game state"))))
+
+
+(deftest test-resolve-top-description-with-real-db
+  (testing "Resolve top description includes card name with real Datascript db"
+    (let [db-before (create-game-db)
+          [db-with-card obj-id] (add-card-to-zone db-before :dark-ritual :hand :player-1)
+          db-mana (mana/add-mana db-with-card :player-1 {:black 1})
+          ;; Cast spell to put it on stack
+          db-on-stack (rules/cast-spell db-mana :player-1 obj-id)
+          ;; Resolve it
+          db-after-resolve (rules/resolve-spell db-on-stack :player-1 obj-id)
+          ;; Use db-on-stack as pre-db (spell was on stack before resolve)
+          pre-db (make-db-with-history db-on-stack)
+          post-db (make-db-with-history db-after-resolve)
+          event [:fizzle.events.game/resolve-top]
+          context (make-context pre-db post-db event)
+          result (run-interceptor context)
+          result-db (get-in result [:effects :db])
+          entry (first (:history/main result-db))]
+      (is (= "Resolve Dark Ritual" (:entry/description entry))
+          "Should include card name from real db"))))

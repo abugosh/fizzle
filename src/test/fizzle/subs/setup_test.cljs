@@ -58,8 +58,6 @@
     (let [db (setup/init-setup-handler {})
           grouped (sub-value db [::subs/current-main-grouped])]
       ;; Should have land, instant, and sorcery groups at minimum
-      (is (some? (:land grouped))
-          "Should have land group")
       (is (some? (:instant grouped))
           "Should have instant group")
       (is (some? (:sorcery grouped))

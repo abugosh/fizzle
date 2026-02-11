@@ -298,6 +298,15 @@
           "Permanent grant should never expire"))))
 
 
+(deftest grant-expired-nil-expires-test
+  (testing "Grant with nil :grant/expires does not crash and never expires"
+    (let [grant {:grant/id (random-uuid)}]
+      (is (not (grants/grant-expired? grant 1 :cleanup))
+          "Grant without :grant/expires should not be considered expired")
+      (is (not (grants/grant-expired? grant 100 :cleanup))
+          "Grant without :grant/expires should never expire"))))
+
+
 (deftest expire-grants-removes-expired-test
   (testing "expire-grants removes expired grants from all objects"
     (let [db (init-game-state)

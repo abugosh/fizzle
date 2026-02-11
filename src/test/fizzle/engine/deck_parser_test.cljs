@@ -350,10 +350,6 @@
           instant-idx (str/index-of text "// Instants")
           sorcery-idx (str/index-of text "// Sorceries")
           artifact-idx (str/index-of text "// Artifacts")]
-      (is (some? land-idx))
-      (is (some? instant-idx))
-      (is (some? sorcery-idx))
-      (is (some? artifact-idx))
       (is (< land-idx instant-idx))
       (is (< instant-idx sorcery-idx))
       (is (< sorcery-idx artifact-idx)))))

@@ -11,8 +11,6 @@
 (deftest schema-creates-valid-connection-test
   (testing "schema creates connection that accepts transactions"
     (let [conn (d/create-conn schema)]
-      (is (some? conn))
-      ;; Actually verify we can transact - not just that conn exists
       (d/transact! conn [{:player/id :test-player
                           :player/life 20}])
       (is (= 20 (d/q '[:find ?life .

@@ -305,8 +305,6 @@
                    :selection/hand-count 1
                    :selection/selected #{}}}
           result (selection/select-random-pile-choice app-db)]
-      (is (some? (get-in result [:game/pending-selection]))
-          "Selection state must still exist (not confirmed)")
       (is (= :pile-choice (get-in result [:game/pending-selection :selection/type]))
           "Selection type must still be pile-choice"))))
 

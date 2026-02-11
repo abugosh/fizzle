@@ -158,7 +158,6 @@
     (turn-based/register-turn-based-actions!)
     (let [all-triggers (registry/get-all-triggers)
           draw-trigger (first (filter #(= :game-rule-draw (:trigger/id %)) all-triggers))]
-      (is (some? draw-trigger))
       (is (= {:event/phase :draw} (:trigger/filter draw-trigger))))))
 
 
@@ -167,7 +166,6 @@
     (turn-based/register-turn-based-actions!)
     (let [all-triggers (registry/get-all-triggers)
           untap-trigger (first (filter #(= :game-rule-untap (:trigger/id %)) all-triggers))]
-      (is (some? untap-trigger))
       (is (= {:event/phase :untap} (:trigger/filter untap-trigger))))))
 
 

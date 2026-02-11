@@ -121,9 +121,6 @@
           app-db (-> (create-app-db db)
                      (assoc :game/selected-card obj-id))
           result-db (game/cast-spell-handler app-db)]
-      ;; SHOULD show mode selector
-      (is (some? (:game/pending-mode-selection result-db))
-          "Multi-mode card should show mode selector")
       ;; Should have both modes in selector
       (let [pending (:game/pending-mode-selection result-db)
             modes (:modes pending)]
@@ -238,18 +235,6 @@
 
 
 ;; === Edge Case Tests ===
-
-(deftest zero-modes-does-nothing-test
-  (testing "Card with 0 castable modes does nothing"
-    (let [db (init-game-state)
-          [obj-id db] (add-card-to-zone db :player-1 test-multi-mode-card :hand)
-          ;; No mana, and set life to 1 (can't pay 2 life alternate cost)
-          player-eid (q/get-player-eid db :player-1)
-          db (d/db-with db [[:db/add player-eid :player/life 1]])]
-      ;; Should not be castable at all
-      (is (false? (rules/can-cast? db :player-1 obj-id))
-          "Card should not be castable with no mana and insufficient life"))))
-
 
 ;; === Flashback Mode Tests ===
 

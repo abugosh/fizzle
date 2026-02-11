@@ -115,8 +115,7 @@
 
 ;; === Card Definition Tests ===
 
-(deftest flash-of-insight-card-structure-test
-  ;; Bug caught: card not exported or malformed
+(deftest flash-of-insight-card-definition-test
   (testing "Flash of Insight card has required fields"
     (let [card flash-of-insight/flash-of-insight]
       (is (= :flash-of-insight (:card/id card))
@@ -132,11 +131,8 @@
       (is (= 1 (:colorless (:card/mana-cost card)))
           "Mana cost must have 1 colorless")
       (is (= 1 (:blue (:card/mana-cost card)))
-          "Mana cost must have 1 blue"))))
+          "Mana cost must have 1 blue")))
 
-
-(deftest flash-of-insight-normal-cast-effect-test
-  ;; Bug caught: effect misconfigured, wrong effect type
   (testing "Normal cast uses :peek-and-select effect"
     (let [effect (first (:card/effects flash-of-insight/flash-of-insight))]
       (is (= :peek-and-select (:effect/type effect))
@@ -150,11 +146,8 @@
       (is (= :bottom-of-library (:effect/remainder-zone effect))
           "Non-selected go to bottom")
       (is (true? (:effect/shuffle-remainder? effect))
-          "Remainder should be shuffled (random order)"))))
+          "Remainder should be shuffled (random order)")))
 
-
-(deftest flash-of-insight-flashback-cost-test
-  ;; Bug caught: missing flashback, wrong mana cost, missing exile cost
   (testing "Flashback has correct costs"
     (let [alternate (first (:card/alternate-costs flash-of-insight/flash-of-insight))]
       (is (= :flashback (:alternate/id alternate))
@@ -164,11 +157,8 @@
       (is (= {:colorless 1 :blue 1} (:alternate/mana-cost alternate))
           "Flashback mana cost is {1}{U}")
       (is (= :exile (:alternate/on-resolve alternate))
-          "Spell exiles after flashback resolution"))))
+          "Spell exiles after flashback resolution")))
 
-
-(deftest flash-of-insight-exile-additional-cost-test
-  ;; Bug caught: exile cost missing or misconfigured
   (testing "Flashback has exile blue cards additional cost"
     (let [alternate (first (:card/alternate-costs flash-of-insight/flash-of-insight))
           exile-cost (first (:alternate/additional-costs alternate))]
@@ -214,9 +204,6 @@
           ;; Resolve spell - should create peek-and-select selection
           result (selection/resolve-spell-with-selection db-with-x :player-1 foi-id)
           sel (:pending-selection result)]
-      ;; Should have pending selection
-      (is (some? sel)
-          "Should return pending peek-and-select selection state")
       ;; Selection type should be :peek-and-select
       (is (= :peek-and-select (:selection/type sel))
           "Selection effect type should be :peek-and-select")
@@ -259,7 +246,7 @@
 
 (deftest flash-of-insight-flashback-with-exile-cost-test
   ;; Bug caught: flashback + exile cost interaction broken
-  (testing "Cast from graveyard via flashback, pay exile cost"
+  (testing "Cast from graveyard via flashback, verify mode and exile on resolve"
     (let [db (create-test-db)
           ;; Add cards to library for peeking
           [db' _lib-ids] (add-cards-to-library db
@@ -276,9 +263,21 @@
           _ (is (= :graveyard (get-object-zone db-with-mana foi-id))
                 "Precondition: FoI is in graveyard")
           ;; Get casting modes from graveyard
-          modes (rules/get-casting-modes db-with-mana :player-1 foi-id)]
+          modes (rules/get-casting-modes db-with-mana :player-1 foi-id)
+          flashback-mode (first modes)]
       ;; From graveyard, only flashback mode should be available
       (is (= 1 (count modes))
           "Should have exactly 1 mode from graveyard (flashback)")
-      (is (= :flashback (:mode/id (first modes)))
-          "Mode should be flashback"))))
+      (is (= :flashback (:mode/id flashback-mode))
+          "Mode should be flashback")
+      ;; Mode should have exile on-resolve (exiled after flashback resolution)
+      (is (= :exile (:mode/on-resolve flashback-mode))
+          "Flashback mode should exile on resolve")
+      ;; Cast with flashback mode and verify spell goes to stack
+      (let [db-cast (rules/cast-spell-mode db-with-mana :player-1 foi-id flashback-mode)
+            foi-obj (q/get-object db-cast foi-id)]
+        (is (= :stack (:object/zone foi-obj))
+            "FoI should be on stack after flashback cast")
+        ;; Cast mode should be stored on the object
+        (is (= :exile (get-in foi-obj [:object/cast-mode :mode/on-resolve]))
+            "Stored cast mode should have :exile on-resolve")))))

@@ -18,7 +18,8 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
-    [fizzle.events.abilities :as ability-events]))
+    [fizzle.events.abilities :as ability-events]
+    [fizzle.events.game :as game]))
 
 
 ;; === Test helpers ===
@@ -108,38 +109,24 @@
 
 ;; Scryfall: {1}{W}
 (deftest seal-of-cleansing-card-definition-test
-  (testing "Seal of Cleansing has correct mana cost"
+  (testing "Seal of Cleansing type, cost, and color"
     (is (= {:colorless 1 :white 1} (:card/mana-cost seal/seal-of-cleansing))
-        "Seal of Cleansing should cost {1}{W}"))
-
-  (testing "Seal of Cleansing is an enchantment"
+        "Seal of Cleansing should cost {1}{W}")
     (is (= #{:enchantment} (:card/types seal/seal-of-cleansing))
-        "Seal of Cleansing should be an enchantment"))
-
-  (testing "Seal of Cleansing has correct cmc"
+        "Seal of Cleansing should be an enchantment")
     (is (= 2 (:card/cmc seal/seal-of-cleansing))
-        "Seal of Cleansing should have CMC 2"))
-
-  (testing "Seal of Cleansing is white"
+        "Seal of Cleansing should have CMC 2")
     (is (= #{:white} (:card/colors seal/seal-of-cleansing))
-        "Seal of Cleansing should be white")))
+        "Seal of Cleansing should be white"))
 
-
-;; Oracle: "Sacrifice this enchantment: Destroy target artifact or enchantment."
-(deftest seal-of-cleansing-ability-definition-test
-  (testing "Seal of Cleansing has activated ability"
+  (testing "Seal of Cleansing has activated ability with sacrifice cost"
     (let [abilities (:card/abilities seal/seal-of-cleansing)
           ability (first abilities)]
       (is (= 1 (count abilities))
           "Seal should have 1 ability")
       (is (= :activated (:ability/type ability))
-          "Ability should be :activated")))
-
-  (testing "Ability costs sacrifice"
-    ;; Ruling (2021-06-18): "Sacrificing Seal of Cleansing is the cost to activate its ability."
-    (let [ability (first (:card/abilities seal/seal-of-cleansing))
-          cost (:ability/cost ability)]
-      (is (true? (:sacrifice-self cost))
+          "Ability should be :activated")
+      (is (true? (:sacrifice-self (:ability/cost ability)))
           "Ability cost should include :sacrifice-self true")))
 
   (testing "Ability has destroy effect"
@@ -275,8 +262,6 @@
           result (ability-events/activate-ability db :player-1 seal-id 0)
           sel (:pending-selection result)]
       ;; Should have pending selection for target
-      (is (some? sel)
-          "Should have pending target selection")
       (is (= :ability-targeting (:selection/type sel))
           "Selection type should be :ability-targeting")
       ;; Confirm target selection
@@ -288,7 +273,13 @@
             "Seal should be in graveyard after sacrifice")
         ;; Should have stack-item for the ability
         (let [top-item (stack/get-top-stack-item db-after-confirm)]
-          (is (some? top-item)
-              "Should have activated ability on stack")
           (is (= :activated-ability (:stack-item/type top-item))
-              "Stack item should be activated ability type"))))))
+              "Stack item should be activated ability type")
+          ;; Resolve the ability from the stack
+          (let [db-resolved (game/resolve-top-of-stack db-after-confirm :player-1)]
+            ;; Target enchantment should be destroyed (moved to graveyard)
+            (is (= :graveyard (:object/zone (q/get-object db-resolved target-id)))
+                "Target enchantment should be in graveyard after ability resolves")
+            ;; Stack should be empty
+            (is (nil? (stack/get-top-stack-item db-resolved))
+                "Stack should be empty after resolution")))))))

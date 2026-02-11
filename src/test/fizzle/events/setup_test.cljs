@@ -72,8 +72,6 @@
                        first)]
       (is (= 3 (:count main-dr))
           "Main should have 3 Dark Rituals after moving one to side")
-      (is (some? side-dr)
-          "Side should have Dark Ritual entry")
       (is (= 1 (:count side-dr))
           "Side should have 1 Dark Ritual"))))
 
@@ -117,8 +115,6 @@
                        first)]
       (is (= 1 (:count side-ms))
           "Side should have 1 Merchant Scroll after moving one to main")
-      (is (some? main-ms)
-          "Main should have Merchant Scroll entry")
       (is (= 1 (:count main-ms))
           "Main should have 1 Merchant Scroll (new entry)"))))
 
@@ -131,8 +127,6 @@
           main-cot (->> (:setup/main-deck db)
                         (filter #(= :city-of-traitors (:card/id %)))
                         first)]
-      (is (some? main-cot)
-          "Should create new entry in main deck")
       (is (= 1 (:count main-cot))
           "New main entry should have count 1"))))
 
@@ -683,8 +677,6 @@
                  (setup/set-import-name-handler "Bad Deck")
                  (setup/set-import-text-handler "4 Nonexistent Card"))
           db-after (setup/confirm-import-handler db)]
-      (is (some? (:setup/import-modal db-after))
-          "Should keep modal open on error")
       (is (seq (get-in db-after [:setup/import-modal :errors]))
           "Should have error list")
       (is (not (contains? (:setup/imported-decks db-after) :bad-deck))

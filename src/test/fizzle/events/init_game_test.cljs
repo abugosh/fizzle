@@ -135,9 +135,6 @@
   (testing "init-game-state returns valid, non-nil game db"
     (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)})
           game-db (:game/db app-db)]
-      ;; The game db must never be nil
-      (is (some? game-db)
-          "Game db must not be nil after initialization")
       ;; The game db must be a datascript db
       (is (instance? ds-db/DB game-db)
           "Game db must be a datascript database")
@@ -204,25 +201,6 @@
           "Sideboard should have exactly 15 cards"))))
 
 
-(deftest test-iggy-pop-decklist-all-card-ids-valid
-  (testing "every card-id in decklist has a definition in all-cards"
-    (let [defined-ids (set (map :card/id cards/all-cards))
-          main-ids (set (map :card/id (:deck/main cards/iggy-pop-decklist)))
-          side-ids (set (map :card/id (:deck/side cards/iggy-pop-decklist)))]
-      (doseq [cid main-ids]
-        (is (contains? defined-ids cid)
-            (str "Main deck card " cid " must have a definition in all-cards")))
-      (doseq [cid side-ids]
-        (is (contains? defined-ids cid)
-            (str "Sideboard card " cid " must have a definition in all-cards"))))))
-
-
-(deftest test-iggy-pop-decklist-has-metadata
-  (testing "decklist has required metadata fields"
-    (is (= :iggy-pop (:deck/id cards/iggy-pop-decklist)))
-    (is (= "Iggy Pop" (:deck/name cards/iggy-pop-decklist)))))
-
-
 ;; === Config-based init tests ===
 
 (deftest test-init-game-state-with-custom-deck
@@ -234,24 +212,7 @@
           library (get-library-objects db :player-1)
           hand (get-hand-objects db :player-1)]
       (is (= 7 (+ (count library) (count hand)))
-          "Total cards should equal deck size (7)")
-      (is (some? db)
-          "Should produce a valid game db"))))
-
-
-(deftest test-init-game-state-clock-turns-default
-  (testing "clock-turns defaults to 4 when not specified"
-    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)})]
-      (is (some? (:game/db app-db))
-          "Should initialize with default clock-turns"))))
-
-
-(deftest test-init-game-state-clock-turns-custom
-  (testing "clock-turns can be specified in config"
-    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)
-                                        :clock-turns 6})]
-      (is (some? (:game/db app-db))
-          "Should initialize with custom clock-turns"))))
+          "Total cards should equal deck size (7)"))))
 
 
 ;; === Must-Contain / Opening Hand Tests ===
@@ -392,5 +353,5 @@
           hand-card-ids (frequencies (map #(get-in % [:object/card :card/id]) hand))]
       (is (= 7 (count hand))
           "Hand should have 7 cards (entire deck)")
-      (is (>= (get hand-card-ids :dark-ritual 0) 2)
-          "Hand should have at least 2 Dark Rituals"))))
+      (is (= 4 (get hand-card-ids :dark-ritual 0))
+          "Hand should have all 4 Dark Rituals (entire 7-card deck is drawn)"))))

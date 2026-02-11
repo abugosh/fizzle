@@ -82,7 +82,6 @@
         (is (= :add-mana (:effect/type effect)))
         (is (= {:black 3} (:effect/mana effect))))
       ;; Conditional threshold effects
-      (is (some? (:card/conditional-effects card)))
       (let [threshold-effects (get-in card [:card/conditional-effects :threshold])]
         (is (= 1 (count threshold-effects)))
         (is (= :add-mana (:effect/type (first threshold-effects))))

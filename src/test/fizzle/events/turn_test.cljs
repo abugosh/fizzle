@@ -331,8 +331,6 @@
                  (set-turn 1))
           result (game/begin-cleanup db :player-1)
           selection (:pending-selection result)]
-      (is (some? selection)
-          "should create pending selection")
       (is (= 2 (:selection/select-count selection))
           "should discard 2 cards (9 - 7)")
       (is (= :hand (:selection/zone selection))
@@ -353,8 +351,6 @@
                  (set-turn 1))
           result (game/begin-cleanup db :player-1)
           selection (:pending-selection result)]
-      (is (some? selection)
-          "should create selection when over custom max")
       (is (= 1 (:selection/select-count selection))
           "should discard 1 card (6 - 5)"))))
 
@@ -416,8 +412,6 @@
                  (set-turn 1)
                  (add-cards-to-hand :player-1 8))
           result (game/begin-cleanup db :player-1)]
-      (is (some? (:pending-selection result))
-          "begin-cleanup should create a pending selection for discard")
       (is (= :cleanup-discard (:selection/type (:pending-selection result)))
           "selection should be for cleanup discard")
       (let [cleanup-db (:db result)
@@ -491,8 +485,6 @@
           app-db (make-app-db game-db)
           result (game/maybe-continue-cleanup app-db)]
       ;; Should re-run begin-cleanup which creates selection for discard
-      (is (some? (:game/pending-selection result))
-          "should create pending selection for discard")
       (is (= 2 (:selection/select-count (:game/pending-selection result)))
           "should need to discard 2 cards (9 - 7)"))))
 

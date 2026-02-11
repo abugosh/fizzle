@@ -170,8 +170,6 @@
           db' (zones/remove-object db-with-two first-obj-id)]
       (is (nil? (q/get-object db' first-obj-id))
           "First object should be removed")
-      (is (some? (q/get-object db' second-obj-id))
-          "Second object should still exist")
       (is (= :hand (:object/zone (q/get-object db' second-obj-id)))
           "Second object should still be in hand"))))
 

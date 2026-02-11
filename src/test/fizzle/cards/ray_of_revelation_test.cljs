@@ -112,51 +112,29 @@
 
 ;; Oracle: "Destroy target enchantment.\nFlashback {G}"
 (deftest ray-of-revelation-card-definition-test
-  (testing "Ray of Revelation has correct mana cost"
-    ;; Scryfall: {1}{W}
+  (testing "Ray of Revelation type, cost, and color"
     (is (= {:colorless 1 :white 1} (:card/mana-cost ray/ray-of-revelation))
-        "Ray of Revelation should cost {1}{W}"))
-
-  (testing "Ray of Revelation is an instant"
-    ;; Scryfall: Instant
+        "Ray of Revelation should cost {1}{W}")
     (is (= #{:instant} (:card/types ray/ray-of-revelation))
-        "Ray of Revelation should be an instant"))
-
-  (testing "Ray of Revelation has correct cmc"
-    ;; Scryfall: cmc 2.0
+        "Ray of Revelation should be an instant")
     (is (= 2 (:card/cmc ray/ray-of-revelation))
-        "Ray of Revelation should have CMC 2"))
-
-  (testing "Ray of Revelation is white"
-    ;; Scryfall: ["W"]
+        "Ray of Revelation should have CMC 2")
     (is (= #{:white} (:card/colors ray/ray-of-revelation))
-        "Ray of Revelation should be white")))
+        "Ray of Revelation should be white"))
 
-
-;; Oracle: "Flashback {G}"
-(deftest ray-of-revelation-flashback-definition-test
   (testing "Ray of Revelation has flashback alternate cost"
     (let [flashback (first (:card/alternate-costs ray/ray-of-revelation))]
-      (is (some? flashback)
-          "Ray of Revelation should have alternate costs")
       (is (= :flashback (:alternate/id flashback))
           "Alternate should be flashback")
       (is (= :graveyard (:alternate/zone flashback))
           "Flashback should be castable from graveyard")
-      ;; Scryfall: Flashback {G}
       (is (= {:green 1} (:alternate/mana-cost flashback))
           "Flashback should cost {G}")
-      ;; Ruling (2021-03-19): "Then exile it."
       (is (= :exile (:alternate/on-resolve flashback))
-          "Flashback should exile on resolve"))))
+          "Flashback should exile on resolve")))
 
-
-;; Oracle: "Destroy target enchantment."
-(deftest ray-of-revelation-targeting-test
   (testing "Ray of Revelation targets enchantments on battlefield"
     (let [targeting (first (:card/targeting ray/ray-of-revelation))]
-      (is (some? targeting)
-          "Ray should have targeting")
       (is (= :target-enchantment (:target/id targeting))
           "Target id should be :target-enchantment")
       (is (= :object (:target/type targeting))
@@ -168,11 +146,8 @@
       (is (= #{:enchantment} (get-in targeting [:target/criteria :card/types]))
           "Should only target enchantments")
       (is (true? (:target/required targeting))
-          "Target should be required"))))
+          "Target should be required")))
 
-
-;; Oracle: "Destroy target enchantment."
-(deftest ray-of-revelation-effects-test
   (testing "Ray of Revelation has destroy effect"
     (let [effects (:card/effects ray/ray-of-revelation)
           destroy-effect (first effects)]
@@ -196,8 +171,6 @@
           db (mana/add-mana db :player-1 {:colorless 1 :white 1})
           modes (rules/get-casting-modes db :player-1 obj-id)
           primary-mode (first (filter #(= :primary (:mode/id %)) modes))]
-      (is (some? primary-mode)
-          "Should have primary mode")
       (is (rules/can-cast-mode? db :player-1 obj-id primary-mode)
           "Should be castable with {1}{W}"))))
 

@@ -77,11 +77,21 @@
       (is (seq spell-items) "Should have spell stack-item")
       ;; Resolve via resolve-one-item (resolves top item which is :storm)
       ;; Keep resolving until we hit the spell
-      (let [;; First resolve may hit storm meta-item; resolve until spell is on top
-            result (game/resolve-one-item db' :player-1)]
-        (is (map? result) "Should return a map")
-        (is (some? (:db result)) "Should have :db key")
-        (is (nil? (:pending-selection result)) "Should not need selection")))))
+      ;; Keep resolving until stack is empty (storm meta-item + spell)
+      (loop [db db'
+             iterations 0]
+        (if (or (nil? (stack/get-top-stack-item db))
+                (> iterations 5))
+          (do
+            ;; Stack should be empty after all items resolved
+            (is (nil? (stack/get-top-stack-item db))
+                "Stack should be empty after resolution")
+            ;; Spell should be in graveyard
+            (is (= :graveyard (:object/zone (queries/get-object db object-id)))
+                "Dark Ritual should be in graveyard after resolution"))
+          (let [result (game/resolve-one-item db :player-1)]
+            (is (nil? (:pending-selection result)) "Dark Ritual should not need selection")
+            (recur (:db result) (inc iterations))))))))
 
 
 (deftest test-resolve-one-item-activated-ability
@@ -99,7 +109,6 @@
       (is (some? top) "Stack-item should exist")
       ;; Resolve via resolve-one-item
       (let [result (game/resolve-one-item db' :player-1)]
-        (is (some? (:db result)) "Should have :db key")
         (is (nil? (:pending-selection result)) "Simple ability should not need selection")
         ;; Stack-item should be removed
         (is (nil? (stack/get-top-stack-item (:db result)))
@@ -124,7 +133,6 @@
       (is (some? top) "Stack-item should exist")
       ;; Resolve via resolve-one-item
       (let [result (game/resolve-one-item db' :player-1)]
-        (is (some? (:db result)) "Should have :db key")
         (is (nil? (:pending-selection result)) "Trigger should not need selection")
         ;; Stack-item should be removed
         (is (nil? (stack/get-top-stack-item (:db result)))
@@ -141,7 +149,6 @@
       (is (nil? (stack/get-top-stack-item db)) "Stack should be empty")
       ;; Resolve via resolve-one-item
       (let [result (game/resolve-one-item db :player-1)]
-        (is (some? (:db result)) "Should have :db key")
         (is (nil? (:pending-selection result)) "Should not have pending selection")
         ;; DB should be unchanged
         (is (= db (:db result)) "DB should be unchanged for empty stack")))))
@@ -273,6 +280,29 @@
         ;; The trigger item should still be on the stack (wasn't reached)
         (is (seq (stack/get-all-stack-items (:game/db result)))
             "Items below selection should remain on stack")))))
+
+
+(deftest test-resolve-all-only-item-needs-selection
+  (testing "Single selection-requiring spell on stack: resolve-all returns pending-selection"
+    (let [db (create-full-db)
+          ;; Put only Merchant Scroll on stack (tutor needs selection)
+          [db obj-id] (add-card-to-zone db :merchant-scroll :hand :player-1)
+          db (mana/add-mana db :player-1 {:blue 3})
+          mode {:mode/id :primary
+                :mode/zone :hand
+                :mode/mana-cost {:colorless 1 :blue 1}
+                :mode/additional-costs []
+                :mode/on-resolve :graveyard}
+          db (rules/cast-spell-mode db :player-1 obj-id mode)
+          app-db {:game/db db}
+          result (game/resolve-all-handler app-db)]
+      ;; Should stop at the tutor's selection
+      (is (some? (:game/pending-selection result))
+          "Should return pending selection when only item needs selection")
+      ;; The spell should still be on the stack (not removed by selection pause)
+      (is (some #(:stack-item/object-ref %)
+                (stack/get-all-stack-items (:game/db result)))
+          "Spell stack-item should remain on stack"))))
 
 
 (deftest test-resolve-all-stops-at-new-items
