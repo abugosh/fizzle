@@ -20,6 +20,7 @@
     [fizzle.events.selection :as selection]
     [fizzle.events.selection.library]
     [fizzle.events.selection.resolution :as resolution]
+    [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.history.core :as history]
     [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
@@ -238,7 +239,7 @@
       ;; Check for targeting requirements
       (seq targeting-reqs)
       (let [first-req (first targeting-reqs)
-            sel (selection/build-cast-time-target-selection game-db player-id object-id mode first-req)]
+            sel (sel-targeting/build-cast-time-target-selection game-db player-id object-id mode first-req)]
         (-> app-db
             (assoc :game/pending-selection sel)
             (dissoc :game/selected-card)))

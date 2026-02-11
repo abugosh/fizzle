@@ -24,8 +24,8 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.zones :as zones]
-    [fizzle.events.selection :as selection]
-    [fizzle.events.selection.resolution :as resolution]))
+    [fizzle.events.selection.resolution :as resolution]
+    [fizzle.events.selection.targeting :as sel-targeting]))
 
 
 ;; === Test Helpers ===
@@ -234,10 +234,10 @@
           [db [sorcery-id]] (add-cards-to-graveyard db [:careful-study] :player-1)
           db (set-mana-pool db :player-1 {:colorless 1 :red 1})
           ;; Cast Recoup with targeting
-          result (selection/cast-spell-with-targeting db :player-1 recoup-id)
+          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{sorcery-id})
-          db-cast (selection/confirm-cast-time-target (:db result) selection)
+          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
           ;; Resolve Recoup
           resolve-result (resolution/resolve-spell-with-selection db-cast :player-1 recoup-id)
           db-resolved (:db resolve-result)
@@ -257,10 +257,10 @@
           [db [sorcery-id]] (add-cards-to-graveyard db [:careful-study] :player-1)
           db (set-mana-pool db :player-1 {:colorless 1 :red 1})
           ;; Cast and resolve Recoup
-          result (selection/cast-spell-with-targeting db :player-1 recoup-id)
+          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{sorcery-id})
-          db-cast (selection/confirm-cast-time-target (:db result) selection)
+          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
           resolve-result (resolution/resolve-spell-with-selection db-cast :player-1 recoup-id)
           db-resolved (:db resolve-result)
           ;; Get the granted flashback
@@ -278,10 +278,10 @@
           [db [sorcery-id]] (add-cards-to-graveyard db [:careful-study] :player-1)
           db (set-mana-pool db :player-1 {:colorless 1 :red 1})
           ;; Cast and resolve Recoup
-          result (selection/cast-spell-with-targeting db :player-1 recoup-id)
+          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{sorcery-id})
-          db-cast (selection/confirm-cast-time-target (:db result) selection)
+          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
           resolve-result (resolution/resolve-spell-with-selection db-cast :player-1 recoup-id)
           db-resolved (:db resolve-result)]
       ;; Check grant has exile on resolve
@@ -298,10 +298,10 @@
           [db [sorcery-id]] (add-cards-to-graveyard db [:careful-study] :player-1)
           db (set-mana-pool db :player-1 {:colorless 1 :red 1 :blue 1})
           ;; Cast and resolve Recoup
-          result (selection/cast-spell-with-targeting db :player-1 recoup-id)
+          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{sorcery-id})
-          db-cast (selection/confirm-cast-time-target (:db result) selection)
+          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
           resolve-result (resolution/resolve-spell-with-selection db-cast :player-1 recoup-id)
           db-recoup-resolved (:db resolve-result)
           ;; Verify sorcery has granted flashback
@@ -329,10 +329,10 @@
           [db [sorcery-id]] (add-cards-to-graveyard db [:careful-study] :player-1)
           db (set-mana-pool db :player-1 {:colorless 1 :red 1})
           ;; Cast Recoup with targeting
-          result (selection/cast-spell-with-targeting db :player-1 recoup-id)
+          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{sorcery-id})
-          db-cast (selection/confirm-cast-time-target (:db result) selection)
+          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
           ;; Remove the target before resolution (simulate Tormod's Crypt)
           db-target-exiled (zones/move-to-zone db-cast sorcery-id :exile)
           ;; Try to resolve Recoup
@@ -355,10 +355,10 @@
           [db [sorcery1-id sorcery2-id]] (add-cards-to-graveyard db [:careful-study :merchant-scroll] :player-1)
           db (set-mana-pool db :player-1 {:colorless 1 :red 1})
           ;; Target sorcery1
-          result (selection/cast-spell-with-targeting db :player-1 recoup-id)
+          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{sorcery1-id})
-          db-cast (selection/confirm-cast-time-target (:db result) selection)
+          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
           ;; Remove sorcery1 (even though sorcery2 still exists)
           db-target-exiled (zones/move-to-zone db-cast sorcery1-id :exile)
           ;; Resolve - should fizzle
@@ -381,10 +381,10 @@
           [db [sorcery-id]] (add-cards-to-graveyard db [:careful-study] :player-1)
           db (set-mana-pool db :player-1 {:colorless 1 :red 1})
           ;; Cast and resolve Recoup
-          result (selection/cast-spell-with-targeting db :player-1 recoup-id)
+          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{sorcery-id})
-          db-cast (selection/confirm-cast-time-target (:db result) selection)
+          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
           resolve-result (resolution/resolve-spell-with-selection db-cast :player-1 recoup-id)
           db-resolved (:db resolve-result)
           ;; Verify grant exists
@@ -404,10 +404,10 @@
           [db [sorcery-id]] (add-cards-to-graveyard db [:careful-study] :player-1)
           db (set-mana-pool db :player-1 {:colorless 1 :red 1})
           ;; Cast and resolve Recoup
-          result (selection/cast-spell-with-targeting db :player-1 recoup-id)
+          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{sorcery-id})
-          db-cast (selection/confirm-cast-time-target (:db result) selection)
+          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
           resolve-result (resolution/resolve-spell-with-selection db-cast :player-1 recoup-id)
           db-resolved (:db resolve-result)
           ;; Try to expire at main1 phase (before cleanup)
@@ -441,10 +441,10 @@
           [db [sorcery-id]] (add-cards-to-graveyard db [:careful-study] :player-1)
           db (set-mana-pool db :player-1 {:colorless 3 :red 1})
           ;; Cast Recoup via flashback
-          result (selection/cast-spell-with-targeting db :player-1 recoup-id)
+          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{sorcery-id})
-          db-cast (selection/confirm-cast-time-target (:db result) selection)
+          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
           ;; Verify it's on stack with flashback mode
           _ (is (= :flashback (:mode/id (:object/cast-mode (q/get-object db-cast recoup-id))))
                 "Cast mode should be flashback")
@@ -462,10 +462,10 @@
           [db [sorcery-id]] (add-cards-to-graveyard db [:careful-study] :player-1)
           db (set-mana-pool db :player-1 {:colorless 3 :red 1})
           ;; Cast and resolve flashback Recoup
-          result (selection/cast-spell-with-targeting db :player-1 recoup-id)
+          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{sorcery-id})
-          db-cast (selection/confirm-cast-time-target (:db result) selection)
+          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
           resolve-result (resolution/resolve-spell-with-selection db-cast :player-1 recoup-id)
           db-resolved (:db resolve-result)
           ;; Check target got flashback
@@ -485,10 +485,10 @@
           ;; Give player mana for Recoup ({1}{R}) and later for Careful Study ({U})
           db (set-mana-pool db :player-1 {:colorless 1 :red 1 :blue 1})
           ;; Step 1: Cast Recoup targeting Careful Study
-          result (selection/cast-spell-with-targeting db :player-1 recoup-id)
+          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{sorcery-id})
-          db-cast (selection/confirm-cast-time-target (:db result) selection)
+          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
           ;; Step 2: Resolve Recoup
           resolve-result (resolution/resolve-spell-with-selection db-cast :player-1 recoup-id)
           db-resolved (:db resolve-result)

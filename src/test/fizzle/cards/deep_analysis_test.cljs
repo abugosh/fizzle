@@ -25,8 +25,8 @@
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.zones :as zones]
     [fizzle.events.game :as events]
-    [fizzle.events.selection :as selection]
-    [fizzle.events.selection.resolution :as resolution]))
+    [fizzle.events.selection.resolution :as resolution]
+    [fizzle.events.selection.targeting :as sel-targeting]))
 
 
 ;; === Test helpers ===
@@ -410,7 +410,7 @@
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
           ;; Use cast-spell-with-targeting which should return pending-selection
           ;; for cards with :card/targeting
-          result (selection/cast-spell-with-targeting db :player-1 obj-id)]
+          result (sel-targeting/cast-spell-with-targeting db :player-1 obj-id)]
       ;; Should have pending target selection (not yet on stack)
       (is (= :cast-time-targeting (:selection/type (:pending-target-selection result)))
           "Selection type should be :cast-time-targeting"))))
@@ -422,11 +422,11 @@
           [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :hand)
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
           ;; Start casting - get pending selection
-          result (selection/cast-spell-with-targeting db :player-1 obj-id)
+          result (sel-targeting/cast-spell-with-targeting db :player-1 obj-id)
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{:player-1})
           ;; Confirm the target selection
-          db-after (selection/confirm-cast-time-target (:db result) selection)]
+          db-after (sel-targeting/confirm-cast-time-target (:db result) selection)]
       ;; Spell should be on stack
       (is (= :stack (:object/zone (q/get-object db-after obj-id)))
           "Spell should be on stack after confirming target")
@@ -443,10 +443,10 @@
           [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :hand)
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
           ;; Cast with targeting flow
-          result (selection/cast-spell-with-targeting db :player-1 obj-id)
+          result (sel-targeting/cast-spell-with-targeting db :player-1 obj-id)
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{:player-1})
-          db-cast (selection/confirm-cast-time-target (:db result) selection)
+          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
           ;; Count cards before resolution
           initial-hand-count (count (q/get-hand db-cast :player-1))
           ;; Resolve the spell - should use stored target, not prompt
@@ -469,10 +469,10 @@
           [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :hand)
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
           ;; Cast with targeting flow
-          result (selection/cast-spell-with-targeting db :player-1 obj-id)
+          result (sel-targeting/cast-spell-with-targeting db :player-1 obj-id)
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{:player-1})
-          db-cast (selection/confirm-cast-time-target (:db result) selection)]
+          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)]
       ;; Check that all targets are legal (player targets always are)
       (is (targeting/all-targets-legal? db-cast obj-id)
           "Player targets should always be legal"))))
@@ -484,7 +484,7 @@
           [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :graveyard)
           db (mana/add-mana db :player-1 {:colorless 1 :blue 1})
           ;; Cast via cast-spell-with-targeting (should work from graveyard too)
-          result (selection/cast-spell-with-targeting db :player-1 obj-id)]
+          result (sel-targeting/cast-spell-with-targeting db :player-1 obj-id)]
       ;; Should have pending target selection
       (is (= :cast-time-targeting (:selection/type (:pending-target-selection result)))
           "Selection type should be :cast-time-targeting")
