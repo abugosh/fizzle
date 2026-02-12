@@ -66,13 +66,21 @@
                           :in $ ?oid
                           :where [?e :object/id ?oid]]
                         db-with-copy copy-id)
+          ;; Find original spell's stack-item to inherit targets
+          original-si (d/q '[:find (pull ?e [:stack-item/targets]) .
+                             :in $ ?src
+                             :where [?e :stack-item/source ?src]]
+                           db-with-copy source-object-id)
+          original-targets (:stack-item/targets original-si)
           ;; Create stack-item for the copy
           db-with-item (stack/create-stack-item db-with-copy
-                                                {:stack-item/type :storm-copy
-                                                 :stack-item/controller controller-id
-                                                 :stack-item/source source-object-id
-                                                 :stack-item/object-ref copy-eid
-                                                 :stack-item/is-copy true})
+                                                (cond-> {:stack-item/type :storm-copy
+                                                         :stack-item/controller controller-id
+                                                         :stack-item/source source-object-id
+                                                         :stack-item/object-ref copy-eid
+                                                         :stack-item/is-copy true}
+                                                  original-targets
+                                                  (assoc :stack-item/targets original-targets)))
           ;; Set object/position to match stack-item (backward compat)
           stack-item (stack/get-stack-item-by-object-ref db-with-item copy-eid)
           position (:stack-item/position stack-item)]

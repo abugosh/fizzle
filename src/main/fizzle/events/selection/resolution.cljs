@@ -6,6 +6,7 @@
    file imports. Builder dispatch goes through the
    core/build-selection-for-effect multimethod."
   (:require
+    [datascript.core :as d]
     [fizzle.db.queries :as queries]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.rules :as rules]
@@ -63,22 +64,6 @@
 
 
 ;; =====================================================
-;; Stored Target Resolution
-;; =====================================================
-
-(defn- resolve-effect-with-stored-target
-  "Resolve an effect using stored targets from :object/targets.
-   Returns the effect with :any-player replaced by the actual stored target."
-  [effect stored-targets]
-  (if (= :any-player (:effect/target effect))
-    ;; Look up the stored player target and resolve
-    (if-let [stored-player (:player stored-targets)]
-      (assoc effect :effect/target stored-player)
-      effect)
-    effect))
-
-
-;; =====================================================
 ;; Spell Resolution with Selection
 ;; =====================================================
 
@@ -94,79 +79,91 @@
    - The selection effect creates pending selection state via build-selection-for-effect multimethod
    - Effects after the selection are stored for later execution
 
-   If :object/targets contains stored targets from cast-time targeting:
+   If stack-item has :stack-item/targets from cast-time targeting:
    - Uses stored targets instead of prompting
-   - Resolves effects normally using the pre-selected targets"
-  [game-db player-id object-id]
-  (let [obj (queries/get-object game-db object-id)]
-    (if (not= :stack (:object/zone obj))
-      {:db game-db :pending-selection nil}  ; No-op if spell not on stack
-      (let [card (:object/card obj)
-            stored-targets (:object/targets obj)
-            effects-list (or (rules/get-active-effects game-db player-id card object-id) [])
-            selection-idx (find-selection-effect-index effects-list)
-            ;; Check if stored targets can satisfy the selection effect
-            has-stored-player-target (and stored-targets
-                                          (:player stored-targets)
-                                          selection-idx
-                                          (= :any-player (:effect/target (nth effects-list selection-idx))))
-            ;; Check if spell has object targets (for fizzle checking)
-            has-stored-object-targets (and stored-targets
-                                           (seq stored-targets)
-                                           (not (:player stored-targets)))]
-        (cond
-          ;; Cast-time targeting with player target: check fizzle, use stored targets
-          has-stored-player-target
-          (let [cast-mode (:object/cast-mode obj)
-                destination (or (:mode/on-resolve cast-mode) :graveyard)]
-            ;; Fizzle check: if any target is no longer legal, skip effects
-            (if (targeting/all-targets-legal? game-db object-id)
-              ;; Targets legal - resolve normally with stored targets
-              (let [resolved-effects (mapv #(resolve-effect-with-stored-target % stored-targets) effects-list)
-                    db-after-effects (reduce (fn [d effect]
-                                               (effects/execute-effect d player-id effect))
-                                             game-db
-                                             resolved-effects)
-                    db-final (zones/move-to-zone db-after-effects object-id destination)]
-                {:db db-final
-                 :pending-selection nil})
-              ;; Fizzle: targets invalid, skip effects, move spell off stack
-              {:db (zones/move-to-zone game-db object-id destination)
-               :pending-selection nil}))
+   - For effects with :any-player: pre-resolves to concrete player, executes directly
+   - For other effects (:targeted-player, :effect/target-ref): copies targets to object
+     as bridge for effects/execute-effect, then delegates to rules/resolve-spell
 
-          ;; Cast-time targeting with object target (e.g., Recoup): check fizzle, resolve with object-id
-          has-stored-object-targets
-          (let [cast-mode (:object/cast-mode obj)
-                destination (or (:mode/on-resolve cast-mode) :graveyard)]
-            ;; Fizzle check: if any target is no longer legal, skip effects
-            (if (targeting/all-targets-legal? game-db object-id)
-              ;; Targets legal - resolve with object-id for effects that need stored targets
-              {:db (rules/resolve-spell game-db player-id object-id)
-               :pending-selection nil}
-              ;; Fizzle: targets invalid, skip effects, move spell off stack
-              {:db (zones/move-to-zone game-db object-id destination)
-               :pending-selection nil}))
+   Arguments:
+     game-db - Datascript database
+     player-id - Player resolving the spell
+     object-id - Object ID of the spell
+     stack-item - (optional) Stack-item entity with :stack-item/targets"
+  ([game-db player-id object-id]
+   (resolve-spell-with-selection game-db player-id object-id nil))
 
-          ;; No selection effect and no stored targets - resolve normally
-          (nil? selection-idx)
-          {:db (rules/resolve-spell game-db player-id object-id)
-           :pending-selection nil}
+  ([game-db player-id object-id stack-item]
+   (let [obj (queries/get-object game-db object-id)]
+     (if (not= :stack (:object/zone obj))
+       {:db game-db :pending-selection nil}
+       (let [card (:object/card obj)
+             stored-targets (or (:stack-item/targets stack-item)
+                                (:object/targets obj))
+             effects-list (or (rules/get-active-effects game-db player-id card object-id) [])
+             selection-idx (find-selection-effect-index effects-list)
+             ;; Check if stored targets can satisfy an :any-player selection effect
+             ;; (Deep Analysis path: pre-resolve :any-player before executing)
+             has-stored-player-target (and stored-targets
+                                           (:player stored-targets)
+                                           selection-idx
+                                           (= :any-player (:effect/target (nth effects-list selection-idx))))]
+         (cond
+           ;; Stored player target + :any-player selection effect: pre-resolve and execute
+           ;; (e.g., Deep Analysis — effect uses :any-player which execute-effect can't resolve)
+           has-stored-player-target
+           (let [cast-mode (:object/cast-mode obj)
+                 destination (or (:mode/on-resolve cast-mode) :graveyard)
+                 requirements (targeting/get-targeting-requirements card)]
+             (if (targeting/all-targets-legal? game-db stored-targets requirements)
+               (let [resolved-effects (mapv #(stack/resolve-effect-target % object-id player-id stored-targets) effects-list)
+                     db-after-effects (reduce (fn [d effect]
+                                                (effects/execute-effect d player-id effect object-id))
+                                              game-db
+                                              resolved-effects)
+                     db-final (zones/move-to-zone db-after-effects object-id destination)]
+                 {:db db-final
+                  :pending-selection nil})
+               {:db (zones/move-to-zone game-db object-id destination)
+                :pending-selection nil}))
 
-          ;; Has selection effect without stored targets - pause for selection
-          :else
-          (let [[effects-before selection-effect effects-after]
-                (split-effects-around-index effects-list selection-idx)
-                ;; Execute effects before selection (pass object-id for effects like :exile-self)
-                db-after-before (reduce (fn [d effect]
-                                          (effects/execute-effect d player-id effect object-id))
-                                        game-db
-                                        effects-before)
-                ;; Build selection state via multimethod dispatch
-                pending-selection (core/build-selection-for-effect
-                                    db-after-before player-id object-id
-                                    selection-effect (vec effects-after))]
-            {:db db-after-before
-             :pending-selection pending-selection}))))))
+           ;; Other stored targets: bridge to object + rules/resolve-spell
+           ;; (e.g., Orim's Chant :targeted-player, Recoup :effect/target-ref)
+           ;; effects/execute-effect reads :object/targets for these target types
+           (seq stored-targets)
+           (let [cast-mode (:object/cast-mode obj)
+                 destination (or (:mode/on-resolve cast-mode) :graveyard)
+                 requirements (targeting/get-targeting-requirements card)
+                 obj-eid (d/q '[:find ?e . :in $ ?oid
+                                :where [?e :object/id ?oid]]
+                              game-db object-id)]
+             (if (targeting/all-targets-legal? game-db stored-targets requirements)
+               (let [;; Bridge: copy stack-item targets to object so execute-effect can find them
+                     db-with-targets (d/db-with game-db
+                                                [[:db/add obj-eid :object/targets stored-targets]])]
+                 {:db (rules/resolve-spell db-with-targets player-id object-id)
+                  :pending-selection nil})
+               {:db (zones/move-to-zone game-db object-id destination)
+                :pending-selection nil}))
+
+           ;; No stored targets, no selection effect: resolve normally
+           (nil? selection-idx)
+           {:db (rules/resolve-spell game-db player-id object-id)
+            :pending-selection nil}
+
+           ;; Has selection effect without stored targets: pause for selection
+           :else
+           (let [[effects-before selection-effect effects-after]
+                 (split-effects-around-index effects-list selection-idx)
+                 db-after-before (reduce (fn [d effect]
+                                           (effects/execute-effect d player-id effect object-id))
+                                         game-db
+                                         effects-before)
+                 pending-selection (core/build-selection-for-effect
+                                     db-after-before player-id object-id
+                                     selection-effect (vec effects-after))]
+             {:db db-after-before
+              :pending-selection pending-selection})))))))
 
 
 ;; =====================================================

@@ -139,7 +139,7 @@
 
 
 (deftest test-cast-spell-with-target-shows-target
-  (testing "cast-spell with a player target (on object) shows targeting info"
+  (testing "cast-spell with a player target (on stack-item) shows targeting info"
     (let [db (make-db)
           [db card-eid] (add-card db {:card/id :test-targeted
                                       :card/name "Brain Freeze"
@@ -148,15 +148,14 @@
                                       :card/effects [{:effect/type :mill}]})
           [db obj-id] (add-object db card-eid :hand)
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
-          ;; Put spell on stack, then store target on the object (matching real cast flow)
-          ;; Controller is :player-1 keyword (matching real code, not entity ID)
-          db-on-stack (stack/create-stack-item db {:stack-item/type :spell
-                                                   :stack-item/controller :player-1
-                                                   :stack-item/source obj-id
-                                                   :stack-item/object-ref obj-eid
-                                                   :stack-item/effects [{:effect/type :mill}]
-                                                   :stack-item/description "Brain Freeze"})
-          db-after (d/db-with db-on-stack [[:db/add obj-eid :object/targets {:player :player-2}]])]
+          ;; Put spell on stack with targets on the stack-item (matching real cast flow)
+          db-after (stack/create-stack-item db {:stack-item/type :spell
+                                                :stack-item/controller :player-1
+                                                :stack-item/source obj-id
+                                                :stack-item/object-ref obj-eid
+                                                :stack-item/effects [{:effect/type :mill}]
+                                                :stack-item/description "Brain Freeze"
+                                                :stack-item/targets {:player :player-2}})]
       (is (= "Cast Brain Freeze targeting opponent"
              (descriptions/describe-event
                [:fizzle.events.game/cast-spell] nil db-after))))))
@@ -179,14 +178,14 @@
                                       :card/effects [{:effect/type :add-restriction}]})
           [db obj-id] (add-object db card-eid :hand)
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
-          ;; Put spell on stack, then store target on object (matching real cast flow)
-          db-on-stack (stack/create-stack-item db {:stack-item/type :spell
-                                                   :stack-item/controller :player-1
-                                                   :stack-item/source obj-id
-                                                   :stack-item/object-ref obj-eid
-                                                   :stack-item/effects [{:effect/type :add-restriction}]
-                                                   :stack-item/description "Orim's Chant"})
-          db-after (d/db-with db-on-stack [[:db/add obj-eid :object/targets {:player :player-2}]])]
+          ;; Put spell on stack with targets on the stack-item (matching real cast flow)
+          db-after (stack/create-stack-item db {:stack-item/type :spell
+                                                :stack-item/controller :player-1
+                                                :stack-item/source obj-id
+                                                :stack-item/object-ref obj-eid
+                                                :stack-item/effects [{:effect/type :add-restriction}]
+                                                :stack-item/description "Orim's Chant"
+                                                :stack-item/targets {:player :player-2}})]
       (is (= "Cast Orim's Chant targeting opponent"
              (descriptions/describe-event
                [:fizzle.events.selection/confirm-selection]

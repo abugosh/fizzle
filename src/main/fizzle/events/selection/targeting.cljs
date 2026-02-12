@@ -111,7 +111,7 @@
 
    1. Pays mana and additional costs
    2. Moves spell to stack
-   3. Stores the selected target on the object as :object/targets
+   3. Stores the selected target on the stack-item as :stack-item/targets
 
    Arguments:
      game-db - Datascript database
@@ -126,17 +126,26 @@
         selected-target (first (:selection/selected selection))
         target-id (:target/id target-req)]
     (if selected-target
-      ;; Cast spell and store target
+      ;; Cast spell and store target on stack-item
       (let [;; Cast via rules/cast-spell-mode (pays costs, moves to stack)
             db-after-cast (rules/cast-spell-mode game-db player-id object-id mode)
-            ;; Store the target on the object
+            ;; Find object EID to locate stack-item
             obj-eid (d/q '[:find ?e .
                            :in $ ?oid
                            :where [?e :object/id ?oid]]
                          db-after-cast object-id)
-            db-with-target (d/db-with db-after-cast
-                                      [[:db/add obj-eid :object/targets {target-id selected-target}]])]
-        db-with-target)
+            ;; Find the stack-item by object reference
+            stack-item (when obj-eid
+                         (d/q '[:find (pull ?e [:db/id]) .
+                                :in $ ?obj-eid
+                                :where [?e :stack-item/object-ref ?obj-eid]]
+                              db-after-cast obj-eid))
+            stack-item-eid (:db/id stack-item)]
+        ;; Store targets on stack-item
+        (if stack-item-eid
+          (d/db-with db-after-cast
+                     [[:db/add stack-item-eid :stack-item/targets {target-id selected-target}]])
+          db-after-cast))
       ;; No target selected - return unchanged
       game-db)))
 

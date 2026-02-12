@@ -342,12 +342,9 @@
   (testing "all-targets-legal? returns true when all targets still legal"
     (let [db (init-game-state)
           [sorcery-id db] (add-card-to-zone db :player-1 test-sorcery :graveyard)
-          ;; Create an object with stored targets
-          [obj-id db] (add-card-to-zone db :player-1 test-targeting-card :stack)
-          ;; Store the target on the object
-          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
-          db (d/db-with db [[:db/add obj-eid :object/targets {:graveyard-sorcery sorcery-id}]])]
-      (is (targeting/all-targets-legal? db obj-id)
+          targets {:graveyard-sorcery sorcery-id}
+          requirements (targeting/get-targeting-requirements test-targeting-card)]
+      (is (targeting/all-targets-legal? db targets requirements)
           "All targets should be legal when sorcery still in graveyard"))))
 
 
@@ -355,33 +352,28 @@
   (testing "all-targets-legal? returns false when one target invalid"
     (let [db (init-game-state)
           [sorcery-id db] (add-card-to-zone db :player-1 test-sorcery :graveyard)
-          ;; Create an object with stored targets
-          [obj-id db] (add-card-to-zone db :player-1 test-targeting-card :stack)
-          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
-          db (d/db-with db [[:db/add obj-eid :object/targets {:graveyard-sorcery sorcery-id}]])
+          targets {:graveyard-sorcery sorcery-id}
+          requirements (targeting/get-targeting-requirements test-targeting-card)
           ;; Move the target to exile
           sorcery-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db sorcery-id)
           db (d/db-with db [[:db/add sorcery-eid :object/zone :exile]])]
-      (is (not (targeting/all-targets-legal? db obj-id))
+      (is (not (targeting/all-targets-legal? db targets requirements))
           "Should return false when target moved to exile"))))
 
 
 (deftest test_all_targets_legal_no_targets
   (testing "all-targets-legal? returns true for spell without targets"
-    (let [db (init-game-state)
-          ;; Create a non-targeting spell on stack
-          [obj-id db] (add-card-to-zone db :player-1 test-sorcery :stack)]
-      (is (targeting/all-targets-legal? db obj-id)
+    (let [db (init-game-state)]
+      (is (targeting/all-targets-legal? db nil [])
           "Spell without targets should return true"))))
 
 
 (deftest test_all_targets_legal_player_target
   (testing "all-targets-legal? returns true for player-targeted spell"
     (let [db (init-game-state)
-          [obj-id db] (add-card-to-zone db :player-1 test-player-targeting-card :stack)
-          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
-          db (d/db-with db [[:db/add obj-eid :object/targets {:player :player-1}]])]
-      (is (targeting/all-targets-legal? db obj-id)
+          targets {:player :player-1}
+          requirements (targeting/get-targeting-requirements test-player-targeting-card)]
+      (is (targeting/all-targets-legal? db targets requirements)
           "Player target should always be legal"))))
 
 

@@ -36,15 +36,10 @@
 
 
 (defn- get-target-info
-  "Get targets map from either the stack-item or the source object.
-   Stack-item targets are used by activated abilities; object targets
-   are used by cast-time targeting (e.g. Orim's Chant)."
-  [stack-item db]
-  (or (:stack-item/targets stack-item)
-      (when (and db (:stack-item/source stack-item))
-        (try
-          (:object/targets (queries/get-object db (:stack-item/source stack-item)))
-          (catch :default _ nil)))))
+  "Get targets map from the stack-item.
+   Both spells and abilities store targets on :stack-item/targets."
+  [stack-item _db]
+  (:stack-item/targets stack-item))
 
 
 (defn- format-target-suffix

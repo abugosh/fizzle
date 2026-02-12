@@ -168,6 +168,52 @@
             "Stack-item should be marked as copy")))))
 
 
+(deftest test-create-spell-copy-inherits-stack-item-targets
+  (testing "create-spell-copy propagates :stack-item/targets from original to copy"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1}))
+          hand (q/get-hand db :player-1)
+          ritual (first hand)
+          obj-id (:object/id ritual)
+          db-cast (rules/cast-spell db :player-1 obj-id)
+          ;; Store targets on the original spell's stack-item
+          obj-eid (d/q '[:find ?e . :in $ ?oid
+                         :where [?e :object/id ?oid]]
+                       db-cast obj-id)
+          original-si (stack/get-stack-item-by-object-ref db-cast obj-eid)
+          db-with-targets (d/db-with db-cast
+                                     [[:db/add (:db/id original-si)
+                                       :stack-item/targets {:player :player-2}]])
+          ;; Create the copy
+          db-with-copy (triggers/create-spell-copy db-with-targets obj-id :player-1)
+          ;; Find the copy's stack-item
+          copy-objs (d/q '[:find [(pull ?e [:db/id :object/id]) ...]
+                           :where [?e :object/is-copy true]]
+                         db-with-copy)
+          copy (first copy-objs)
+          copy-si (stack/get-stack-item-by-object-ref db-with-copy (:db/id copy))]
+      (is (= {:player :player-2} (:stack-item/targets copy-si))
+          "Copy's stack-item should inherit targets from original"))))
+
+
+(deftest test-create-spell-copy-no-targets-no-crash
+  (testing "create-spell-copy works fine when original has no targets"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 1}))
+          hand (q/get-hand db :player-1)
+          ritual (first hand)
+          obj-id (:object/id ritual)
+          db-cast (rules/cast-spell db :player-1 obj-id)
+          db-with-copy (triggers/create-spell-copy db-cast obj-id :player-1)
+          copy-objs (d/q '[:find [(pull ?e [:db/id :object/id]) ...]
+                           :where [?e :object/is-copy true]]
+                         db-with-copy)
+          copy (first copy-objs)
+          copy-si (stack/get-stack-item-by-object-ref db-with-copy (:db/id copy))]
+      (is (nil? (:stack-item/targets copy-si))
+          "Copy should have no targets when original has none"))))
+
+
 (deftest test-create-spell-copy-nonexistent-source
   (testing "create-spell-copy with nonexistent source returns db unchanged"
     (let [db (init-game-state)

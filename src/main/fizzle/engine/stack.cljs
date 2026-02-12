@@ -83,7 +83,7 @@
   [db object-eid]
   (when-let [result (d/q '[:find (pull ?e [:db/id :stack-item/type :stack-item/controller
                                            :stack-item/position :stack-item/source :stack-item/effects
-                                           :stack-item/description :stack-item/is-copy :stack-item/cast-mode
+                                           :stack-item/targets :stack-item/description :stack-item/is-copy :stack-item/cast-mode
                                            :stack-item/object-ref]) .
                            :in $ ?obj
                            :where [?e :stack-item/object-ref ?obj]]

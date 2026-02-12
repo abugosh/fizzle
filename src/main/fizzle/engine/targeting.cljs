@@ -126,28 +126,23 @@
 
 
 (defn all-targets-legal?
-  "Check if ALL chosen targets on an object are still legal.
-   Used on resolution to determine if spell fizzles.
+  "Check if ALL chosen targets are still legal on resolution.
+
+   Arguments:
+     db           - Datascript database value
+     targets      - Map of target-ref keyword to target-id (from :stack-item/targets)
+     requirements - Vector of targeting requirement maps (from get-targeting-requirements)
 
    Returns true if:
-   - Object has no targets (non-targeting spell)
+   - No targets stored (non-targeting spell/ability)
    - All stored targets are still legal per their requirements"
-  [db object-id]
-  (if-let [obj (q/get-object db object-id)]
-    (let [targets (:object/targets obj)
-          card (:object/card obj)
-          requirements (get-targeting-requirements card)]
-      (if (or (nil? targets) (empty? targets))
-        true  ; No targets stored = non-targeting spell
-        ;; Check each stored target against its requirement
-        (every? (fn [req]
-                  (let [target-ref (:target/id req)
-                        target-id (get targets target-ref)]
-                    (if target-id
-                      (target-still-legal? db target-id req)
-                      ;; No target stored for this requirement
-                      ;; If required, this is illegal; if optional, ok
-                      (not (:target/required req)))))
-                requirements)))
-    ;; Object not found - shouldn't happen but return false
-    false))
+  [db targets requirements]
+  (if (or (nil? targets) (empty? targets))
+    true
+    (every? (fn [req]
+              (let [target-ref (:target/id req)
+                    target-id (get targets target-ref)]
+                (if target-id
+                  (target-still-legal? db target-id req)
+                  (not (:target/required req)))))
+            requirements)))

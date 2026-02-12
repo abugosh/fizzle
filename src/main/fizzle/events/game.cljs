@@ -361,7 +361,7 @@
             obj (d/pull game-db [:object/id] obj-ref)
             object-id (:object/id obj)
             stack-item-eid (:db/id top-stack-item)
-            result (resolution/resolve-spell-with-selection game-db player-id object-id)]
+            result (resolution/resolve-spell-with-selection game-db player-id object-id top-stack-item)]
         (if (:pending-selection result)
           {:db (:db result) :pending-selection (:pending-selection result)}
           {:db (stack/remove-stack-item (:db result) stack-item-eid)}))

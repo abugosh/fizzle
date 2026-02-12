@@ -21,7 +21,10 @@
     [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
-    [fizzle.engine.targeting :as targeting]))
+    [fizzle.engine.stack :as stack]
+    [fizzle.engine.targeting :as targeting]
+    [fizzle.events.selection.resolution :as resolution]
+    [fizzle.events.selection.targeting :as sel-targeting]))
 
 
 ;; === Test Helpers ===
@@ -206,17 +209,26 @@
           [obj-id db] (add-card-to-zone db :orims-chant :hand :player-1)
           ;; Add white mana to cast
           db-with-mana (mana/add-mana db :player-1 {:white 1})
-          ;; Cast targeting opponent (player-2)
-          db-cast (rules/cast-spell db-with-mana :player-1 obj-id)
+          ;; Cast with targeting flow (stores target on stack-item)
+          target-req (first (:card/targeting orims-chant/orims-chant))
+          modes (rules/get-casting-modes db-with-mana :player-1 obj-id)
+          mode (first (filter #(= :primary (:mode/id %)) modes))
+          selection {:selection/type :cast-time-targeting
+                     :selection/player-id :player-1
+                     :selection/object-id obj-id
+                     :selection/mode mode
+                     :selection/target-requirement target-req
+                     :selection/selected #{:player-2}}
+          db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)
           _ (is (= :stack (:object/zone (q/get-object db-cast obj-id)))
                 "Precondition: Orim's Chant on stack")
-          ;; Store targets on the spell
+          ;; Get stack-item and resolve via selection path
           obj-eid (d/q '[:find ?e . :in $ ?oid
                          :where [?e :object/id ?oid]]
                        db-cast obj-id)
-          db-targeted (d/db-with db-cast [[:db/add obj-eid :object/targets {:player :player-2}]])
-          ;; Resolve the spell (should execute add-restriction effect)
-          db-resolved (rules/resolve-spell db-targeted :player-1 obj-id)]
+          stack-item (stack/get-stack-item-by-object-ref db-cast obj-eid)
+          result (resolution/resolve-spell-with-selection db-cast :player-1 obj-id stack-item)
+          db-resolved (:db result)]
       ;; Spell should be in graveyard after resolution
       (is (= :graveyard (:object/zone (q/get-object db-resolved obj-id)))
           "Orim's Chant should be in graveyard after resolution")
@@ -253,3 +265,74 @@
       ;; Player-2 should NOT be able to cast now
       (is (false? (rules/can-cast? db-restricted :player-2 spell-id))
           "Player-2 should not be able to cast with cannot-cast-spells restriction"))))
+
+
+;; === Stack-Item Target Storage Tests ===
+
+(deftest confirm-cast-time-target-stores-on-stack-item-test
+  (testing "cast-time targeting stores targets on stack-item, not object"
+    (let [db (create-test-db)
+          [obj-id db] (add-card-to-zone db :orims-chant :hand :player-1)
+          db-with-mana (mana/add-mana db :player-1 {:white 1})
+          ;; Build cast-time target selection (simulates UI)
+          target-req (first (:card/targeting orims-chant/orims-chant))
+          modes (rules/get-casting-modes db-with-mana :player-1 obj-id)
+          mode (first (filter #(= :primary (:mode/id %)) modes))
+          selection {:selection/type :cast-time-targeting
+                     :selection/player-id :player-1
+                     :selection/object-id obj-id
+                     :selection/mode mode
+                     :selection/target-requirement target-req
+                     :selection/selected #{:player-2}}
+          ;; Confirm cast with target
+          db-after (sel-targeting/confirm-cast-time-target db-with-mana selection)]
+      ;; Spell should be on stack
+      (is (= :stack (:object/zone (q/get-object db-after obj-id)))
+          "Orim's Chant should be on stack after casting")
+      ;; Stack-item should have targets
+      (let [obj-eid (d/q '[:find ?e . :in $ ?oid
+                           :where [?e :object/id ?oid]]
+                         db-after obj-id)
+            stack-item (stack/get-stack-item-by-object-ref db-after obj-eid)]
+        (is (some? stack-item)
+            "Stack-item should exist for the spell")
+        (is (= {:player :player-2} (:stack-item/targets stack-item))
+            "Stack-item should have targets with :player-2"))
+      ;; Object should NOT have targets
+      (let [obj (q/get-object db-after obj-id)]
+        (is (nil? (:object/targets obj))
+            "Object should NOT have :object/targets")))))
+
+
+(deftest resolve-spell-with-selection-uses-stack-item-targets-test
+  (testing "spell resolution reads targets from stack-item and applies effects"
+    (let [db (create-test-db)
+          [obj-id db] (add-card-to-zone db :orims-chant :hand :player-1)
+          db-with-mana (mana/add-mana db :player-1 {:white 1})
+          ;; Cast and store target on stack-item
+          target-req (first (:card/targeting orims-chant/orims-chant))
+          modes (rules/get-casting-modes db-with-mana :player-1 obj-id)
+          mode (first (filter #(= :primary (:mode/id %)) modes))
+          selection {:selection/type :cast-time-targeting
+                     :selection/player-id :player-1
+                     :selection/object-id obj-id
+                     :selection/mode mode
+                     :selection/target-requirement target-req
+                     :selection/selected #{:player-2}}
+          db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)
+          ;; Get the stack-item for the spell
+          obj-eid (d/q '[:find ?e . :in $ ?oid
+                         :where [?e :object/id ?oid]]
+                       db-cast obj-id)
+          stack-item (stack/get-stack-item-by-object-ref db-cast obj-eid)
+          ;; Resolve via resolve-spell-with-selection (needs stack-item)
+          result (resolution/resolve-spell-with-selection db-cast :player-1 obj-id stack-item)]
+      ;; Spell should be resolved (in graveyard)
+      (is (= :graveyard (:object/zone (q/get-object (:db result) obj-id)))
+          "Orim's Chant should be in graveyard after resolution")
+      ;; Player-2 should have restriction
+      (let [p2-grants (grants/get-player-grants (:db result) :player-2)]
+        (is (seq p2-grants)
+            "Player-2 should have grants after resolution")
+        (is (some #(= :cannot-cast-spells (:restriction/type (:grant/data %))) p2-grants)
+            "Player-2 should have cannot-cast-spells restriction")))))

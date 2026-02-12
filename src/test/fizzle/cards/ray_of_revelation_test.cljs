@@ -305,9 +305,11 @@
           flashback-mode (first modes)
           ;; Cast the spell
           db-cast (rules/cast-spell-mode db :player-1 obj-id flashback-mode)
-          ;; Store the target
+          ;; Store the target on the stack-item (matching real cast-time targeting flow)
           spell-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db-cast obj-id)
-          db-cast (d/db-with db-cast [[:db/add spell-eid :object/targets {:target-enchantment enchant-id}]])
+          si (d/q '[:find ?e . :in $ ?obj :where [?e :stack-item/object-ref ?obj]] db-cast spell-eid)
+          db-cast (d/db-with db-cast [[:db/add si :stack-item/targets {:target-enchantment enchant-id}]
+                                      [:db/add spell-eid :object/targets {:target-enchantment enchant-id}]])
           ;; Resolve the spell
           db-resolved (rules/resolve-spell db-cast :player-1 obj-id)]
       (is (= :exile (:object/zone (q/get-object db-resolved obj-id)))
@@ -353,19 +355,15 @@
   (testing "Ray resolves gracefully when target is removed"
     (let [db (init-game-state)
           [enchant-id db] (add-card-to-zone db :player-1 test-enchantment :battlefield)
-          [obj-id db] (add-card-to-zone db :player-1 ray/ray-of-revelation :hand)
+          [_obj-id db] (add-card-to-zone db :player-1 ray/ray-of-revelation :hand)
           db (mana/add-mana db :player-1 {:colorless 1 :white 1})
-          ;; Cast the spell
-          modes (rules/get-casting-modes db :player-1 obj-id)
-          primary-mode (first (filter #(= :primary (:mode/id %)) modes))
-          db-cast (rules/cast-spell-mode db :player-1 obj-id primary-mode)
-          ;; Store the target
-          spell-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db-cast obj-id)
-          db-cast (d/db-with db-cast [[:db/add spell-eid :object/targets {:target-enchantment enchant-id}]])
+          ;; Store targets and get requirements
+          targets {:target-enchantment enchant-id}
+          requirements (targeting/get-targeting-requirements ray/ray-of-revelation)
           ;; Target is removed before resolution (e.g., destroyed by another spell)
-          db-target-removed (zones/move-to-zone db-cast enchant-id :graveyard)]
+          db-target-removed (zones/move-to-zone db enchant-id :graveyard)]
       ;; Verify target is no longer legal
-      (is (false? (targeting/all-targets-legal? db-target-removed obj-id))
+      (is (false? (targeting/all-targets-legal? db-target-removed targets requirements))
           "Target should no longer be legal after being removed"))))
 
 

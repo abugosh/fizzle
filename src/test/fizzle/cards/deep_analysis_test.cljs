@@ -22,6 +22,7 @@
     [fizzle.engine.effects :as effects]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
+    [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.zones :as zones]
     [fizzle.events.game :as events]
@@ -430,13 +431,22 @@
       ;; Spell should be on stack
       (is (= :stack (:object/zone (q/get-object db-after obj-id)))
           "Spell should be on stack after confirming target")
-      ;; Target should be stored on object
-      (is (= {:player :player-1} (:object/targets (q/get-object db-after obj-id)))
-          "Object should have stored target {:player :player-1}"))))
+      ;; Target should be stored on stack-item
+      (let [obj-eid (d/q '[:find ?e . :in $ ?oid
+                           :where [?e :object/id ?oid]]
+                         db-after obj-id)
+            stack-item (stack/get-stack-item-by-object-ref db-after obj-eid)]
+        (is (some? stack-item)
+            "Stack-item should exist for the spell")
+        (is (= {:player :player-1} (:stack-item/targets stack-item))
+            "Stack-item should have stored target {:player :player-1}"))
+      ;; Object should NOT have targets
+      (is (nil? (:object/targets (q/get-object db-after obj-id)))
+          "Object should NOT have :object/targets"))))
 
 
 (deftest deep-analysis-resolution-uses-stored-target-test
-  (testing "Resolution uses stored :object/targets when present"
+  (testing "Resolution uses stored :stack-item/targets when present"
     (let [;; Use full game init which has a proper library
           db (:game/db (events/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)}))
           ;; Add Deep Analysis to hand
@@ -447,13 +457,18 @@
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{:player-1})
           db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
+          ;; Get the stack-item for the spell
+          obj-eid (d/q '[:find ?e . :in $ ?oid
+                         :where [?e :object/id ?oid]]
+                       db-cast obj-id)
+          stack-item (stack/get-stack-item-by-object-ref db-cast obj-eid)
           ;; Count cards before resolution
           initial-hand-count (count (q/get-hand db-cast :player-1))
           ;; Resolve the spell - should use stored target, not prompt
-          resolve-result (resolution/resolve-spell-with-selection db-cast :player-1 obj-id)]
+          resolve-result (resolution/resolve-spell-with-selection db-cast :player-1 obj-id stack-item)]
       ;; Should NOT have pending selection (target already chosen at cast time)
       (is (nil? (:pending-selection resolve-result))
-          "Should not prompt for target when :object/targets is present")
+          "Should not prompt for target when :stack-item/targets is present")
       ;; Spell should have moved off stack
       (is (= :graveyard (:object/zone (q/get-object (:db resolve-result) obj-id)))
           "Spell should be in graveyard after resolution")
@@ -472,9 +487,16 @@
           result (sel-targeting/cast-spell-with-targeting db :player-1 obj-id)
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{:player-1})
-          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)]
+          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
+          ;; Get targets from stack-item
+          obj-eid (d/q '[:find ?e . :in $ ?oid
+                         :where [?e :object/id ?oid]]
+                       db-cast obj-id)
+          stack-item (stack/get-stack-item-by-object-ref db-cast obj-eid)
+          targets (:stack-item/targets stack-item)
+          requirements (targeting/get-targeting-requirements deep-analysis/deep-analysis)]
       ;; Check that all targets are legal (player targets always are)
-      (is (targeting/all-targets-legal? db-cast obj-id)
+      (is (targeting/all-targets-legal? db-cast targets requirements)
           "Player targets should always be legal"))))
 
 
