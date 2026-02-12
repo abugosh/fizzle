@@ -20,36 +20,38 @@
 ;; Selection Detection Helpers
 ;; =====================================================
 
+(defn interactive-effect?
+  "Returns true if this effect requires player selection/interaction.
+   This is the single source of truth for which effects pause resolution
+   to collect player input via the selection system.
+
+   Checks:
+   - :effect/selection :player — explicit player-choice marker
+   - :effect/type :tutor — always interactive (search library)
+   - :effect/type :scry with amount > 0 — arrange top N cards
+   - :effect/target :any-player — choose target player
+   - :effect/type :peek-and-select — choose from revealed cards"
+  [effect]
+  (or (= :player (:effect/selection effect))
+      (= :tutor (:effect/type effect))
+      (and (= :scry (:effect/type effect))
+           (pos? (or (:effect/amount effect) 0)))
+      (= :any-player (:effect/target effect))
+      (= :peek-and-select (:effect/type effect))))
+
+
 (defn has-selection-effect?
   "Check if any effect in the list requires player selection."
   [effects]
-  (some #(or (= :player (:effect/selection %))
-             (= :tutor (:effect/type %))
-             (and (= :scry (:effect/type %))
-                  (pos? (or (:effect/amount %) 0))))
-        effects))
+  (some interactive-effect? effects))
 
 
 (defn find-selection-effect-index
   "Find the index of the first effect that requires player selection.
-   This includes:
-   - :discard with :selection :player - player chooses cards to discard
-   - :tutor - player searches library for matching card
-   - :scry with amount > 0 - player arranges top N cards
-   - :effect/target :any-player - player chooses a target player
-   - :peek-and-select - player chooses from top N cards (Flash of Insight)
-   - :return-from-graveyard with :selection :player - player chooses cards to return
    Returns nil if no selection effect found."
   [effects]
   (first (keep-indexed (fn [i effect]
-                         (when (or (= :player (:effect/selection effect))
-                                   (= :tutor (:effect/type effect))
-                                   (and (= :scry (:effect/type effect))
-                                        (pos? (or (:effect/amount effect) 0)))
-                                   (= :any-player (:effect/target effect))
-                                   (= :peek-and-select (:effect/type effect))
-                                   (= :return-from-graveyard (:effect/type effect)))
-                           i))
+                         (when (interactive-effect? effect) i))
                        effects)))
 
 
