@@ -5,6 +5,7 @@
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
+    [fizzle.engine.stack :as stack]
     [fizzle.events.game :as game]))
 
 
@@ -252,3 +253,35 @@
           "Land should remain in hand during end step")
       (is (= 1 (get-land-plays db'' :player-1))
           "Land plays should not be decremented during end step"))))
+
+
+(defn- add-stack-item
+  "Add a dummy stack-item to the game state so the stack is non-empty."
+  [db player-id]
+  (let [conn (d/conn-from-db db)
+        player-eid (q/get-player-eid db player-id)]
+    (d/transact! conn [{:stack-item/type :spell
+                        :stack-item/controller player-eid
+                        :stack-item/position (stack/get-next-stack-order db)}])
+    @conn))
+
+
+(deftest test-can-play-land-false-when-stack-non-empty
+  (testing "can-play-land? returns false when stack has items"
+    (let [db (create-test-db)
+          [db' obj-id] (add-card-to-zone db :city-of-brass :hand :player-1)
+          db'' (add-stack-item db' :player-1)]
+      (is (false? (game/can-play-land? db'' :player-1 obj-id))
+          "Should not be able to play land with items on the stack"))))
+
+
+(deftest test-play-land-fails-when-stack-non-empty
+  (testing "play-land returns unchanged db when stack has items"
+    (let [db (create-test-db)
+          [db' obj-id] (add-card-to-zone db :city-of-brass :hand :player-1)
+          db'' (add-stack-item db' :player-1)
+          db''' (game/play-land db'' :player-1 obj-id)]
+      (is (= :hand (get-object-zone db''' obj-id))
+          "Land should remain in hand when stack is non-empty")
+      (is (= 1 (get-land-plays db''' :player-1))
+          "Land plays should not be decremented when stack is non-empty"))))

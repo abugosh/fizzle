@@ -743,6 +743,7 @@
    - Object is in player's hand
    - Player has land plays remaining
    - Current phase is main1 or main2
+   - Stack is empty
    Returns true or false."
   [db player-id object-id]
   (let [game-state (queries/get-game-state db)
@@ -762,7 +763,8 @@
            (= (:object/zone obj) :hand)
            (= owner-eid player-eid)
            (land-card? db object-id)
-           (#{:main1 :main2} phase)))))
+           (#{:main1 :main2} phase)
+           (stack/stack-empty? db)))))
 
 
 (defn play-land
@@ -799,7 +801,8 @@
              (= (:object/zone obj) :hand)
              (= owner-eid player-eid)
              (land-card? db object-id)
-             (#{:main1 :main2} phase))
+             (#{:main1 :main2} phase)
+             (stack/stack-empty? db))
       (let [db-after-move (-> db
                               (zones/move-to-zone object-id :battlefield)
                               (d/db-with [[:db/add player-eid :player/land-plays-left (dec land-plays)]]))
