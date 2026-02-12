@@ -43,49 +43,54 @@
      db               - Datascript database value
      source-object-id - ID of the object to copy
      controller-id    - Player ID who controls this copy
+     target-override  - (optional) Target map to use instead of inheriting
+                        from original. Format: {:player player-id}
 
    Returns:
      New db with copy on stack, or unchanged db if source not found."
-  [db source-object-id controller-id]
-  (if-let [source-obj (q/get-object db source-object-id)]
-    (let [;; Get owner/controller entity IDs
-          owner-eid (:db/id (:object/owner source-obj))
-          controller-eid (q/get-player-eid db controller-id)
-          card-eid (:db/id (:object/card source-obj))
-          copy-id (random-uuid)
-          ;; Create the copy object (no position yet — stack-item handles ordering)
-          db-with-copy (d/db-with db [{:object/id copy-id
-                                       :object/card card-eid
-                                       :object/zone :stack
-                                       :object/owner owner-eid
-                                       :object/controller controller-eid
-                                       :object/tapped false
-                                       :object/is-copy true}])
-          ;; Get the copy's EID for stack-item ref
-          copy-eid (d/q '[:find ?e .
-                          :in $ ?oid
-                          :where [?e :object/id ?oid]]
-                        db-with-copy copy-id)
-          ;; Find original spell's stack-item to inherit targets
-          original-si (d/q '[:find (pull ?e [:stack-item/targets]) .
-                             :in $ ?src
-                             :where [?e :stack-item/source ?src]]
-                           db-with-copy source-object-id)
-          original-targets (:stack-item/targets original-si)
-          ;; Create stack-item for the copy
-          db-with-item (stack/create-stack-item db-with-copy
-                                                (cond-> {:stack-item/type :storm-copy
-                                                         :stack-item/controller controller-id
-                                                         :stack-item/source source-object-id
-                                                         :stack-item/object-ref copy-eid
-                                                         :stack-item/is-copy true}
-                                                  original-targets
-                                                  (assoc :stack-item/targets original-targets)))
-          ;; Set object/position to match stack-item (backward compat)
-          stack-item (stack/get-stack-item-by-object-ref db-with-item copy-eid)
-          position (:stack-item/position stack-item)]
-      (d/db-with db-with-item [[:db/add copy-eid :object/position position]]))
-    db))
+  ([db source-object-id controller-id]
+   (create-spell-copy db source-object-id controller-id nil))
+  ([db source-object-id controller-id target-override]
+   (if-let [source-obj (q/get-object db source-object-id)]
+     (let [;; Get owner/controller entity IDs
+           owner-eid (:db/id (:object/owner source-obj))
+           controller-eid (q/get-player-eid db controller-id)
+           card-eid (:db/id (:object/card source-obj))
+           copy-id (random-uuid)
+           ;; Create the copy object (no position yet — stack-item handles ordering)
+           db-with-copy (d/db-with db [{:object/id copy-id
+                                        :object/card card-eid
+                                        :object/zone :stack
+                                        :object/owner owner-eid
+                                        :object/controller controller-eid
+                                        :object/tapped false
+                                        :object/is-copy true}])
+           ;; Get the copy's EID for stack-item ref
+           copy-eid (d/q '[:find ?e .
+                           :in $ ?oid
+                           :where [?e :object/id ?oid]]
+                         db-with-copy copy-id)
+           ;; Resolve targets: use override if provided, else inherit from original
+           targets (or target-override
+                       (let [original-si (d/q '[:find (pull ?e [:stack-item/targets]) .
+                                                :in $ ?src
+                                                :where [?e :stack-item/source ?src]]
+                                              db-with-copy source-object-id)]
+                         (:stack-item/targets original-si)))
+           ;; Create stack-item for the copy
+           db-with-item (stack/create-stack-item db-with-copy
+                                                 (cond-> {:stack-item/type :storm-copy
+                                                          :stack-item/controller controller-id
+                                                          :stack-item/source source-object-id
+                                                          :stack-item/object-ref copy-eid
+                                                          :stack-item/is-copy true}
+                                                   targets
+                                                   (assoc :stack-item/targets targets)))
+           ;; Set object/position to match stack-item (backward compat)
+           stack-item (stack/get-stack-item-by-object-ref db-with-item copy-eid)
+           position (:stack-item/position stack-item)]
+       (d/db-with db-with-item [[:db/add copy-eid :object/position position]]))
+     db)))
 
 
 ;; === Turn-Based Action Triggers ===

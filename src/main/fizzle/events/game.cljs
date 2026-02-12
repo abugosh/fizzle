@@ -21,6 +21,7 @@
     [fizzle.events.selection.costs :as sel-costs]
     [fizzle.events.selection.library]
     [fizzle.events.selection.resolution :as resolution]
+    [fizzle.events.selection.storm :as sel-storm]
     [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.events.selection.zone-ops]
     [fizzle.history.core :as history]
@@ -386,7 +387,23 @@
           {:db (:db result) :pending-selection (:pending-selection result)}
           {:db (stack/remove-stack-item (:db result) stack-item-eid)}))
 
-      ;; Other stack-items (triggers, storm meta, etc.)
+      ;; Targeted storm — needs split selection
+      (and top-stack-item
+           (= :storm (:stack-item/type top-stack-item))
+           (let [source-id (:stack-item/source top-stack-item)
+                 source-obj (queries/get-object game-db source-id)]
+             (when source-obj
+               (:card/targeting (:object/card source-obj)))))
+      (let [selection (sel-storm/build-storm-split-selection
+                        game-db player-id top-stack-item)]
+        (if selection
+          {:db game-db :pending-selection selection}
+          ;; No copies (count=0) or no valid targets — resolve normally
+          (let [stack-item-eid (:db/id top-stack-item)
+                db-resolved (resolve-stack-item-effects game-db top-stack-item)]
+            {:db (stack/remove-stack-item db-resolved stack-item-eid)})))
+
+      ;; Other stack-items (triggers, non-targeted storm, etc.)
       top-stack-item
       (let [stack-item-eid (:db/id top-stack-item)
             db-resolved (resolve-stack-item-effects game-db top-stack-item)]
