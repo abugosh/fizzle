@@ -1,7 +1,10 @@
 (ns fizzle.cards.brain-freeze-test
-  "Tests for Brain Freeze - {1}{U} instant with storm, mills opponent 3.
+  "Tests for Brain Freeze - {1}{U} instant with storm, mills target player 3.
    Covers the full storm pipeline: cast -> storm trigger -> copy creation ->
-   copy resolution -> copies cease to exist."
+   copy resolution -> copies cease to exist.
+
+   Brain Freeze is a targeted spell: player chooses opponent or self at cast
+   time. Storm copies inherit the chosen target."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
@@ -12,7 +15,9 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.triggers :as triggers]
-    [fizzle.events.game :as game]))
+    [fizzle.events.game :as game]
+    [fizzle.events.selection.resolution :as resolution]
+    [fizzle.events.selection.targeting :as sel-targeting]))
 
 
 ;; === Test helpers ===
@@ -99,6 +104,37 @@
   (count (or (q/get-objects-in-zone db player-id zone) [])))
 
 
+(defn cast-brain-freeze-with-target
+  "Cast Brain Freeze through the targeting flow, selecting the given target.
+   Pays mana, moves to stack, stores target on stack-item.
+   Returns updated db."
+  [db player-id object-id target-player-id]
+  (let [card cards/brain-freeze
+        target-req (first (:card/targeting card))
+        modes (rules/get-casting-modes db player-id object-id)
+        mode (first (filter #(= :primary (:mode/id %)) modes))
+        selection {:selection/type :cast-time-targeting
+                   :selection/player-id player-id
+                   :selection/object-id object-id
+                   :selection/mode mode
+                   :selection/target-requirement target-req
+                   :selection/selected #{target-player-id}}]
+    (sel-targeting/confirm-cast-time-target db selection)))
+
+
+(defn resolve-brain-freeze
+  "Resolve Brain Freeze through the selection resolution path.
+   Reads stored targets from stack-item and pre-resolves :any-player.
+   Returns updated db."
+  [db player-id object-id]
+  (let [obj-eid (d/q '[:find ?e . :in $ ?oid
+                       :where [?e :object/id ?oid]]
+                     db object-id)
+        stack-item (stack/get-stack-item-by-object-ref db obj-eid)
+        result (resolution/resolve-spell-with-selection db player-id object-id stack-item)]
+    (:db result)))
+
+
 ;; === Card definition test ===
 
 (deftest brain-freeze-card-definition-test
@@ -116,13 +152,67 @@
       (let [effect (first (:card/effects card))]
         (is (= :mill (:effect/type effect)))
         (is (= 3 (:effect/amount effect)))
-        (is (= :opponent (:effect/target effect)))))))
+        (is (= :any-player (:effect/target effect))
+            "Effect target should be :any-player (resolved from stack-item at resolution)"))))
+
+  (testing "Brain Freeze has cast-time player targeting"
+    (let [targeting (:card/targeting cards/brain-freeze)]
+      (is (vector? targeting)
+          "Targeting must be a vector")
+      (is (= 1 (count targeting))
+          "Should have exactly one target requirement")
+      (let [req (first targeting)]
+        (is (= :player (:target/id req)))
+        (is (= :player (:target/type req)))
+        (is (contains? (:target/options req) :any-player))
+        (is (:target/required req))))))
+
+
+;; === Cast-time targeting tests ===
+
+(deftest brain-freeze-cast-triggers-target-selection-test
+  (testing "Casting Brain Freeze triggers cast-time targeting selection"
+    (let [db (-> (create-test-db)
+                 (add-opponent))
+          [db' obj-id] (add-card-to-zone db :brain-freeze :hand :player-1)
+          db-with-mana (mana/add-mana db' :player-1 {:blue 1 :colorless 1})
+          result (sel-targeting/cast-spell-with-targeting db-with-mana :player-1 obj-id)]
+      (is (some? (:pending-target-selection result))
+          "Should return pending target selection")
+      (let [sel (:pending-target-selection result)]
+        (is (= :cast-time-targeting (:selection/type sel))
+            "Selection type should be :cast-time-targeting")
+        (is (= :player-1 (:selection/player-id sel)))
+        (is (= obj-id (:selection/object-id sel)))
+        (is (= #{} (:selection/selected sel))
+            "No target selected yet")))))
+
+
+(deftest brain-freeze-targeting-self-mills-self-test
+  (testing "Brain Freeze targeting self mills self's library"
+    (let [db (-> (create-test-db)
+                 (add-opponent))
+          db' (add-cards-to-library db :player-1 5)
+          [db'' obj-id] (add-card-to-zone db' :brain-freeze :hand :player-1)
+          db-with-mana (mana/add-mana db'' :player-1 {:blue 1 :colorless 1})
+          _ (is (= 5 (get-zone-count db-with-mana :player-1 :library))
+                "Precondition: player has 5 library cards")
+          _ (is (= 0 (get-zone-count db-with-mana :player-1 :graveyard))
+                "Precondition: player has 0 graveyard cards")
+          db-cast (cast-brain-freeze-with-target db-with-mana :player-1 obj-id :player-1)
+          db-resolved (resolve-brain-freeze db-cast :player-1 obj-id)]
+      (is (= 2 (get-zone-count db-resolved :player-1 :library))
+          "Player should have 2 library cards remaining (milled 3)")
+      (is (>= (get-zone-count db-resolved :player-1 :graveyard) 3)
+          "Player should have at least 3 cards in graveyard (milled + Brain Freeze)")
+      (is (= :graveyard (:object/zone (q/get-object db-resolved obj-id)))
+          "Brain Freeze should be in graveyard after resolution"))))
 
 
 ;; === Cast-resolve integration tests ===
 
 (deftest brain-freeze-mills-opponent-3-cards-test
-  (testing "Brain Freeze mills 3 cards from opponent's library"
+  (testing "Brain Freeze targeting opponent mills 3 cards from opponent's library"
     (let [db (-> (create-test-db)
                  (add-opponent))
           db' (add-cards-to-library db :opponent 5)
@@ -130,8 +220,8 @@
           db-with-mana (mana/add-mana db'' :player-1 {:blue 1 :colorless 1})
           _ (is (= 5 (get-zone-count db-with-mana :opponent :library))
                 "Precondition: opponent has 5 library cards")
-          db-cast (rules/cast-spell db-with-mana :player-1 obj-id)
-          db-resolved (rules/resolve-spell db-cast :player-1 obj-id)]
+          db-cast (cast-brain-freeze-with-target db-with-mana :player-1 obj-id :opponent)
+          db-resolved (resolve-brain-freeze db-cast :player-1 obj-id)]
       (is (= 2 (get-zone-count db-resolved :opponent :library))
           "Opponent should have 2 library cards remaining (milled 3)")
       (is (= 3 (get-zone-count db-resolved :opponent :graveyard))
@@ -163,7 +253,7 @@
           db-res2 (rules/resolve-spell db-cast2 :player-1 dr2-id)
           _ (is (= 2 (q/get-storm-count db-res2 :player-1))
                 "Precondition: storm count is 2 after 2 rituals")
-          ;; Cast Brain Freeze as 3rd spell
+          ;; Cast Brain Freeze as 3rd spell (bypass targeting for storm count test)
           [db-r2 bf-id] (add-card-to-zone db-res2 :brain-freeze :hand :player-1)
           db-bf-mana (mana/add-mana db-r2 :player-1 {:blue 1 :colorless 1})
           db-bf-cast (rules/cast-spell db-bf-mana :player-1 bf-id)
@@ -196,10 +286,10 @@
           [db2 dr2-id] (add-card-to-zone db1r :dark-ritual :hand :player-1)
           db2c (rules/cast-spell db2 :player-1 dr2-id)
           db2r (rules/resolve-spell db2c :player-1 dr2-id)
-          ;; Cast Brain Freeze (storm count becomes 3)
+          ;; Cast Brain Freeze targeting opponent (storm count becomes 3)
           [db3 bf-id] (add-card-to-zone db2r :brain-freeze :hand :player-1)
           db3m (mana/add-mana db3 :player-1 {:blue 1 :colorless 1})
-          db3c (rules/cast-spell db3m :player-1 bf-id)
+          db3c (cast-brain-freeze-with-target db3m :player-1 bf-id :opponent)
           ;; Resolve storm stack-item - creates 2 copies on stack
           db4 (game/resolve-top-of-stack db3c :player-1)
           ;; Find the copies on the stack (is-copy = true)
@@ -208,11 +298,11 @@
           copy-ids (mapv :object/id copies)]
       (is (= 2 (count copies))
           "Should have 2 storm copies on stack")
-      ;; Resolve copies first (LIFO - they're on top), then original
-      (let [db5 (reduce (fn [d cid] (rules/resolve-spell d :player-1 cid))
+      ;; Resolve copies via selection path (copies inherit target), then original
+      (let [db5 (reduce (fn [d cid] (resolve-brain-freeze d :player-1 cid))
                         db4
                         copy-ids)
-            db6 (rules/resolve-spell db5 :player-1 bf-id)]
+            db6 (resolve-brain-freeze db5 :player-1 bf-id)]
         ;; 3 instances * 3 cards each = 9 total milled
         (is (= 6 (get-zone-count db6 :opponent :library))
             "Opponent should have 6 library cards remaining (15 - 9 milled)")
@@ -227,6 +317,42 @@
             "Original Brain Freeze should be in graveyard")))))
 
 
+(deftest brain-freeze-storm-copies-inherit-target-test
+  (testing "Storm copies targeting self all mill self"
+    (let [db (-> (create-test-db)
+                 (add-opponent))
+          ;; Add 15 cards to player's library for self-milling
+          db' (add-cards-to-library db :player-1 15)
+          ;; Cast Dark Ritual first to build storm count
+          [db1 dr-id] (add-card-to-zone db' :dark-ritual :hand :player-1)
+          db1m (mana/add-mana db1 :player-1 {:black 1})
+          db1c (rules/cast-spell db1m :player-1 dr-id)
+          db1r (rules/resolve-spell db1c :player-1 dr-id)
+          ;; Cast Brain Freeze targeting self (storm count becomes 2)
+          [db2 bf-id] (add-card-to-zone db1r :brain-freeze :hand :player-1)
+          db2m (mana/add-mana db2 :player-1 {:blue 1 :colorless 1})
+          db2c (cast-brain-freeze-with-target db2m :player-1 bf-id :player-1)
+          ;; Resolve storm stack-item - creates 1 copy
+          db3 (game/resolve-top-of-stack db2c :player-1)
+          stack-objects (q/get-objects-in-zone db3 :player-1 :stack)
+          copies (filter :object/is-copy stack-objects)
+          copy-ids (mapv :object/id copies)]
+      (is (= 1 (count copies))
+          "Should have 1 storm copy on stack")
+      ;; Resolve copy then original - both should mill self
+      (let [db4 (reduce (fn [d cid] (resolve-brain-freeze d :player-1 cid))
+                        db3
+                        copy-ids)
+            db5 (resolve-brain-freeze db4 :player-1 bf-id)]
+        ;; 2 instances * 3 cards each = 6 total milled from self
+        (is (= 9 (get-zone-count db5 :player-1 :library))
+            "Player should have 9 library cards remaining (15 - 6 milled)")
+        (is (= 0 (get-zone-count db5 :opponent :library))
+            "Opponent library should be untouched (0 cards)")
+        (is (= 0 (get-zone-count db5 :opponent :graveyard))
+            "Opponent graveyard should be empty")))))
+
+
 (deftest brain-freeze-storm-zero-previous-spells-test
   (testing "Brain Freeze as first spell creates storm trigger with count=0"
     (let [db (-> (create-test-db)
@@ -234,7 +360,7 @@
           db' (add-cards-to-library db :opponent 5)
           [db'' bf-id] (add-card-to-zone db' :brain-freeze :hand :player-1)
           db-m (mana/add-mana db'' :player-1 {:blue 1 :colorless 1})
-          db-cast (rules/cast-spell db-m :player-1 bf-id)
+          db-cast (cast-brain-freeze-with-target db-m :player-1 bf-id :opponent)
           ;; Storm count = 1, so trigger count = dec(1) = 0
           _ (is (= 1 (q/get-storm-count db-cast :player-1))
                 "Precondition: storm count is 1")
@@ -248,7 +374,7 @@
             copies (filter :object/is-copy stack-objects)]
         (is (= 0 (count copies))
             "No copies should be created with count=0")
-        (let [db-resolved (rules/resolve-spell db-after-trigger :player-1 bf-id)]
+        (let [db-resolved (resolve-brain-freeze db-after-trigger :player-1 bf-id)]
           (is (= 2 (get-zone-count db-resolved :opponent :library))
               "Only 3 cards milled (original only, no copies)")
           (is (= 3 (get-zone-count db-resolved :opponent :graveyard))
@@ -268,7 +394,7 @@
           copy (first (filter :object/is-copy stack-objects))
           copy-id (:object/id copy)]
       (is (true? (:object/is-copy copy)) "Copy should have :object/is-copy true")
-      ;; Resolve the copy
+      ;; Resolve the copy - use rules/resolve-spell (copy lifecycle test, not targeting test)
       (let [db-resolved (rules/resolve-spell db-with-copy :player-1 copy-id)]
         (is (nil? (q/get-object db-resolved copy-id))
             "Copy should be completely removed from db (cease to exist)")
@@ -331,8 +457,8 @@
           db' (add-cards-to-library db :opponent 1)
           [db'' bf-id] (add-card-to-zone db' :brain-freeze :hand :player-1)
           db-m (mana/add-mana db'' :player-1 {:blue 1 :colorless 1})
-          db-cast (rules/cast-spell db-m :player-1 bf-id)
-          db-resolved (rules/resolve-spell db-cast :player-1 bf-id)]
+          db-cast (cast-brain-freeze-with-target db-m :player-1 bf-id :opponent)
+          db-resolved (resolve-brain-freeze db-cast :player-1 bf-id)]
       (is (= 0 (get-zone-count db-resolved :opponent :library))
           "All available cards should be milled")
       (is (= 1 (get-zone-count db-resolved :opponent :graveyard))
@@ -348,8 +474,8 @@
                 "Precondition: opponent library is empty")
           [db' bf-id] (add-card-to-zone db :brain-freeze :hand :player-1)
           db-m (mana/add-mana db' :player-1 {:blue 1 :colorless 1})
-          db-cast (rules/cast-spell db-m :player-1 bf-id)
-          db-resolved (rules/resolve-spell db-cast :player-1 bf-id)]
+          db-cast (cast-brain-freeze-with-target db-m :player-1 bf-id :opponent)
+          db-resolved (resolve-brain-freeze db-cast :player-1 bf-id)]
       (is (= 0 (get-zone-count db-resolved :opponent :library))
           "Opponent library should still be empty")
       (is (= 0 (get-zone-count db-resolved :opponent :graveyard))

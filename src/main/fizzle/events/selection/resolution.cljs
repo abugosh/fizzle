@@ -123,10 +123,14 @@
                                                 (effects/execute-effect d player-id effect object-id))
                                               game-db
                                               resolved-effects)
-                     db-final (zones/move-to-zone db-after-effects object-id destination)]
+                     db-final (if (:object/is-copy obj)
+                                (zones/remove-object db-after-effects object-id)
+                                (zones/move-to-zone db-after-effects object-id destination))]
                  {:db db-final
                   :pending-selection nil})
-               {:db (zones/move-to-zone game-db object-id destination)
+               {:db (if (:object/is-copy obj)
+                      (zones/remove-object game-db object-id)
+                      (zones/move-to-zone game-db object-id destination))
                 :pending-selection nil}))
 
            ;; Other stored targets: bridge to object + rules/resolve-spell

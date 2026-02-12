@@ -39,9 +39,13 @@
    :card/types #{:instant}
    :card/keywords #{:storm}
    :card/text "Target player mills 3. Storm."
+   :card/targeting [{:target/id :player
+                     :target/type :player
+                     :target/options #{:any-player}
+                     :target/required true}]
    :card/effects [{:effect/type :mill
                    :effect/amount 3
-                   :effect/target :opponent}]})
+                   :effect/target :any-player}]})
 
 
 ;; Cabal Ritual - Threshold-enabled mana ritual
