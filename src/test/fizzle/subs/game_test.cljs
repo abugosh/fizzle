@@ -322,3 +322,41 @@
       (is (= 1 (:selection/generic-remaining result)))
       (is (= {:black 2} (:selection/allocation result)))
       (is (= {:black 0 :blue 1 :red 0} (:selection/remaining-pool result))))))
+
+
+;; === ::storm-split-source-name subscription tests ===
+
+(deftest test-storm-split-source-name-returns-spell-name
+  (testing "storm-split-source-name returns card name from source object"
+    (let [game-db (make-game-db)
+          conn (d/conn-from-db game-db)
+          _ (d/transact! conn [{:card/id :brain-freeze
+                                :card/name "Brain Freeze"}])
+          card-eid (d/q '[:find ?e . :where [?e :card/id :brain-freeze]] @conn)
+          player-eid (q/get-player-eid @conn :player-1)
+          obj-id (random-uuid)
+          _ (d/transact! conn [{:object/id obj-id
+                                :object/card card-eid
+                                :object/zone :stack
+                                :object/owner player-eid
+                                :object/controller player-eid
+                                :object/tapped false}])
+          game-db' @conn
+          selection {:selection/type :storm-split
+                     :selection/source-object-id obj-id
+                     :selection/copy-count 5}
+          result (sub-value {:game/db game-db'
+                             :game/pending-selection selection}
+                            [::subs/storm-split-source-name])]
+      (is (= "Brain Freeze" result)))))
+
+
+(deftest test-storm-split-source-name-nil-when-not-storm-split
+  (testing "storm-split-source-name returns nil for non-storm-split selection"
+    (let [game-db (make-game-db)
+          selection {:selection/type :discard
+                     :selection/player-id :player-1}
+          result (sub-value {:game/db game-db
+                             :game/pending-selection selection}
+                            [::subs/storm-split-source-name])]
+      (is (nil? result)))))

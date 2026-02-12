@@ -382,6 +382,18 @@
             (queries/get-objects-in-zone game-db player-id (or zone :hand))))))))
 
 
+;; Storm split source spell name
+(rf/reg-sub
+  ::storm-split-source-name
+  :<- [::game-db]
+  :<- [::pending-selection]
+  (fn [[game-db selection] _]
+    (when (and game-db selection (= :storm-split (:selection/type selection)))
+      (when-let [source-id (:selection/source-object-id selection)]
+        (when-let [obj (queries/get-object game-db source-id)]
+          (get-in obj [:object/card :card/name]))))))
+
+
 ;; Subscription for scry card objects
 ;; Returns full card objects for IDs in :selection/cards, :selection/top-pile, :selection/bottom-pile
 (rf/reg-sub

@@ -4,6 +4,7 @@
     [fizzle.events.game :as events]
     [fizzle.events.selection :as selection-events]
     [fizzle.events.selection.costs :as cost-events]
+    [fizzle.events.selection.storm :as storm-events]
     [fizzle.subs.game :as subs]
     [re-frame.core :as rf]))
 
@@ -600,6 +601,77 @@
            "Cancel"]]]))))
 
 
+;; === Storm Split Modal ===
+
+(defn storm-split-target-label
+  "Human-readable label for a storm-split target player-id."
+  [target-id]
+  (case target-id
+    :opponent "Opponent"
+    :player-1 "You"
+    (name target-id)))
+
+
+(defn- storm-split-stepper-row
+  [target-id count copy-count total-allocated]
+  (let [can-decrement? (pos? count)
+        can-increment? (< total-allocated copy-count)]
+    [:div {:class "flex items-center justify-between mb-3"}
+     [:span {:class "text-text font-bold text-sm min-w-[80px]"}
+      (storm-split-target-label target-id)]
+     [:div {:class "flex items-center gap-3"}
+      [:button {:class (str "w-8 h-8 border border-border rounded text-white text-lg "
+                            (if can-decrement?
+                              "cursor-pointer bg-surface-elevated"
+                              "cursor-not-allowed bg-btn-disabled-bg text-perm-text-tapped"))
+                :disabled (not can-decrement?)
+                :on-click #(rf/dispatch [::storm-events/adjust-storm-split target-id -1])}
+       "-"]
+      [:span {:class "text-text font-bold text-lg min-w-[2ch] text-center"}
+       count]
+      [:button {:class (str "w-8 h-8 border border-border rounded text-white text-lg "
+                            (if can-increment?
+                              "cursor-pointer bg-surface-elevated"
+                              "cursor-not-allowed bg-btn-disabled-bg text-perm-text-tapped"))
+                :disabled (not can-increment?)
+                :on-click #(rf/dispatch [::storm-events/adjust-storm-split target-id 1])}
+       "+"]]]))
+
+
+(defn- storm-split-modal
+  [selection]
+  (let [copy-count (:selection/copy-count selection)
+        valid-targets (:selection/valid-targets selection)
+        allocation (:selection/allocation selection)
+        total-allocated (apply + (vals allocation))
+        valid? (= total-allocated copy-count)
+        source-name @(rf/subscribe [::subs/storm-split-source-name])]
+    [modal-wrapper {:title "Distribute Storm Copies"
+                    :max-width "450px"
+                    :text-align "center"}
+     ;; Summary
+     [:p {:class "text-text-muted text-sm m-0 mb-4"}
+      (str copy-count " " (if (= 1 copy-count) "copy" "copies")
+           (when source-name (str " of " source-name)))]
+     ;; Stepper rows
+     [:div {:class "mb-4"}
+      (for [target valid-targets]
+        ^{:key target}
+        [storm-split-stepper-row target (get allocation target 0) copy-count total-allocated])]
+     ;; Total indicator
+     [:p {:class (str "text-sm m-0 mb-4 "
+                      (if valid? "text-health-good" "text-health-danger"))}
+      (str total-allocated " / " copy-count " assigned")]
+     ;; Buttons
+     [:div {:class "flex justify-center gap-3"}
+      [cancel-button {:label "Reset"
+                      :on-cancel #(rf/dispatch [::storm-events/reset-storm-split])}]
+      [confirm-button {:label "Confirm"
+                       :valid? valid?
+                       :on-confirm #(rf/dispatch [::selection-events/confirm-selection])
+                       :extra-class "py-2.5 px-8"}]]]))
+
+
 ;; === Selection Modal Router ===
 
 (defn selection-modal
@@ -668,6 +740,10 @@
           ;; Peek-and-select selection (Flash of Insight effect)
           (= selection-type :peek-and-select)
           [peek-selection-modal selection cards]
+
+          ;; Storm split selection — distribute copies across targets
+          (= selection-type :storm-split)
+          [storm-split-modal selection]
 
           ;; Mana allocation — handled by mana pool view, no modal needed
           (= selection-type :mana-allocation)
