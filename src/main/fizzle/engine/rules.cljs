@@ -365,6 +365,25 @@
       (maybe-create-storm-trigger player-id object-id)))
 
 
+(defn cast-spell-mode-with-allocation
+  "Cast a spell using explicit mana allocation for generic costs.
+
+   Like cast-spell-mode but uses pay-mana-with-allocation instead of
+   the greedy pay-mana. The allocation map specifies how to distribute
+   generic mana payment across colors.
+
+   Precondition: Caller should verify can-cast-mode? first."
+  [db player-id object-id mode allocation]
+  (-> db
+      (mana/pay-mana-with-allocation player-id (:mode/mana-cost mode) allocation)
+      (pay-additional-costs player-id object-id (:mode/additional-costs mode))
+      (zones/move-to-zone object-id :stack)
+      (create-spell-stack-item player-id object-id)
+      (set-cast-mode object-id mode)
+      (increment-storm player-id)
+      (maybe-create-storm-trigger player-id object-id)))
+
+
 (defn cast-spell
   "Cast a spell using the best available mode.
 

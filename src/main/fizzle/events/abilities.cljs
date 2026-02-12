@@ -9,6 +9,7 @@
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.events.selection.core :as selection-core]
+    [fizzle.events.selection.costs :as sel-costs]
     [re-frame.core :as rf]))
 
 
@@ -238,21 +239,50 @@
                     selection (build-ability-target-selection db player-id object-id ability-index first-req)]
                 {:db db
                  :pending-selection selection})
-              ;; No targeting - pay costs and add to stack immediately
-              (let [db-after-costs (abilities/pay-all-costs db object-id (:ability/cost ability))]
-                (if db-after-costs
-                  ;; Create stack-item for ability (effects resolve later)
-                  ;; Note: UI adds card name from source, so description should just be the ability text
-                  (let [effects-list (:ability/effects ability [])
-                        db-with-item (stack/create-stack-item db-after-costs
-                                                              {:stack-item/type :activated-ability
-                                                               :stack-item/controller player-id
-                                                               :stack-item/source object-id
-                                                               :stack-item/effects effects-list
-                                                               :stack-item/description (:ability/description ability)})]
-                    {:db db-with-item
-                     :pending-selection nil})
-                  {:db db :pending-selection nil}))))
+              ;; No targeting - check for generic mana allocation
+              (let [ability-cost (:ability/cost ability)
+                    mana-cost (:mana ability-cost)]
+                (if (and mana-cost (sel-costs/has-generic-mana-cost? mana-cost))
+                  ;; Has generic mana: pay non-mana costs first, then enter allocation
+                  (let [non-mana-costs (dissoc ability-cost :mana)
+                        db-after-non-mana (if (seq non-mana-costs)
+                                            (abilities/pay-all-costs db object-id non-mana-costs)
+                                            db)]
+                    (if db-after-non-mana
+                      (let [mode {:mode/mana-cost mana-cost}
+                            sel (sel-costs/build-mana-allocation-selection
+                                  db-after-non-mana player-id object-id mode mana-cost)]
+                        (if sel
+                          {:db db-after-non-mana
+                           :pending-selection (assoc sel
+                                                     :selection/source-type :ability
+                                                     :selection/ability ability)}
+                          ;; Builder returned nil: pay all costs normally, add to stack
+                          (let [db-all (abilities/pay-all-costs db object-id ability-cost)]
+                            (if db-all
+                              {:db (stack/create-stack-item db-all
+                                                            {:stack-item/type :activated-ability
+                                                             :stack-item/controller player-id
+                                                             :stack-item/source object-id
+                                                             :stack-item/effects (:ability/effects ability [])
+                                                             :stack-item/description (:ability/description ability)})
+                               :pending-selection nil}
+                              {:db db :pending-selection nil}))))
+                      ;; Non-mana costs failed to pay
+                      {:db db :pending-selection nil}))
+                  ;; No generic mana: pay all costs directly (existing code unchanged)
+                  (let [db-after-costs (abilities/pay-all-costs db object-id ability-cost)]
+                    (if db-after-costs
+                      (let [effects-list (:ability/effects ability [])
+                            db-with-item (stack/create-stack-item db-after-costs
+                                                                  {:stack-item/type :activated-ability
+                                                                   :stack-item/controller player-id
+                                                                   :stack-item/source object-id
+                                                                   :stack-item/effects effects-list
+                                                                   :stack-item/description (:ability/description ability)})]
+                        {:db db-with-item
+                         :pending-selection nil})
+                      {:db db :pending-selection nil}))))))
           {:db db :pending-selection nil}))
       {:db db :pending-selection nil})))
 

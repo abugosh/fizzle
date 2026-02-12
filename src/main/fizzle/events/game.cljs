@@ -246,7 +246,19 @@
             (assoc :game/pending-selection sel)
             (dissoc :game/selected-card)))
 
-      ;; No X costs or targeting: cast immediately
+      ;; Check for generic mana cost requiring manual allocation
+      (sel-costs/has-generic-mana-cost? (:mode/mana-cost mode))
+      (let [sel (sel-costs/build-mana-allocation-selection game-db player-id object-id mode (:mode/mana-cost mode))]
+        (if sel
+          (-> app-db
+              (assoc :game/pending-selection sel)
+              (dissoc :game/selected-card))
+          ;; nil means 0 generic (defensive fallback)
+          (-> app-db
+              (assoc :game/db (rules/cast-spell-mode game-db player-id object-id mode))
+              (dissoc :game/selected-card))))
+
+      ;; No X costs, targeting, or generic: cast immediately
       :else
       (-> app-db
           (assoc :game/db (rules/cast-spell-mode game-db player-id object-id mode))

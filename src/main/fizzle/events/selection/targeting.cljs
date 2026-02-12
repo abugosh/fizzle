@@ -15,6 +15,7 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.selection.core :as core]
+    [fizzle.events.selection.costs :as sel-costs]
     [fizzle.events.selection.resolution :as resolution]))
 
 
@@ -204,5 +205,20 @@
 
 (defmethod core/execute-confirmed-selection :cast-time-targeting
   [game-db selection]
-  {:db (confirm-cast-time-target game-db selection)
-   :finalized? true})
+  (let [mode (:selection/mode selection)
+        cost (:mode/mana-cost mode)]
+    (if (sel-costs/has-generic-mana-cost? cost)
+      ;; Chain to mana allocation, carry target info
+      (let [player-id (:selection/player-id selection)
+            object-id (:selection/object-id selection)
+            target-req (:selection/target-requirement selection)
+            selected-target (first (:selection/selected selection))
+            target-id (:target/id target-req)
+            sel (sel-costs/build-mana-allocation-selection game-db player-id object-id mode cost)]
+        (if sel
+          {:db game-db
+           :pending-selection (assoc sel :selection/pending-targets {target-id selected-target})}
+          ;; Defensive: builder returned nil
+          {:db (confirm-cast-time-target game-db selection) :finalized? true}))
+      ;; No generic: cast directly with target storage
+      {:db (confirm-cast-time-target game-db selection) :finalized? true})))

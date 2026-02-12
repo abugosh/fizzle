@@ -26,7 +26,7 @@
   "A simple instant with only primary mode (cast from hand)."
   {:card/id :test-single-mode
    :card/name "Test Single Mode"
-   :card/mana-cost {:colorless 1}
+   :card/mana-cost {:black 1}
    :card/cmc 1
    :card/types #{:instant}
    :card/effects [{:effect/type :add-mana :effect/mana {:colorless 1}}]})
@@ -34,10 +34,11 @@
 
 (def test-multi-mode-card
   "Card with both primary AND alternate mode from hand.
-   Similar to Gush: can pay normal cost or use alternate."
+   Similar to Gush: can pay normal cost or use alternate.
+   Uses pure colored cost to avoid triggering mana allocation."
   {:card/id :test-multi-mode
    :card/name "Test Multi Mode"
-   :card/mana-cost {:colorless 4 :blue 1}
+   :card/mana-cost {:blue 3 :black 2}
    :card/cmc 5
    :card/types #{:instant}
    :card/colors #{:blue}
@@ -94,7 +95,7 @@
   (testing "Card with single mode auto-casts without showing selector"
     (let [db (init-game-state)
           [obj-id db] (add-card-to-zone db :player-1 test-single-mode-card :hand)
-          db (mana/add-mana db :player-1 {:colorless 1})
+          db (mana/add-mana db :player-1 {:black 1})
           app-db (-> (create-app-db db)
                      (assoc :game/selected-card obj-id))
           result-db (game/cast-spell-handler app-db)]
@@ -117,7 +118,7 @@
     (let [db (init-game-state)
           [obj-id db] (add-card-to-zone db :player-1 test-multi-mode-card :hand)
           ;; Add mana for primary mode
-          db (mana/add-mana db :player-1 {:colorless 4 :blue 1})
+          db (mana/add-mana db :player-1 {:blue 3 :black 2})
           app-db (-> (create-app-db db)
                      (assoc :game/selected-card obj-id))
           result-db (game/cast-spell-handler app-db)]
@@ -159,7 +160,7 @@
   (testing "Selecting a mode casts the spell with that mode"
     (let [db (init-game-state)
           [obj-id db] (add-card-to-zone db :player-1 test-multi-mode-card :hand)
-          db (mana/add-mana db :player-1 {:colorless 4 :blue 1})
+          db (mana/add-mana db :player-1 {:blue 3 :black 2})
           modes (rules/get-casting-modes db :player-1 obj-id)
           primary-mode (first (filter #(= :primary (:mode/id %)) modes))
           ;; Setup app-db with pending mode selection
@@ -214,7 +215,7 @@
   (testing "Canceling mode selection clears pending state"
     (let [db (init-game-state)
           [obj-id db] (add-card-to-zone db :player-1 test-multi-mode-card :hand)
-          db (mana/add-mana db :player-1 {:colorless 4 :blue 1})
+          db (mana/add-mana db :player-1 {:blue 3 :black 2})
           modes (rules/get-casting-modes db :player-1 obj-id)
           ;; Setup app-db with pending mode selection
           app-db {:game/db db

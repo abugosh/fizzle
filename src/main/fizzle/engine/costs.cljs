@@ -232,7 +232,9 @@
 (defmethod can-pay? :mana [db object-id cost]
   ;; Can pay mana if:
   ;; 1. Object exists
-  ;; 2. Controller has sufficient mana in pool for each color required
+  ;; 2. Controller has sufficient mana for each colored cost
+  ;; 3. Remaining mana covers generic (:colorless) portion
+  ;; The :colorless key is treated as generic mana (payable by any color).
   (if-let [obj-eid (get-object-eid db object-id)]
     (let [controller-eid (d/q '[:find ?c .
                                 :in $ ?e
@@ -243,10 +245,15 @@
                                   :where [?p :player/mana-pool ?pool]]
                                 db controller-eid)
                            {})
-          required (:mana cost)]
-      (every? (fn [[color amount]]
-                (>= (get current-pool color 0) amount))
-              required))
+          required (:mana cost)
+          generic (get required :colorless 0)
+          colored (dissoc required :colorless)]
+      (and (every? (fn [[color amount]]
+                     (>= (get current-pool color 0) amount))
+                   colored)
+           (let [total-pool (reduce + (vals current-pool))
+                 total-colored (reduce + 0 (vals colored))]
+             (>= (- total-pool total-colored) generic))))
     false))
 
 
