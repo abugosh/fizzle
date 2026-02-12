@@ -282,6 +282,14 @@
     (:game/pending-selection db)))
 
 
+(rf/reg-sub
+  ::mana-allocation-state
+  :<- [::pending-selection]
+  (fn [selection _]
+    (when (= :mana-allocation (:selection/type selection))
+      selection)))
+
+
 ;; === Mode Selection Subscriptions ===
 ;; For spells with multiple casting modes from the same zone
 

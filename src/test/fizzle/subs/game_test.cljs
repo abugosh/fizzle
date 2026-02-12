@@ -263,3 +263,62 @@
           opp (sub-value {:game/db game-db} [::subs/opponent-zone-counts])]
       (is (= 10 (:graveyard player)))
       (is (= 3 (:graveyard opp))))))
+
+
+;; === ::mana-allocation-state subscription tests ===
+
+(deftest test-mana-allocation-state-nil-when-no-selection
+  (testing "mana-allocation-state returns nil when no pending-selection"
+    (let [game-db (make-game-db)
+          result (sub-value {:game/db game-db} [::subs/mana-allocation-state])]
+      (is (nil? result)))))
+
+
+(deftest test-mana-allocation-state-nil-for-other-types
+  (testing "mana-allocation-state returns nil for non-allocation selection types"
+    (let [game-db (make-game-db)
+          result (sub-value {:game/db game-db
+                             :game/pending-selection {:selection/type :discard
+                                                      :selection/player-id :player-1}}
+                            [::subs/mana-allocation-state])]
+      (is (nil? result)))))
+
+
+(deftest test-mana-allocation-state-returns-selection-for-allocation
+  (testing "mana-allocation-state returns selection map when type is :mana-allocation"
+    (let [game-db (make-game-db)
+          selection {:selection/type :mana-allocation
+                     :selection/generic-remaining 3
+                     :selection/generic-total 3
+                     :selection/allocation {}
+                     :selection/remaining-pool {:black 2 :blue 1 :red 0}
+                     :selection/original-remaining-pool {:black 2 :blue 1 :red 0}
+                     :selection/colored-cost {:black 1}
+                     :selection/auto-confirm? true}
+          result (sub-value {:game/db game-db
+                             :game/pending-selection selection}
+                            [::subs/mana-allocation-state])]
+      (is (some? result))
+      (is (= :mana-allocation (:selection/type result)))
+      (is (= 3 (:selection/generic-remaining result)))
+      (is (= {} (:selection/allocation result)))
+      (is (= {:black 2 :blue 1 :red 0} (:selection/remaining-pool result))))))
+
+
+(deftest test-mana-allocation-state-with-partial-allocation
+  (testing "mana-allocation-state reflects partial allocation progress"
+    (let [game-db (make-game-db)
+          selection {:selection/type :mana-allocation
+                     :selection/generic-remaining 1
+                     :selection/generic-total 3
+                     :selection/allocation {:black 2}
+                     :selection/remaining-pool {:black 0 :blue 1 :red 0}
+                     :selection/original-remaining-pool {:black 2 :blue 1 :red 0}
+                     :selection/colored-cost {:black 1}
+                     :selection/auto-confirm? true}
+          result (sub-value {:game/db game-db
+                             :game/pending-selection selection}
+                            [::subs/mana-allocation-state])]
+      (is (= 1 (:selection/generic-remaining result)))
+      (is (= {:black 2} (:selection/allocation result)))
+      (is (= {:black 0 :blue 1 :red 0} (:selection/remaining-pool result))))))

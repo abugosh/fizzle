@@ -669,6 +669,10 @@
           (= selection-type :peek-and-select)
           [peek-selection-modal selection cards]
 
+          ;; Mana allocation — handled by mana pool view, no modal needed
+          (= selection-type :mana-allocation)
+          nil
+
           ;; Card selection (discard, tutor)
           :else
           [card-selection-modal selection cards])))))
