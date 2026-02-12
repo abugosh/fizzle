@@ -302,3 +302,126 @@
           db' (mana/pay-mana db :player-1 {:x 2} 3)]
       (is (= 0 (:black (q/get-mana-pool db' :player-1)))
           "Paid 6 mana (2 * 3 from XX)"))))
+
+
+;; === pay-mana-with-allocation tests ===
+
+(deftest pay-allocated-single-color-test
+  (testing "pay-mana-with-allocation deducts colored + allocates generic from one color"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 5}))
+          ;; Cost: 2 generic + 1 black. Allocate generic from black.
+          db' (mana/pay-mana-with-allocation db :player-1
+                                             {:colorless 2 :black 1}
+                                             {:black 2})]
+      (is (= 2 (:black (q/get-mana-pool db' :player-1)))
+          "1 colored + 2 allocated = 3 deducted from 5"))))
+
+
+(deftest pay-allocated-multi-color-test
+  (testing "pay-mana-with-allocation splits generic allocation across colors"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 3 :blue 2}))
+          ;; Cost: 2 generic + 1 black. Allocate 1 from black, 1 from blue.
+          db' (mana/pay-mana-with-allocation db :player-1
+                                             {:colorless 2 :black 1}
+                                             {:black 1 :blue 1})]
+      (is (= 1 (:black (q/get-mana-pool db' :player-1)))
+          "1 colored + 1 allocated = 2 from black")
+      (is (= 1 (:blue (q/get-mana-pool db' :player-1)))
+          "1 allocated from blue"))))
+
+
+(deftest pay-allocated-preserves-unused-colors-test
+  (testing "pay-mana-with-allocation leaves untouched colors unchanged"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 3 :blue 2 :red 1}))
+          ;; Cost: 2 generic. Allocate from black only.
+          db' (mana/pay-mana-with-allocation db :player-1
+                                             {:colorless 2}
+                                             {:black 2})]
+      (is (= 1 (:black (q/get-mana-pool db' :player-1))))
+      (is (= 2 (:blue (q/get-mana-pool db' :player-1)))
+          "Blue untouched")
+      (is (= 1 (:red (q/get-mana-pool db' :player-1)))
+          "Red untouched"))))
+
+
+(deftest pay-allocated-zero-generic-test
+  (testing "pay-mana-with-allocation with no generic just deducts colored"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 3}))
+          ;; Cost: just 2 black, no generic. Empty allocation.
+          db' (mana/pay-mana-with-allocation db :player-1
+                                             {:black 2}
+                                             {})]
+      (is (= 1 (:black (q/get-mana-pool db' :player-1)))
+          "Only colored cost deducted"))))
+
+
+(deftest pay-allocated-only-generic-test
+  (testing "pay-mana-with-allocation with only generic cost"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 3 :blue 2}))
+          ;; Cost: 3 generic, no colored. Allocate from black and blue.
+          db' (mana/pay-mana-with-allocation db :player-1
+                                             {:colorless 3}
+                                             {:black 2 :blue 1})]
+      (is (= 1 (:black (q/get-mana-pool db' :player-1))))
+      (is (= 1 (:blue (q/get-mana-pool db' :player-1)))))))
+
+
+(deftest pay-allocated-colorless-mana-in-allocation-test
+  (testing "pay-mana-with-allocation uses colorless mana from pool toward generic"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:colorless 2 :black 1}))
+          ;; Cost: 2 generic. Allocate 1 from colorless pool, 1 from black.
+          db' (mana/pay-mana-with-allocation db :player-1
+                                             {:colorless 2}
+                                             {:colorless 1 :black 1})]
+      (is (= 1 (:colorless (q/get-mana-pool db' :player-1)))
+          "1 colorless allocated from pool")
+      (is (= 0 (:black (q/get-mana-pool db' :player-1)))
+          "1 black allocated from pool"))))
+
+
+(deftest pay-allocated-all-from-one-color-test
+  (testing "pay-mana-with-allocation drains a single color completely"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 5}))
+          ;; Cost: 3 generic + 2 black. Allocate all generic from black.
+          db' (mana/pay-mana-with-allocation db :player-1
+                                             {:colorless 3 :black 2}
+                                             {:black 3})]
+      (is (= 0 (:black (q/get-mana-pool db' :player-1)))
+          "2 colored + 3 allocated = 5, pool drained"))))
+
+
+(deftest pay-allocated-empty-cost-empty-allocation-test
+  (testing "pay-mana-with-allocation with empty cost is a no-op"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 3}))
+          db' (mana/pay-mana-with-allocation db :player-1 {} {})]
+      (is (= 3 (:black (q/get-mana-pool db' :player-1)))
+          "Pool unchanged"))))
+
+
+(deftest pay-allocated-large-pool-values-test
+  (testing "pay-mana-with-allocation handles large values without precision issues"
+    (let [db (-> (init-game-state)
+                 (mana/add-mana :player-1 {:black 100}))
+          db' (mana/pay-mana-with-allocation db :player-1
+                                             {:colorless 50}
+                                             {:black 50})]
+      (is (= 50 (:black (q/get-mana-pool db' :player-1)))))))
+
+
+(deftest pay-allocated-without-can-pay-goes-negative-test
+  (testing "pay-mana-with-allocation without can-pay? allows negative pool"
+    (let [db (init-game-state)
+          ;; Pool is 0. Violating contract by not checking can-pay?.
+          db' (mana/pay-mana-with-allocation db :player-1
+                                             {:colorless 2}
+                                             {:black 2})]
+      (is (= -2 (:black (q/get-mana-pool db' :player-1)))
+          "Documents caller-responsibility contract: no internal validation"))))

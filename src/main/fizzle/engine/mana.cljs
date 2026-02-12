@@ -112,3 +112,27 @@
                                      (- remaining to-pay)
                                      (rest colors))))))]
          (d/db-with db [[:db/add player-eid :player/mana-pool new-pool]]))))))
+
+
+(defn pay-mana-with-allocation
+  "Remove mana from player's pool using explicit allocation for generic costs.
+
+   cost: Mana cost map with :colorless for generic, color keys for colored.
+         MUST NOT contain :x — caller resolves X before calling.
+   allocation: Map of {color amount} specifying how to pay generic portion.
+               e.g., {:black 2 :blue 1} means 'pay 2 generic from black, 1 from blue'
+               Sum of allocation values MUST equal (:colorless cost 0).
+
+   IMPORTANT: Caller MUST verify can-pay? first AND that allocation is valid.
+   Invalid allocation (wrong sum, exceeds pool) results in undefined behavior."
+  [db player-id cost allocation]
+  (if (empty? cost)
+    db
+    (let [player-eid (q/get-player-eid db player-id)
+          current-pool (q/get-mana-pool db player-id)
+          colored-cost (dissoc cost :colorless)
+          pool-after-colored (merge-with - current-pool colored-cost)
+          new-pool (if (empty? allocation)
+                     pool-after-colored
+                     (merge-with - pool-after-colored allocation))]
+      (d/db-with db [[:db/add player-eid :player/mana-pool new-pool]]))))
