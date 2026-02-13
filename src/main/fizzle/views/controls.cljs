@@ -13,6 +13,19 @@
          "cursor-default bg-btn-disabled-bg text-border")))
 
 
+(defn top-stack-item-name
+  [stack]
+  (when-let [item (first stack)]
+    (let [card-name (or (get-in item [:object/card :card/name])
+                        (:stack-item/card-name item))
+          desc (:stack-item/description item)]
+      (cond
+        card-name card-name
+        desc desc
+        :else (when-let [t (:stack-item/type item)]
+                (name t))))))
+
+
 (defn controls-view
   []
   (let [can-cast? @(rf/subscribe [::subs/can-cast?])
@@ -40,8 +53,12 @@
      [:button {:class (btn-class (seq stack))
                :disabled (empty? stack)
                :on-click #(rf/dispatch [::events/resolve-top])}
-      "Yield"]
+      (if-let [n (top-stack-item-name stack)]
+        (str "Yield: " n)
+        "Yield")]
      [:button {:class (btn-class (> (count stack) 1))
                :disabled (<= (count stack) 1)
                :on-click #(rf/dispatch [::events/resolve-all])}
-      "Yield All"]]))
+      (if (> (count stack) 1)
+        (str "Yield All (" (count stack) ")")
+        "Yield All")]]))
