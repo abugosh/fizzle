@@ -296,6 +296,75 @@
 
 
 ;; ============================================================
+;; cast-spell fallback to casting-spell-id
+;; ============================================================
+
+(deftest test-cast-spell-uses-casting-spell-id-when-not-on-stack
+  (testing "cast-spell uses casting-spell-id fallback when spell hasn't reached the stack"
+    (let [db (make-db)
+          [db card-eid] (add-card db test-instant)
+          ;; Object is in hand (not on stack yet — mid-chain through X cost)
+          [db obj-id] (add-object db card-eid :hand)]
+      (is (= "Cast Dark Ritual"
+             (descriptions/describe-event
+               [:fizzle.events.game/cast-spell] nil db nil obj-id))
+          "Should use casting-spell-id to find card name when stack is empty"))))
+
+
+(deftest test-confirm-x-mana-uses-casting-spell-id-when-not-on-stack
+  (testing "confirm-selection with x-mana-cost uses casting-spell-id when spell not on stack"
+    (let [db (make-db)
+          [db card-eid] (add-card db {:card/id :test-x-spell
+                                      :card/name "Flash of Insight"
+                                      :card/cmc 2
+                                      :card/types #{:instant}
+                                      :card/effects [{:effect/type :peek}]})
+          ;; Object is in hand (X value set on object, but not cast to stack yet)
+          [db obj-id] (add-object db card-eid :hand)]
+      (is (= "Cast Flash of Insight"
+             (descriptions/describe-event
+               [:fizzle.events.selection/confirm-selection]
+               nil db :x-mana-cost obj-id))
+          "Should use casting-spell-id when spell not on stack during X cost confirm"))))
+
+
+(deftest test-confirm-exile-cards-uses-casting-spell-id-when-not-on-stack
+  (testing "confirm-selection with exile-cards-cost uses casting-spell-id when spell not on stack"
+    (let [db (make-db)
+          [db card-eid] (add-card db {:card/id :test-exile-spell
+                                      :card/name "Flash of Insight"
+                                      :card/cmc 2
+                                      :card/types #{:instant}
+                                      :card/effects [{:effect/type :peek}]})
+          ;; Object is in graveyard (flashback — not on stack yet)
+          [db obj-id] (add-object db card-eid :graveyard)]
+      (is (= "Cast Flash of Insight"
+             (descriptions/describe-event
+               [:fizzle.events.selection/confirm-selection]
+               nil db :exile-cards-cost obj-id))
+          "Should use casting-spell-id for flashback exile-cards confirm"))))
+
+
+(deftest test-cast-spell-prefers-stack-top-over-fallback
+  (testing "cast-spell uses stack top when available, ignoring casting-spell-id"
+    (let [db (make-db)
+          [db card-eid] (add-card db test-instant)
+          [db obj-id] (add-object db card-eid :hand)
+          player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] db)
+          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
+          db-after (stack/create-stack-item db {:stack-item/type :spell
+                                                :stack-item/controller player-eid
+                                                :stack-item/source obj-id
+                                                :stack-item/object-ref obj-eid
+                                                :stack-item/effects [{:effect/type :add-mana}]
+                                                :stack-item/description "Dark Ritual"})]
+      (is (= "Cast Dark Ritual"
+             (descriptions/describe-event
+               [:fizzle.events.game/cast-spell] nil db-after nil (random-uuid)))
+          "Should use stack top card name, not the fallback spell-id"))))
+
+
+;; ============================================================
 ;; resolve-top tests
 ;; ============================================================
 

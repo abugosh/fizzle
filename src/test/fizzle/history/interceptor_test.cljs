@@ -204,6 +204,53 @@
           "Should have a description"))))
 
 
+(deftest test-after-creates-entry-on-pending-selection-creation
+  (testing "When pending-selection is created but game-db is unchanged, entry is still created"
+    (let [same-db :db-same
+          pre-db (make-db-with-history same-db)
+          ;; Post-db has same game-db but gained a pending-selection
+          post-db (assoc (make-db-with-history same-db)
+                         :game/pending-selection {:selection/type :peek-and-select})
+          event [:fizzle.events.game/resolve-top]
+          context (make-context pre-db post-db event)
+          result (run-interceptor context)
+          result-db (get-in result [:effects :db])]
+      (is (= 1 (count (:history/main result-db)))
+          "Entry should be created when resolve-top creates a pending-selection"))))
+
+
+(deftest test-after-skips-when-selection-already-existed
+  (testing "When pending-selection already existed before, unchanged game-db means no entry"
+    (let [same-db :db-same
+          ;; Pre-db already had a pending-selection
+          pre-db (assoc (make-db-with-history same-db)
+                        :game/pending-selection {:selection/type :discard})
+          ;; Post-db still has a pending-selection (same or different)
+          post-db (assoc (make-db-with-history same-db)
+                         :game/pending-selection {:selection/type :discard})
+          event [:fizzle.events.game/resolve-top]
+          context (make-context pre-db post-db event)
+          result (run-interceptor context)
+          result-db (get-in result [:effects :db])]
+      (is (zero? (count (:history/main result-db)))
+          "No entry when selection already existed and game-db unchanged"))))
+
+
+(deftest test-after-uses-pre-game-db-snapshot-for-selection-created
+  (testing "When entry is created via selection-creation, snapshot uses pre-game-db"
+    (let [same-db :db-same
+          pre-db (make-db-with-history same-db)
+          post-db (assoc (make-db-with-history same-db)
+                         :game/pending-selection {:selection/type :peek-and-select})
+          event [:fizzle.events.game/resolve-top]
+          context (make-context pre-db post-db event)
+          result (run-interceptor context)
+          result-db (get-in result [:effects :db])
+          entry (first (:history/main result-db))]
+      (is (= same-db (:entry/snapshot entry))
+          "Snapshot should be pre-game-db when game-db was unchanged"))))
+
+
 (deftest test-after-skips-when-no-db-in-effects
   (testing "If no :db in effects (fx handler), interceptor is a no-op"
     (let [pre-db (make-db-with-history :db-old)
@@ -312,3 +359,30 @@
           entry (first (:history/main result-db))]
       (is (= "Resolve Dark Ritual" (:entry/description entry))
           "Should include card name from real db"))))
+
+
+(deftest test-cast-spell-selection-created-does-not-create-entry
+  (testing "cast-spell that only creates a selection (no game-db change) should NOT create entry"
+    (let [same-db :db-same
+          pre-db (make-db-with-history same-db)
+          ;; cast-spell created a pending-selection but game-db unchanged
+          post-db (assoc (make-db-with-history same-db)
+                         :game/pending-selection {:selection/type :exile-cards-cost}
+                         :game/selected-card :some-spell)
+          event [:fizzle.events.game/cast-spell]
+          context (make-context pre-db post-db event)
+          result (run-interceptor context)
+          result-db (get-in result [:effects :db])]
+      (is (zero? (count (:history/main result-db)))
+          "No entry when cast-spell only creates selection — confirm-selection handles it")))
+  (testing "Same for activate-ability creating a selection"
+    (let [same-db :db-same
+          pre-db (make-db-with-history same-db)
+          post-db (assoc (make-db-with-history same-db)
+                         :game/pending-selection {:selection/type :ability-targeting})
+          event [:fizzle.events.abilities/activate-ability :obj-1 0]
+          context (make-context pre-db post-db event)
+          result (run-interceptor context)
+          result-db (get-in result [:effects :db])]
+      (is (zero? (count (:history/main result-db)))
+          "No entry when activate-ability only creates selection"))))

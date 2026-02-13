@@ -146,8 +146,8 @@
           "Selected card goes to hand")
       (is (= :bottom-of-library (:effect/remainder-zone effect))
           "Non-selected go to bottom")
-      (is (true? (:effect/shuffle-remainder? effect))
-          "Remainder should be shuffled (random order)")))
+      (is (true? (:effect/order-remainder? effect))
+          "Remainder should be player-ordered (any order)")))
 
   (testing "Flashback has correct costs"
     (let [alternate (first (:card/alternate-costs flash-of-insight/flash-of-insight))]

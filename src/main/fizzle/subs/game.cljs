@@ -410,3 +410,21 @@
          :top-pile (mapv get-obj top-pile)
          :bottom-pile (mapv get-obj bottom-pile)
          :assigned (into (set top-pile) bottom-pile)}))))
+
+
+;; Subscription for order-bottom card objects
+;; Returns ordered and unsequenced card objects for the order-bottom modal
+(rf/reg-sub
+  ::order-bottom-cards
+  :<- [::game-db]
+  :<- [::pending-selection]
+  (fn [[game-db selection] _]
+    (when (and game-db selection (= :order-bottom (:selection/type selection)))
+      (let [candidates (:selection/candidates selection)
+            ordered (:selection/ordered selection)
+            ordered-set (set ordered)
+            unsequenced-ids (remove ordered-set candidates)
+            get-obj (fn [oid] (queries/get-object game-db oid))]
+        {:ordered-cards (mapv get-obj ordered)
+         :unsequenced-cards (sorting/sort-cards (mapv get-obj (vec unsequenced-ids)))
+         :all-ordered? (= (count ordered) (count candidates))}))))

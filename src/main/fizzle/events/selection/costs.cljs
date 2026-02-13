@@ -77,7 +77,7 @@
       {:selection/zone zone
        :selection/type :exile-cards-cost
        :selection/candidates candidate-ids
-       :selection/select-count 1  ; Minimum 1, but can select more
+       :selection/select-count (count candidate-ids)  ; Can select up to all candidates
        :selection/exact? false    ; Can select any number >= 1
        :selection/allow-fail-to-find? false  ; Must select at least 1
        :selection/selected #{}

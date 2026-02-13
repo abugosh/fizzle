@@ -465,6 +465,69 @@
        "Confirm"]]]))
 
 
+;; === Order Bottom Modal ===
+
+(defn- order-bottom-card-view
+  "A card in the order-bottom modal."
+  [obj ordered? index]
+  (let [card (:object/card obj)
+        card-name (or (:card/name card) "Unknown")
+        object-id (:object/id obj)]
+    [:div {:class (str "rounded-md px-3.5 py-2.5 cursor-pointer min-w-[90px] text-center "
+                       "select-none text-text transition-all duration-100 "
+                       (if ordered?
+                         "border-[3px] border-border-accent bg-modal-selected-bg"
+                         "border-2 border-border bg-surface-raised"))
+           :on-click #(rf/dispatch [(if ordered?
+                                      ::selection-events/unorder-card
+                                      ::selection-events/order-card)
+                                    object-id])}
+     (if ordered?
+       (str (inc index) ". " card-name)
+       card-name)]))
+
+
+(defn- order-bottom-modal
+  "Modal for ordering cards on the bottom of library.
+   Player clicks cards to sequence them (first click = top of bottom pile).
+   Click ordered card to remove from sequence."
+  []
+  (let [data @(rf/subscribe [::subs/order-bottom-cards])
+        ordered-cards (:ordered-cards data)
+        unsequenced-cards (:unsequenced-cards data)
+        all-ordered? (:all-ordered? data)]
+    [modal-wrapper {:title "Order cards for bottom of library"}
+     ;; Instructions
+     [:p {:class "text-text-muted text-sm m-0 mb-4"}
+      "Click cards to order them (first click = closest to rest of library). Click ordered cards to unsequence."]
+     ;; Unsequenced section
+     [:div {:class "mb-4"}
+      [:h3 {:class "text-text-muted text-sm m-0 mb-2"}
+       "Unsequenced"]
+      [:div {:class "flex flex-wrap gap-2.5 min-h-[40px]"}
+       (if (seq unsequenced-cards)
+         (for [obj unsequenced-cards]
+           ^{:key (:object/id obj)}
+           [order-bottom-card-view obj false nil])
+         [:div {:class "text-perm-text-tapped text-sm"}
+          "All cards sequenced"])]]
+     ;; Ordered section
+     [:div {:class "mb-5"}
+      [:h3 {:class "text-health-good text-sm m-0 mb-2"}
+       (str "Ordered (" (count ordered-cards) ")")]
+      [:div {:class "flex flex-wrap gap-2.5 min-h-[40px]"}
+       (for [[idx obj] (map-indexed vector ordered-cards)]
+         ^{:key (:object/id obj)}
+         [order-bottom-card-view obj true idx])]]
+     ;; Buttons
+     [:div {:class "flex justify-end gap-3"}
+      [cancel-button {:label "Any Order"
+                      :on-cancel #(rf/dispatch [::selection-events/any-order])}]
+      [confirm-button {:label "Confirm"
+                       :valid? all-ordered?
+                       :on-confirm #(rf/dispatch [::selection-events/confirm-selection])}]]]))
+
+
 ;; === X Mana Selection Modal ===
 
 (defn- stepper-button-class
@@ -616,26 +679,27 @@
   [target-id count copy-count total-allocated]
   (let [can-decrement? (pos? count)
         can-increment? (< total-allocated copy-count)]
-    [:div {:class "flex items-center justify-between mb-3"}
-     [:span {:class "text-text font-bold text-sm min-w-[80px]"}
+    [:div {:class "flex items-center justify-center gap-2 mb-3"}
+     [:span {:class "text-text font-bold text-sm w-[80px] text-right mr-2"}
       (storm-split-target-label target-id)]
-     [:div {:class "flex items-center gap-3"}
-      [:button {:class (str "w-8 h-8 border border-border rounded text-white text-lg "
-                            (if can-decrement?
-                              "cursor-pointer bg-surface-elevated"
-                              "cursor-not-allowed bg-btn-disabled-bg text-perm-text-tapped"))
-                :disabled (not can-decrement?)
-                :on-click #(rf/dispatch [::storm-events/adjust-storm-split target-id -1])}
-       "-"]
-      [:span {:class "text-text font-bold text-lg min-w-[2ch] text-center"}
-       count]
-      [:button {:class (str "w-8 h-8 border border-border rounded text-white text-lg "
-                            (if can-increment?
-                              "cursor-pointer bg-surface-elevated"
-                              "cursor-not-allowed bg-btn-disabled-bg text-perm-text-tapped"))
-                :disabled (not can-increment?)
-                :on-click #(rf/dispatch [::storm-events/adjust-storm-split target-id 1])}
-       "+"]]]))
+     [:button {:class (stepper-button-class can-decrement?)
+               :disabled (not can-decrement?)
+               :on-click #(rf/dispatch [::storm-events/adjust-storm-split target-id (- count)])}
+      "\u00AB"]
+     [:button {:class (stepper-button-class can-decrement?)
+               :disabled (not can-decrement?)
+               :on-click #(rf/dispatch [::storm-events/adjust-storm-split target-id -1])}
+      "-"]
+     [:span {:class "text-text font-bold text-[24px] min-w-[3ch] text-center"}
+      count]
+     [:button {:class (stepper-button-class can-increment?)
+               :disabled (not can-increment?)
+               :on-click #(rf/dispatch [::storm-events/adjust-storm-split target-id 1])}
+      "+"]
+     [:button {:class (stepper-button-class can-increment?)
+               :disabled (not can-increment?)
+               :on-click #(rf/dispatch [::storm-events/adjust-storm-split target-id (- copy-count total-allocated)])}
+      "\u00BB"]]))
 
 
 (defn- storm-split-modal
@@ -647,10 +711,10 @@
         valid? (= total-allocated copy-count)
         source-name @(rf/subscribe [::subs/storm-split-source-name])]
     [modal-wrapper {:title "Distribute Storm Copies"
-                    :max-width "450px"
+                    :max-width "400px"
                     :text-align "center"}
      ;; Summary
-     [:p {:class "text-text-muted text-sm m-0 mb-4"}
+     [:p {:class "text-text-muted text-sm m-0 mb-5"}
       (str copy-count " " (if (= 1 copy-count) "copy" "copies")
            (when source-name (str " of " source-name)))]
      ;; Stepper rows
@@ -740,6 +804,10 @@
           ;; Peek-and-select selection (Flash of Insight effect)
           (= selection-type :peek-and-select)
           [peek-selection-modal selection cards]
+
+          ;; Order-bottom selection (choose order for bottom of library)
+          (= selection-type :order-bottom)
+          [order-bottom-modal]
 
           ;; Storm split selection — distribute copies across targets
           (= selection-type :storm-split)

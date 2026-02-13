@@ -138,6 +138,7 @@
        :effect/selected-zone - Zone for selected cards (default :hand)
        :effect/remainder-zone - Zone for non-selected (default :bottom-of-library)
        :effect/shuffle-remainder? - Whether to shuffle remainder (default false)
+       :effect/order-remainder? - Whether to chain to order-bottom selection
      effects-after - Remaining effects to execute after selection
 
    Anti-pattern: NO auto-select even with 1 card. Player must choose or fail-to-find."
@@ -154,21 +155,84 @@
                 select-count (or (:effect/select-count effect) 1)
                 ;; Actual count is min of requested and available
                 actual-select-count (min select-count (count candidate-ids))]
-            {:selection/zone :peek  ; Distinct from :library (tutor)
-             :selection/type :peek-and-select
-             :selection/candidates candidate-ids
-             :selection/select-count actual-select-count
-             :selection/exact? false  ; Can select fewer (fail-to-find)
-             :selection/allow-fail-to-find? true
-             :selection/selected #{}
-             :selection/player-id player-id
-             :selection/spell-id object-id
-             :selection/remaining-effects (vec effects-after)
-             :selection/selected-zone (or (:effect/selected-zone effect) :hand)
-             :selection/remainder-zone (or (:effect/remainder-zone effect) :bottom-of-library)
-             :selection/shuffle-remainder? (:effect/shuffle-remainder? effect)
-             :selection/validation :at-most
-             :selection/auto-confirm? false}))))))
+            (cond->
+              {:selection/zone :peek  ; Distinct from :library (tutor)
+               :selection/type :peek-and-select
+               :selection/candidates candidate-ids
+               :selection/select-count actual-select-count
+               :selection/exact? false  ; Can select fewer (fail-to-find)
+               :selection/allow-fail-to-find? true
+               :selection/selected #{}
+               :selection/player-id player-id
+               :selection/spell-id object-id
+               :selection/remaining-effects (vec effects-after)
+               :selection/selected-zone (or (:effect/selected-zone effect) :hand)
+               :selection/remainder-zone (or (:effect/remainder-zone effect) :bottom-of-library)
+               :selection/validation :at-most
+               :selection/auto-confirm? false}
+              (:effect/shuffle-remainder? effect)
+              (assoc :selection/shuffle-remainder? true)
+              (:effect/order-remainder? effect)
+              (assoc :selection/order-remainder? true))))))))
+
+
+;; =====================================================
+;; Order-Bottom Selection (player-ordered bottom placement)
+;; =====================================================
+
+(defn build-order-bottom-selection
+  "Build pending selection state for ordering cards on bottom of library.
+   Used when peek-and-select chains to let player choose bottom order.
+
+   Arguments:
+     remainder-ids - Seq of object-ids to order
+     player-id - Player performing the ordering
+     spell-id - Spell that triggered this selection (for cleanup)
+     remaining-effects - Effects to execute after ordering (optional)"
+  ([remainder-ids player-id spell-id]
+   (build-order-bottom-selection remainder-ids player-id spell-id nil))
+  ([remainder-ids player-id spell-id remaining-effects]
+   {:selection/type :order-bottom
+    :selection/candidates (set remainder-ids)
+    :selection/ordered []
+    :selection/player-id player-id
+    :selection/spell-id spell-id
+    :selection/remaining-effects (or remaining-effects [])
+    :selection/validation :always
+    :selection/auto-confirm? false}))
+
+
+(defn order-card-in-selection
+  "Add a card to the ordered sequence. Pure function on selection map.
+   No-op if card is not in candidates or already in ordered."
+  [selection object-id]
+  (let [candidates (:selection/candidates selection)
+        ordered (:selection/ordered selection)]
+    (if (and (contains? candidates object-id)
+             (not (some #{object-id} ordered)))
+      (update selection :selection/ordered conj object-id)
+      selection)))
+
+
+(defn unorder-card-in-selection
+  "Remove a card from the ordered sequence. Pure function on selection map.
+   No-op if card is not in ordered. Preserves relative order of remaining."
+  [selection object-id]
+  (update selection :selection/ordered
+          (fn [v] (filterv #(not= % object-id) v))))
+
+
+(defn any-order-selection
+  "Fill remaining unordered cards with random order after already-ordered cards.
+   Pure function on selection map. If all cards already ordered, identity."
+  [selection]
+  (let [candidates (:selection/candidates selection)
+        ordered (:selection/ordered selection)
+        ordered-set (set ordered)
+        remaining (remove ordered-set candidates)
+        shuffled-remaining (shuffle (vec remaining))]
+    (assoc selection :selection/ordered
+           (into (vec ordered) shuffled-remaining))))
 
 
 ;; =====================================================
@@ -280,6 +344,40 @@
                              db-after-selected
                              (vec remainder-seq))]
     db-after-remainder))
+
+
+(defn execute-order-bottom-selection
+  "Execute order-bottom selection — assign positions to ordered cards at bottom.
+   Pure function: (db, selection) -> db
+
+   First card in ordered vector gets lowest new position (top of bottom pile).
+   Calculates max position of non-candidate library cards, then assigns
+   sequential positions starting at max-pos + 1."
+  [game-db selection]
+  (let [ordered (:selection/ordered selection)
+        candidates (:selection/candidates selection)
+        player-id (:selection/player-id selection)
+        ;; Belt and suspenders: include any candidates not yet in ordered
+        ordered-set (set ordered)
+        unordered (remove ordered-set candidates)
+        final-ordered (into (vec ordered) (shuffle (vec unordered)))
+        ;; Max position of library cards NOT in our candidates set
+        library-objs (queries/get-objects-in-zone game-db player-id :library)
+        non-candidate-objs (remove #(contains? candidates (:object/id %))
+                                   library-objs)
+        max-pos (if (seq non-candidate-objs)
+                  (apply max (map :object/position non-candidate-objs))
+                  -1)]
+    (reduce-kv
+      (fn [d idx card-id]
+        (let [obj-eid (d/q '[:find ?e .
+                             :in $ ?oid
+                             :where [?e :object/id ?oid]]
+                           d card-id)
+              new-pos (+ max-pos 1 idx)]
+          (d/db-with d [[:db/add obj-eid :object/position new-pos]])))
+      game-db
+      (vec final-ordered))))
 
 
 (defn execute-pile-choice
@@ -427,7 +525,30 @@
 
 (defmethod core/execute-confirmed-selection :peek-and-select
   [game-db selection]
-  {:db (execute-peek-selection game-db selection)})
+  (let [order-remainder? (:selection/order-remainder? selection)
+        selected (:selection/selected selection)
+        candidates (:selection/candidates selection)
+        remainder (set/difference candidates selected)]
+    (if (and order-remainder? (>= (count remainder) 2))
+      ;; Chain to order-bottom for player-ordered placement
+      (let [selected-zone (or (:selection/selected-zone selection) :hand)
+            db-after-selected (reduce (fn [d card-id]
+                                        (zones/move-to-zone d card-id selected-zone))
+                                      game-db
+                                      selected)]
+        {:db db-after-selected
+         :pending-selection (build-order-bottom-selection
+                              remainder
+                              (:selection/player-id selection)
+                              (:selection/spell-id selection)
+                              (:selection/remaining-effects selection))})
+      ;; Standard path: execute immediately
+      {:db (execute-peek-selection game-db selection)})))
+
+
+(defmethod core/execute-confirmed-selection :order-bottom
+  [game-db selection]
+  {:db (execute-order-bottom-selection game-db selection)})
 
 
 (defmethod core/execute-confirmed-selection :pile-choice
@@ -505,3 +626,21 @@
                    (fn [pile] (vec (remove #{obj-id} pile))))
         (update-in [:game/pending-selection :selection/bottom-pile]
                    (fn [pile] (vec (remove #{obj-id} pile)))))))
+
+
+(rf/reg-event-db
+  :fizzle.events.selection/order-card
+  (fn [db [_ obj-id]]
+    (update db :game/pending-selection order-card-in-selection obj-id)))
+
+
+(rf/reg-event-db
+  :fizzle.events.selection/unorder-card
+  (fn [db [_ obj-id]]
+    (update db :game/pending-selection unorder-card-in-selection obj-id)))
+
+
+(rf/reg-event-db
+  :fizzle.events.selection/any-order
+  (fn [db _]
+    (update db :game/pending-selection any-order-selection)))

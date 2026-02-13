@@ -54,14 +54,21 @@
 
 
 (defn- describe-cast-spell
-  "Describe a cast-spell event using game-db-after (spell is now on stack)."
-  [game-db-after]
-  (if-let [top (get-stack-top-info game-db-after)]
-    (if-let [card-name (get-card-name game-db-after (:stack-item/source top))]
-      (let [targets (get-target-info top game-db-after)]
-        (str "Cast " card-name (format-target-suffix targets (:stack-item/controller top))))
-      "Cast spell")
-    "Cast spell"))
+  "Describe a cast-spell event using game-db-after (spell is now on stack).
+   Falls back to casting-spell-id when spell hasn't reached the stack yet
+   (e.g., mid-chain through X cost → mana allocation)."
+  ([game-db-after]
+   (describe-cast-spell game-db-after nil))
+  ([game-db-after casting-spell-id]
+   (if-let [top (get-stack-top-info game-db-after)]
+     (if-let [card-name (get-card-name game-db-after (:stack-item/source top))]
+       (let [targets (get-target-info top game-db-after)]
+         (str "Cast " card-name (format-target-suffix targets (:stack-item/controller top))))
+       "Cast spell")
+     ;; Spell not on stack yet — try casting-spell-id fallback
+     (if-let [card-name (get-card-name game-db-after casting-spell-id)]
+       (str "Cast " card-name)
+       "Cast spell"))))
 
 
 (defn- describe-resolve-top
@@ -181,18 +188,21 @@
 
 (defn describe-event
   "Generate a human-readable description for a re-frame event.
-   Takes event vector [event-id & args], optional game-db snapshots, and optional selection-type.
+   Takes event vector [event-id & args], optional game-db snapshots,
+   optional selection-type, and optional casting-spell-id.
    Returns string or nil.
    Only priority-action events need descriptions (the interceptor filters others)."
   ([[event-id & _args] pre-game-db game-db-after]
-   (describe-event (into [event-id] _args) pre-game-db game-db-after nil))
+   (describe-event (into [event-id] _args) pre-game-db game-db-after nil nil))
   ([[event-id & _args] pre-game-db game-db-after selection-type]
+   (describe-event (into [event-id] _args) pre-game-db game-db-after selection-type nil))
+  ([[event-id & _args] pre-game-db game-db-after selection-type casting-spell-id]
    (case event-id
      :fizzle.events.game/init-game
      "Game started"
 
      :fizzle.events.game/cast-spell
-     (describe-cast-spell game-db-after)
+     (describe-cast-spell game-db-after casting-spell-id)
 
      :fizzle.events.game/resolve-top
      (describe-resolve-top pre-game-db)
@@ -216,7 +226,7 @@
      :fizzle.events.selection/confirm-selection
      (case selection-type
        (:cast-time-targeting :x-mana-cost :exile-cards-cost)
-       (describe-cast-spell game-db-after)
+       (describe-cast-spell game-db-after casting-spell-id)
 
        :ability-targeting
        (describe-activate-from-stack game-db-after)
@@ -226,4 +236,4 @@
      nil))
   ;; Backward-compatible 1-arity: no game-dbs available
   ([event]
-   (describe-event event nil nil nil)))
+   (describe-event event nil nil nil nil)))
