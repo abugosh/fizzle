@@ -19,8 +19,6 @@
     [fizzle.views.mana-pool :as mana-pool]
     [fizzle.views.modals :as modals]
     [fizzle.views.opening-hand :as opening-hand]
-    [fizzle.views.opponent :as opponent]
-    [fizzle.views.phase-bar :as phase-bar]
     [fizzle.views.setup :as setup-view]
     [fizzle.views.stack :as stack]
     [fizzle.views.zone-counts :as zone-counts]
@@ -60,9 +58,7 @@
   [:div {:class "game-grid"}
    ;; Left column: primary interaction zones
    [:div {:class "p-4 overflow-y-auto min-w-[400px]"}
-    [phase-bar/phase-bar-view]
-    [opponent/life-view]
-    [battlefield/battlefield-view]
+    [battlefield/battlefield-view]  ; Now includes phase bar and life totals
     [hand/hand-view]
     [controls/controls-view]
     [:div {:class "flex gap-8"}

@@ -1,7 +1,10 @@
 (ns fizzle.views.battlefield
   (:require
+    [fizzle.engine.rules :as rules]
     [fizzle.events.abilities :as ability-events]
+    [fizzle.events.game :as events]
     [fizzle.subs.game :as subs]
+    [fizzle.views.opponent :as opponent]
     [re-frame.core :as rf]))
 
 
@@ -74,68 +77,130 @@
 
 
 (defn- permanent-view
-  [obj]
-  (let [card-name (get-in obj [:object/card :card/name])
-        object-id (:object/id obj)
-        tapped? (:object/tapped obj)
-        counters (:object/counters obj)
-        producible-colors (get-producible-colors obj)
-        activated-abilities (get-activated-abilities obj)]
-    [:div {:class (str "border-2 rounded-md p-2 mr-1.5 mb-1.5 min-w-[100px] text-center "
-                       (if tapped?
-                         "border-perm-border-tapped bg-perm-bg-tapped text-perm-text-tapped rotate-[6deg]"
-                         "border-perm-border bg-perm-bg text-perm-text"))}
-     [:div {:class "text-[13px] mb-1"}
-      card-name
-      (when tapped? " (tapped)")]
-     (when (and counters (seq counters))
-       [:div {:class "text-[11px] text-text-dim mb-1"}
-        (for [[counter-type count] counters]
-          ^{:key counter-type}
-          [:span {:class "mr-1.5"}
-           (str (name counter-type) ": " count)])])
-     (when (seq producible-colors)
-       [:div {:class "flex justify-center flex-wrap"}
-        (for [color producible-colors]
-          ^{:key color}
-          [mana-button object-id color tapped?])])
-     (when (seq activated-abilities)
-       [:div {:class "flex justify-center flex-wrap mt-1"}
-        (for [[idx ability] activated-abilities]
-          (let [label (or (:ability/name ability)
-                          (when-let [desc (:ability/description ability)]
-                            (if (> (count desc) 15)
-                              (str (subs desc 0 12) "...")
-                              desc))
-                          "Activate")]
-            ^{:key idx}
-            [ability-button object-id idx label tapped?]))])]))
+  "Render a permanent card. Set show-buttons? false for opponent cards."
+  ([obj] (permanent-view obj true))
+  ([obj show-buttons?]
+   (let [card-name (get-in obj [:object/card :card/name])
+         object-id (:object/id obj)
+         tapped? (:object/tapped obj)
+         counters (:object/counters obj)
+         producible-colors (get-producible-colors obj)
+         activated-abilities (get-activated-abilities obj)]
+     [:div {:class (str "border-2 rounded-md p-2 mr-1.5 mb-1.5 min-w-[100px] text-center "
+                        (if tapped?
+                          "border-perm-border-tapped bg-perm-bg-tapped text-perm-text-tapped rotate-[6deg]"
+                          "border-perm-border bg-perm-bg text-perm-text"))}
+      [:div {:class "text-[13px] mb-1"}
+       card-name
+       (when tapped? " (tapped)")]
+      (when (and counters (seq counters))
+        [:div {:class "text-[11px] text-text-dim mb-1"}
+         (for [[counter-type count] counters]
+           ^{:key counter-type}
+           [:span {:class "mr-1.5"}
+            (str (name counter-type) ": " count)])])
+      (when (and show-buttons? (seq producible-colors))
+        [:div {:class "flex justify-center flex-wrap"}
+         (for [color producible-colors]
+           ^{:key color}
+           [mana-button object-id color tapped?])])
+      (when (and show-buttons? (seq activated-abilities))
+        [:div {:class "flex justify-center flex-wrap mt-1"}
+         (for [[idx ability] activated-abilities]
+           (let [label (or (:ability/name ability)
+                           (when-let [desc (:ability/description ability)]
+                             (if (> (count desc) 15)
+                               (str (subs desc 0 12) "...")
+                               desc))
+                           "Activate")]
+             ^{:key idx}
+             [ability-button object-id idx label tapped?]))])])))
+
+
+(defn- empty-row-placeholder
+  "Render an empty row placeholder with a faint type label."
+  [label]
+  [:div {:class "min-h-[24px] flex items-center text-border text-[11px] italic"}
+   label])
+
+
+(defn- permanent-row
+  "Render a row of permanents or an empty placeholder."
+  [objects label show-buttons?]
+  (if (seq objects)
+    [:div {:class "flex flex-wrap mb-2"}
+     (for [obj objects]
+       ^{:key (:object/id obj)}
+       [permanent-view obj show-buttons?])]
+    [:div {:class "mb-2"}
+     [empty-row-placeholder label]]))
+
+
+(defn- phase-indicator
+  [phase current-phase]
+  [:span {:class (str "py-1 px-2 rounded text-[11px] "
+                      (if (= phase current-phase)
+                        "bg-accent text-white"
+                        "bg-transparent text-perm-text-tapped"))}
+   (name phase)])
+
+
+(defn- phase-bar-section
+  "Phase bar with life totals flanking it."
+  []
+  (let [current-phase (or @(rf/subscribe [::subs/current-phase]) :main1)
+        current-turn (or @(rf/subscribe [::subs/current-turn]) 1)
+        player-life @(rf/subscribe [::subs/player-life])
+        opponent-life @(rf/subscribe [::subs/opponent-life])
+        at-cleanup? (= current-phase :cleanup)
+        stack @(rf/subscribe [::subs/stack])
+        stack-active? (boolean (seq stack))]
+    [:div {:class "flex items-center justify-between gap-4 py-3 px-4 mb-2 mt-2 bg-surface-raised border-y border-surface-dim"}
+     ;; Opponent life (left)
+     [:div {:class "flex items-center gap-2"}
+      [:span {:class "text-text-dim text-xs"} "Opp:"]
+      [:span {:class (str "text-lg font-bold " (opponent/opponent-health-class opponent-life))}
+       opponent-life]]
+     ;; Phase controls (center)
+     [:div {:class "flex items-center gap-3"}
+      [:span {:class "font-bold text-text text-sm"}
+       (str "Turn " current-turn)]
+      [:div {:class "flex gap-1"}
+       (for [phase rules/phases]
+         ^{:key phase}
+         [phase-indicator phase current-phase])]
+      [:button {:class (str "py-1.5 px-3.5 border border-border rounded font-bold text-[13px] "
+                            (if stack-active?
+                              "cursor-not-allowed bg-surface-dim text-perm-text-tapped opacity-50"
+                              "cursor-pointer bg-btn-enabled-bg text-white"))
+                :disabled stack-active?
+                :on-click #(when-not stack-active?
+                             (rf/dispatch [(if at-cleanup?
+                                             ::events/start-turn
+                                             ::events/advance-phase)]))}
+       (if at-cleanup? "New Turn" "Next Phase")]]
+     ;; Player life (right)
+     [:div {:class "flex items-center gap-2"}
+      [:span {:class "text-text-dim text-xs"} "You:"]
+      [:span {:class (str "text-lg font-bold " (opponent/player-health-class player-life))}
+       player-life]]]))
 
 
 (defn battlefield-view
+  "6-row mirrored battlefield: opponent (lands/other/creatures) → phase bar → player (creatures/other/lands)"
   []
-  (let [{:keys [creatures other lands]} @(rf/subscribe [::subs/battlefield])]
+  (let [opponent-bf @(rf/subscribe [::subs/opponent-battlefield])
+        player-bf @(rf/subscribe [::subs/battlefield])]
     [:div {:class "mb-4"}
-     [:div {:class "text-text-label mb-1.5 text-xs"} "BATTLEFIELD"]
-     (if (or (seq creatures) (seq other) (seq lands))
-       [:div
-        (when (seq creatures)
-          [:div {:class "flex flex-wrap mb-2"}
-           (for [obj creatures]
-             ^{:key (:object/id obj)}
-             [permanent-view obj])])
-        (when (and (seq creatures) (or (seq other) (seq lands)))
-          [:hr {:class "border-border mb-2"}])
-        (when (seq other)
-          [:div {:class "flex flex-wrap mb-2"}
-           (for [obj other]
-             ^{:key (:object/id obj)}
-             [permanent-view obj])])
-        (when (and (seq other) (seq lands))
-          [:hr {:class "border-border mb-2"}])
-        (when (seq lands)
-          [:div {:class "flex flex-wrap"}
-           (for [obj lands]
-             ^{:key (:object/id obj)}
-             [permanent-view obj])])]
-       [:div {:class "text-border text-[13px]"} "No permanents"])]))
+     ;; Opponent battlefield (top 3 rows)
+     [:div {:class "text-text-label mb-1.5 text-xs"} "OPPONENT BATTLEFIELD"]
+     [permanent-row (:lands opponent-bf) "Lands" false]
+     [permanent-row (:other opponent-bf) "Other" false]
+     [permanent-row (:creatures opponent-bf) "Creatures" false]
+     ;; Phase bar (center)
+     [phase-bar-section]
+     ;; Player battlefield (bottom 3 rows)
+     [:div {:class "text-text-label mb-1.5 text-xs"} "YOUR BATTLEFIELD"]
+     [permanent-row (:creatures player-bf) "Creatures" true]
+     [permanent-row (:other player-bf) "Other" true]
+     [permanent-row (:lands player-bf) "Lands" true]]))
