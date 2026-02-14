@@ -10,50 +10,11 @@
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
-    [fizzle.engine.stack :as stack]))
+    [fizzle.engine.stack :as stack]
+    [fizzle.test-helpers :as th]))
 
 
 ;; === Test helpers ===
-
-(defn create-test-db
-  "Create a game state with all card definitions loaded."
-  []
-  (let [conn (d/create-conn schema)]
-    (d/transact! conn cards/all-cards)
-    (d/transact! conn [{:player/id :player-1
-                        :player/name "Player"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 0 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 1}])
-    (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
-      (d/transact! conn [{:game/id :game-1
-                          :game/turn 1
-                          :game/phase :main1
-                          :game/active-player player-eid
-                          :game/priority player-eid}]))
-    @conn))
-
-
-(defn add-card-to-zone
-  "Add a card object to a zone for a player. Returns [db object-id]."
-  [db card-id zone player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        card-eid (d/q '[:find ?e .
-                        :in $ ?cid
-                        :where [?e :card/id ?cid]]
-                      db card-id)
-        obj-id (random-uuid)]
-    (d/transact! conn [{:object/id obj-id
-                        :object/card card-eid
-                        :object/zone zone
-                        :object/owner player-eid
-                        :object/controller player-eid
-                        :object/tapped false}])
-    [@conn obj-id]))
-
 
 (defn add-card-to-zone-with-position
   "Add a card object to a zone with a position. Returns [db object-id]."
@@ -187,9 +148,9 @@
 
 (deftest get-hand-multiple-cards-test
   (testing "returns all cards in hand"
-    (let [db (create-test-db)
-          [db' _] (add-card-to-zone db :dark-ritual :hand :player-1)
-          [db'' _] (add-card-to-zone db' :brain-freeze :hand :player-1)
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          [db'' _] (th/add-card-to-zone db' :brain-freeze :hand :player-1)
           hand (q/get-hand db'' :player-1)]
       (is (= 2 (count hand))))))
 
@@ -286,7 +247,7 @@
 
 (deftest stack-empty?-stack-items-only-test
   (testing "false when only stack-items on stack"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db)
           db' (stack/create-stack-item db {:stack-item/type :storm-copy
                                            :stack-item/controller :player-1
                                            :stack-item/description "Storm copy"})]
@@ -295,15 +256,15 @@
 
 (deftest stack-empty?-spells-only-test
   (testing "false when only spells on stack"
-    (let [db (create-test-db)
-          [db' _] (add-card-to-zone db :dark-ritual :stack :player-1)]
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :dark-ritual :stack :player-1)]
       (is (false? (q/stack-empty? db'))))))
 
 
 (deftest stack-empty?-both-test
   (testing "false when both stack-items and spells on stack"
-    (let [db (create-test-db)
-          [db' _] (add-card-to-zone db :dark-ritual :stack :player-1)
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :dark-ritual :stack :player-1)
           db'' (stack/create-stack-item db' {:stack-item/type :storm-copy
                                              :stack-item/controller :player-1
                                              :stack-item/description "Storm copy"})]
@@ -314,7 +275,7 @@
 
 (deftest get-top-n-library-basic-test
   (testing "returns top N object-ids sorted by position ascending"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db)
           [db' id0] (add-card-to-zone-with-position db :dark-ritual :library :player-1 0)
           [db'' id1] (add-card-to-zone-with-position db' :brain-freeze :library :player-1 1)
           [db''' _] (add-card-to-zone-with-position db'' :cabal-ritual :library :player-1 2)
@@ -327,14 +288,14 @@
 
 (deftest get-top-n-library-n-zero-test
   (testing "returns empty vector when n=0"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db)
           [db' _] (add-card-to-zone-with-position db :dark-ritual :library :player-1 0)]
       (is (= [] (q/get-top-n-library db' :player-1 0))))))
 
 
 (deftest get-top-n-library-n-exceeds-size-test
   (testing "returns all available when n > library size"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db)
           [db' _] (add-card-to-zone-with-position db :dark-ritual :library :player-1 0)
           [db'' _] (add-card-to-zone-with-position db' :brain-freeze :library :player-1 1)
           result (q/get-top-n-library db'' :player-1 100)]
@@ -357,10 +318,10 @@
 
 (deftest query-zone-by-criteria-type-and-logic-test
   (testing "types use AND logic - must have ALL specified types"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db)
           ;; Add an instant (Dark Ritual) and a land (Island) to hand
-          [db' _] (add-card-to-zone db :dark-ritual :hand :player-1)
-          [db'' _] (add-card-to-zone db' :island :hand :player-1)
+          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          [db'' _] (th/add-card-to-zone db' :island :hand :player-1)
           ;; Query for instants only
           instants (q/query-zone-by-criteria db'' :player-1 :hand {:card/types #{:instant}})
           ;; Query for lands only
@@ -373,10 +334,10 @@
 
 (deftest query-zone-by-criteria-color-or-logic-test
   (testing "colors use OR logic - any match suffices"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db)
           ;; Dark Ritual is :black, Brain Freeze is :blue
-          [db' _] (add-card-to-zone db :dark-ritual :hand :player-1)
-          [db'' _] (add-card-to-zone db' :brain-freeze :hand :player-1)
+          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          [db'' _] (th/add-card-to-zone db' :brain-freeze :hand :player-1)
           ;; Query for black OR blue - should get both
           result (q/query-zone-by-criteria db'' :player-1 :hand {:card/colors #{:black :blue}})]
       (is (= 2 (count result))))))
@@ -384,10 +345,10 @@
 
 (deftest query-zone-by-criteria-subtype-or-logic-test
   (testing "subtypes use OR logic"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db)
           ;; Island has subtype :island, Swamp has subtype :swamp
-          [db' _] (add-card-to-zone db :island :hand :player-1)
-          [db'' _] (add-card-to-zone db' :swamp :hand :player-1)
+          [db' _] (th/add-card-to-zone db :island :hand :player-1)
+          [db'' _] (th/add-card-to-zone db' :swamp :hand :player-1)
           ;; Query for island or swamp subtypes - should get both
           result (q/query-zone-by-criteria db'' :player-1 :hand {:card/subtypes #{:island :swamp}})]
       (is (= 2 (count result))))))
@@ -395,33 +356,33 @@
 
 (deftest query-zone-by-criteria-empty-criteria-test
   (testing "empty criteria matches all objects in zone"
-    (let [db (create-test-db)
-          [db' _] (add-card-to-zone db :dark-ritual :hand :player-1)
-          [db'' _] (add-card-to-zone db' :island :hand :player-1)
-          [db''' _] (add-card-to-zone db'' :lotus-petal :hand :player-1)
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          [db'' _] (th/add-card-to-zone db' :island :hand :player-1)
+          [db''' _] (th/add-card-to-zone db'' :lotus-petal :hand :player-1)
           result (q/query-zone-by-criteria db''' :player-1 :hand {})]
       (is (= 3 (count result))))))
 
 
 (deftest query-zone-by-criteria-no-match-test
   (testing "returns empty vector when no objects match criteria"
-    (let [db (create-test-db)
-          [db' _] (add-card-to-zone db :dark-ritual :hand :player-1)
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           result (q/query-zone-by-criteria db' :player-1 :hand {:card/types #{:land}})]
       (is (= [] result)))))
 
 
 (deftest query-zone-by-criteria-nonexistent-player-test
   (testing "returns nil for nonexistent player"
-    (let [db (create-test-db)]
+    (let [db (th/create-test-db)]
       (is (nil? (q/query-zone-by-criteria db :nonexistent :hand {}))))))
 
 
 (deftest query-library-by-criteria-delegates-test
   (testing "delegates to query-zone-by-criteria with :library zone"
-    (let [db (create-test-db)
-          [db' _] (add-card-to-zone db :dark-ritual :library :player-1)
-          [db'' _] (add-card-to-zone db' :island :library :player-1)
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :dark-ritual :library :player-1)
+          [db'' _] (th/add-card-to-zone db' :island :library :player-1)
           ;; Query library for instants
           instants (q/query-library-by-criteria db'' :player-1 {:card/types #{:instant}})
           ;; Query library for lands
@@ -434,7 +395,7 @@
 
 (deftest query-library-by-criteria-nonexistent-player-test
   (testing "returns nil for nonexistent player"
-    (let [db (create-test-db)]
+    (let [db (th/create-test-db)]
       (is (nil? (q/query-library-by-criteria db :nonexistent {}))))))
 
 
@@ -487,8 +448,8 @@
 (deftest get-objects-in-zone-battlefield-test
   ;; Bug caught: battlefield zone query broken
   (testing "get-objects-in-zone returns objects on battlefield"
-    (let [db (create-test-db)
-          [db' obj-id] (add-card-to-zone db :dark-ritual :battlefield :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :dark-ritual :battlefield :player-1)
           objs (q/get-objects-in-zone db' :player-1 :battlefield)]
       (is (= 1 (count objs))
           "Should find 1 object on battlefield")

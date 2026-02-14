@@ -7,7 +7,6 @@
     [datascript.core :as d]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
-    [fizzle.db.schema :refer [schema]]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
@@ -15,31 +14,11 @@
     [fizzle.events.game :as game]
     [fizzle.events.selection.core :as core]
     [fizzle.events.selection.storm :as storm]
-    [fizzle.events.selection.targeting :as sel-targeting]))
+    [fizzle.events.selection.targeting :as sel-targeting]
+    [fizzle.test-helpers :as th]))
 
 
 ;; === Test Helpers ===
-
-(defn create-test-db
-  "Create a game state with card definitions loaded."
-  []
-  (let [conn (d/create-conn schema)]
-    (d/transact! conn cards/all-cards)
-    (d/transact! conn [{:player/id :player-1
-                        :player/name "Player"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 0 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 1}])
-    (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
-      (d/transact! conn [{:game/id :game-1
-                          :game/turn 1
-                          :game/phase :main1
-                          :game/active-player player-eid
-                          :game/priority player-eid}]))
-    @conn))
-
 
 (defn add-opponent
   "Add an opponent player to the game state."
@@ -53,25 +32,6 @@
                                            :red 0 :green 0 :colorless 0}
                         :player/storm-count 0}])
     @conn))
-
-
-(defn add-card-to-zone
-  "Add a card object to a zone for a player. Returns [db object-id]."
-  [db card-id zone player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        card-eid (d/q '[:find ?e .
-                        :in $ ?cid
-                        :where [?e :card/id ?cid]]
-                      db card-id)
-        obj-id (random-uuid)]
-    (d/transact! conn [{:object/id obj-id
-                        :object/card card-eid
-                        :object/zone zone
-                        :object/owner player-eid
-                        :object/controller player-eid
-                        :object/tapped false}])
-    [@conn obj-id]))
 
 
 (defn add-cards-to-library
@@ -121,9 +81,9 @@
 
 (deftest create-spell-copy-target-override-test
   (testing "4-arg create-spell-copy uses target override instead of inherited targets"
-    (let [db (-> (create-test-db)
+    (let [db (-> (th/create-test-db)
                  (add-opponent))
-          [db' source-id] (add-card-to-zone db :brain-freeze :stack :player-1)
+          [db' source-id] (th/add-card-to-zone db :brain-freeze :stack :player-1)
           ;; Create copy with explicit target override
           db-with-copy (triggers/create-spell-copy db' source-id :player-1
                                                    {:player :player-1})
@@ -141,9 +101,9 @@
 
 (deftest create-spell-copy-3-arg-backward-compat-test
   (testing "3-arg create-spell-copy still inherits targets from original"
-    (let [db (-> (create-test-db)
+    (let [db (-> (th/create-test-db)
                  (add-opponent))
-          [db' source-id] (add-card-to-zone db :brain-freeze :hand :player-1)
+          [db' source-id] (th/add-card-to-zone db :brain-freeze :hand :player-1)
           db-m (mana/add-mana db' :player-1 {:blue 1 :colorless 1})
           db-cast (cast-brain-freeze-with-target db-m :player-1 source-id :opponent)
           ;; Create copy with 3-arg (should inherit opponent target)
@@ -166,10 +126,10 @@
 
 (deftest build-storm-split-selection-correct-state-test
   (testing "Builder produces correct selection state"
-    (let [db (-> (create-test-db)
+    (let [db (-> (th/create-test-db)
                  (add-opponent))
           ;; Put Brain Freeze on stack directly (no casting, avoids double storm SI)
-          [db' source-id] (add-card-to-zone db :brain-freeze :stack :player-1)
+          [db' source-id] (th/add-card-to-zone db :brain-freeze :stack :player-1)
           ;; Create a storm stack-item manually
           db-with-storm (stack/create-stack-item db'
                                                  {:stack-item/type :storm
@@ -201,9 +161,9 @@
 
 (deftest build-storm-split-selection-zero-copies-returns-nil-test
   (testing "Builder returns nil for 0 copies"
-    (let [db (-> (create-test-db)
+    (let [db (-> (th/create-test-db)
                  (add-opponent))
-          [db' source-id] (add-card-to-zone db :brain-freeze :stack :player-1)
+          [db' source-id] (th/add-card-to-zone db :brain-freeze :stack :player-1)
           db-with-storm (stack/create-stack-item db'
                                                  {:stack-item/type :storm
                                                   :stack-item/controller :player-1
@@ -218,7 +178,7 @@
 
 (deftest build-storm-split-selection-source-not-found-returns-nil-test
   (testing "Builder returns nil when source object doesn't exist"
-    (let [db (-> (create-test-db)
+    (let [db (-> (th/create-test-db)
                  (add-opponent))
           fake-source-id (random-uuid)
           db-with-storm (stack/create-stack-item db
@@ -235,8 +195,8 @@
 
 (deftest build-storm-split-selection-goldfish-mode-test
   (testing "Builder with no opponent puts only self in valid-targets"
-    (let [db (create-test-db)
-          [db' source-id] (add-card-to-zone db :brain-freeze :stack :player-1)
+    (let [db (th/create-test-db)
+          [db' source-id] (th/add-card-to-zone db :brain-freeze :stack :player-1)
           db-with-storm (stack/create-stack-item db'
                                                  {:stack-item/type :storm
                                                   :stack-item/controller :player-1
@@ -320,10 +280,10 @@
 
 (deftest confirm-creates-correct-copy-count-test
   (testing "Confirm creates correct number of copies"
-    (let [db (-> (create-test-db)
+    (let [db (-> (th/create-test-db)
                  (add-opponent))
           ;; Put Brain Freeze on stack directly (no casting, avoids double storm SI)
-          [db' source-id] (add-card-to-zone db :brain-freeze :stack :player-1)
+          [db' source-id] (th/add-card-to-zone db :brain-freeze :stack :player-1)
           db-with-storm (stack/create-stack-item db'
                                                  {:stack-item/type :storm
                                                   :stack-item/controller :player-1
@@ -353,9 +313,9 @@
 
 (deftest confirm-assigns-targets-per-copy-test
   (testing "Each copy gets its individually assigned target"
-    (let [db (-> (create-test-db)
+    (let [db (-> (th/create-test-db)
                  (add-opponent))
-          [db' source-id] (add-card-to-zone db :brain-freeze :stack :player-1)
+          [db' source-id] (th/add-card-to-zone db :brain-freeze :stack :player-1)
           db-with-storm (stack/create-stack-item db'
                                                  {:stack-item/type :storm
                                                   :stack-item/controller :player-1
@@ -389,9 +349,9 @@
 
 (deftest confirm-removes-storm-stack-item-test
   (testing "Storm stack-item is removed after confirm"
-    (let [db (-> (create-test-db)
+    (let [db (-> (th/create-test-db)
                  (add-opponent))
-          [db' source-id] (add-card-to-zone db :brain-freeze :stack :player-1)
+          [db' source-id] (th/add-card-to-zone db :brain-freeze :stack :player-1)
           db-with-storm (stack/create-stack-item db'
                                                  {:stack-item/type :storm
                                                   :stack-item/controller :player-1
@@ -419,9 +379,9 @@
 
 (deftest confirm-rejects-partial-allocation-test
   (testing "Confirm rejects allocation where total != copy-count"
-    (let [db (-> (create-test-db)
+    (let [db (-> (th/create-test-db)
                  (add-opponent))
-          [db' source-id] (add-card-to-zone db :brain-freeze :stack :player-1)
+          [db' source-id] (th/add-card-to-zone db :brain-freeze :stack :player-1)
           db-with-storm (stack/create-stack-item db'
                                                  {:stack-item/type :storm
                                                   :stack-item/controller :player-1
@@ -453,15 +413,15 @@
 
 (deftest resolve-one-item-targeted-storm-returns-selection-test
   (testing "resolve-one-item returns storm-split selection for targeted storm"
-    (let [db (-> (create-test-db)
+    (let [db (-> (th/create-test-db)
                  (add-opponent))
           ;; Cast Dark Ritual first to build storm count
-          [db1 dr-id] (add-card-to-zone db :dark-ritual :hand :player-1)
+          [db1 dr-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           db1m (mana/add-mana db1 :player-1 {:black 1})
           db1c (rules/cast-spell db1m :player-1 dr-id)
           db1r (rules/resolve-spell db1c :player-1 dr-id)
           ;; Cast Brain Freeze as 2nd spell (storm count=2, copies=1)
-          [db2 bf-id] (add-card-to-zone db1r :brain-freeze :hand :player-1)
+          [db2 bf-id] (th/add-card-to-zone db1r :brain-freeze :hand :player-1)
           db2m (mana/add-mana db2 :player-1 {:blue 1 :colorless 1})
           db2c (cast-brain-freeze-with-target db2m :player-1 bf-id :opponent)
           ;; Storm SI is on top, source spell has :card/targeting
@@ -477,8 +437,8 @@
 
 (deftest resolve-one-item-non-targeted-storm-no-selection-test
   (testing "resolve-one-item does NOT return selection for non-targeted storm"
-    (let [db (create-test-db)
-          [db' source-id] (add-card-to-zone db :dark-ritual :hand :player-1)
+    (let [db (th/create-test-db)
+          [db' source-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           db-m (mana/add-mana db' :player-1 {:black 1})
           db-cast (rules/cast-spell db-m :player-1 source-id)
           db-res (rules/resolve-spell db-cast :player-1 source-id)

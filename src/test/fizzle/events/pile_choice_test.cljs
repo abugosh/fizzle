@@ -13,92 +13,9 @@
    - Edge cases: single card, empty selection"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
-    [datascript.core :as d]
-    [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
-    [fizzle.db.schema :refer [schema]]
-    [fizzle.events.selection.library :as library]))
-
-
-;; === Test helpers ===
-
-(defn create-test-db
-  "Create a game state with all card definitions loaded."
-  []
-  (let [conn (d/create-conn schema)]
-    ;; Transact all card definitions
-    (d/transact! conn cards/all-cards)
-    ;; Transact player
-    (d/transact! conn [{:player/id :player-1
-                        :player/name "Player"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 3 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 1}])
-    ;; Transact game state
-    (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
-      (d/transact! conn [{:game/id :game-1
-                          :game/turn 1
-                          :game/phase :main1
-                          :game/active-player player-eid
-                          :game/priority player-eid}]))
-    @conn))
-
-
-(defn add-cards-to-library
-  "Add multiple cards to the library with positions.
-   Returns [db object-ids] tuple with object-ids in order (first = top of library)."
-  [db card-ids player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        get-card-eid (fn [card-id]
-                       (d/q '[:find ?e .
-                              :in $ ?cid
-                              :where [?e :card/id ?cid]]
-                            @conn card-id))]
-    (loop [remaining-cards card-ids
-           position 0
-           object-ids []]
-      (if (empty? remaining-cards)
-        [@conn object-ids]
-        (let [card-id (first remaining-cards)
-              obj-id (random-uuid)
-              card-eid (get-card-eid card-id)]
-          (d/transact! conn [{:object/id obj-id
-                              :object/card card-eid
-                              :object/zone :library
-                              :object/owner player-eid
-                              :object/controller player-eid
-                              :object/tapped false
-                              :object/position position}])
-          (recur (rest remaining-cards)
-                 (inc position)
-                 (conj object-ids obj-id)))))))
-
-
-(defn get-object-zone
-  "Get the current zone of an object by its ID."
-  [db object-id]
-  (:object/zone (q/get-object db object-id)))
-
-
-(defn get-library-count
-  "Get the number of cards in a player's library."
-  [db player-id]
-  (count (q/get-objects-in-zone db player-id :library)))
-
-
-(defn get-hand-count
-  "Get the number of cards in a player's hand."
-  [db player-id]
-  (count (q/get-hand db player-id)))
-
-
-(defn get-graveyard-count
-  "Get the number of cards in a player's graveyard."
-  [db player-id]
-  (count (q/get-objects-in-zone db player-id :graveyard)))
+    [fizzle.events.selection.library :as library]
+    [fizzle.test-helpers :as th]))
 
 
 ;; === build-pile-choice-selection tests ===
@@ -159,8 +76,8 @@
 (deftest test-execute-pile-choice-moves-selected-to-hand
   ;; Bug caught: Selected cards not moved to hand
   (testing "execute-pile-choice moves hand-selected cards to hand zone"
-    (let [db (create-test-db)
-          [db' [obj1 obj2 obj3]] (add-cards-to-library
+    (let [db (th/create-test-db {:mana {:blue 3}})
+          [db' [obj1 obj2 obj3]] (th/add-cards-to-library
                                    db
                                    [:dark-ritual :cabal-ritual :brain-freeze]
                                    :player-1)
@@ -170,15 +87,15 @@
                      :selection/hand-count 1
                      :selection/player-id :player-1}
           db-after (library/execute-pile-choice db' selection)]
-      (is (= :hand (get-object-zone db-after obj1))
+      (is (= :hand (th/get-object-zone db-after obj1))
           "Selected card must be in hand"))))
 
 
 (deftest test-execute-pile-choice-moves-rest-to-graveyard
   ;; Bug caught: Non-selected cards left in library instead of graveyard
   (testing "execute-pile-choice moves non-selected cards to graveyard"
-    (let [db (create-test-db)
-          [db' [obj1 obj2 obj3]] (add-cards-to-library
+    (let [db (th/create-test-db {:mana {:blue 3}})
+          [db' [obj1 obj2 obj3]] (th/add-cards-to-library
                                    db
                                    [:dark-ritual :cabal-ritual :brain-freeze]
                                    :player-1)
@@ -188,18 +105,18 @@
                      :selection/hand-count 1
                      :selection/player-id :player-1}
           db-after (library/execute-pile-choice db' selection)]
-      (is (= :graveyard (get-object-zone db-after obj2))
+      (is (= :graveyard (th/get-object-zone db-after obj2))
           "Non-selected card 2 must be in graveyard")
-      (is (= :graveyard (get-object-zone db-after obj3))
+      (is (= :graveyard (th/get-object-zone db-after obj3))
           "Non-selected card 3 must be in graveyard"))))
 
 
 (deftest test-execute-pile-choice-does-not-shuffle
   ;; Bug caught: Library shuffled during pile-choice (should only shuffle on confirm)
   (testing "execute-pile-choice does NOT shuffle library (shuffle is separate)"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db {:mana {:blue 3}})
           ;; Add cards to library beyond the pile-choice cards
-          [db' [obj1 obj2 obj3 obj4 obj5]] (add-cards-to-library
+          [db' [obj1 obj2 obj3 obj4 obj5]] (th/add-cards-to-library
                                              db
                                              [:dark-ritual :cabal-ritual :brain-freeze
                                               :careful-study :mental-note]
@@ -225,17 +142,17 @@
 (deftest test-execute-pile-choice-all-to-hand-when-count-matches
   ;; Bug caught: Edge case where hand-count >= candidate count
   (testing "All cards go to hand when hand-count >= candidate count"
-    (let [db (create-test-db)
-          [db' [obj1]] (add-cards-to-library db [:dark-ritual] :player-1)
+    (let [db (th/create-test-db {:mana {:blue 3}})
+          [db' [obj1]] (th/add-cards-to-library db [:dark-ritual] :player-1)
           selection {:selection/type :pile-choice
                      :selection/candidates #{obj1}
                      :selection/selected #{obj1}
                      :selection/hand-count 1
                      :selection/player-id :player-1}
           db-after (library/execute-pile-choice db' selection)]
-      (is (= :hand (get-object-zone db-after obj1))
+      (is (= :hand (th/get-object-zone db-after obj1))
           "Single card should go to hand")
-      (is (= 0 (get-graveyard-count db-after :player-1))
+      (is (= 0 (th/get-zone-count db-after :graveyard :player-1))
           "No cards should be in graveyard"))))
 
 
@@ -244,8 +161,8 @@
 (deftest test-build-tutor-selection-includes-pile-choice
   ;; Bug caught: pile-choice not passed through from effect
   (testing "build-tutor-selection includes :selection/pile-choice when effect has it"
-    (let [db (create-test-db)
-          [db' _] (add-cards-to-library
+    (let [db (th/create-test-db {:mana {:blue 3}})
+          [db' _] (th/add-cards-to-library
                     db
                     [:dark-ritual :cabal-ritual :brain-freeze]
                     :player-1)
@@ -261,8 +178,8 @@
 (deftest test-build-tutor-selection-no-pile-choice-when-not-present
   ;; Bug caught: nil pile-choice breaks normal tutors
   (testing "build-tutor-selection has nil pile-choice for normal tutors"
-    (let [db (create-test-db)
-          [db' _] (add-cards-to-library db [:dark-ritual] :player-1)
+    (let [db (th/create-test-db {:mana {:blue 3}})
+          [db' _] (th/add-cards-to-library db [:dark-ritual] :player-1)
           effect {:effect/type :tutor
                   :effect/target-zone :hand}
           result (library/build-tutor-selection db' :player-1 (random-uuid) effect [])]

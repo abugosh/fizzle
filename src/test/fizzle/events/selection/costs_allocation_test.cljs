@@ -4,55 +4,11 @@
    allocate/reset handlers, and execute-confirmed-selection :mana-allocation."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
-    [datascript.core :as d]
-    [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
-    [fizzle.db.schema :refer [schema]]
     [fizzle.engine.mana :as mana]
     [fizzle.events.selection.core :as core]
-    [fizzle.events.selection.costs :as costs]))
-
-
-;; === Test helpers ===
-
-(defn create-test-db
-  "Create a game state with all card definitions loaded."
-  []
-  (let [conn (d/create-conn schema)]
-    (d/transact! conn cards/all-cards)
-    (d/transact! conn [{:player/id :player-1
-                        :player/name "Player"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 0 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 1}])
-    (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
-      (d/transact! conn [{:game/id :game-1
-                          :game/turn 1
-                          :game/phase :main1
-                          :game/active-player player-eid
-                          :game/priority player-eid}]))
-    @conn))
-
-
-(defn add-card-to-zone
-  "Add a card object to a zone. Returns [db object-id]."
-  [db card-id zone player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        card-eid (d/q '[:find ?e .
-                        :in $ ?cid
-                        :where [?e :card/id ?cid]]
-                      db card-id)
-        obj-id (random-uuid)]
-    (d/transact! conn [{:object/id obj-id
-                        :object/card card-eid
-                        :object/zone zone
-                        :object/owner player-eid
-                        :object/controller player-eid
-                        :object/tapped false}])
-    [@conn obj-id]))
+    [fizzle.events.selection.costs :as costs]
+    [fizzle.test-helpers :as th]))
 
 
 ;; =====================================================
@@ -85,7 +41,7 @@
 
 (deftest test-build-allocation-selection-basic
   (testing "Builder creates selection with correct fields for mixed cost"
-    (let [db (-> (create-test-db)
+    (let [db (-> (th/create-test-db)
                  (mana/add-mana :player-1 {:black 5}))
           obj-id (random-uuid)
           mode {:mode/id :primary
@@ -107,7 +63,7 @@
 
 (deftest test-build-allocation-selection-no-generic
   (testing "Builder returns nil when cost has no generic portion"
-    (let [db (-> (create-test-db)
+    (let [db (-> (th/create-test-db)
                  (mana/add-mana :player-1 {:black 3}))
           obj-id (random-uuid)
           mode {:mode/id :primary :mode/mana-cost {:black 2}}
@@ -118,7 +74,7 @@
 
 (deftest test-build-allocation-selection-only-generic
   (testing "Builder handles cost with only generic (no colored)"
-    (let [db (-> (create-test-db)
+    (let [db (-> (th/create-test-db)
                  (mana/add-mana :player-1 {:black 2 :blue 2}))
           obj-id (random-uuid)
           mode {:mode/id :primary :mode/mana-cost {:colorless 3}}
@@ -133,7 +89,7 @@
 
 (deftest test-build-allocation-selection-multicolor-cost
   (testing "Builder handles multi-colored cost with generic"
-    (let [db (-> (create-test-db)
+    (let [db (-> (th/create-test-db)
                  (mana/add-mana :player-1 {:black 3 :blue 2}))
           obj-id (random-uuid)
           mode {:mode/id :primary
@@ -245,9 +201,9 @@
 
 (deftest test-confirm-mana-allocation-pays-correctly
   (testing "Confirm handler deducts colored + allocated mana from pool"
-    (let [db (-> (create-test-db)
+    (let [db (-> (th/create-test-db)
                  (mana/add-mana :player-1 {:black 3 :blue 2}))
-          [db' obj-id] (add-card-to-zone db :dark-ritual :hand :player-1)
+          [db' obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           mode {:mode/id :primary
                 :mode/mana-cost {:colorless 2 :blue 1}
                 :mode/additional-costs []
@@ -270,9 +226,9 @@
 
 (deftest test-confirm-mana-allocation-moves-to-stack
   (testing "After confirm, spell is on the stack"
-    (let [db (-> (create-test-db)
+    (let [db (-> (th/create-test-db)
                  (mana/add-mana :player-1 {:black 3}))
-          [db' obj-id] (add-card-to-zone db :dark-ritual :hand :player-1)
+          [db' obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           mode {:mode/id :primary
                 :mode/mana-cost {:colorless 1 :black 1}
                 :mode/additional-costs []
@@ -292,9 +248,9 @@
 
 (deftest test-confirm-mana-allocation-increments-storm
   (testing "After confirm, storm count is incremented"
-    (let [db (-> (create-test-db)
+    (let [db (-> (th/create-test-db)
                  (mana/add-mana :player-1 {:black 3}))
-          [db' obj-id] (add-card-to-zone db :dark-ritual :hand :player-1)
+          [db' obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           initial-storm (q/get-storm-count db' :player-1)
           mode {:mode/id :primary
                 :mode/mana-cost {:colorless 1 :black 1}
@@ -314,9 +270,9 @@
 
 (deftest test-confirm-mana-allocation-clears-selection
   (testing "Confirm returns finalized with clear-selected-card"
-    (let [db (-> (create-test-db)
+    (let [db (-> (th/create-test-db)
                  (mana/add-mana :player-1 {:black 3}))
-          [db' obj-id] (add-card-to-zone db :dark-ritual :hand :player-1)
+          [db' obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           mode {:mode/id :primary
                 :mode/mana-cost {:colorless 1 :black 1}
                 :mode/additional-costs []
@@ -355,7 +311,7 @@
 
 (deftest test-build-allocation-with-zero-pool-colors
   (testing "Builder preserves zero-pool colors for view dimming"
-    (let [db (-> (create-test-db)
+    (let [db (-> (th/create-test-db)
                  (mana/add-mana :player-1 {:blue 3}))
           obj-id (random-uuid)
           mode {:mode/id :primary :mode/mana-cost {:colorless 2}}
@@ -372,9 +328,9 @@
 
 (deftest test-allocate-auto-confirms-when-generic-zero
   (testing "Allocating last mana triggers auto-confirm, casting the spell"
-    (let [db (-> (create-test-db)
+    (let [db (-> (th/create-test-db)
                  (mana/add-mana :player-1 {:black 3}))
-          [db' obj-id] (add-card-to-zone db :dark-ritual :hand :player-1)
+          [db' obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           mode {:mode/id :primary
                 :mode/mana-cost {:colorless 1 :black 1}
                 :mode/additional-costs []

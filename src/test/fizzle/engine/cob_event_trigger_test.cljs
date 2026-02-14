@@ -11,84 +11,18 @@
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
-    [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
-    [fizzle.db.schema :refer [schema]]
     [fizzle.engine.events :as game-events]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.engine.zones :as zones]
     [fizzle.events.abilities :as ability-events]
-    [fizzle.events.game :as game]))
+    [fizzle.events.game :as game]
+    [fizzle.test-helpers :as th]))
 
 
 ;; === Test helpers ===
-
-(defn create-test-db
-  "Create a game state with card definitions and player."
-  []
-  (let [conn (d/create-conn schema)]
-    ;; Transact card definitions
-    (d/transact! conn cards/all-cards)
-    ;; Transact player
-    (d/transact! conn [{:player/id :player-1
-                        :player/name "Player"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 0 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 1}])
-    ;; Transact game state
-    (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
-      (d/transact! conn [{:game/id :game-1
-                          :game/turn 1
-                          :game/phase :main1
-                          :game/active-player player-eid
-                          :game/priority player-eid}]))
-    @conn))
-
-
-(defn add-land-to-hand
-  "Add a land card to the player's hand.
-   Returns [db object-id] tuple."
-  [db card-id player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        card-eid (d/q '[:find ?e .
-                        :in $ ?cid
-                        :where [?e :card/id ?cid]]
-                      db card-id)
-        obj-id (random-uuid)]
-    (d/transact! conn [{:object/id obj-id
-                        :object/card card-eid
-                        :object/zone :hand
-                        :object/owner player-eid
-                        :object/controller player-eid
-                        :object/tapped false}])
-    [@conn obj-id]))
-
-
-(defn add-land-to-battlefield
-  "Add a land card directly to battlefield (bypassing ETB).
-   Use this when testing non-ETB scenarios.
-   Returns [db object-id] tuple."
-  [db card-id player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        card-eid (d/q '[:find ?e .
-                        :in $ ?cid
-                        :where [?e :card/id ?cid]]
-                      db card-id)
-        obj-id (random-uuid)]
-    (d/transact! conn [{:object/id obj-id
-                        :object/card card-eid
-                        :object/zone :battlefield
-                        :object/owner player-eid
-                        :object/controller player-eid
-                        :object/tapped false}])
-    [@conn obj-id]))
-
 
 (defn register-cob-trigger
   "Register a City of Brass trigger as a Datascript entity.
@@ -121,8 +55,8 @@
 
 (deftest test-cob-trigger-registered-on-etb
   (testing "City of Brass trigger is registered when it enters the battlefield"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-hand db :city-of-brass :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
           ;; Play the land (trigger should be registered on ETB)
           db-after-etb (game/play-land db' :player-1 obj-id)
           ;; Find CoB triggers (those with :permanent-tapped event type)
@@ -143,8 +77,8 @@
 
 (deftest test-cob-trigger-unregistered-on-leave
   (testing "City of Brass trigger is unregistered when it leaves the battlefield"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-battlefield db :city-of-brass :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
           ;; Manually register the trigger (simulating post-ETB state)
           db-with-trigger (register-cob-trigger db' obj-id :player-1)
           ;; Verify CoB trigger exists
@@ -165,8 +99,8 @@
 
 (deftest test-cob-tap-dispatches-event
   (testing "Tapping City of Brass dispatches :permanent-tapped event"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-battlefield db :city-of-brass :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
           ;; Register trigger in Datascript
           db-with-trigger (register-cob-trigger db' obj-id :player-1)
           ;; Activate mana ability (should dispatch event via dispatch-event)
@@ -181,8 +115,8 @@
 
 (deftest test-cob-trigger-deals-damage
   (testing "City of Brass trigger deals 1 damage to controller when resolved"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-battlefield db :city-of-brass :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
           initial-life (q/get-life-total db' :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
           ;; Register trigger in Datascript
@@ -199,8 +133,8 @@
 
 (deftest test-cob-multiple-taps
   (testing "Tapping CoB multiple times (after untapping) creates multiple triggers"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-battlefield db :city-of-brass :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
           ;; Register trigger in Datascript
           db-with-trigger (register-cob-trigger db' obj-id :player-1)
           ;; First tap
@@ -232,9 +166,9 @@
 
 (deftest test-two-cobs-only-tapped-one-triggers
   (testing "When two City of Brass are on battlefield, only the tapped one's trigger fires"
-    (let [db (create-test-db)
-          [db' obj-id-1] (add-land-to-battlefield db :city-of-brass :player-1)
-          [db'' obj-id-2] (add-land-to-battlefield db' :city-of-brass :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id-1] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
+          [db'' obj-id-2] (th/add-card-to-zone db' :city-of-brass :battlefield :player-1)
           ;; Register triggers for both in Datascript
           db-with-t1 (register-cob-trigger db'' obj-id-1 :player-1)
           db-with-t2 (register-cob-trigger db-with-t1 obj-id-2 :player-1)
@@ -252,8 +186,8 @@
 
 (deftest test-cob-trigger-source-leaves-before-resolution
   (testing "City of Brass trigger still resolves if source sacrificed with trigger on stack"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-battlefield db :city-of-brass :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
           initial-life (q/get-life-total db' :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
           ;; Register trigger in Datascript
@@ -276,7 +210,7 @@
 
 (deftest test-resolve-trigger-permanent-tapped-deals-damage
   (testing "resolving :permanent-tapped stack-item executes effect to deal damage"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db)
           initial-life (q/get-life-total db :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
           ;; Create a stack-item for the trigger
@@ -297,8 +231,8 @@
 
 (deftest test-dispatch-permanent-tapped-event-adds-trigger-to-stack
   (testing "dispatch-event with :permanent-tapped adds matching trigger to stack"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-battlefield db :city-of-brass :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
           ;; Register a trigger in Datascript for this object
           db-with-trigger (register-cob-trigger db' obj-id :player-1)
           ;; Dispatch event for this object
@@ -311,10 +245,10 @@
 
 (deftest test-dispatch-permanent-tapped-event-no-match
   (testing "dispatch-event with :permanent-tapped doesn't trigger for different objects"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db)
           ;; Create two objects on battlefield
-          [db' obj-id-1] (add-land-to-battlefield db :city-of-brass :player-1)
-          [db'' obj-id-2] (add-land-to-battlefield db' :city-of-brass :player-1)
+          [db' obj-id-1] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
+          [db'' obj-id-2] (th/add-card-to-zone db' :city-of-brass :battlefield :player-1)
           ;; Register a trigger for obj-id-1 only
           db-with-trigger (register-cob-trigger db'' obj-id-1 :player-1)
           ;; Dispatch event for a DIFFERENT object (obj-id-2)

@@ -9,7 +9,6 @@
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.db.queries :as q]
-    [fizzle.db.schema :refer [schema]]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
@@ -18,7 +17,8 @@
     [fizzle.events.selection.core :as core]
     ;; Bare requires ensure defmethod registrations are loaded
     [fizzle.events.selection.costs]
-    [fizzle.events.selection.targeting]))
+    [fizzle.events.selection.targeting]
+    [fizzle.test-helpers :as th]))
 
 
 ;; =====================================================
@@ -153,19 +153,11 @@
 ;; Test Helpers
 ;; =====================================================
 
-(defn create-test-db
+(defn create-allocation-test-db
   "Create a game state with player, opponent, and game state."
   []
-  (let [conn (d/create-conn schema)]
-    ;; Player
-    (d/transact! conn [{:player/id :player-1
-                        :player/name "Player"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 0 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 1
-                        :player/max-hand-size 7}])
+  (let [db (th/create-test-db)
+        conn (d/conn-from-db db)]
     ;; Opponent (needed for targeting tests)
     (d/transact! conn [{:player/id :opponent
                         :player/name "Opponent"
@@ -175,12 +167,9 @@
                         :player/storm-count 0
                         :player/land-plays-left 0
                         :player/is-opponent true}])
-    (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
-      (d/transact! conn [{:game/id :game-1
-                          :game/turn 1
-                          :game/phase :main1
-                          :game/active-player player-eid
-                          :game/priority player-eid}]))
+    ;; Set max-hand-size on player-1
+    (let [player-eid (q/get-player-eid @conn :player-1)]
+      (d/transact! conn [[:db/add player-eid :player/max-hand-size 7]]))
     @conn))
 
 
@@ -226,7 +215,7 @@
 
 (deftest test-cast-spell-with-generic-enters-allocation
   (testing "Casting spell with generic cost enters allocation mode"
-    (let [db (create-test-db)
+    (let [db (create-allocation-test-db)
           [db obj-id] (add-card-and-object db spell-with-generic :hand :player-1)
           db (mana/add-mana db :player-1 {:black 5 :blue 3})
           app-db (-> (create-app-db db)
@@ -256,7 +245,7 @@
 
 (deftest test-cast-spell-no-generic-skips-allocation
   (testing "Casting spell with pure colored cost skips allocation"
-    (let [db (create-test-db)
+    (let [db (create-allocation-test-db)
           [db obj-id] (add-card-and-object db spell-no-generic :hand :player-1)
           db (mana/add-mana db :player-1 {:black 5})
           app-db (-> (create-app-db db)
@@ -277,7 +266,7 @@
 
 (deftest test-cast-spell-only-generic-enters-allocation
   (testing "Casting spell with only generic cost enters allocation"
-    (let [db (create-test-db)
+    (let [db (create-allocation-test-db)
           [db obj-id] (add-card-and-object db spell-only-generic :hand :player-1)
           db (mana/add-mana db :player-1 {:black 3 :blue 2})
           app-db (-> (create-app-db db)
@@ -301,7 +290,7 @@
 
 (deftest test-x-cost-chains-to-allocation
   (testing "X cost confirm chains to allocation when resolved cost has generic"
-    (let [db (create-test-db)
+    (let [db (create-allocation-test-db)
           [db obj-id] (add-card-and-object db spell-x-with-generic :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 3 :black 5})
           mode (first (rules/get-casting-modes db :player-1 obj-id))
@@ -337,7 +326,7 @@
 
 (deftest test-x-cost-x-zero-no-fixed-generic-skips-allocation
   (testing "X=0 with no fixed generic skips allocation and casts directly"
-    (let [db (create-test-db)
+    (let [db (create-allocation-test-db)
           [db obj-id] (add-card-and-object db spell-x-no-fixed-generic :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 5})
           mode (first (rules/get-casting-modes db :player-1 obj-id))
@@ -366,7 +355,7 @@
 
 (deftest test-targeting-chains-to-allocation
   (testing "Targeting confirm chains to allocation when mode has generic"
-    (let [db (create-test-db)
+    (let [db (create-allocation-test-db)
           [db obj-id] (add-card-and-object db spell-targeting-with-generic :hand :player-1)
           db (mana/add-mana db :player-1 {:red 3 :black 5})
           mode (first (rules/get-casting-modes db :player-1 obj-id))
@@ -402,7 +391,7 @@
 
 (deftest test-targeting-no-generic-casts-directly
   (testing "Targeting confirm casts directly when no generic cost"
-    (let [db (create-test-db)
+    (let [db (create-allocation-test-db)
           [db obj-id] (add-card-and-object db spell-targeting-no-generic :hand :player-1)
           db (mana/add-mana db :player-1 {:red 5})
           mode (first (rules/get-casting-modes db :player-1 obj-id))
@@ -436,7 +425,7 @@
 
 (deftest test-allocation-confirm-stores-targets
   (testing "Allocation confirm stores pending targets on stack-item"
-    (let [db (create-test-db)
+    (let [db (create-allocation-test-db)
           [db obj-id] (add-card-and-object db spell-targeting-with-generic :hand :player-1)
           db (mana/add-mana db :player-1 {:red 3 :black 5})
           mode (first (rules/get-casting-modes db :player-1 obj-id))
@@ -470,7 +459,7 @@
 
 (deftest test-allocation-confirm-full-spell-casting
   (testing "Allocation confirm completes spell casting (stack, storm, pool)"
-    (let [db (create-test-db)
+    (let [db (create-allocation-test-db)
           [db obj-id] (add-card-and-object db spell-with-generic :hand :player-1)
           db (mana/add-mana db :player-1 {:black 5 :blue 3})
           mode (first (rules/get-casting-modes db :player-1 obj-id))
@@ -515,7 +504,7 @@
 
 (deftest test-allocation-preserves-pending-targets
   (testing "Allocation selection carries pending targets from targeting step"
-    (let [db (create-test-db)
+    (let [db (create-allocation-test-db)
           [db obj-id] (add-card-and-object db spell-targeting-with-generic :hand :player-1)
           db (mana/add-mana db :player-1 {:red 3 :black 5})
           mode (first (rules/get-casting-modes db :player-1 obj-id))
@@ -546,7 +535,7 @@
 
 (deftest test-ability-with-generic-mana-enters-allocation
   (testing "Activating ability with generic mana enters allocation mode"
-    (let [db (create-test-db)
+    (let [db (create-allocation-test-db)
           [db obj-id] (add-card-and-object db permanent-with-generic-ability :battlefield :player-1)
           db (mana/add-mana db :player-1 {:black 5})
           result (abilities/activate-ability db :player-1 obj-id 0)
@@ -571,7 +560,7 @@
 
 (deftest test-ability-no-generic-mana-skips-allocation
   (testing "Activating ability with pure colored mana skips allocation"
-    (let [db (create-test-db)
+    (let [db (create-allocation-test-db)
           [db obj-id] (add-card-and-object db permanent-colored-ability :battlefield :player-1)
           db (mana/add-mana db :player-1 {:blue 3})
           result (abilities/activate-ability db :player-1 obj-id 0)]
@@ -591,7 +580,7 @@
 
 (deftest test-ability-no-mana-cost-skips-allocation
   (testing "Activating ability without mana cost skips allocation"
-    (let [db (create-test-db)
+    (let [db (create-allocation-test-db)
           [db obj-id] (add-card-and-object db permanent-no-mana-ability :battlefield :player-1)
           result (abilities/activate-ability db :player-1 obj-id 0)]
       ;; No allocation selection
@@ -610,7 +599,7 @@
 
 (deftest test-ability-allocation-confirm-creates-stack-item
   (testing "Ability allocation confirm creates stack-item with correct type"
-    (let [db (create-test-db)
+    (let [db (create-allocation-test-db)
           [db obj-id] (add-card-and-object db permanent-with-generic-ability :battlefield :player-1)
           db (mana/add-mana db :player-1 {:black 3})
           ability (first (:card/abilities permanent-with-generic-ability))
@@ -648,7 +637,7 @@
 
 (deftest test-ability-non-mana-costs-paid-before-allocation
   (testing "Non-mana costs (tap) paid immediately on entering allocation"
-    (let [db (create-test-db)
+    (let [db (create-allocation-test-db)
           [db obj-id] (add-card-and-object db permanent-with-generic-ability :battlefield :player-1)
           db (mana/add-mana db :player-1 {:black 5})]
       ;; Before activation: not tapped
@@ -668,7 +657,7 @@
 
 (deftest test-cancel-allocation-returns-to-normal
   (testing "Canceling allocation clears selection, leaves mana unchanged"
-    (let [db (create-test-db)
+    (let [db (create-allocation-test-db)
           db (mana/add-mana db :player-1 {:black 5 :blue 3})
           initial-pool (q/get-mana-pool db :player-1)
           app-db {:game/db db

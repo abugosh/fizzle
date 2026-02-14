@@ -18,158 +18,16 @@
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.cards.cephalid-coliseum :as coliseum]
-    [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
-    [fizzle.db.schema :refer [schema]]
     [fizzle.engine.abilities :as abilities]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.abilities :as ability-events]
-    [fizzle.events.selection.resolution :as resolution]))
+    [fizzle.events.selection.resolution :as resolution]
+    [fizzle.test-helpers :as th]))
 
 
-;; === Test helpers ===
-
-(defn create-test-db
-  "Create a game state with all card definitions loaded."
-  []
-  (let [conn (d/create-conn schema)]
-    ;; Transact all card definitions
-    (d/transact! conn cards/all-cards)
-    ;; Transact player
-    (d/transact! conn [{:player/id :player-1
-                        :player/name "Player"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 0 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 1}])
-    ;; Transact game state
-    (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
-      (d/transact! conn [{:game/id :game-1
-                          :game/turn 1
-                          :game/phase :main1
-                          :game/active-player player-eid
-                          :game/priority player-eid}]))
-    @conn))
-
-
-(defn add-land-to-battlefield
-  "Add a land card to the battlefield for a player.
-   Returns [db object-id] tuple."
-  [db card-id player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        card-eid (d/q '[:find ?e .
-                        :in $ ?cid
-                        :where [?e :card/id ?cid]]
-                      db card-id)
-        obj-id (random-uuid)]
-    (d/transact! conn [{:object/id obj-id
-                        :object/card card-eid
-                        :object/zone :battlefield
-                        :object/owner player-eid
-                        :object/controller player-eid
-                        :object/tapped false}])
-    [@conn obj-id]))
-
-
-(defn add-card-to-zone
-  "Add a card object to a zone for a player.
-   Returns [db object-id] tuple."
-  [db card-id zone player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        card-eid (d/q '[:find ?e .
-                        :in $ ?cid
-                        :where [?e :card/id ?cid]]
-                      db card-id)
-        obj-id (random-uuid)]
-    (d/transact! conn [{:object/id obj-id
-                        :object/card card-eid
-                        :object/zone zone
-                        :object/owner player-eid
-                        :object/controller player-eid
-                        :object/tapped false}])
-    [@conn obj-id]))
-
-
-(defn add-cards-to-graveyard
-  "Add multiple cards to a player's graveyard.
-   Returns [db object-ids] tuple."
-  [db card-ids player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        get-card-eid (fn [card-id]
-                       (d/q '[:find ?e .
-                              :in $ ?cid
-                              :where [?e :card/id ?cid]]
-                            @conn card-id))]
-    (loop [remaining-cards card-ids
-           object-ids []]
-      (if (empty? remaining-cards)
-        [@conn object-ids]
-        (let [card-id (first remaining-cards)
-              obj-id (random-uuid)
-              card-eid (get-card-eid card-id)]
-          (d/transact! conn [{:object/id obj-id
-                              :object/card card-eid
-                              :object/zone :graveyard
-                              :object/owner player-eid
-                              :object/controller player-eid
-                              :object/tapped false}])
-          (recur (rest remaining-cards)
-                 (conj object-ids obj-id)))))))
-
-
-(defn add-cards-to-library
-  "Add multiple cards to the top of a player's library.
-   Returns [db object-ids] tuple with object-ids in order (first = top of library)."
-  [db card-ids player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        get-card-eid (fn [card-id]
-                       (d/q '[:find ?e .
-                              :in $ ?cid
-                              :where [?e :card/id ?cid]]
-                            @conn card-id))]
-    (loop [remaining-cards card-ids
-           position 0
-           object-ids []]
-      (if (empty? remaining-cards)
-        [@conn object-ids]
-        (let [card-id (first remaining-cards)
-              obj-id (random-uuid)
-              card-eid (get-card-eid card-id)]
-          (d/transact! conn [{:object/id obj-id
-                              :object/card card-eid
-                              :object/zone :library
-                              :object/owner player-eid
-                              :object/controller player-eid
-                              :object/tapped false
-                              :object/position position}])
-          (recur (rest remaining-cards)
-                 (inc position)
-                 (conj object-ids obj-id)))))))
-
-
-(defn get-object-zone
-  "Get the current zone of an object by its ID."
-  [db object-id]
-  (:object/zone (q/get-object db object-id)))
-
-
-(defn get-graveyard-count
-  "Get the number of cards in a player's graveyard."
-  [db player-id]
-  (count (q/get-objects-in-zone db player-id :graveyard)))
-
-
-(defn get-hand-count
-  "Get the number of cards in a player's hand."
-  [db player-id]
-  (count (q/get-hand db player-id)))
-
+;; === File-specific helpers ===
 
 (defn set-mana-pool
   "Set a player's mana pool to specific values."
@@ -196,9 +54,9 @@
 
 (deftest test-coliseum-tap-produces-blue-mana
   (testing "Tapping Cephalid Coliseum produces {U}"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-battlefield db :cephalid-coliseum :player-1)
-          _ (is (= :battlefield (get-object-zone db' obj-id))
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :cephalid-coliseum :battlefield :player-1)
+          _ (is (= :battlefield (th/get-object-zone db' obj-id))
                 "Precondition: Coliseum starts on battlefield")
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:blue initial-pool)) "Precondition: blue mana is 0")
@@ -209,8 +67,8 @@
 
 (deftest test-coliseum-tap-deals-one-damage-to-controller
   (testing "Tapping Cephalid Coliseum deals 1 damage to controller"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-battlefield db :cephalid-coliseum :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :cephalid-coliseum :battlefield :player-1)
           initial-life (q/get-life-total db' :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
           db'' (ability-events/activate-mana-ability db' :player-1 obj-id nil)]
@@ -220,8 +78,8 @@
 
 (deftest test-coliseum-tap-mana-and-damage-happen-together
   (testing "Single activation produces mana AND deals damage (not a trigger)"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-battlefield db :cephalid-coliseum :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :cephalid-coliseum :battlefield :player-1)
           initial-pool (q/get-mana-pool db' :player-1)
           initial-life (q/get-life-total db' :player-1)
           _ (is (= 0 (:blue initial-pool)) "Precondition: blue mana is 0")
@@ -239,8 +97,8 @@
 
 (deftest test-coliseum-cannot-tap-when-already-tapped
   (testing "Already tapped Coliseum cannot activate mana ability"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-battlefield db :cephalid-coliseum :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :cephalid-coliseum :battlefield :player-1)
           ;; Tap the land manually
           conn (d/conn-from-db db')
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db' obj-id)
@@ -258,17 +116,17 @@
 
 (deftest test-coliseum-threshold-blocked-with-six-cards-in-graveyard
   (testing "Threshold ability cannot be activated with only 6 cards in graveyard"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-battlefield db :cephalid-coliseum :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :cephalid-coliseum :battlefield :player-1)
           ;; Add exactly 6 cards to graveyard (below threshold)
-          [db'' _] (add-cards-to-graveyard db'
-                                           [:dark-ritual :dark-ritual :cabal-ritual
-                                            :brain-freeze :island :swamp]
-                                           :player-1)
+          [db'' _] (th/add-cards-to-graveyard db'
+                                              [:dark-ritual :dark-ritual :cabal-ritual
+                                               :brain-freeze :island :swamp]
+                                              :player-1)
           ;; Add blue mana to pool (so mana cost is payable)
           db''' (set-mana-pool db'' :player-1 {:white 0 :blue 1 :black 0
                                                :red 0 :green 0 :colorless 0})
-          _ (is (= 6 (get-graveyard-count db''' :player-1))
+          _ (is (= 6 (th/get-zone-count db''' :graveyard :player-1))
                 "Precondition: exactly 6 cards in graveyard")
           ;; Get the threshold ability (second ability)
           threshold-ability (second (:card/abilities coliseum/cephalid-coliseum))
@@ -279,17 +137,17 @@
 
 (deftest test-coliseum-threshold-activatable-with-seven-cards-in-graveyard
   (testing "Threshold ability can be activated with 7+ cards in graveyard"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-battlefield db :cephalid-coliseum :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :cephalid-coliseum :battlefield :player-1)
           ;; Add exactly 7 cards to graveyard (at threshold)
-          [db'' _] (add-cards-to-graveyard db'
-                                           [:dark-ritual :dark-ritual :cabal-ritual
-                                            :brain-freeze :island :swamp :lotus-petal]
-                                           :player-1)
+          [db'' _] (th/add-cards-to-graveyard db'
+                                              [:dark-ritual :dark-ritual :cabal-ritual
+                                               :brain-freeze :island :swamp :lotus-petal]
+                                              :player-1)
           ;; Add blue mana to pool
           db''' (set-mana-pool db'' :player-1 {:white 0 :blue 1 :black 0
                                                :red 0 :green 0 :colorless 0})
-          _ (is (= 7 (get-graveyard-count db''' :player-1))
+          _ (is (= 7 (th/get-zone-count db''' :graveyard :player-1))
                 "Precondition: exactly 7 cards in graveyard")
           ;; Get the threshold ability (second ability)
           threshold-ability (second (:card/abilities coliseum/cephalid-coliseum))
@@ -300,13 +158,13 @@
 
 (deftest test-coliseum-threshold-requires-blue-mana
   (testing "Threshold ability requires {U} in mana pool"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-battlefield db :cephalid-coliseum :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :cephalid-coliseum :battlefield :player-1)
           ;; Add 7 cards to graveyard (at threshold)
-          [db'' _] (add-cards-to-graveyard db'
-                                           [:dark-ritual :dark-ritual :cabal-ritual
-                                            :brain-freeze :island :swamp :lotus-petal]
-                                           :player-1)
+          [db'' _] (th/add-cards-to-graveyard db'
+                                              [:dark-ritual :dark-ritual :cabal-ritual
+                                               :brain-freeze :island :swamp :lotus-petal]
+                                              :player-1)
           ;; Mana pool is empty (no blue mana)
           _ (is (= 0 (:blue (q/get-mana-pool db'' :player-1)))
                 "Precondition: no blue mana in pool")
@@ -319,31 +177,31 @@
 
 (deftest test-coliseum-threshold-sacrifices-land
   (testing "Activating threshold ability sacrifices the land (after target confirmation)"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-battlefield db :cephalid-coliseum :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :cephalid-coliseum :battlefield :player-1)
           ;; Add 7 cards to graveyard
-          [db'' _] (add-cards-to-graveyard db'
-                                           [:dark-ritual :dark-ritual :cabal-ritual
-                                            :brain-freeze :island :swamp :lotus-petal]
-                                           :player-1)
+          [db'' _] (th/add-cards-to-graveyard db'
+                                              [:dark-ritual :dark-ritual :cabal-ritual
+                                               :brain-freeze :island :swamp :lotus-petal]
+                                              :player-1)
           ;; Add blue mana and cards to library for drawing
           db''' (set-mana-pool db'' :player-1 {:white 0 :blue 1 :black 0
                                                :red 0 :green 0 :colorless 0})
-          [db'''' _] (add-cards-to-library db''' [:island :island :island] :player-1)
-          _ (is (= :battlefield (get-object-zone db'''' obj-id))
+          [db'''' _] (th/add-cards-to-library db''' [:island :island :island] :player-1)
+          _ (is (= :battlefield (th/get-object-zone db'''' obj-id))
                 "Precondition: Coliseum on battlefield")
           ;; Activate threshold ability (index 1 = second ability)
           ;; Now returns pending selection for targeting
           result (ability-events/activate-ability db'''' :player-1 obj-id 1)
           selection (:pending-selection result)
           ;; Coliseum should still be on battlefield (costs not paid yet)
-          _ (is (= :battlefield (get-object-zone (:db result) obj-id))
+          _ (is (= :battlefield (th/get-object-zone (:db result) obj-id))
                 "Coliseum should still be on battlefield before target confirmed")
           ;; Confirm target selection (targeting self)
           selection-with-target (assoc selection :selection/selected #{:player-1})
           final-result (ability-events/confirm-ability-target (:db result) selection-with-target)]
       ;; After confirmation, land should be in graveyard (sacrifice paid as cost)
-      (is (= :graveyard (get-object-zone (:db final-result) obj-id))
+      (is (= :graveyard (th/get-object-zone (:db final-result) obj-id))
           "Coliseum should be in graveyard after target confirmation"))))
 
 
@@ -378,17 +236,17 @@
 
 (deftest test-coliseum-threshold-targeting-self
   (testing "Threshold ability activation pauses for targeting, then puts ability on stack"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-battlefield db :cephalid-coliseum :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :cephalid-coliseum :battlefield :player-1)
           ;; Add 7 cards to graveyard
-          [db'' _] (add-cards-to-graveyard db'
-                                           [:dark-ritual :dark-ritual :cabal-ritual
-                                            :brain-freeze :island :swamp :lotus-petal]
-                                           :player-1)
+          [db'' _] (th/add-cards-to-graveyard db'
+                                              [:dark-ritual :dark-ritual :cabal-ritual
+                                               :brain-freeze :island :swamp :lotus-petal]
+                                              :player-1)
           ;; Add blue mana and cards to library
           db''' (set-mana-pool db'' :player-1 {:white 0 :blue 1 :black 0
                                                :red 0 :green 0 :colorless 0})
-          [db'''' _] (add-cards-to-library db''' [:island :island :island :swamp] :player-1)
+          [db'''' _] (th/add-cards-to-library db''' [:island :island :island :swamp] :player-1)
           ;; Activate threshold ability (index 1 = second ability)
           ;; Now returns pending selection for targeting
           result (ability-events/activate-ability db'''' :player-1 obj-id 1)
@@ -408,10 +266,10 @@
 
 (deftest test-coliseum-in-graveyard-cannot-activate
   (testing "Coliseum in graveyard cannot activate either ability"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db)
           ;; Add Coliseum to graveyard (not battlefield)
-          [db' obj-id] (add-card-to-zone db :cephalid-coliseum :graveyard :player-1)
-          _ (is (= :graveyard (get-object-zone db' obj-id))
+          [db' obj-id] (th/add-card-to-zone db :cephalid-coliseum :graveyard :player-1)
+          _ (is (= :graveyard (th/get-object-zone db' obj-id))
                 "Precondition: Coliseum is in graveyard")
           initial-pool (q/get-mana-pool db' :player-1)
           initial-life (q/get-life-total db' :player-1)
@@ -422,7 +280,7 @@
           "Mana should NOT be added from graveyard")
       (is (= initial-life (q/get-life-total db'' :player-1))
           "Life should NOT change from graveyard activation")
-      (is (= :graveyard (get-object-zone db'' obj-id))
+      (is (= :graveyard (th/get-object-zone db'' obj-id))
           "Coliseum should remain in graveyard"))))
 
 
@@ -444,13 +302,13 @@
 
 (deftest test-threshold-activation-prompts-for-target
   (testing "Activating threshold ability returns pending selection instead of immediate stack"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-battlefield db :cephalid-coliseum :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :cephalid-coliseum :battlefield :player-1)
           ;; Add 7 cards to graveyard
-          [db'' _] (add-cards-to-graveyard db'
-                                           [:dark-ritual :dark-ritual :cabal-ritual
-                                            :brain-freeze :island :swamp :lotus-petal]
-                                           :player-1)
+          [db'' _] (th/add-cards-to-graveyard db'
+                                              [:dark-ritual :dark-ritual :cabal-ritual
+                                               :brain-freeze :island :swamp :lotus-petal]
+                                              :player-1)
           ;; Add blue mana
           db''' (set-mana-pool db'' :player-1 {:white 0 :blue 1 :black 0
                                                :red 0 :green 0 :colorless 0})
@@ -470,23 +328,23 @@
       (is (true? (stack/stack-empty? (:db result)))
           "Stack should be empty before target confirmed")
       ;; Costs should NOT be paid yet
-      (is (= :battlefield (get-object-zone (:db result) obj-id))
+      (is (= :battlefield (th/get-object-zone (:db result) obj-id))
           "Land should still be on battlefield (not sacrificed yet)"))))
 
 
 (deftest test-threshold-target-stored-in-trigger
   (testing "Confirmed ability target is stored in trigger context"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-battlefield db :cephalid-coliseum :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :cephalid-coliseum :battlefield :player-1)
           ;; Add 7 cards to graveyard
-          [db'' _] (add-cards-to-graveyard db'
-                                           [:dark-ritual :dark-ritual :cabal-ritual
-                                            :brain-freeze :island :swamp :lotus-petal]
-                                           :player-1)
+          [db'' _] (th/add-cards-to-graveyard db'
+                                              [:dark-ritual :dark-ritual :cabal-ritual
+                                               :brain-freeze :island :swamp :lotus-petal]
+                                              :player-1)
           ;; Add blue mana and cards to library
           db''' (set-mana-pool db'' :player-1 {:white 0 :blue 1 :black 0
                                                :red 0 :green 0 :colorless 0})
-          [db'''' _] (add-cards-to-library db''' [:island :island :island] :player-1)
+          [db'''' _] (th/add-cards-to-library db''' [:island :island :island] :player-1)
           ;; Activate and get selection
           result (ability-events/activate-ability db'''' :player-1 obj-id 1)
           selection (:pending-selection result)
@@ -503,13 +361,13 @@
 
 (deftest test-threshold-activation-cancelled-preserves-state
   (testing "Cancelled target selection does not activate ability"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-battlefield db :cephalid-coliseum :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :cephalid-coliseum :battlefield :player-1)
           ;; Add 7 cards to graveyard
-          [db'' _] (add-cards-to-graveyard db'
-                                           [:dark-ritual :dark-ritual :cabal-ritual
-                                            :brain-freeze :island :swamp :lotus-petal]
-                                           :player-1)
+          [db'' _] (th/add-cards-to-graveyard db'
+                                              [:dark-ritual :dark-ritual :cabal-ritual
+                                               :brain-freeze :island :swamp :lotus-petal]
+                                              :player-1)
           ;; Add blue mana
           db''' (set-mana-pool db'' :player-1 {:white 0 :blue 1 :black 0
                                                :red 0 :green 0 :colorless 0})
@@ -521,7 +379,7 @@
           selection-cancelled (assoc selection :selection/selected #{})
           final-result (ability-events/confirm-ability-target (:db result) selection-cancelled)]
       ;; Land should still be on battlefield (not sacrificed)
-      (is (= :battlefield (get-object-zone (:db final-result) obj-id))
+      (is (= :battlefield (th/get-object-zone (:db final-result) obj-id))
           "Land should still be on battlefield after cancellation")
       ;; Mana pool should be unchanged
       (is (= initial-mana (q/get-mana-pool (:db final-result) :player-1))
@@ -536,20 +394,20 @@
 (deftest test-coliseum-threshold-resolution-draws-and-discards
   ;; Bug caught: threshold ability resolution broken
   (testing "Activate threshold, confirm target, resolve stack item - draw 3, discard pending"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-battlefield db :cephalid-coliseum :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :cephalid-coliseum :battlefield :player-1)
           ;; Add 7 cards to graveyard for threshold
-          [db'' _] (add-cards-to-graveyard db'
-                                           [:dark-ritual :dark-ritual :cabal-ritual
-                                            :brain-freeze :island :swamp :lotus-petal]
-                                           :player-1)
+          [db'' _] (th/add-cards-to-graveyard db'
+                                              [:dark-ritual :dark-ritual :cabal-ritual
+                                               :brain-freeze :island :swamp :lotus-petal]
+                                              :player-1)
           ;; Add blue mana and 5 cards to library for drawing
           db''' (set-mana-pool db'' :player-1 {:white 0 :blue 1 :black 0
                                                :red 0 :green 0 :colorless 0})
-          [db'''' _lib-ids] (add-cards-to-library db''' [:island :swamp :dark-ritual
-                                                         :cabal-ritual :brain-freeze]
-                                                  :player-1)
-          initial-hand (get-hand-count db'''' :player-1)
+          [db'''' _lib-ids] (th/add-cards-to-library db''' [:island :swamp :dark-ritual
+                                                            :cabal-ritual :brain-freeze]
+                                                     :player-1)
+          initial-hand (th/get-hand-count db'''' :player-1)
           _ (is (= 0 initial-hand) "Precondition: hand is empty")
           ;; Activate threshold ability (index 1)
           result (ability-events/activate-ability db'''' :player-1 obj-id 1)
@@ -566,7 +424,7 @@
           resolve-result (resolution/resolve-stack-item-ability-with-selection
                            db-after-confirm top-item)]
       ;; After resolution, player should have drawn 3 cards
-      (is (= 3 (get-hand-count (:db resolve-result) :player-1))
+      (is (= 3 (th/get-hand-count (:db resolve-result) :player-1))
           "Player should have drawn 3 cards from threshold ability")
       ;; Should have pending discard selection (discard 3)
       (is (= :discard (get-in resolve-result [:pending-selection :selection/type]))

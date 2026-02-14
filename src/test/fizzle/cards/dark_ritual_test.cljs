@@ -2,55 +2,11 @@
   "Tests for Dark Ritual - B -> BBB mana acceleration."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
-    [datascript.core :as d]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
-    [fizzle.db.schema :refer [schema]]
     [fizzle.engine.mana :as mana]
-    [fizzle.engine.rules :as rules]))
-
-
-;; === Test helpers ===
-
-(defn create-test-db
-  "Create a game state with all card definitions loaded."
-  []
-  (let [conn (d/create-conn schema)]
-    (d/transact! conn cards/all-cards)
-    (d/transact! conn [{:player/id :player-1
-                        :player/name "Player"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 0 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 1}])
-    (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
-      (d/transact! conn [{:game/id :game-1
-                          :game/turn 1
-                          :game/phase :main1
-                          :game/active-player player-eid
-                          :game/priority player-eid}]))
-    @conn))
-
-
-(defn add-card-to-zone
-  "Add a card object to a zone for a player.
-   Returns [db object-id] tuple."
-  [db card-id zone player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        card-eid (d/q '[:find ?e .
-                        :in $ ?cid
-                        :where [?e :card/id ?cid]]
-                      db card-id)
-        obj-id (random-uuid)]
-    (d/transact! conn [{:object/id obj-id
-                        :object/card card-eid
-                        :object/zone zone
-                        :object/owner player-eid
-                        :object/controller player-eid
-                        :object/tapped false}])
-    [@conn obj-id]))
+    [fizzle.engine.rules :as rules]
+    [fizzle.test-helpers :as th]))
 
 
 ;; === Card definition test ===
@@ -74,8 +30,8 @@
 
 (deftest dark-ritual-cast-adds-bbb-mana-test
   (testing "casting and resolving Dark Ritual adds BBB to mana pool"
-    (let [db (create-test-db)
-          [db' obj-id] (add-card-to-zone db :dark-ritual :hand :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           db-with-mana (mana/add-mana db' :player-1 {:black 1})
           db-cast (rules/cast-spell db-with-mana :player-1 obj-id)
           db-resolved (rules/resolve-spell db-cast :player-1 obj-id)
@@ -93,17 +49,17 @@
 
 (deftest dark-ritual-cannot-cast-without-mana-test
   (testing "Dark Ritual cannot be cast without B mana"
-    (let [db (create-test-db)
-          [db' obj-id] (add-card-to-zone db :dark-ritual :hand :player-1)]
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)]
       (is (false? (rules/can-cast? db' :player-1 obj-id))
           "Should not be able to cast without mana"))))
 
 
 (deftest dark-ritual-increments-storm-count-test
   (testing "casting two Dark Rituals increments storm count to 2"
-    (let [db (create-test-db)
-          [db' first-id] (add-card-to-zone db :dark-ritual :hand :player-1)
-          [db'' second-id] (add-card-to-zone db' :dark-ritual :hand :player-1)
+    (let [db (th/create-test-db)
+          [db' first-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          [db'' second-id] (th/add-card-to-zone db' :dark-ritual :hand :player-1)
           ;; Add 1B to cast first ritual
           db-with-mana (mana/add-mana db'' :player-1 {:black 1})
           ;; Cast and resolve first ritual (produces BBB)

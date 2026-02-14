@@ -5,63 +5,20 @@
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.cards.iggy-pop :as cards]
-    [fizzle.db.queries :as q]
-    [fizzle.db.schema :refer [schema]]
     [fizzle.engine.events :as game-events]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
-    [fizzle.events.game :as game]))
-
-
-;; === Test helpers ===
-
-(defn create-test-db
-  "Create a game state with City of Brass card definition and player."
-  []
-  (let [conn (d/create-conn schema)]
-    (d/transact! conn cards/all-cards)
-    (d/transact! conn [{:player/id :player-1
-                        :player/name "Player"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 0 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 1}])
-    (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
-      (d/transact! conn [{:game/id :game-1
-                          :game/turn 1
-                          :game/phase :main1
-                          :game/active-player player-eid
-                          :game/priority player-eid}]))
-    @conn))
-
-
-(defn add-card-to-hand
-  "Add a card to the player's hand. Returns [db object-id]."
-  [db card-id player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        card-eid (d/q '[:find ?e .
-                        :in $ ?cid
-                        :where [?e :card/id ?cid]]
-                      db card-id)
-        obj-id (random-uuid)]
-    (d/transact! conn [{:object/id obj-id
-                        :object/card card-eid
-                        :object/zone :hand
-                        :object/owner player-eid
-                        :object/controller player-eid
-                        :object/tapped false}])
-    [@conn obj-id]))
+    [fizzle.events.game :as game]
+    [fizzle.test-helpers :as th]))
 
 
 ;; === Card trigger Datascript entity tests ===
 
 (deftest test-card-triggers-in-datascript-after-play-land
   (testing "City of Brass trigger entities exist in Datascript after playing the land"
-    (let [db (create-test-db)
-          [db' obj-id] (add-card-to-hand db :city-of-brass :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
           db-after (game/play-land db' :player-1 obj-id)
           ;; Query Datascript for trigger entities
           triggers (trigger-db/get-all-triggers db-after)
@@ -106,8 +63,8 @@
 
 (deftest test-card-triggers-linked-to-object
   (testing "Trigger entities are linked to source object via :object/triggers"
-    (let [db (create-test-db)
-          [db' obj-id] (add-card-to-hand db :city-of-brass :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
           db-after (game/play-land db' :player-1 obj-id)
           obj-eid (d/q '[:find ?e .
                          :in $ ?oid
@@ -122,8 +79,8 @@
 
 (deftest test-dispatch-uses-datascript-triggers
   (testing "dispatch-event fires trigger from Datascript"
-    (let [db (create-test-db)
-          [db' obj-id] (add-card-to-hand db :city-of-brass :player-1)
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
           ;; Play land creates Datascript triggers
           db-after-play (game/play-land db' :player-1 obj-id)
           ;; Dispatch permanent-tapped event — should find trigger in Datascript

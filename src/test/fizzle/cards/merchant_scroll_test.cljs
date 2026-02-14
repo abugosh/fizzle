@@ -13,110 +13,16 @@
    - Merchant Scroll card definition and integration"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
-    [datascript.core :as d]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
-    [fizzle.db.schema :refer [schema]]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.zones :as zones]
     [fizzle.events.selection.library :as library]
-    [fizzle.events.selection.resolution :as resolution]))
+    [fizzle.events.selection.resolution :as resolution]
+    [fizzle.test-helpers :as th]))
 
 
 ;; === Test helpers ===
-
-(defn create-test-db
-  "Create a game state with all card definitions loaded."
-  []
-  (let [conn (d/create-conn schema)]
-    ;; Transact all card definitions
-    (d/transact! conn cards/all-cards)
-    ;; Transact player
-    (d/transact! conn [{:player/id :player-1
-                        :player/name "Player"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 2 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 1}])
-    ;; Transact game state
-    (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
-      (d/transact! conn [{:game/id :game-1
-                          :game/turn 1
-                          :game/phase :main1
-                          :game/active-player player-eid
-                          :game/priority player-eid}]))
-    @conn))
-
-
-(defn add-card-to-zone
-  "Add a card object to a zone for a player.
-   Returns [db object-id] tuple."
-  [db card-id zone player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        card-eid (d/q '[:find ?e .
-                        :in $ ?cid
-                        :where [?e :card/id ?cid]]
-                      db card-id)
-        obj-id (random-uuid)]
-    (d/transact! conn [{:object/id obj-id
-                        :object/card card-eid
-                        :object/zone zone
-                        :object/owner player-eid
-                        :object/controller player-eid
-                        :object/tapped false}])
-    [@conn obj-id]))
-
-
-(defn add-cards-to-library
-  "Add multiple cards to the library with positions.
-   Returns [db object-ids] tuple with object-ids in order (first = top of library)."
-  [db card-ids player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        get-card-eid (fn [card-id]
-                       (d/q '[:find ?e .
-                              :in $ ?cid
-                              :where [?e :card/id ?cid]]
-                            @conn card-id))]
-    (loop [remaining-cards card-ids
-           position 0
-           object-ids []]
-      (if (empty? remaining-cards)
-        [@conn object-ids]
-        (let [card-id (first remaining-cards)
-              obj-id (random-uuid)
-              card-eid (get-card-eid card-id)]
-          (d/transact! conn [{:object/id obj-id
-                              :object/card card-eid
-                              :object/zone :library
-                              :object/owner player-eid
-                              :object/controller player-eid
-                              :object/tapped false
-                              :object/position position}])
-          (recur (rest remaining-cards)
-                 (inc position)
-                 (conj object-ids obj-id)))))))
-
-
-(defn get-hand-count
-  "Get the number of cards in a player's hand."
-  [db player-id]
-  (count (q/get-hand db player-id)))
-
-
-(defn get-object-zone
-  "Get the current zone of an object by its ID."
-  [db object-id]
-  (:object/zone (q/get-object db object-id)))
-
-
-(defn get-library-count
-  "Get the number of cards in a player's library."
-  [db player-id]
-  (count (q/get-objects-in-zone db player-id :library)))
-
 
 (defn get-library-positions
   "Get a map of object-id -> position for all cards in library."
@@ -129,11 +35,11 @@
 
 (deftest test-query-library-single-match
   (testing "query-library-by-criteria finds single matching card"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db {:mana {:blue 2}})
           ;; Add library with one blue instant and other cards
-          [db' [_dr-id _bf-id]] (add-cards-to-library db
-                                                      [:dark-ritual :brain-freeze]
-                                                      :player-1)
+          [db' [_dr-id _bf-id]] (th/add-cards-to-library db
+                                                         [:dark-ritual :brain-freeze]
+                                                         :player-1)
           ;; Query for blue instants
           results (q/query-library-by-criteria db' :player-1
                                                {:card/types #{:instant}
@@ -146,11 +52,11 @@
 
 (deftest test-query-library-multiple-matches
   (testing "query-library-by-criteria returns all matching cards"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db {:mana {:blue 2}})
           ;; Add library with multiple blue instants
-          [db' _] (add-cards-to-library db
-                                        [:dark-ritual :brain-freeze :mental-note]
-                                        :player-1)
+          [db' _] (th/add-cards-to-library db
+                                           [:dark-ritual :brain-freeze :mental-note]
+                                           :player-1)
           results (q/query-library-by-criteria db' :player-1
                                                {:card/types #{:instant}
                                                 :card/colors #{:blue}})]
@@ -164,11 +70,11 @@
 
 (deftest test-query-library-no-matches
   (testing "query-library-by-criteria returns empty vector when no matches"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db {:mana {:blue 2}})
           ;; Add library with no blue instants (just black cards)
-          [db' _] (add-cards-to-library db
-                                        [:dark-ritual :cabal-ritual :dark-ritual]
-                                        :player-1)
+          [db' _] (th/add-cards-to-library db
+                                           [:dark-ritual :cabal-ritual :dark-ritual]
+                                           :player-1)
           results (q/query-library-by-criteria db' :player-1
                                                {:card/types #{:instant}
                                                 :card/colors #{:blue}})]
@@ -178,11 +84,11 @@
 
 (deftest test-query-library-type-and-color
   (testing "query-library-by-criteria requires ALL types (AND) and ANY color (OR)"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db {:mana {:blue 2}})
           ;; Add: Dark Ritual (black instant), Brain Freeze (blue instant), Careful Study (blue sorcery)
-          [db' _] (add-cards-to-library db
-                                        [:dark-ritual :brain-freeze :careful-study]
-                                        :player-1)
+          [db' _] (th/add-cards-to-library db
+                                           [:dark-ritual :brain-freeze :careful-study]
+                                           :player-1)
           ;; Query for blue instant - should only match Brain Freeze
           results (q/query-library-by-criteria db' :player-1
                                                {:card/types #{:instant}
@@ -195,10 +101,10 @@
 
 (deftest test-query-library-empty-criteria
   (testing "query-library-by-criteria with empty criteria returns all cards"
-    (let [db (create-test-db)
-          [db' _] (add-cards-to-library db
-                                        [:dark-ritual :brain-freeze :island]
-                                        :player-1)
+    (let [db (th/create-test-db {:mana {:blue 2}})
+          [db' _] (th/add-cards-to-library db
+                                           [:dark-ritual :brain-freeze :island]
+                                           :player-1)
           results (q/query-library-by-criteria db' :player-1 {})]
       (is (= 3 (count results))
           "Empty criteria should match all library cards"))))
@@ -214,17 +120,17 @@
 
 (deftest test-shuffle-empty-library
   (testing "shuffle-library on empty library is no-op"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db {:mana {:blue 2}})
           ;; No cards in library
           db-after (zones/shuffle-library db :player-1)]
-      (is (= 0 (get-library-count db-after :player-1))
+      (is (= 0 (th/get-zone-count db-after :library :player-1))
           "Empty library should remain empty after shuffle"))))
 
 
 (deftest test-shuffle-single-card
   (testing "shuffle-library with single card keeps position 0"
-    (let [db (create-test-db)
-          [db' [obj-id]] (add-cards-to-library db [:dark-ritual] :player-1)
+    (let [db (th/create-test-db {:mana {:blue 2}})
+          [db' [obj-id]] (th/add-cards-to-library db [:dark-ritual] :player-1)
           db-after (zones/shuffle-library db' :player-1)
           positions (get-library-positions db-after :player-1)]
       (is (= {obj-id 0} positions)
@@ -240,14 +146,14 @@
 
 (deftest test-tutor-shows-selection-modal
   (testing "Resolving tutor spell creates pending selection state"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db {:mana {:blue 2}})
           ;; Add library with blue instants
-          [db' _] (add-cards-to-library db [:brain-freeze :mental-note :dark-ritual] :player-1)
+          [db' _] (th/add-cards-to-library db [:brain-freeze :mental-note :dark-ritual] :player-1)
           ;; Add Merchant Scroll to hand
-          [db'' ms-id] (add-card-to-zone db' :merchant-scroll :hand :player-1)
+          [db'' ms-id] (th/add-card-to-zone db' :merchant-scroll :hand :player-1)
           ;; Cast Merchant Scroll
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
-          _ (is (= :stack (get-object-zone db-after-cast ms-id))
+          _ (is (= :stack (th/get-object-zone db-after-cast ms-id))
                 "Merchant Scroll should be on stack")
           ;; Resolve with selection system
           result (resolution/resolve-spell-with-selection db-after-cast :player-1 ms-id)]
@@ -265,11 +171,11 @@
 
 (deftest test-tutor-fail-to-find-preserves-cards
   (testing "Selecting nothing (fail-to-find) preserves library and hand contents"
-    (let [db (create-test-db)
-          [db' _obj-ids] (add-cards-to-library db
-                                               [:brain-freeze :dark-ritual :mental-note]
-                                               :player-1)
-          hand-before (get-hand-count db' :player-1)
+    (let [db (th/create-test-db {:mana {:blue 2}})
+          [db' _obj-ids] (th/add-cards-to-library db
+                                                  [:brain-freeze :dark-ritual :mental-note]
+                                                  :player-1)
+          hand-before (th/get-hand-count db' :player-1)
           ;; Simulate confirming empty selection (fail-to-find)
           selection {:selection/zone :library
                      :selection/select-count 1
@@ -281,20 +187,20 @@
                      :selection/allow-fail-to-find? true}
           db-after (library/execute-tutor-selection db' selection)]
       ;; Hand should not change
-      (is (= hand-before (get-hand-count db-after :player-1))
+      (is (= hand-before (th/get-hand-count db-after :player-1))
           "Hand should not gain cards on fail-to-find")
       ;; Library still has same count
-      (is (= 3 (get-library-count db-after :player-1))
+      (is (= 3 (th/get-zone-count db-after :library :player-1))
           "Library count should not change"))))
 
 
 (deftest test-tutor-card-to-hand
   (testing "Selecting a card moves it to target zone (hand)"
-    (let [db (create-test-db)
-          [db' [bf-id dr-id]] (add-cards-to-library db
-                                                    [:brain-freeze :dark-ritual]
-                                                    :player-1)
-          hand-before (get-hand-count db' :player-1)
+    (let [db (th/create-test-db {:mana {:blue 2}})
+          [db' [bf-id dr-id]] (th/add-cards-to-library db
+                                                       [:brain-freeze :dark-ritual]
+                                                       :player-1)
+          hand-before (th/get-hand-count db' :player-1)
           ;; Simulate selecting Brain Freeze
           selection {:selection/zone :library
                      :selection/select-count 1
@@ -306,24 +212,24 @@
                      :selection/allow-fail-to-find? true}
           db-after (library/execute-tutor-selection db' selection)]
       ;; Brain Freeze should be in hand
-      (is (= :hand (get-object-zone db-after bf-id))
+      (is (= :hand (th/get-object-zone db-after bf-id))
           "Selected card should move to hand")
       ;; Hand count increased
-      (is (= (inc hand-before) (get-hand-count db-after :player-1))
+      (is (= (inc hand-before) (th/get-hand-count db-after :player-1))
           "Hand count should increase by 1")
       ;; Dark Ritual should still be in library
-      (is (= :library (get-object-zone db-after dr-id))
+      (is (= :library (th/get-object-zone db-after dr-id))
           "Non-selected cards should stay in library"))))
 
 
 (deftest test-tutor-shuffles-after-find
   (testing "Library is shuffled AFTER card is moved (not before)"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db {:mana {:blue 2}})
           ;; Add 5 cards to library to make shuffle order detectable
-          [db' [bf-id & _rest-ids]] (add-cards-to-library db
-                                                          [:brain-freeze :dark-ritual :dark-ritual
-                                                           :dark-ritual :dark-ritual]
-                                                          :player-1)
+          [db' [bf-id & _rest-ids]] (th/add-cards-to-library db
+                                                             [:brain-freeze :dark-ritual :dark-ritual
+                                                              :dark-ritual :dark-ritual]
+                                                             :player-1)
           ;; Select Brain Freeze (which was at position 0)
           selection {:selection/zone :library
                      :selection/select-count 1
@@ -335,10 +241,10 @@
                      :selection/allow-fail-to-find? true}
           db-after (library/execute-tutor-selection db' selection)]
       ;; Brain Freeze should be in hand (moved before shuffle)
-      (is (= :hand (get-object-zone db-after bf-id))
+      (is (= :hand (th/get-object-zone db-after bf-id))
           "Selected card should be in hand")
       ;; Remaining 4 cards should be in library
-      (is (= 4 (get-library-count db-after :player-1))
+      (is (= 4 (th/get-zone-count db-after :library :player-1))
           "Library should have 4 cards after tutoring 1")
       ;; Positions should be 0-3 (re-numbered after shuffle)
       (let [positions (get-library-positions db-after :player-1)]
@@ -376,13 +282,13 @@
 
 (deftest test-merchant-scroll-finds-blue-instant
   (testing "Merchant Scroll can find Brain Freeze (blue instant)"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db {:mana {:blue 2}})
           ;; Add library with various cards
-          [db' [bf-id _dr-id _cs-id]] (add-cards-to-library db
-                                                            [:brain-freeze :dark-ritual :careful-study]
-                                                            :player-1)
+          [db' [bf-id _dr-id _cs-id]] (th/add-cards-to-library db
+                                                               [:brain-freeze :dark-ritual :careful-study]
+                                                               :player-1)
           ;; Add Merchant Scroll to hand
-          [db'' ms-id] (add-card-to-zone db' :merchant-scroll :hand :player-1)
+          [db'' ms-id] (th/add-card-to-zone db' :merchant-scroll :hand :player-1)
           ;; Cast
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
           ;; Resolve (triggers selection)
@@ -398,10 +304,10 @@
 
 (deftest test-merchant-scroll-ignores-non-blue
   (testing "Merchant Scroll ignores non-blue instants"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db {:mana {:blue 2}})
           ;; Dark Ritual is a black instant - should not match
-          [db' [_dr-id]] (add-cards-to-library db [:dark-ritual] :player-1)
-          [db'' ms-id] (add-card-to-zone db' :merchant-scroll :hand :player-1)
+          [db' [_dr-id]] (th/add-cards-to-library db [:dark-ritual] :player-1)
+          [db'' ms-id] (th/add-card-to-zone db' :merchant-scroll :hand :player-1)
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
           result (resolution/resolve-spell-with-selection db-after-cast :player-1 ms-id)
           candidates (get-in result [:pending-selection :selection/candidates])]
@@ -411,10 +317,10 @@
 
 (deftest test-merchant-scroll-ignores-non-instant
   (testing "Merchant Scroll ignores non-instant blue cards"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db {:mana {:blue 2}})
           ;; Careful Study is blue sorcery - should not match
-          [db' [_cs-id]] (add-cards-to-library db [:careful-study] :player-1)
-          [db'' ms-id] (add-card-to-zone db' :merchant-scroll :hand :player-1)
+          [db' [_cs-id]] (th/add-cards-to-library db [:careful-study] :player-1)
+          [db'' ms-id] (th/add-card-to-zone db' :merchant-scroll :hand :player-1)
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
           result (resolution/resolve-spell-with-selection db-after-cast :player-1 ms-id)
           candidates (get-in result [:pending-selection :selection/candidates])]
@@ -424,10 +330,10 @@
 
 (deftest test-merchant-scroll-fail-to-find-works
   (testing "Merchant Scroll allows fail-to-find even with valid targets"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db {:mana {:blue 2}})
           ;; Brain Freeze is valid target but player can decline
-          [db' [_bf-id]] (add-cards-to-library db [:brain-freeze] :player-1)
-          [db'' ms-id] (add-card-to-zone db' :merchant-scroll :hand :player-1)
+          [db' [_bf-id]] (th/add-cards-to-library db [:brain-freeze] :player-1)
+          [db'' ms-id] (th/add-card-to-zone db' :merchant-scroll :hand :player-1)
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
           result (resolution/resolve-spell-with-selection db-after-cast :player-1 ms-id)]
       ;; Must have fail-to-find option (anti-pattern: NO auto-select)
@@ -443,9 +349,9 @@
 
 (deftest test-merchant-scroll-with-empty-library
   (testing "Merchant Scroll with empty library shows only fail-to-find"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db {:mana {:blue 2}})
           ;; No cards in library
-          [db' ms-id] (add-card-to-zone db :merchant-scroll :hand :player-1)
+          [db' ms-id] (th/add-card-to-zone db :merchant-scroll :hand :player-1)
           db-after-cast (rules/cast-spell db' :player-1 ms-id)
           result (resolution/resolve-spell-with-selection db-after-cast :player-1 ms-id)]
       ;; No candidates
@@ -458,10 +364,10 @@
 
 (deftest test-merchant-scroll-no-blue-instants-in-library
   (testing "Merchant Scroll with no matching cards shows only fail-to-find"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db {:mana {:blue 2}})
           ;; Library has cards but no blue instants
-          [db' _] (add-cards-to-library db [:dark-ritual :careful-study :island] :player-1)
-          [db'' ms-id] (add-card-to-zone db' :merchant-scroll :hand :player-1)
+          [db' _] (th/add-cards-to-library db [:dark-ritual :careful-study :island] :player-1)
+          [db'' ms-id] (th/add-card-to-zone db' :merchant-scroll :hand :player-1)
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
           result (resolution/resolve-spell-with-selection db-after-cast :player-1 ms-id)]
       (is (empty? (get-in result [:pending-selection :selection/candidates]))

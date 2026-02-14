@@ -14,71 +14,16 @@
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
-    [fizzle.cards.iggy-pop :as cards]
     [fizzle.cards.orims-chant :as orims-chant]
     [fizzle.db.queries :as q]
-    [fizzle.db.schema :refer [schema]]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.selection.resolution :as resolution]
-    [fizzle.events.selection.targeting :as sel-targeting]))
-
-
-;; === Test Helpers ===
-
-(defn create-test-db
-  "Create a game state with all card definitions loaded."
-  []
-  (let [conn (d/create-conn schema)]
-    ;; Transact all card definitions plus Orim's Chant
-    (d/transact! conn (conj cards/all-cards orims-chant/orims-chant))
-    ;; Transact player
-    (d/transact! conn [{:player/id :player-1
-                        :player/name "Player"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 0 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 1}
-                       {:player/id :player-2
-                        :player/name "Opponent"
-                        :player/life 20
-                        :player/is-opponent true
-                        :player/mana-pool {:white 0 :blue 0 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 1}])
-    ;; Transact game state
-    (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
-      (d/transact! conn [{:game/id :game-1
-                          :game/turn 1
-                          :game/phase :main1
-                          :game/active-player player-eid
-                          :game/priority player-eid}]))
-    @conn))
-
-
-(defn add-card-to-zone
-  "Add a card object to a zone for a player.
-   Returns [object-id db] tuple."
-  [db card-id zone player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        card-eid (d/q '[:find ?e .
-                        :in $ ?cid
-                        :where [?e :card/id ?cid]]
-                      db card-id)
-        obj-id (random-uuid)]
-    (d/transact! conn [{:object/id obj-id
-                        :object/card card-eid
-                        :object/zone zone
-                        :object/owner player-eid
-                        :object/controller player-eid
-                        :object/tapped false}])
-    [obj-id @conn]))
+    [fizzle.events.selection.targeting :as sel-targeting]
+    [fizzle.test-helpers :as th]))
 
 
 ;; === Card Definition Tests ===
@@ -142,8 +87,11 @@
 
 (deftest orims-chant-casting-modes-test
   (testing "get-casting-modes returns primary and kicked with correct costs and effects"
-    (let [db (create-test-db)
-          [obj-id db] (add-card-to-zone db :orims-chant :hand :player-1)
+    (let [db (th/create-test-db)
+          conn (d/conn-from-db db)
+          _ (d/transact! conn [orims-chant/orims-chant])
+          db (th/add-opponent @conn)
+          [db obj-id] (th/add-card-to-zone db :orims-chant :hand :player-1)
           modes (rules/get-casting-modes db :player-1 obj-id)
           primary (first (filter #(= :primary (:mode/id %)) modes))
           kicked (first (filter #(= :kicked (:mode/id %)) modes))]
@@ -162,7 +110,10 @@
 (deftest has-valid-targets-test
   ;; Bug caught: Targeting system can't find player targets
   (testing "has-valid-targets? returns true when opponent exists"
-    (let [db (create-test-db)]
+    (let [db (th/create-test-db)
+          conn (d/conn-from-db db)
+          _ (d/transact! conn [orims-chant/orims-chant])
+          db (th/add-opponent @conn)]
       (is (targeting/has-valid-targets? db :player-1 orims-chant/orims-chant)
           "Should have valid targets (can target self or opponent)"))))
 
@@ -170,7 +121,10 @@
 (deftest find-valid-targets-test
   ;; Bug caught: Target options format wrong (vector vs set)
   (testing "find-valid-targets returns both players with :any-player"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db)
+          conn (d/conn-from-db db)
+          _ (d/transact! conn [orims-chant/orims-chant])
+          db (th/add-opponent @conn)
           req (first (:card/targeting orims-chant/orims-chant))
           targets (targeting/find-valid-targets db :player-1 req)]
       (is (= 2 (count targets))
@@ -184,15 +138,9 @@
 (deftest goldfish-mode-targets-test
   ;; Bug caught: Can't cast in goldfish mode (no opponent)
   (testing "has-valid-targets? returns true even without opponent (can target self)"
-    (let [conn (d/create-conn schema)
-          ;; Only create player, no opponent
-          _ (d/transact! conn (conj cards/all-cards orims-chant/orims-chant))
-          _ (d/transact! conn [{:player/id :player-1
-                                :player/name "Player"
-                                :player/life 20
-                                :player/mana-pool {}
-                                :player/storm-count 0
-                                :player/land-plays-left 1}])
+    (let [db (th/create-test-db)
+          conn (d/conn-from-db db)
+          _ (d/transact! conn [orims-chant/orims-chant])
           db @conn]
       ;; Even without opponent, can target self
       (is (targeting/has-valid-targets? db :player-1 orims-chant/orims-chant)
@@ -204,9 +152,12 @@
 (deftest orims-chant-resolution-applies-restriction-test
   ;; Bug caught: restriction never applied during spell resolution
   (testing "Casting and resolving Orim's Chant adds cannot-cast-spells restriction"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db)
+          conn (d/conn-from-db db)
+          _ (d/transact! conn [orims-chant/orims-chant])
+          db (th/add-opponent @conn)
           ;; Add Orim's Chant to hand
-          [obj-id db] (add-card-to-zone db :orims-chant :hand :player-1)
+          [db obj-id] (th/add-card-to-zone db :orims-chant :hand :player-1)
           ;; Add white mana to cast
           db-with-mana (mana/add-mana db :player-1 {:white 1})
           ;; Cast with targeting flow (stores target on stack-item)
@@ -243,11 +194,14 @@
 (deftest orims-chant-restricted-player-cannot-cast-test
   ;; Bug caught: restriction exists but not enforced by can-cast?
   (testing "Player with cannot-cast-spells restriction cannot cast spells"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db)
+          conn (d/conn-from-db db)
+          _ (d/transact! conn [orims-chant/orims-chant])
+          db (th/add-opponent @conn)
           ;; Add Orim's Chant to hand
-          [_chant-id db] (add-card-to-zone db :orims-chant :hand :player-1)
+          [db _chant-id] (th/add-card-to-zone db :orims-chant :hand :player-1)
           ;; Add a spell to player-2's hand
-          [spell-id db] (add-card-to-zone db :dark-ritual :hand :player-2)
+          [db spell-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           ;; Give player-2 mana to cast Dark Ritual
           conn (d/conn-from-db db)
           p2-eid (q/get-player-eid db :player-2)
@@ -271,8 +225,11 @@
 
 (deftest confirm-cast-time-target-stores-on-stack-item-test
   (testing "cast-time targeting stores targets on stack-item, not object"
-    (let [db (create-test-db)
-          [obj-id db] (add-card-to-zone db :orims-chant :hand :player-1)
+    (let [db (th/create-test-db)
+          conn (d/conn-from-db db)
+          _ (d/transact! conn [orims-chant/orims-chant])
+          db (th/add-opponent @conn)
+          [db obj-id] (th/add-card-to-zone db :orims-chant :hand :player-1)
           db-with-mana (mana/add-mana db :player-1 {:white 1})
           ;; Build cast-time target selection (simulates UI)
           target-req (first (:card/targeting orims-chant/orims-chant))
@@ -306,8 +263,11 @@
 
 (deftest resolve-spell-with-selection-uses-stack-item-targets-test
   (testing "spell resolution reads targets from stack-item and applies effects"
-    (let [db (create-test-db)
-          [obj-id db] (add-card-to-zone db :orims-chant :hand :player-1)
+    (let [db (th/create-test-db)
+          conn (d/conn-from-db db)
+          _ (d/transact! conn [orims-chant/orims-chant])
+          db (th/add-opponent @conn)
+          [db obj-id] (th/add-card-to-zone db :orims-chant :hand :player-1)
           db-with-mana (mana/add-mana db :player-1 {:white 1})
           ;; Cast and store target on stack-item
           target-req (first (:card/targeting orims-chant/orims-chant))

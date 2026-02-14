@@ -10,99 +10,17 @@
     [datascript.core :as d]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
-    [fizzle.db.schema :refer [schema]]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.triggers :as triggers]
     [fizzle.events.game :as game]
     [fizzle.events.selection.resolution :as resolution]
-    [fizzle.events.selection.targeting :as sel-targeting]))
+    [fizzle.events.selection.targeting :as sel-targeting]
+    [fizzle.test-helpers :as th]))
 
 
-;; === Test helpers ===
-
-(defn create-test-db
-  "Create a game state with all card definitions loaded."
-  []
-  (let [conn (d/create-conn schema)]
-    (d/transact! conn cards/all-cards)
-    (d/transact! conn [{:player/id :player-1
-                        :player/name "Player"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 0 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 1}])
-    (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
-      (d/transact! conn [{:game/id :game-1
-                          :game/turn 1
-                          :game/phase :main1
-                          :game/active-player player-eid
-                          :game/priority player-eid}]))
-    @conn))
-
-
-(defn add-opponent
-  "Add an opponent player to the game state."
-  [db]
-  (let [conn (d/conn-from-db db)]
-    (d/transact! conn [{:player/id :opponent
-                        :player/name "Opponent"
-                        :player/life 20
-                        :player/is-opponent true
-                        :player/mana-pool {:white 0 :blue 0 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0}])
-    @conn))
-
-
-(defn add-card-to-zone
-  "Add a card object to a zone for a player.
-   Returns [db object-id] tuple."
-  [db card-id zone player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        card-eid (d/q '[:find ?e .
-                        :in $ ?cid
-                        :where [?e :card/id ?cid]]
-                      db card-id)
-        obj-id (random-uuid)]
-    (d/transact! conn [{:object/id obj-id
-                        :object/card card-eid
-                        :object/zone zone
-                        :object/owner player-eid
-                        :object/controller player-eid
-                        :object/tapped false}])
-    [@conn obj-id]))
-
-
-(defn add-cards-to-library
-  "Add N cards to a player's library with sequential positions.
-   Position 0 = top of library. Uses :dark-ritual card entity for all.
-   Returns updated db."
-  [db player-id n]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        card-eid (d/q '[:find ?e .
-                        :where [?e :card/id :dark-ritual]]
-                      db)]
-    (doseq [idx (range n)]
-      (d/transact! conn [{:object/id (random-uuid)
-                          :object/card card-eid
-                          :object/zone :library
-                          :object/owner player-eid
-                          :object/controller player-eid
-                          :object/position idx
-                          :object/tapped false}]))
-    @conn))
-
-
-(defn get-zone-count
-  "Count objects in a zone for a player."
-  [db player-id zone]
-  (count (or (q/get-objects-in-zone db player-id zone) [])))
-
+;; === File-specific helpers ===
 
 (defn cast-brain-freeze-with-target
   "Cast Brain Freeze through the targeting flow, selecting the given target.
@@ -172,9 +90,9 @@
 
 (deftest brain-freeze-cast-triggers-target-selection-test
   (testing "Casting Brain Freeze triggers cast-time targeting selection"
-    (let [db (-> (create-test-db)
-                 (add-opponent))
-          [db' obj-id] (add-card-to-zone db :brain-freeze :hand :player-1)
+    (let [db (-> (th/create-test-db)
+                 (th/add-opponent))
+          [db' obj-id] (th/add-card-to-zone db :brain-freeze :hand :player-1)
           db-with-mana (mana/add-mana db' :player-1 {:blue 1 :colorless 1})
           result (sel-targeting/cast-spell-with-targeting db-with-mana :player-1 obj-id)]
       (is (some? (:pending-target-selection result))
@@ -190,20 +108,20 @@
 
 (deftest brain-freeze-targeting-self-mills-self-test
   (testing "Brain Freeze targeting self mills self's library"
-    (let [db (-> (create-test-db)
-                 (add-opponent))
-          db' (add-cards-to-library db :player-1 5)
-          [db'' obj-id] (add-card-to-zone db' :brain-freeze :hand :player-1)
+    (let [db (-> (th/create-test-db)
+                 (th/add-opponent))
+          [db' _] (th/add-cards-to-library db (vec (repeat 5 :dark-ritual)) :player-1)
+          [db'' obj-id] (th/add-card-to-zone db' :brain-freeze :hand :player-1)
           db-with-mana (mana/add-mana db'' :player-1 {:blue 1 :colorless 1})
-          _ (is (= 5 (get-zone-count db-with-mana :player-1 :library))
+          _ (is (= 5 (th/get-zone-count db-with-mana :library :player-1))
                 "Precondition: player has 5 library cards")
-          _ (is (= 0 (get-zone-count db-with-mana :player-1 :graveyard))
+          _ (is (= 0 (th/get-zone-count db-with-mana :graveyard :player-1))
                 "Precondition: player has 0 graveyard cards")
           db-cast (cast-brain-freeze-with-target db-with-mana :player-1 obj-id :player-1)
           db-resolved (resolve-brain-freeze db-cast :player-1 obj-id)]
-      (is (= 2 (get-zone-count db-resolved :player-1 :library))
+      (is (= 2 (th/get-zone-count db-resolved :library :player-1))
           "Player should have 2 library cards remaining (milled 3)")
-      (is (>= (get-zone-count db-resolved :player-1 :graveyard) 3)
+      (is (>= (th/get-zone-count db-resolved :graveyard :player-1) 3)
           "Player should have at least 3 cards in graveyard (milled + Brain Freeze)")
       (is (= :graveyard (:object/zone (q/get-object db-resolved obj-id)))
           "Brain Freeze should be in graveyard after resolution"))))
@@ -213,18 +131,18 @@
 
 (deftest brain-freeze-mills-opponent-3-cards-test
   (testing "Brain Freeze targeting opponent mills 3 cards from opponent's library"
-    (let [db (-> (create-test-db)
-                 (add-opponent))
-          db' (add-cards-to-library db :opponent 5)
-          [db'' obj-id] (add-card-to-zone db' :brain-freeze :hand :player-1)
+    (let [db (-> (th/create-test-db)
+                 (th/add-opponent))
+          [db' _] (th/add-cards-to-library db (vec (repeat 5 :dark-ritual)) :player-2)
+          [db'' obj-id] (th/add-card-to-zone db' :brain-freeze :hand :player-1)
           db-with-mana (mana/add-mana db'' :player-1 {:blue 1 :colorless 1})
-          _ (is (= 5 (get-zone-count db-with-mana :opponent :library))
+          _ (is (= 5 (th/get-zone-count db-with-mana :library :player-2))
                 "Precondition: opponent has 5 library cards")
-          db-cast (cast-brain-freeze-with-target db-with-mana :player-1 obj-id :opponent)
+          db-cast (cast-brain-freeze-with-target db-with-mana :player-1 obj-id :player-2)
           db-resolved (resolve-brain-freeze db-cast :player-1 obj-id)]
-      (is (= 2 (get-zone-count db-resolved :opponent :library))
+      (is (= 2 (th/get-zone-count db-resolved :library :player-2))
           "Opponent should have 2 library cards remaining (milled 3)")
-      (is (= 3 (get-zone-count db-resolved :opponent :graveyard))
+      (is (= 3 (th/get-zone-count db-resolved :graveyard :player-2))
           "Opponent should have 3 cards in graveyard")
       (is (= :graveyard (:object/zone (q/get-object db-resolved obj-id)))
           "Brain Freeze should be in player's graveyard after resolution")
@@ -234,27 +152,27 @@
 
 (deftest brain-freeze-cannot-cast-without-mana-test
   (testing "Brain Freeze cannot be cast without {1}{U} mana"
-    (let [db (create-test-db)
-          [db' obj-id] (add-card-to-zone db :brain-freeze :hand :player-1)]
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :brain-freeze :hand :player-1)]
       (is (false? (rules/can-cast? db' :player-1 obj-id))
           "Should not be able to cast without mana"))))
 
 
 (deftest brain-freeze-creates-storm-trigger-test
   (testing "Brain Freeze creates storm trigger with correct copy count"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db)
           ;; Cast 2 Dark Rituals first to build storm count
-          [db' dr1-id] (add-card-to-zone db :dark-ritual :hand :player-1)
+          [db' dr1-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           db-m1 (mana/add-mana db' :player-1 {:black 1})
           db-cast1 (rules/cast-spell db-m1 :player-1 dr1-id)
           db-res1 (rules/resolve-spell db-cast1 :player-1 dr1-id)
-          [db-r1 dr2-id] (add-card-to-zone db-res1 :dark-ritual :hand :player-1)
+          [db-r1 dr2-id] (th/add-card-to-zone db-res1 :dark-ritual :hand :player-1)
           db-cast2 (rules/cast-spell db-r1 :player-1 dr2-id)
           db-res2 (rules/resolve-spell db-cast2 :player-1 dr2-id)
           _ (is (= 2 (q/get-storm-count db-res2 :player-1))
                 "Precondition: storm count is 2 after 2 rituals")
           ;; Cast Brain Freeze as 3rd spell (bypass targeting for storm count test)
-          [db-r2 bf-id] (add-card-to-zone db-res2 :brain-freeze :hand :player-1)
+          [db-r2 bf-id] (th/add-card-to-zone db-res2 :brain-freeze :hand :player-1)
           db-bf-mana (mana/add-mana db-r2 :player-1 {:blue 1 :colorless 1})
           db-bf-cast (rules/cast-spell db-bf-mana :player-1 bf-id)
           ;; Storm count should now be 3
@@ -274,22 +192,22 @@
 
 (deftest brain-freeze-storm-copies-mill-test
   (testing "Full storm pipeline: cast with storm count 2 -> trigger -> 2 copies -> mill 9 total"
-    (let [db (-> (create-test-db)
-                 (add-opponent))
+    (let [db (-> (th/create-test-db)
+                 (th/add-opponent))
           ;; Add 15 cards to opponent library for milling
-          db' (add-cards-to-library db :opponent 15)
+          [db' _] (th/add-cards-to-library db (vec (repeat 15 :dark-ritual)) :player-2)
           ;; Cast 2 Dark Rituals first
-          [db1 dr1-id] (add-card-to-zone db' :dark-ritual :hand :player-1)
+          [db1 dr1-id] (th/add-card-to-zone db' :dark-ritual :hand :player-1)
           db1m (mana/add-mana db1 :player-1 {:black 1})
           db1c (rules/cast-spell db1m :player-1 dr1-id)
           db1r (rules/resolve-spell db1c :player-1 dr1-id)
-          [db2 dr2-id] (add-card-to-zone db1r :dark-ritual :hand :player-1)
+          [db2 dr2-id] (th/add-card-to-zone db1r :dark-ritual :hand :player-1)
           db2c (rules/cast-spell db2 :player-1 dr2-id)
           db2r (rules/resolve-spell db2c :player-1 dr2-id)
           ;; Cast Brain Freeze targeting opponent (storm count becomes 3)
-          [db3 bf-id] (add-card-to-zone db2r :brain-freeze :hand :player-1)
+          [db3 bf-id] (th/add-card-to-zone db2r :brain-freeze :hand :player-1)
           db3m (mana/add-mana db3 :player-1 {:blue 1 :colorless 1})
-          db3c (cast-brain-freeze-with-target db3m :player-1 bf-id :opponent)
+          db3c (cast-brain-freeze-with-target db3m :player-1 bf-id :player-2)
           ;; Resolve storm stack-item - creates 2 copies on stack
           db4 (game/resolve-top-of-stack db3c :player-1)
           ;; Find the copies on the stack (is-copy = true)
@@ -304,9 +222,9 @@
                         copy-ids)
             db6 (resolve-brain-freeze db5 :player-1 bf-id)]
         ;; 3 instances * 3 cards each = 9 total milled
-        (is (= 6 (get-zone-count db6 :opponent :library))
+        (is (= 6 (th/get-zone-count db6 :library :player-2))
             "Opponent should have 6 library cards remaining (15 - 9 milled)")
-        (is (= 9 (get-zone-count db6 :opponent :graveyard))
+        (is (= 9 (th/get-zone-count db6 :graveyard :player-2))
             "Opponent should have 9 cards in graveyard")
         ;; Copies should be completely removed from db
         (doseq [cid copy-ids]
@@ -319,17 +237,17 @@
 
 (deftest brain-freeze-storm-copies-inherit-target-test
   (testing "Storm copies targeting self all mill self"
-    (let [db (-> (create-test-db)
-                 (add-opponent))
+    (let [db (-> (th/create-test-db)
+                 (th/add-opponent))
           ;; Add 15 cards to player's library for self-milling
-          db' (add-cards-to-library db :player-1 15)
+          [db' _] (th/add-cards-to-library db (vec (repeat 15 :dark-ritual)) :player-1)
           ;; Cast Dark Ritual first to build storm count
-          [db1 dr-id] (add-card-to-zone db' :dark-ritual :hand :player-1)
+          [db1 dr-id] (th/add-card-to-zone db' :dark-ritual :hand :player-1)
           db1m (mana/add-mana db1 :player-1 {:black 1})
           db1c (rules/cast-spell db1m :player-1 dr-id)
           db1r (rules/resolve-spell db1c :player-1 dr-id)
           ;; Cast Brain Freeze targeting self (storm count becomes 2)
-          [db2 bf-id] (add-card-to-zone db1r :brain-freeze :hand :player-1)
+          [db2 bf-id] (th/add-card-to-zone db1r :brain-freeze :hand :player-1)
           db2m (mana/add-mana db2 :player-1 {:blue 1 :colorless 1})
           db2c (cast-brain-freeze-with-target db2m :player-1 bf-id :player-1)
           ;; Resolve storm stack-item - creates 1 copy
@@ -345,22 +263,22 @@
                         copy-ids)
             db5 (resolve-brain-freeze db4 :player-1 bf-id)]
         ;; 2 instances * 3 cards each = 6 total milled from self
-        (is (= 9 (get-zone-count db5 :player-1 :library))
+        (is (= 9 (th/get-zone-count db5 :library :player-1))
             "Player should have 9 library cards remaining (15 - 6 milled)")
-        (is (= 0 (get-zone-count db5 :opponent :library))
+        (is (= 0 (th/get-zone-count db5 :library :player-2))
             "Opponent library should be untouched (0 cards)")
-        (is (= 0 (get-zone-count db5 :opponent :graveyard))
+        (is (= 0 (th/get-zone-count db5 :graveyard :player-2))
             "Opponent graveyard should be empty")))))
 
 
 (deftest brain-freeze-storm-zero-previous-spells-test
   (testing "Brain Freeze as first spell creates storm trigger with count=0"
-    (let [db (-> (create-test-db)
-                 (add-opponent))
-          db' (add-cards-to-library db :opponent 5)
-          [db'' bf-id] (add-card-to-zone db' :brain-freeze :hand :player-1)
+    (let [db (-> (th/create-test-db)
+                 (th/add-opponent))
+          [db' _] (th/add-cards-to-library db (vec (repeat 5 :dark-ritual)) :player-2)
+          [db'' bf-id] (th/add-card-to-zone db' :brain-freeze :hand :player-1)
           db-m (mana/add-mana db'' :player-1 {:blue 1 :colorless 1})
-          db-cast (cast-brain-freeze-with-target db-m :player-1 bf-id :opponent)
+          db-cast (cast-brain-freeze-with-target db-m :player-1 bf-id :player-2)
           ;; Storm count = 1, so trigger count = dec(1) = 0
           _ (is (= 1 (q/get-storm-count db-cast :player-1))
                 "Precondition: storm count is 1")
@@ -375,9 +293,9 @@
         (is (= 0 (count copies))
             "No copies should be created with count=0")
         (let [db-resolved (resolve-brain-freeze db-after-trigger :player-1 bf-id)]
-          (is (= 2 (get-zone-count db-resolved :opponent :library))
+          (is (= 2 (th/get-zone-count db-resolved :library :player-2))
               "Only 3 cards milled (original only, no copies)")
-          (is (= 3 (get-zone-count db-resolved :opponent :graveyard))
+          (is (= 3 (th/get-zone-count db-resolved :graveyard :player-2))
               "3 cards in opponent graveyard"))))))
 
 
@@ -385,8 +303,8 @@
 
 (deftest storm-copy-ceases-to-exist-on-resolve-test
   (testing "Storm copy is removed from db when resolved (not moved to graveyard)"
-    (let [db (create-test-db)
-          [db' source-id] (add-card-to-zone db :brain-freeze :stack :player-1)
+    (let [db (th/create-test-db)
+          [db' source-id] (th/add-card-to-zone db :brain-freeze :stack :player-1)
           ;; Create a copy of the spell
           db-with-copy (triggers/create-spell-copy db' source-id :player-1)
           ;; Find the copy
@@ -407,8 +325,8 @@
 
 (deftest storm-copy-ceases-to-exist-when-countered-test
   (testing "Storm copy is removed from db when moved off stack (countered/fizzled)"
-    (let [db (create-test-db)
-          [db' source-id] (add-card-to-zone db :dark-ritual :stack :player-1)
+    (let [db (th/create-test-db)
+          [db' source-id] (th/add-card-to-zone db :dark-ritual :stack :player-1)
           db-with-copy (triggers/create-spell-copy db' source-id :player-1)
           stack-objects (q/get-objects-in-zone db-with-copy :player-1 :stack)
           copy (first (filter :object/is-copy stack-objects))
@@ -421,8 +339,8 @@
 
 (deftest storm-copies-dont-trigger-storm-test
   (testing "Storm copies (is-copy=true) do not create additional storm triggers"
-    (let [db (create-test-db)
-          [db' source-id] (add-card-to-zone db :brain-freeze :stack :player-1)
+    (let [db (th/create-test-db)
+          [db' source-id] (th/add-card-to-zone db :brain-freeze :stack :player-1)
           ;; Create a copy
           db-with-copy (triggers/create-spell-copy db' source-id :player-1)
           stack-objects (q/get-objects-in-zone db-with-copy :player-1 :stack)
@@ -451,34 +369,34 @@
 
 (deftest mill-with-fewer-cards-than-amount-test
   (testing "Mill gracefully handles library with fewer cards than mill amount"
-    (let [db (-> (create-test-db)
-                 (add-opponent))
+    (let [db (-> (th/create-test-db)
+                 (th/add-opponent))
           ;; Add only 1 card to opponent library
-          db' (add-cards-to-library db :opponent 1)
-          [db'' bf-id] (add-card-to-zone db' :brain-freeze :hand :player-1)
+          [db' _] (th/add-cards-to-library db [:dark-ritual] :player-2)
+          [db'' bf-id] (th/add-card-to-zone db' :brain-freeze :hand :player-1)
           db-m (mana/add-mana db'' :player-1 {:blue 1 :colorless 1})
-          db-cast (cast-brain-freeze-with-target db-m :player-1 bf-id :opponent)
+          db-cast (cast-brain-freeze-with-target db-m :player-1 bf-id :player-2)
           db-resolved (resolve-brain-freeze db-cast :player-1 bf-id)]
-      (is (= 0 (get-zone-count db-resolved :opponent :library))
+      (is (= 0 (th/get-zone-count db-resolved :library :player-2))
           "All available cards should be milled")
-      (is (= 1 (get-zone-count db-resolved :opponent :graveyard))
+      (is (= 1 (th/get-zone-count db-resolved :graveyard :player-2))
           "Only 1 card milled (all that was available)"))))
 
 
 (deftest brain-freeze-mills-opponent-empty-library-test
   (testing "Milling opponent with empty library is no-op, no loss condition"
-    (let [db (-> (create-test-db)
-                 (add-opponent))
+    (let [db (-> (th/create-test-db)
+                 (th/add-opponent))
           ;; Opponent has 0 library cards
-          _ (is (= 0 (get-zone-count db :opponent :library))
+          _ (is (= 0 (th/get-zone-count db :library :player-2))
                 "Precondition: opponent library is empty")
-          [db' bf-id] (add-card-to-zone db :brain-freeze :hand :player-1)
+          [db' bf-id] (th/add-card-to-zone db :brain-freeze :hand :player-1)
           db-m (mana/add-mana db' :player-1 {:blue 1 :colorless 1})
-          db-cast (cast-brain-freeze-with-target db-m :player-1 bf-id :opponent)
+          db-cast (cast-brain-freeze-with-target db-m :player-1 bf-id :player-2)
           db-resolved (resolve-brain-freeze db-cast :player-1 bf-id)]
-      (is (= 0 (get-zone-count db-resolved :opponent :library))
+      (is (= 0 (th/get-zone-count db-resolved :library :player-2))
           "Opponent library should still be empty")
-      (is (= 0 (get-zone-count db-resolved :opponent :graveyard))
+      (is (= 0 (th/get-zone-count db-resolved :graveyard :player-2))
           "Nothing should be milled to graveyard")
       (is (nil? (:game/loss-condition (q/get-game-state db-resolved)))
           "Mill should not set loss condition (only draw does)"))))

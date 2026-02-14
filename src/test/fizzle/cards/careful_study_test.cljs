@@ -17,106 +17,11 @@
     [datascript.core :as d]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
-    [fizzle.db.schema :refer [schema]]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.zones :as zones]
-    [fizzle.events.selection.resolution :as resolution]))
-
-
-;; === Test helpers ===
-
-(defn create-test-db
-  "Create a game state with all card definitions loaded."
-  []
-  (let [conn (d/create-conn schema)]
-    ;; Transact all card definitions
-    (d/transact! conn cards/all-cards)
-    ;; Transact player
-    (d/transact! conn [{:player/id :player-1
-                        :player/name "Player"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 1 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 1}])
-    ;; Transact game state
-    (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
-      (d/transact! conn [{:game/id :game-1
-                          :game/turn 1
-                          :game/phase :main1
-                          :game/active-player player-eid
-                          :game/priority player-eid}]))
-    @conn))
-
-
-(defn add-card-to-zone
-  "Add a card object to a zone for a player.
-   Returns [db object-id] tuple."
-  [db card-id zone player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        card-eid (d/q '[:find ?e .
-                        :in $ ?cid
-                        :where [?e :card/id ?cid]]
-                      db card-id)
-        obj-id (random-uuid)]
-    (d/transact! conn [{:object/id obj-id
-                        :object/card card-eid
-                        :object/zone zone
-                        :object/owner player-eid
-                        :object/controller player-eid
-                        :object/tapped false}])
-    [@conn obj-id]))
-
-
-(defn add-cards-to-library
-  "Add multiple cards to the top of a player's library.
-   Returns [db object-ids] tuple with object-ids in order (first = top of library)."
-  [db card-ids player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        get-card-eid (fn [card-id]
-                       (d/q '[:find ?e .
-                              :in $ ?cid
-                              :where [?e :card/id ?cid]]
-                            @conn card-id))]
-    (loop [remaining-cards card-ids
-           position 0
-           object-ids []]
-      (if (empty? remaining-cards)
-        [@conn object-ids]
-        (let [card-id (first remaining-cards)
-              obj-id (random-uuid)
-              card-eid (get-card-eid card-id)]
-          (d/transact! conn [{:object/id obj-id
-                              :object/card card-eid
-                              :object/zone :library
-                              :object/owner player-eid
-                              :object/controller player-eid
-                              :object/tapped false
-                              :object/position position}])
-          (recur (rest remaining-cards)
-                 (inc position)
-                 (conj object-ids obj-id)))))))
-
-
-(defn get-hand-count
-  "Get the number of cards in a player's hand."
-  [db player-id]
-  (count (q/get-hand db player-id)))
-
-
-(defn get-object-zone
-  "Get the current zone of an object by its ID."
-  [db object-id]
-  (:object/zone (q/get-object db object-id)))
-
-
-(defn get-graveyard-count
-  "Get the number of cards in a player's graveyard."
-  [db player-id]
-  (count (q/get-objects-in-zone db player-id :graveyard)))
+    [fizzle.events.selection.resolution :as resolution]
+    [fizzle.test-helpers :as th]))
 
 
 ;; === Card Definition Tests ===
@@ -150,18 +55,18 @@
 
 (deftest test-careful-study-draws-two-cards
   (testing "Casting Careful Study draws 2 cards to hand"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db {:mana {:blue 1}})
           ;; Add cards to library for drawing
-          [db' _lib-ids] (add-cards-to-library db
-                                               [:dark-ritual :cabal-ritual :brain-freeze]
-                                               :player-1)
+          [db' _lib-ids] (th/add-cards-to-library db
+                                                  [:dark-ritual :cabal-ritual :brain-freeze]
+                                                  :player-1)
           ;; Add Careful Study to hand
-          [db'' cs-id] (add-card-to-zone db' :careful-study :hand :player-1)
-          initial-hand-count (get-hand-count db'' :player-1)
+          [db'' cs-id] (th/add-card-to-zone db' :careful-study :hand :player-1)
+          initial-hand-count (th/get-hand-count db'' :player-1)
           _ (is (= 1 initial-hand-count) "Precondition: hand has 1 card (Careful Study)")
           ;; Cast Careful Study
           db-after-cast (rules/cast-spell db'' :player-1 cs-id)
-          _ (is (= :stack (get-object-zone db-after-cast cs-id))
+          _ (is (= :stack (th/get-object-zone db-after-cast cs-id))
                 "Careful Study should be on stack after casting")
           ;; Resolve spell (draws 2 cards)
           ;; Note: This will execute both draw and discard effects
@@ -170,7 +75,7 @@
       ;; After resolution, spell is in graveyard and cards were drawn
       ;; (discard effect is pending selection, so doesn't auto-discard yet)
       ;; For now without selection system, cards stay in hand
-      (is (= 2 (get-hand-count db-after-resolve :player-1))
+      (is (= 2 (th/get-hand-count db-after-resolve :player-1))
           "Hand should have 2 cards after drawing (discard is pending selection)"))))
 
 
@@ -179,10 +84,10 @@
 
 (deftest test-discard-effect-returns-pending-selection-info
   (testing "Discard effect with :selection :player returns selection info"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db {:mana {:blue 1}})
           ;; Add cards to hand for discard
-          [db' id1] (add-card-to-zone db :dark-ritual :hand :player-1)
-          [db'' id2] (add-card-to-zone db' :cabal-ritual :hand :player-1)
+          [db' id1] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          [db'' id2] (th/add-card-to-zone db' :cabal-ritual :hand :player-1)
           ;; Execute discard effect with player selection
           discard-effect {:effect/type :discard
                           :effect/count 2
@@ -191,9 +96,9 @@
       ;; The effect should return unchanged db (selection handled at app-db level)
       ;; Or return a special value indicating pending selection
       ;; For now, test that cards are NOT auto-discarded
-      (is (= :hand (get-object-zone result id1))
+      (is (= :hand (th/get-object-zone result id1))
           "First card should still be in hand (waiting for selection)")
-      (is (= :hand (get-object-zone result id2))
+      (is (= :hand (th/get-object-zone result id2))
           "Second card should still be in hand (waiting for selection)"))))
 
 
@@ -201,17 +106,17 @@
 
 (deftest test-resolve-spell-with-selection-creates-pending-state
   (testing "resolve-spell-with-selection pauses on selection effect and returns pending state"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db {:mana {:blue 1}})
           ;; Add cards to library for drawing
-          [db' _lib-ids] (add-cards-to-library db
-                                               [:dark-ritual :cabal-ritual :brain-freeze :island]
-                                               :player-1)
+          [db' _lib-ids] (th/add-cards-to-library db
+                                                  [:dark-ritual :cabal-ritual :brain-freeze :island]
+                                                  :player-1)
           ;; Add Careful Study to hand
-          [db'' cs-id] (add-card-to-zone db' :careful-study :hand :player-1)
-          _ (is (= 1 (get-hand-count db'' :player-1)) "Precondition: 1 card in hand")
+          [db'' cs-id] (th/add-card-to-zone db' :careful-study :hand :player-1)
+          _ (is (= 1 (th/get-hand-count db'' :player-1)) "Precondition: 1 card in hand")
           ;; Cast Careful Study
           db-after-cast (rules/cast-spell db'' :player-1 cs-id)
-          _ (is (= :stack (get-object-zone db-after-cast cs-id))
+          _ (is (= :stack (th/get-object-zone db-after-cast cs-id))
                 "Precondition: Careful Study on stack")
           ;; Resolve with selection system
           result (resolution/resolve-spell-with-selection db-after-cast :player-1 cs-id)]
@@ -222,18 +127,18 @@
       (is (= :discard (get-in result [:pending-selection :selection/type]))
           "Selection effect type should be :discard")
       ;; Draw effect should have executed (3 cards in hand: 2 drawn + 0 from empty hand after CS cast)
-      (is (= 2 (get-hand-count (:db result) :player-1))
+      (is (= 2 (th/get-hand-count (:db result) :player-1))
           "Draw effect should have executed - 2 cards in hand")
       ;; Spell should still be on stack (waiting for selection)
-      (is (= :stack (get-object-zone (:db result) cs-id))
+      (is (= :stack (th/get-object-zone (:db result) cs-id))
           "Spell should remain on stack until selection confirmed"))))
 
 
 (deftest test-resolve-spell-with-selection-no-selection-effect
   (testing "resolve-spell-with-selection resolves normally for spells without selection"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db {:mana {:blue 1}})
           ;; Add Dark Ritual to hand
-          [db' dr-id] (add-card-to-zone db :dark-ritual :hand :player-1)
+          [db' dr-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           ;; Add mana to cast
           conn (d/conn-from-db db')
           player-eid (q/get-player-eid db' :player-1)
@@ -248,7 +153,7 @@
       (is (nil? (:pending-selection result))
           "Should NOT return pending selection for spells without selection effects")
       ;; Spell should be in graveyard (resolved normally)
-      (is (= :graveyard (get-object-zone (:db result) dr-id))
+      (is (= :graveyard (th/get-object-zone (:db result) dr-id))
           "Spell should be in graveyard after normal resolution")
       ;; Effect should have executed (BBB added)
       (is (= 3 (:black (q/get-mana-pool (:db result) :player-1)))
@@ -259,27 +164,27 @@
 
 (deftest test-careful-study-empty-library
   (testing "Careful Study with empty library draws nothing, still requires discard of what's in hand"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db {:mana {:blue 1}})
           ;; Add cards to hand (these become discardable after failed draw)
-          [db' _id1] (add-card-to-zone db :dark-ritual :hand :player-1)
-          [db'' _id2] (add-card-to-zone db' :cabal-ritual :hand :player-1)
+          [db' _id1] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          [db'' _id2] (th/add-card-to-zone db' :cabal-ritual :hand :player-1)
           ;; Add Careful Study to hand (NOT to library - library is empty)
-          [db''' cs-id] (add-card-to-zone db'' :careful-study :hand :player-1)
+          [db''' cs-id] (th/add-card-to-zone db'' :careful-study :hand :player-1)
           ;; Library is empty (no cards added)
           library-count (count (q/get-objects-in-zone db''' :player-1 :library))
           _ (is (= 0 library-count) "Precondition: library should be empty")
           ;; Hand has 3 cards (2 rituals + Careful Study)
-          hand-before (get-hand-count db''' :player-1)
+          hand-before (th/get-hand-count db''' :player-1)
           _ (is (= 3 hand-before) "Precondition: hand should have 3 cards")
           ;; Cast Careful Study
           db-after-cast (rules/cast-spell db''' :player-1 cs-id)
-          _ (is (= :stack (get-object-zone db-after-cast cs-id))
+          _ (is (= :stack (th/get-object-zone db-after-cast cs-id))
                 "Careful Study should be on stack")
           ;; Resolve - draw 0 (empty library), then discard 2 from hand
           result (resolution/resolve-spell-with-selection db-after-cast :player-1 cs-id)]
       ;; Draw from empty library draws nothing - hand should have 2 cards
       ;; (started with 3, CS moved to stack, draw 0 from empty library)
-      (is (= 2 (get-hand-count (:db result) :player-1))
+      (is (= 2 (th/get-hand-count (:db result) :player-1))
           "After drawing from empty library, hand should have 2 cards")
       ;; Should still have pending selection for discard
       (is (some? (:pending-selection result))
@@ -288,28 +193,28 @@
 
 (deftest test-careful-study-one-card-library
   (testing "Careful Study with exactly 1 card in library draws 1, requires discard 2"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db {:mana {:blue 1}})
           ;; Add exactly 1 card to library
-          [db' [_lib-id]] (add-cards-to-library db [:brain-freeze] :player-1)
+          [db' [_lib-id]] (th/add-cards-to-library db [:brain-freeze] :player-1)
           ;; Add cards to hand
-          [db'' _id1] (add-card-to-zone db' :dark-ritual :hand :player-1)
+          [db'' _id1] (th/add-card-to-zone db' :dark-ritual :hand :player-1)
           ;; Add Careful Study to hand
-          [db''' cs-id] (add-card-to-zone db'' :careful-study :hand :player-1)
+          [db''' cs-id] (th/add-card-to-zone db'' :careful-study :hand :player-1)
           ;; Verify library has exactly 1 card
           library-count (count (q/get-objects-in-zone db''' :player-1 :library))
           _ (is (= 1 library-count) "Precondition: library should have exactly 1 card")
           ;; Hand has 2 cards (1 ritual + Careful Study)
-          hand-before (get-hand-count db''' :player-1)
+          hand-before (th/get-hand-count db''' :player-1)
           _ (is (= 2 hand-before) "Precondition: hand should have 2 cards")
           ;; Cast Careful Study
           db-after-cast (rules/cast-spell db''' :player-1 cs-id)
-          _ (is (= :stack (get-object-zone db-after-cast cs-id))
+          _ (is (= :stack (th/get-object-zone db-after-cast cs-id))
                 "Careful Study should be on stack")
           ;; Resolve - draw 1 (only card in library), then discard 2
           result (resolution/resolve-spell-with-selection db-after-cast :player-1 cs-id)]
       ;; After draw, hand should have 2 cards (1 original + 1 drawn)
       ;; (started with 2, CS moved to stack, drew 1)
-      (is (= 2 (get-hand-count (:db result) :player-1))
+      (is (= 2 (th/get-hand-count (:db result) :player-1))
           "After drawing 1 from library, hand should have 2 cards")
       ;; Library should now be empty
       (is (= 0 (count (q/get-objects-in-zone (:db result) :player-1 :library)))
@@ -321,25 +226,25 @@
 
 (deftest test-careful-study-discard-via-production-handler
   ;; Bug caught: discard handler broken when using production confirm flow
-  (testing "Full cast → draw → discard selection → confirm discard flow"
-    (let [db (create-test-db)
+  (testing "Full cast -> draw -> discard selection -> confirm discard flow"
+    (let [db (th/create-test-db {:mana {:blue 1}})
           ;; Add 4 cards to library for drawing
-          [db' _lib-ids] (add-cards-to-library db
-                                               [:dark-ritual :cabal-ritual :brain-freeze :island]
-                                               :player-1)
+          [db' _lib-ids] (th/add-cards-to-library db
+                                                  [:dark-ritual :cabal-ritual :brain-freeze :island]
+                                                  :player-1)
           ;; Add Careful Study to hand
-          [db'' cs-id] (add-card-to-zone db' :careful-study :hand :player-1)
-          _ (is (= 1 (get-hand-count db'' :player-1)) "Precondition: 1 card in hand")
+          [db'' cs-id] (th/add-card-to-zone db' :careful-study :hand :player-1)
+          _ (is (= 1 (th/get-hand-count db'' :player-1)) "Precondition: 1 card in hand")
           ;; Cast Careful Study
           db-cast (rules/cast-spell db'' :player-1 cs-id)
-          _ (is (= :stack (get-object-zone db-cast cs-id))
+          _ (is (= :stack (th/get-object-zone db-cast cs-id))
                 "Precondition: CS on stack")
           ;; Resolve - draws 2, pauses for discard selection
           result (resolution/resolve-spell-with-selection db-cast :player-1 cs-id)
           sel (:pending-selection result)
           db-after-draw (:db result)]
       ;; Should have 2 cards in hand (drew 2, CS was cast from hand)
-      (is (= 2 (get-hand-count db-after-draw :player-1))
+      (is (= 2 (th/get-hand-count db-after-draw :player-1))
           "Should have 2 cards in hand after draw")
       ;; Should have pending discard selection
       (is (= :discard (:selection/type sel))
@@ -382,13 +287,13 @@
             result-app-db (confirm-fn app-db)
             final-db (:game/db result-app-db)]
         ;; Hand should be empty (discarded 2 cards)
-        (is (= 0 (get-hand-count final-db :player-1))
+        (is (= 0 (th/get-hand-count final-db :player-1))
             "Hand should be empty after discarding 2 cards")
         ;; Graveyard should have 3 cards (2 discarded + CS itself)
-        (is (= 3 (get-graveyard-count final-db :player-1))
+        (is (= 3 (th/get-zone-count final-db :graveyard :player-1))
             "Graveyard should have 3 cards (2 discarded + Careful Study)")
         ;; CS should be in graveyard
-        (is (= :graveyard (get-object-zone final-db cs-id))
+        (is (= :graveyard (th/get-object-zone final-db cs-id))
             "Careful Study should be in graveyard after resolution")
         ;; No pending selection
         (is (nil? (:game/pending-selection result-app-db))

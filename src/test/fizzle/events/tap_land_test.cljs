@@ -2,42 +2,27 @@
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
-    [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
-    [fizzle.db.schema :refer [schema]]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.state-based :as state-based]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.turn-based :as turn-based]
     [fizzle.events.abilities :as ability-events]
-    [fizzle.events.game :as game]))
+    [fizzle.events.game :as game]
+    [fizzle.test-helpers :as th]))
 
 
 ;; === Test helpers ===
 
-(defn create-test-db
-  "Create a game state with land cards and player."
+(defn create-tap-test-db
+  "Create a game state with land cards, player, and turn-based triggers."
   []
-  (let [conn (d/create-conn schema)]
-    ;; Transact card definitions
-    (d/transact! conn cards/all-cards)
-    ;; Transact player
-    (d/transact! conn [{:player/id :player-1
-                        :player/name "Player"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 0 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 1}])
-    ;; Transact game state and game-rule triggers
-    (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
-      (d/transact! conn [{:game/id :game-1
-                          :game/turn 1
-                          :game/phase :main1
-                          :game/active-player player-eid
-                          :game/priority player-eid}])
-      (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid)))
+  (let [db (th/create-test-db)
+        conn (d/conn-from-db db)
+        player-eid (q/get-player-eid @conn :player-1)]
+    ;; Add game-rule triggers (draw-step, untap-step)
+    (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid))
     @conn))
 
 
@@ -80,7 +65,7 @@
 
 (deftest test-tap-permanent-sets-tapped-true
   (testing "tap-permanent sets :object/tapped to true on untapped land"
-    (let [db (create-test-db)
+    (let [db (create-tap-test-db)
           [db' obj-id] (add-land-to-battlefield db :city-of-brass :player-1)
           _ (is (false? (get-object-tapped db' obj-id))
                 "Precondition: land starts untapped")
@@ -93,7 +78,7 @@
 
 (deftest test-activate-mana-ability-adds-mana-to-pool
   (testing "activate-mana-ability taps land and adds chosen mana color to pool"
-    (let [db (create-test-db)
+    (let [db (create-tap-test-db)
           [db' obj-id] (add-land-to-battlefield db :city-of-brass :player-1)
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
@@ -106,7 +91,7 @@
 
 (deftest test-activate-mana-ability-any-color
   (testing "activate-mana-ability adds any color from 5-color land"
-    (let [db (create-test-db)
+    (let [db (create-tap-test-db)
           [db' obj-id] (add-land-to-battlefield db :city-of-brass :player-1)
           db'' (ability-events/activate-mana-ability db' :player-1 obj-id :blue)]
       (is (= 1 (:blue (q/get-mana-pool db'' :player-1)))
@@ -117,7 +102,7 @@
 
 (deftest test-activate-mana-ability-fails-on-tapped-land
   (testing "activate-mana-ability returns unchanged db when land already tapped"
-    (let [db (create-test-db)
+    (let [db (create-tap-test-db)
           [db' obj-id] (add-land-to-battlefield db :city-of-brass :player-1)
           ;; First tap produces mana
           db-after-first-tap (ability-events/activate-mana-ability db' :player-1 obj-id :black)
@@ -137,7 +122,7 @@
 
 (deftest test-city-of-brass-deals-damage-when-tapped
   (testing "City of Brass deals 1 damage to controller when tapped for mana"
-    (let [db (create-test-db)
+    (let [db (create-tap-test-db)
           [db' obj-id] (add-land-to-battlefield db :city-of-brass :player-1)
           initial-life (q/get-life-total db' :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
@@ -155,7 +140,7 @@
 
 (deftest test-city-of-brass-cumulative-damage
   (testing "Multiple City of Brass taps deal cumulative damage"
-    (let [db (create-test-db)
+    (let [db (create-tap-test-db)
           ;; Add two City of Brass to battlefield
           [db' obj-id1] (add-land-to-battlefield db :city-of-brass :player-1)
           [db'' obj-id2] (add-land-to-battlefield db' :city-of-brass :player-1)
@@ -177,7 +162,7 @@
 
 (deftest test-gemstone-mine-no-damage
   (testing "Gemstone Mine does NOT deal damage when tapped (only City of Brass does)"
-    (let [db (create-test-db)
+    (let [db (create-tap-test-db)
           [db' obj-id] (add-land-to-battlefield db :gemstone-mine :player-1)
           initial-life (q/get-life-total db' :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
@@ -190,7 +175,7 @@
 
 (deftest test-start-turn-untaps-all-lands
   (testing "start-turn untaps all tapped permanents controlled by the player"
-    (let [db (create-test-db)
+    (let [db (create-tap-test-db)
           ;; Add two lands to battlefield
           [db' obj-id1] (add-land-to-battlefield db :city-of-brass :player-1)
           [db'' obj-id2] (add-land-to-battlefield db' :gemstone-mine :player-1)
@@ -223,7 +208,7 @@
     ;; This test verifies that City of Brass damage comes from trigger resolution
     ;; on the stack, not from immediate effect in activate-mana-ability.
     ;; The trigger uses the stack per MTG rules - you can respond before damage.
-    (let [db (create-test-db)
+    (let [db (create-tap-test-db)
           [db' obj-id] (add-land-to-battlefield db :city-of-brass :player-1)
           initial-life (q/get-life-total db' :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
@@ -245,7 +230,7 @@
 
 (deftest test-gemstone-mine-etb-counters
   (testing "Gemstone Mine enters with 3 mining counters"
-    (let [db (create-test-db)
+    (let [db (create-tap-test-db)
           ;; Add Gemstone Mine to hand first
           conn (d/conn-from-db db)
           player-eid (q/get-player-eid db :player-1)
@@ -272,7 +257,7 @@
 
 (deftest test-gemstone-mine-counter-cost
   (testing "Gemstone Mine activation removes mining counter"
-    (let [db (create-test-db)
+    (let [db (create-tap-test-db)
           ;; Add Gemstone Mine directly with counters (simulating after ETB)
           conn (d/conn-from-db db)
           player-eid (q/get-player-eid db :player-1)
@@ -300,7 +285,7 @@
 
 (deftest test-gemstone-mine-sacrifice-at-zero
   (testing "Gemstone Mine sacrificed when counters reach 0"
-    (let [db (create-test-db)
+    (let [db (create-tap-test-db)
           ;; Add Gemstone Mine with only 1 counter (final activation)
           conn (d/conn-from-db db)
           player-eid (q/get-player-eid db :player-1)
@@ -333,7 +318,7 @@
     ;; Scenario: 1) Tap City of Brass (trigger on stack), 2) Cast Dark Ritual
     ;; Stack order: [Dark Ritual (top), City of Brass trigger (bottom)]
     ;; Resolution: Dark Ritual first, then City of Brass damage
-    (let [db (create-test-db)
+    (let [db (create-tap-test-db)
           ;; Add City of Brass to battlefield
           [db' cob-id] (add-land-to-battlefield db :city-of-brass :player-1)
           ;; Create conn from db' (which has City of Brass)
@@ -398,7 +383,7 @@
     ;; This tests the key rules fix: sacrifice is part of the mana ability,
     ;; NOT a state-based action. If counters are removed by external effect,
     ;; Gemstone Mine should remain on the battlefield.
-    (let [db (create-test-db)
+    (let [db (create-tap-test-db)
           ;; Add Gemstone Mine with 3 counters
           conn (d/conn-from-db db)
           player-eid (q/get-player-eid db :player-1)
@@ -431,7 +416,7 @@
   (testing "Gemstone Mine sacrifices when mana ability activates AND counters = 0"
     ;; This verifies the rules-correct behavior: sacrifice happens as part
     ;; of the mana ability resolution when the last counter is removed.
-    (let [db (create-test-db)
+    (let [db (create-tap-test-db)
           ;; Add Gemstone Mine with exactly 1 counter (final activation)
           conn (d/conn-from-db db)
           player-eid (q/get-player-eid db :player-1)
@@ -461,7 +446,7 @@
   (testing "activate-mana-ability processes :ability/effects after adding mana"
     ;; This test verifies that activate-mana-ability executes :ability/effects.
     ;; We create a custom test card with a mana ability that has a gain life effect.
-    (let [db (create-test-db)
+    (let [db (create-tap-test-db)
           conn (d/conn-from-db db)
           player-eid (q/get-player-eid db :player-1)
           ;; Create a test land with mana ability that has :ability/effects
@@ -502,7 +487,7 @@
   (testing "Requesting wrong color from basic land produces the land's actual color"
     ;; Swamp only produces black. Requesting blue should still produce black
     ;; (the mana-color param is only relevant for :any mana)
-    (let [db (create-test-db)
+    (let [db (create-tap-test-db)
           [db' obj-id] (add-land-to-battlefield db :swamp :player-1)
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
@@ -522,7 +507,7 @@
   (testing "Requesting colorless from a basic land produces the land's actual color"
     ;; Island only produces blue. Requesting colorless should produce blue
     ;; (only lands with :any or :colorless in produces can produce colorless)
-    (let [db (create-test-db)
+    (let [db (create-tap-test-db)
           [db' obj-id] (add-land-to-battlefield db :island :player-1)
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:blue initial-pool)) "Precondition: blue mana is 0")
@@ -550,7 +535,7 @@
     ;; 3. Sacrifice (if any) happens at the END of ability resolution
     ;;
     ;; We verify this by showing Gemstone Mine produces mana BEFORE being sacrificed.
-    (let [db (create-test-db)
+    (let [db (create-tap-test-db)
           conn (d/conn-from-db db)
           player-eid (q/get-player-eid db :player-1)
           card-eid (d/q '[:find ?e .

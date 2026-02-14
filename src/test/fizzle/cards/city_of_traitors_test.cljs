@@ -15,89 +15,21 @@
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
-    [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
-    [fizzle.db.schema :refer [schema]]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.zones :as zones]
     [fizzle.events.abilities :as ability-events]
-    [fizzle.events.game :as game]))
-
-
-;; === Test helpers ===
-
-(defn create-test-db
-  "Create a game state with card definitions and player."
-  []
-  (let [conn (d/create-conn schema)]
-    ;; Transact card definitions
-    (d/transact! conn cards/all-cards)
-    ;; Transact player with 2 land plays for testing
-    (d/transact! conn [{:player/id :player-1
-                        :player/name "Player"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 0 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 2}])
-    ;; Transact game state
-    (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
-      (d/transact! conn [{:game/id :game-1
-                          :game/turn 1
-                          :game/phase :main1
-                          :game/active-player player-eid
-                          :game/priority player-eid}]))
-    @conn))
-
-
-(defn add-land-to-hand
-  "Add a land card to the player's hand.
-   Returns [db object-id] tuple."
-  [db card-id player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        card-eid (d/q '[:find ?e .
-                        :in $ ?cid
-                        :where [?e :card/id ?cid]]
-                      db card-id)
-        obj-id (random-uuid)]
-    (d/transact! conn [{:object/id obj-id
-                        :object/card card-eid
-                        :object/zone :hand
-                        :object/owner player-eid
-                        :object/controller player-eid
-                        :object/tapped false}])
-    [@conn obj-id]))
-
-
-(defn add-land-to-battlefield
-  "Add a land card directly to battlefield (bypassing ETB).
-   Use this when testing non-ETB scenarios.
-   Returns [db object-id] tuple."
-  [db card-id player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        card-eid (d/q '[:find ?e .
-                        :in $ ?cid
-                        :where [?e :card/id ?cid]]
-                      db card-id)
-        obj-id (random-uuid)]
-    (d/transact! conn [{:object/id obj-id
-                        :object/card card-eid
-                        :object/zone :battlefield
-                        :object/owner player-eid
-                        :object/controller player-eid
-                        :object/tapped false}])
-    [@conn obj-id]))
+    [fizzle.events.game :as game]
+    [fizzle.test-helpers :as th]))
 
 
 ;; === Mana production tests ===
 
 (deftest test-cot-produces-colorless-mana
   (testing "City of Traitors produces 2 colorless mana when tapped"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-battlefield db :city-of-traitors :player-1)
+    (let [db (th/create-test-db {:land-plays 2})
+          [db' obj-id] (th/add-card-to-zone db :city-of-traitors :battlefield :player-1)
           ;; Get initial mana pool
           initial-mana (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:colorless initial-mana)) "Precondition: 0 colorless mana")
@@ -112,8 +44,8 @@
 
 (deftest test-cot-does-not-sacrifice-on-self-entry
   (testing "City of Traitors does NOT sacrifice when it enters the battlefield"
-    (let [db (create-test-db)
-          [db' obj-id] (add-land-to-hand db :city-of-traitors :player-1)
+    (let [db (th/create-test-db {:land-plays 2})
+          [db' obj-id] (th/add-card-to-zone db :city-of-traitors :hand :player-1)
           ;; Count land-entered triggers before
           initial-triggers (filter #(= :land-entered (:trigger/event-type %))
                                    (trigger-db/get-all-triggers db'))
@@ -132,14 +64,14 @@
 
 (deftest test-cot-sacrifices-when-another-land-enters
   (testing "City of Traitors sacrifices when another land enters the battlefield"
-    (let [db (create-test-db)
-          [db' cot-id] (add-land-to-hand db :city-of-traitors :player-1)
+    (let [db (th/create-test-db {:land-plays 2})
+          [db' cot-id] (th/add-card-to-zone db :city-of-traitors :hand :player-1)
           ;; Play CoT first
           db-after-cot (game/play-land db' :player-1 cot-id)
           _ (is (= :battlefield (:object/zone (q/get-object db-after-cot cot-id)))
                 "Precondition: CoT on battlefield")
           ;; Add an Island to hand
-          [db'' island-id] (add-land-to-hand db-after-cot :island :player-1)
+          [db'' island-id] (th/add-card-to-zone db-after-cot :island :hand :player-1)
           ;; Play the Island (should trigger CoT sacrifice)
           db-after-island (game/play-land db'' :player-1 island-id)]
       ;; Verify CoT trigger is on stack
@@ -159,17 +91,17 @@
 
 (deftest test-two-cots-both-sacrifice-when-land-enters
   (testing "When two City of Traitors are on battlefield and another land enters, both sacrifice"
-    (let [db (create-test-db)
+    (let [db (th/create-test-db {:land-plays 2})
           ;; Give player 3 land plays for this test
           player-eid (q/get-player-eid db :player-1)
           db (d/db-with db [[:db/add player-eid :player/land-plays-left 3]])
           ;; Add first CoT to hand and play
-          [db' cot-id-1] (add-land-to-hand db :city-of-traitors :player-1)
+          [db' cot-id-1] (th/add-card-to-zone db :city-of-traitors :hand :player-1)
           db-after-cot1 (game/play-land db' :player-1 cot-id-1)
           _ (is (= :battlefield (:object/zone (q/get-object db-after-cot1 cot-id-1)))
                 "Precondition: CoT #1 on battlefield")
           ;; Add second CoT to hand and play (this triggers CoT #1's sacrifice)
-          [db'' cot-id-2] (add-land-to-hand db-after-cot1 :city-of-traitors :player-1)
+          [db'' cot-id-2] (th/add-card-to-zone db-after-cot1 :city-of-traitors :hand :player-1)
           db-after-cot2 (game/play-land db'' :player-1 cot-id-2)]
       ;; First CoT's trigger should be on stack
       (is (= 1 (count (stack/get-all-stack-items db-after-cot2)))
@@ -181,7 +113,7 @@
         (is (= :battlefield (:object/zone (q/get-object db-after-resolve1 cot-id-2)))
             "CoT #2 should still be on battlefield")
         ;; Now play an Island - should trigger CoT #2
-        (let [[db''' island-id] (add-land-to-hand db-after-resolve1 :island :player-1)
+        (let [[db''' island-id] (th/add-card-to-zone db-after-resolve1 :island :hand :player-1)
               db-after-island (game/play-land db''' :player-1 island-id)]
           (is (= 1 (count (stack/get-all-stack-items db-after-island)))
               "CoT #2 sacrifice trigger should be on stack when Island enters")
@@ -195,12 +127,12 @@
 
 (deftest test-cot-trigger-uses-stack
   (testing "City of Traitors trigger goes on the stack (can respond before sacrifice)"
-    (let [db (create-test-db)
-          [db' cot-id] (add-land-to-hand db :city-of-traitors :player-1)
+    (let [db (th/create-test-db {:land-plays 2})
+          [db' cot-id] (th/add-card-to-zone db :city-of-traitors :hand :player-1)
           ;; Play CoT
           db-after-cot (game/play-land db' :player-1 cot-id)
           ;; Add Island to hand and play
-          [db'' island-id] (add-land-to-hand db-after-cot :island :player-1)
+          [db'' island-id] (th/add-card-to-zone db-after-cot :island :hand :player-1)
           db-after-island (game/play-land db'' :player-1 island-id)]
       ;; Trigger should be on stack, not resolved yet
       (is (= 1 (count (stack/get-all-stack-items db-after-island)))
@@ -219,12 +151,12 @@
 
 (deftest test-cot-trigger-resolves-if-cot-already-gone
   (testing "City of Traitors trigger still tries to resolve if CoT already sacrificed"
-    (let [db (create-test-db)
-          [db' cot-id] (add-land-to-hand db :city-of-traitors :player-1)
+    (let [db (th/create-test-db {:land-plays 2})
+          [db' cot-id] (th/add-card-to-zone db :city-of-traitors :hand :player-1)
           ;; Play CoT
           db-after-cot (game/play-land db' :player-1 cot-id)
           ;; Add Island to hand and play (trigger goes on stack)
-          [db'' island-id] (add-land-to-hand db-after-cot :island :player-1)
+          [db'' island-id] (th/add-card-to-zone db-after-cot :island :hand :player-1)
           db-after-island (game/play-land db'' :player-1 island-id)
           _ (is (= 1 (count (stack/get-all-stack-items db-after-island)))
                 "Precondition: trigger on stack")
@@ -247,8 +179,8 @@
 
 (deftest test-land-entered-event-dispatched
   (testing "Playing a land dispatches :land-entered event"
-    (let [db (create-test-db)
-          [db' island-id] (add-land-to-hand db :island :player-1)
+    (let [db (th/create-test-db {:land-plays 2})
+          [db' island-id] (th/add-card-to-zone db :island :hand :player-1)
           ;; Create a Datascript trigger that listens for :land-entered
           player-eid (q/get-player-eid db' :player-1)
           tx-data (trigger-db/create-trigger-tx
