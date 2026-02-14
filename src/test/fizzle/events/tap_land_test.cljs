@@ -133,7 +133,7 @@
           _ (is (= 1 (count (stack/get-all-stack-items db-after-tap)))
                 "One trigger should be on the stack")
           ;; Resolve the trigger
-          db-after-resolve (game/resolve-top-of-stack db-after-tap :player-1)]
+          db-after-resolve (:db (game/resolve-one-item db-after-tap :player-1))]
       (is (= 19 (q/get-life-total db-after-resolve :player-1))
           "Player should lose 1 life after trigger resolves"))))
 
@@ -154,8 +154,8 @@
           _ (is (= 2 (count (stack/get-all-stack-items db-after-second-tap)))
                 "Two triggers should be on the stack")
           ;; Resolve both triggers
-          db-after-first-resolve (game/resolve-top-of-stack db-after-second-tap :player-1)
-          db-after-second-resolve (game/resolve-top-of-stack db-after-first-resolve :player-1)]
+          db-after-first-resolve (:db (game/resolve-one-item db-after-second-tap :player-1))
+          db-after-second-resolve (:db (game/resolve-one-item db-after-first-resolve :player-1))]
       (is (= 18 (q/get-life-total db-after-second-resolve :player-1))
           "Player should lose 2 life total after resolving both triggers"))))
 
@@ -223,7 +223,7 @@
       (is (= 1 (:black (q/get-mana-pool db-after-tap :player-1)))
           "Mana is available immediately, even with trigger on stack")
       ;; Resolve trigger - now damage happens
-      (let [db-after-resolve (game/resolve-top-of-stack db-after-tap :player-1)]
+      (let [db-after-resolve (:db (game/resolve-one-item db-after-tap :player-1))]
         (is (= 19 (q/get-life-total db-after-resolve :player-1))
             "Player loses 1 life after trigger resolves")))))
 
@@ -358,7 +358,7 @@
 
           ;; Stack now has: Dark Ritual (top), City of Brass trigger (bottom)
           ;; Step 3: Resolve top of stack - should be Dark Ritual (LIFO)
-          db-after-first-resolve (game/resolve-top-of-stack db-after-cast :player-1)
+          db-after-first-resolve (:db (game/resolve-one-item db-after-cast :player-1))
           _ (is (= 20 (q/get-life-total db-after-first-resolve :player-1))
                 "Life STILL unchanged - Dark Ritual resolved first, not the trigger")
           _ (is (= 3 (:black (q/get-mana-pool db-after-first-resolve :player-1)))
@@ -369,7 +369,7 @@
                 "City of Brass trigger still on stack")
 
           ;; Step 4: Resolve top of stack again - now City of Brass trigger
-          db-after-second-resolve (game/resolve-top-of-stack db-after-first-resolve :player-1)]
+          db-after-second-resolve (:db (game/resolve-one-item db-after-first-resolve :player-1))]
       (is (= 19 (q/get-life-total db-after-second-resolve :player-1))
           "NOW player loses 1 life from City of Brass trigger")
       (is (= 0 (count (stack/get-all-stack-items db-after-second-resolve)))

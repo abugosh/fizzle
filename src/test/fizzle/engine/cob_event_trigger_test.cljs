@@ -126,7 +126,7 @@
           _ (is (= 20 (q/get-life-total db-after-tap :player-1))
                 "Life unchanged before trigger resolves")
           ;; Resolve the trigger
-          db-after-resolve (game/resolve-top-of-stack db-after-tap :player-1)]
+          db-after-resolve (:db (game/resolve-one-item db-after-tap :player-1))]
       (is (= 19 (q/get-life-total db-after-resolve :player-1))
           "Player should lose 1 life after trigger resolves"))))
 
@@ -142,7 +142,7 @@
           _ (is (= 1 (count (stack/get-all-stack-items db-after-first-tap)))
                 "One trigger on stack after first tap")
           ;; Resolve first trigger
-          db-after-first-resolve (game/resolve-top-of-stack db-after-first-tap :player-1)
+          db-after-first-resolve (:db (game/resolve-one-item db-after-first-tap :player-1))
           _ (is (= 19 (q/get-life-total db-after-first-resolve :player-1))
                 "Player at 19 life after first trigger")
           ;; Untap the land manually
@@ -157,7 +157,7 @@
           _ (is (= 1 (count (stack/get-all-stack-items db-after-second-tap)))
                 "One trigger on stack after second tap")
           ;; Resolve second trigger
-          db-after-second-resolve (game/resolve-top-of-stack db-after-second-tap :player-1)]
+          db-after-second-resolve (:db (game/resolve-one-item db-after-second-tap :player-1))]
       (is (= 18 (q/get-life-total db-after-second-resolve :player-1))
           "Player at 18 life after both triggers resolved (2 damage total)"))))
 
@@ -201,7 +201,7 @@
           _ (is (= :graveyard (:object/zone (q/get-object db-after-sacrifice obj-id)))
                 "CoB is in graveyard")
           ;; Resolve trigger - should still deal damage even though source is gone
-          db-after-resolve (game/resolve-top-of-stack db-after-sacrifice :player-1)]
+          db-after-resolve (:db (game/resolve-one-item db-after-sacrifice :player-1))]
       (is (= 19 (q/get-life-total db-after-resolve :player-1))
           "Trigger should still deal damage even if source is gone"))))
 
@@ -222,7 +222,7 @@
                                                                        :effect/amount 1
                                                                        :effect/target :controller}]})
           ;; Resolve via stack resolution
-          db-after-resolve (game/resolve-top-of-stack db-with-item :player-1)]
+          db-after-resolve (:db (game/resolve-one-item db-with-item :player-1))]
       (is (= 19 (q/get-life-total db-after-resolve :player-1))
           "Player should lose 1 life when :permanent-tapped trigger resolves"))))
 

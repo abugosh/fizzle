@@ -280,7 +280,7 @@
    Costs are paid on activation (or after target selection), not resolution.
 
    Selection effects (like tutor) are handled on resolution via
-   resolve-stack-item-ability-with-selection.
+   game/resolve-one-item.
 
    Returns {:db db :pending-selection selection-state-or-nil}"
   [db player-id object-id ability-index]

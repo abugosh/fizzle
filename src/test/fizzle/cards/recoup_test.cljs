@@ -20,10 +20,9 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.rules :as rules]
-    [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.zones :as zones]
-    [fizzle.events.selection.resolution :as resolution]
+    [fizzle.events.game :as game]
     [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
 
@@ -155,13 +154,8 @@
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{sorcery-id})
           db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
-          ;; Get the stack-item for the spell
-          obj-eid (d/q '[:find ?e . :in $ ?oid
-                         :where [?e :object/id ?oid]]
-                       db-cast recoup-id)
-          stack-item (stack/get-stack-item-by-object-ref db-cast obj-eid)
-          ;; Resolve Recoup
-          resolve-result (resolution/resolve-spell-with-selection db-cast :player-1 recoup-id stack-item)
+          ;; Resolve Recoup via production path
+          resolve-result (game/resolve-one-item db-cast :player-1)
           db-resolved (:db resolve-result)
           ;; Check grants on target
           flashback-grants (grants/get-grants-by-type db-resolved sorcery-id :alternate-cost)]
@@ -183,12 +177,8 @@
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{sorcery-id})
           db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
-          ;; Get the stack-item for the spell
-          obj-eid (d/q '[:find ?e . :in $ ?oid
-                         :where [?e :object/id ?oid]]
-                       db-cast recoup-id)
-          stack-item (stack/get-stack-item-by-object-ref db-cast obj-eid)
-          resolve-result (resolution/resolve-spell-with-selection db-cast :player-1 recoup-id stack-item)
+          ;; Resolve via production path
+          resolve-result (game/resolve-one-item db-cast :player-1)
           db-resolved (:db resolve-result)
           ;; Get the granted flashback
           flashback-grants (grants/get-grants-by-type db-resolved sorcery-id :alternate-cost)
@@ -209,12 +199,8 @@
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{sorcery-id})
           db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
-          ;; Get the stack-item for the spell
-          obj-eid (d/q '[:find ?e . :in $ ?oid
-                         :where [?e :object/id ?oid]]
-                       db-cast recoup-id)
-          stack-item (stack/get-stack-item-by-object-ref db-cast obj-eid)
-          resolve-result (resolution/resolve-spell-with-selection db-cast :player-1 recoup-id stack-item)
+          ;; Resolve via production path
+          resolve-result (game/resolve-one-item db-cast :player-1)
           db-resolved (:db resolve-result)]
       ;; Check grant has exile on resolve
       (let [flashback-grants (grants/get-grants-by-type db-resolved sorcery-id :alternate-cost)
@@ -234,12 +220,8 @@
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{sorcery-id})
           db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
-          ;; Get the stack-item for the spell
-          obj-eid (d/q '[:find ?e . :in $ ?oid
-                         :where [?e :object/id ?oid]]
-                       db-cast recoup-id)
-          stack-item (stack/get-stack-item-by-object-ref db-cast obj-eid)
-          resolve-result (resolution/resolve-spell-with-selection db-cast :player-1 recoup-id stack-item)
+          ;; Resolve via production path
+          resolve-result (game/resolve-one-item db-cast :player-1)
           db-recoup-resolved (:db resolve-result)
           ;; Verify sorcery has granted flashback
           _ (is (= 1 (count (grants/get-grants-by-type db-recoup-resolved sorcery-id :alternate-cost)))
@@ -270,15 +252,10 @@
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{sorcery-id})
           db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
-          ;; Get the stack-item for fizzle checking
-          obj-eid (d/q '[:find ?e . :in $ ?oid
-                         :where [?e :object/id ?oid]]
-                       db-cast recoup-id)
-          stack-item (stack/get-stack-item-by-object-ref db-cast obj-eid)
           ;; Remove the target before resolution (simulate Tormod's Crypt)
           db-target-exiled (zones/move-to-zone db-cast sorcery-id :exile)
-          ;; Try to resolve Recoup (with stack-item for fizzle check)
-          resolve-result (resolution/resolve-spell-with-selection db-target-exiled :player-1 recoup-id stack-item)
+          ;; Try to resolve Recoup (target no longer legal)
+          resolve-result (game/resolve-one-item db-target-exiled :player-1)
           db-resolved (:db resolve-result)]
       ;; Recoup should be in graveyard (fizzled, not flashback cast)
       (is (= :graveyard (th/get-object-zone db-resolved recoup-id))
@@ -303,13 +280,8 @@
           db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
           ;; Remove sorcery1 (even though sorcery2 still exists)
           db-target-exiled (zones/move-to-zone db-cast sorcery1-id :exile)
-          ;; Get the stack-item for the spell
-          obj-eid (d/q '[:find ?e . :in $ ?oid
-                         :where [?e :object/id ?oid]]
-                       db-cast recoup-id)
-          stack-item (stack/get-stack-item-by-object-ref db-cast obj-eid)
           ;; Resolve - should fizzle
-          resolve-result (resolution/resolve-spell-with-selection db-target-exiled :player-1 recoup-id stack-item)
+          resolve-result (game/resolve-one-item db-target-exiled :player-1)
           db-resolved (:db resolve-result)]
       ;; Recoup fizzles (target invalid)
       (is (= :graveyard (th/get-object-zone db-resolved recoup-id))
@@ -332,12 +304,8 @@
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{sorcery-id})
           db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
-          ;; Get the stack-item for the spell
-          obj-eid (d/q '[:find ?e . :in $ ?oid
-                         :where [?e :object/id ?oid]]
-                       db-cast recoup-id)
-          stack-item (stack/get-stack-item-by-object-ref db-cast obj-eid)
-          resolve-result (resolution/resolve-spell-with-selection db-cast :player-1 recoup-id stack-item)
+          ;; Resolve via production path
+          resolve-result (game/resolve-one-item db-cast :player-1)
           db-resolved (:db resolve-result)
           ;; Verify grant exists
           _ (is (= 1 (count (grants/get-grants db-resolved sorcery-id)))
@@ -360,12 +328,8 @@
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{sorcery-id})
           db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
-          ;; Get the stack-item for the spell
-          obj-eid (d/q '[:find ?e . :in $ ?oid
-                         :where [?e :object/id ?oid]]
-                       db-cast recoup-id)
-          stack-item (stack/get-stack-item-by-object-ref db-cast obj-eid)
-          resolve-result (resolution/resolve-spell-with-selection db-cast :player-1 recoup-id stack-item)
+          ;; Resolve via production path
+          resolve-result (game/resolve-one-item db-cast :player-1)
           db-resolved (:db resolve-result)
           ;; Try to expire at main1 phase (before cleanup)
           db-not-expired (grants/expire-grants db-resolved 1 :main1)]
@@ -405,13 +369,8 @@
           ;; Verify it's on stack with flashback mode
           _ (is (= :flashback (:mode/id (:object/cast-mode (q/get-object db-cast recoup-id))))
                 "Cast mode should be flashback")
-          ;; Get the stack-item for the spell
-          obj-eid (d/q '[:find ?e . :in $ ?oid
-                         :where [?e :object/id ?oid]]
-                       db-cast recoup-id)
-          stack-item (stack/get-stack-item-by-object-ref db-cast obj-eid)
-          ;; Resolve
-          resolve-result (resolution/resolve-spell-with-selection db-cast :player-1 recoup-id stack-item)
+          ;; Resolve via production path
+          resolve-result (game/resolve-one-item db-cast :player-1)
           db-resolved (:db resolve-result)]
       (is (= :exile (th/get-object-zone db-resolved recoup-id))
           "Flashback Recoup should exile after resolution"))))
@@ -428,12 +387,8 @@
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{sorcery-id})
           db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
-          ;; Get the stack-item for the spell
-          obj-eid (d/q '[:find ?e . :in $ ?oid
-                         :where [?e :object/id ?oid]]
-                       db-cast recoup-id)
-          stack-item (stack/get-stack-item-by-object-ref db-cast obj-eid)
-          resolve-result (resolution/resolve-spell-with-selection db-cast :player-1 recoup-id stack-item)
+          ;; Resolve via production path
+          resolve-result (game/resolve-one-item db-cast :player-1)
           db-resolved (:db resolve-result)
           ;; Check target got flashback
           flashback-grants (grants/get-grants-by-type db-resolved sorcery-id :alternate-cost)]
@@ -456,13 +411,8 @@
           selection (assoc (:pending-target-selection result)
                            :selection/selected #{sorcery-id})
           db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
-          ;; Get the stack-item for the spell
-          obj-eid (d/q '[:find ?e . :in $ ?oid
-                         :where [?e :object/id ?oid]]
-                       db-cast recoup-id)
-          stack-item (stack/get-stack-item-by-object-ref db-cast obj-eid)
-          ;; Step 2: Resolve Recoup
-          resolve-result (resolution/resolve-spell-with-selection db-cast :player-1 recoup-id stack-item)
+          ;; Step 2: Resolve Recoup via production path
+          resolve-result (game/resolve-one-item db-cast :player-1)
           db-resolved (:db resolve-result)
           ;; Verify Recoup in graveyard, Careful Study has flashback
           _ (is (= :graveyard (th/get-object-zone db-resolved recoup-id))

@@ -16,8 +16,8 @@
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
+    [fizzle.events.game :as game]
     [fizzle.events.selection.library :as library]
-    [fizzle.events.selection.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -94,7 +94,7 @@
           _ (is (= :stack (:object/zone (q/get-object db-cast int-id)))
                 "Precondition: Intuition on stack")
           ;; Resolve - should create tutor selection with available cards
-          result (resolution/resolve-spell-with-selection db-cast :player-1 int-id)
+          result (game/resolve-one-item db-cast :player-1)
           sel (:pending-selection result)]
       ;; Should have pending selection (tutor)
       (is (= :tutor (:selection/type sel))

@@ -14,8 +14,8 @@
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
+    [fizzle.events.game :as game]
     [fizzle.events.selection.library :as library]
-    [fizzle.events.selection.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -62,7 +62,7 @@
           _ (is (= :stack (th/get-object-zone db-after-cast opt-id))
                 "Opt should be on stack after casting")
           ;; Resolve spell - should create scry selection
-          result (resolution/resolve-spell-with-selection db-after-cast :player-1 opt-id)]
+          result (game/resolve-one-item db-after-cast :player-1)]
       ;; Selection type should be :scry
       (is (= :scry (get-in result [:pending-selection :selection/type]))
           "Selection type should be :scry")
@@ -83,7 +83,7 @@
           [db'' opt-id] (th/add-card-to-zone db' :opt :hand :player-1)
           ;; Cast and resolve Opt
           db-after-cast (rules/cast-spell db'' :player-1 opt-id)
-          result (resolution/resolve-spell-with-selection db-after-cast :player-1 opt-id)
+          result (game/resolve-one-item db-after-cast :player-1)
           remaining-effects (get-in result [:pending-selection :selection/remaining-effects])]
       ;; Should have 1 remaining effect (draw)
       (is (= 1 (count remaining-effects))
@@ -110,7 +110,7 @@
           ;; Cast Opt
           db-after-cast (rules/cast-spell db'' :player-1 opt-id)
           ;; Resolve spell - creates scry selection
-          result (resolution/resolve-spell-with-selection db-after-cast :player-1 opt-id)
+          result (game/resolve-one-item db-after-cast :player-1)
           scry-selection (:pending-selection result)
           top-card (first (:selection/cards scry-selection))
           ;; Simulate scry choice: put card on bottom
@@ -144,7 +144,7 @@
           ;; Cast Opt
           db-after-cast (rules/cast-spell db' :player-1 opt-id)
           ;; Resolve spell - scry with empty library
-          result (resolution/resolve-spell-with-selection db-after-cast :player-1 opt-id)]
+          result (game/resolve-one-item db-after-cast :player-1)]
       ;; With empty library, scry selection is nil (no cards to scry)
       ;; But the effect should handle this gracefully
       ;; If no selection needed, spell resolves directly including draw

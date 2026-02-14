@@ -800,15 +800,12 @@
           [target-id db] (add-object-with-card db :player-1 test-target-sorcery :graveyard)
           ;; Add recoup-like spell to stack with stored target
           [spell-id db] (add-object-with-card db :player-1 test-recoup-like-spell :stack)
-          ;; Store the target on the spell object
-          spell-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db spell-id)
-          db (d/db-with db [[:db/add spell-eid :object/targets {:graveyard-sorcery target-id}]])
           ;; Set game turn so we can verify expiration
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
           db (d/db-with db [[:db/add game-eid :game/turn 1]])
-          ;; Execute the grant-flashback effect
+          ;; Execute the grant-flashback effect with pre-resolved target
           effect {:effect/type :grant-flashback
-                  :effect/target-ref :graveyard-sorcery}
+                  :effect/target target-id}
           db' (fx/execute-effect db :player-1 effect spell-id)]
       ;; Target should now have a grant
       (let [grants (:object/grants (q/get-object db' target-id))]
@@ -835,13 +832,12 @@
     (let [db (init-game-state)
           ;; Add recoup-like spell to stack with non-existent target
           [spell-id db] (add-object-with-card db :player-1 test-recoup-like-spell :stack)
-          spell-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db spell-id)
           fake-target-id (random-uuid)
-          db (d/db-with db [[:db/add spell-eid :object/targets {:graveyard-sorcery fake-target-id}]])
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
           db (d/db-with db [[:db/add game-eid :game/turn 1]])
+          ;; Pre-resolved target that doesn't exist in db
           effect {:effect/type :grant-flashback
-                  :effect/target-ref :graveyard-sorcery}
+                  :effect/target fake-target-id}
           db' (fx/execute-effect db :player-1 effect spell-id)]
       ;; Should return db unchanged (no crash)
       (is (= db db')
@@ -851,12 +847,12 @@
 (deftest test-grant-flashback-effect-no-stored-target
   (testing ":grant-flashback effect is no-op when no stored target"
     (let [db (init-game-state)
-          ;; Add recoup-like spell to stack without storing targets
+          ;; Add recoup-like spell to stack without target
           [spell-id db] (add-object-with-card db :player-1 test-recoup-like-spell :stack)
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
           db (d/db-with db [[:db/add game-eid :game/turn 1]])
-          effect {:effect/type :grant-flashback
-                  :effect/target-ref :graveyard-sorcery}
+          ;; No target pre-resolved
+          effect {:effect/type :grant-flashback}
           db' (fx/execute-effect db :player-1 effect spell-id)]
       ;; Should return db unchanged (no crash)
       (is (= db db')
@@ -1237,7 +1233,7 @@
           [source-id db] (add-spell-with-target db :player-1 source-id :player-2)
           effect {:effect/type :add-restriction
                   :restriction/type :cannot-cast-spells
-                  :effect/target :targeted-player}
+                  :effect/target :player-2}
           db' (fx/execute-effect db :player-1 effect source-id)
           player-grants (grants/get-player-grants db' :player-2)]
       (is (= 1 (count player-grants))
@@ -1260,7 +1256,7 @@
           [source-id db] (add-spell-with-target db :player-1 source-id :player-2)
           effect {:effect/type :add-restriction
                   :restriction/type :cannot-cast-spells
-                  :effect/target :targeted-player}
+                  :effect/target :player-2}
           db' (fx/execute-effect db :player-1 effect source-id)
           grant (first (grants/get-player-grants db' :player-2))]
       (is (= 3 (get-in grant [:grant/expires :expires/turn]))
@@ -1278,7 +1274,7 @@
           [source-id db] (add-spell-with-target db :player-1 source-id :player-2)
           effect {:effect/type :add-restriction
                   :restriction/type :cannot-attack
-                  :effect/target :targeted-player}
+                  :effect/target :player-2}
           db' (fx/execute-effect db :player-1 effect source-id)
           grant (first (grants/get-player-grants db' :player-2))]
       (is (= :cannot-attack (get-in grant [:grant/data :restriction/type]))
@@ -1338,7 +1334,7 @@
           [source-id db] (add-spell-with-target db :player-1 source-id :player-2)
           effect {:effect/type :add-restriction
                   :restriction/type :cannot-cast-spells
-                  :effect/target :targeted-player}
+                  :effect/target :player-2}
           db' (fx/execute-effect db :player-1 effect source-id)
           grant (first (grants/get-player-grants db' :player-2))]
       (is (= source-id (:grant/source grant))
@@ -1358,7 +1354,7 @@
           [source-id db] (add-spell-with-target db :player-1 source-id :player-2)
           effect {:effect/type :add-restriction
                   :restriction/type :cannot-cast-spells
-                  :effect/target :targeted-player}
+                  :effect/target :player-2}
           db' (fx/execute-effect db :player-1 effect source-id)
           grant (first (grants/get-player-grants db' :player-2))]
       (is (nil? (:game/turn (q/get-game-state db)))
@@ -1397,11 +1393,10 @@
     (let [[db target-id] (add-permanent (init-game-state) :player-1)
           ;; Verify starting zone is battlefield
           _ (is (= :battlefield (get-object-zone db target-id)))
-          ;; Create spell with stored target
-          [spell-id db] (add-spell-on-stack-with-targets db :player-1 {:target-enchantment target-id})
+          ;; Pre-resolved target in effect
           effect {:effect/type :destroy
-                  :effect/target-ref :target-enchantment}
-          db' (fx/execute-effect db :player-1 effect spell-id)]
+                  :effect/target target-id}
+          db' (fx/execute-effect db :player-1 effect nil)]
       ;; Target should now be in graveyard
       (is (= :graveyard (get-object-zone db' target-id))
           "Target should be moved to graveyard"))))
@@ -1417,12 +1412,11 @@
           [db target-id] (add-permanent db :player-1)
           ;; Verify it's on battlefield
           _ (is (= :battlefield (get-object-zone db target-id)))
-          ;; Create spell targeting this permanent (cast by player-2, but target is player-1's)
-          [spell-id db] (add-spell-on-stack-with-targets db :player-2 {:target-enchantment target-id})
+          ;; Pre-resolved target in effect
           effect {:effect/type :destroy
-                  :effect/target-ref :target-enchantment}
+                  :effect/target target-id}
           ;; Player-2 casts the destroy effect
-          db' (fx/execute-effect db :player-2 effect spell-id)]
+          db' (fx/execute-effect db :player-2 effect nil)]
       ;; Target goes to owner's (player-1's) graveyard
       (is (= :graveyard (get-object-zone db' target-id))
           "Target should be in graveyard")
@@ -1433,28 +1427,24 @@
           "Caster's graveyard should be empty (not owner)"))))
 
 
-(deftest test-destroy-effect-nil-object-id-is-noop
-  (testing ":destroy with nil object-id returns db unchanged"
-    ;; Catches: nil pointer exception if object-id not guarded
+(deftest test-destroy-effect-nil-target-is-noop
+  (testing ":destroy with nil target returns db unchanged"
+    ;; Catches: nil pointer exception if target not guarded
     (let [[db target-id] (add-permanent (init-game-state) :player-1)
           effect {:effect/type :destroy
-                  :effect/target-ref :target-enchantment}
-          ;; Pass nil as object-id (no source spell)
+                  :effect/target nil}
           db' (fx/execute-effect db :player-1 effect nil)]
       ;; Should be no-op, target still on battlefield
       (is (= :battlefield (get-object-zone db' target-id))
           "Target should still be on battlefield"))))
 
 
-(deftest test-destroy-effect-missing-target-ref-is-noop
-  (testing ":destroy with missing target-ref in stored targets returns db unchanged"
-    ;; Catches: missing guard for nonexistent target-ref key
+(deftest test-destroy-effect-no-target-is-noop
+  (testing ":destroy with no :effect/target returns db unchanged"
+    ;; Catches: missing guard for no target
     (let [[db target-id] (add-permanent (init-game-state) :player-1)
-          ;; Create spell with different target-ref than effect expects
-          [spell-id db] (add-spell-on-stack-with-targets db :player-1 {:some-other-target target-id})
-          effect {:effect/type :destroy
-                  :effect/target-ref :target-enchantment}  ; Looking for :target-enchantment, not found
-          db' (fx/execute-effect db :player-1 effect spell-id)]
+          effect {:effect/type :destroy}  ; No :effect/target
+          db' (fx/execute-effect db :player-1 effect nil)]
       ;; Should be no-op, target still on battlefield
       (is (= :battlefield (get-object-zone db' target-id))
           "Target should still be on battlefield"))))
@@ -1465,11 +1455,10 @@
     ;; Catches: missing guard for target object that no longer exists
     (let [db (init-game-state)
           fake-target-id (random-uuid)  ; Non-existent object
-          ;; Create spell with target pointing to non-existent object
-          [spell-id db] (add-spell-on-stack-with-targets db :player-1 {:target-enchantment fake-target-id})
+          ;; Pre-resolved target that doesn't exist in db
           effect {:effect/type :destroy
-                  :effect/target-ref :target-enchantment}
-          db' (fx/execute-effect db :player-1 effect spell-id)]
+                  :effect/target fake-target-id}
+          db' (fx/execute-effect db :player-1 effect nil)]
       ;; Should be no-op, no crash
       (is (= db db')
           "db should be unchanged when target doesn't exist"))))

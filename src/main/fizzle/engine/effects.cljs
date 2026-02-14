@@ -452,13 +452,8 @@
   ;; Destroy target permanent - move it to owner's graveyard.
   ;;
   ;; Effect keys:
-  ;;   :effect/target - Direct target object-id (used by activated abilities)
-  ;;   :effect/target-ref - Target reference keyword to look up from
-  ;;                        :object/targets on the casting object.
-  ;;
-  ;; Target resolution order:
-  ;;   1. :effect/target (direct) - pre-resolved by caller
-  ;;   2. :effect/target-ref (lookup) - from source object's stored targets
+  ;;   :effect/target - Target object-id (pre-resolved by caller via
+  ;;                    stack/resolve-effect-target)
   ;;
   ;; Handles edge cases:
   ;;   - No target found: no-op (returns db unchanged)
@@ -467,15 +462,8 @@
   ;; Note: Goes to OWNER's graveyard, not controller's. This matters
   ;; for stolen permanents (Control Magic effects). The zones system
   ;; handles this correctly since zones are queried by :object/owner.
-  [db _player-id effect object-id]
-  (let [;; First check for direct target, then fall back to target-ref lookup
-        direct-target (:effect/target effect)
-        target-ref (:effect/target-ref effect)
-        target-id (or direct-target
-                      (when (and object-id target-ref)
-                        (let [source-obj (q/get-object db object-id)
-                              stored-targets (:object/targets source-obj)]
-                          (get stored-targets target-ref))))]
+  [db _player-id effect _object-id]
+  (let [target-id (:effect/target effect)]
     (if-not target-id
       db  ; No target found - no-op
       (if-let [_target-obj (q/get-object db target-id)]
@@ -559,12 +547,11 @@
   ;; Grant flashback to a target card.
   ;;
   ;; Effect keys:
-  ;;   :effect/target-ref - The target reference keyword (e.g., :graveyard-sorcery)
-  ;;                        Used to look up the target from :object/targets on the
-  ;;                        casting object.
+  ;;   :effect/target - Target object-id (pre-resolved by caller via
+  ;;                    stack/resolve-effect-target from :effect/target-ref)
   ;;
   ;; This effect:
-  ;;   1. Gets the target from :object/targets on the casting object (object-id)
+  ;;   1. Gets the target from :effect/target (pre-resolved)
   ;;   2. Gets the target card's mana cost
   ;;   3. Creates a grant with :alternate-cost type
   ;;   4. Adds the grant to the target object via grants/add-grant
@@ -572,34 +559,28 @@
   ;; The grant expires at cleanup phase of the current turn ("until end of turn").
   ;;
   ;; Handles edge cases:
-  ;;   - object-id nil: no-op (returns db unchanged)
-  ;;   - No stored targets: no-op
+  ;;   - No target: no-op (returns db unchanged)
   ;;   - Target doesn't exist: no-op
   [db _player-id effect object-id]
-  (if-not object-id
-    db  ; No source object - no-op
-    (let [source-obj (q/get-object db object-id)
-          target-ref (:effect/target-ref effect)
-          stored-targets (:object/targets source-obj)
-          target-id (get stored-targets target-ref)]
-      (if-not target-id
-        db  ; No stored target for this ref - no-op
-        (if-let [target-obj (q/get-object db target-id)]
-          (let [target-card (:object/card target-obj)
-                target-mana-cost (:card/mana-cost target-card)
-                game-state (q/get-game-state db)
-                current-turn (or (:game/turn game-state) 1)
-                grant {:grant/id (random-uuid)
-                       :grant/type :alternate-cost
-                       :grant/source object-id
-                       :grant/expires {:expires/turn current-turn
-                                       :expires/phase :cleanup}
-                       :grant/data {:alternate/id :granted-flashback
-                                    :alternate/zone :graveyard
-                                    :alternate/mana-cost target-mana-cost
-                                    :alternate/on-resolve :exile}}]
-            (grants/add-grant db target-id grant))
-          db)))))
+  (let [target-id (:effect/target effect)]
+    (if-not target-id
+      db  ; No target - no-op
+      (if-let [target-obj (q/get-object db target-id)]
+        (let [target-card (:object/card target-obj)
+              target-mana-cost (:card/mana-cost target-card)
+              game-state (q/get-game-state db)
+              current-turn (or (:game/turn game-state) 1)
+              grant {:grant/id (random-uuid)
+                     :grant/type :alternate-cost
+                     :grant/source object-id
+                     :grant/expires {:expires/turn current-turn
+                                     :expires/phase :cleanup}
+                     :grant/data {:alternate/id :granted-flashback
+                                  :alternate/zone :graveyard
+                                  :alternate/mana-cost target-mana-cost
+                                  :alternate/on-resolve :exile}}]
+          (grants/add-grant db target-id grant))
+        db))))
 
 
 (defmethod execute-effect-impl :add-restriction
@@ -607,24 +588,18 @@
   ;;
   ;; Effect keys:
   ;;   :restriction/type - Type of restriction (:cannot-cast-spells, :cannot-attack)
-  ;;   :effect/target - Target player resolution:
-  ;;       :targeted-player - Look up :player in source object's :object/targets
-  ;;       :self - Use player-id (effect controller)
-  ;;       :opponent - Use opponent of player-id
-  ;;       keyword - Direct player ID
+  ;;   :effect/target - Target player (pre-resolved by caller for :targeted-player,
+  ;;                    or symbolic: :self, :opponent, or direct player-id keyword)
   ;;
   ;; Grant expires at end of current turn (cleanup phase).
   ;;
   ;; Handles edge cases:
   ;;   - Invalid target: no-op (returns db unchanged)
-  ;;   - Missing source object: falls back to player-id as target for :targeted-player
   ;;   - Missing game turn: defaults to turn 1
   [db player-id effect source-object-id]
   (let [;; Resolve target player
         target-raw (:effect/target effect)
-        source-obj (when source-object-id (q/get-object db source-object-id))
         target-player (case target-raw
-                        :targeted-player (get-in source-obj [:object/targets :player] player-id)
                         :self player-id
                         :opponent (q/get-opponent-id db player-id)
                         ;; Default: use as-is or fall back to player-id

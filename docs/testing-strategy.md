@@ -272,7 +272,7 @@ Keep tests separate when they have meaningfully different setup, assertions, or 
   ...)
 ```
 
-See: `src/test/fizzle/cards/careful_study_test.cljs` — the rewritten version tests through `rules/cast-spell` and `resolution/resolve-spell-with-selection`.
+See: `src/test/fizzle/cards/careful_study_test.cljs` — the rewritten version tests through `rules/cast-spell` and `game/resolve-one-item`.
 
 ### 2. Copy-pasted test variants
 

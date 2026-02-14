@@ -21,7 +21,7 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
-    [fizzle.events.selection.resolution :as resolution]
+    [fizzle.events.game :as game]
     [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
 
@@ -173,12 +173,8 @@
           db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)
           _ (is (= :stack (:object/zone (q/get-object db-cast obj-id)))
                 "Precondition: Orim's Chant on stack")
-          ;; Get stack-item and resolve via selection path
-          obj-eid (d/q '[:find ?e . :in $ ?oid
-                         :where [?e :object/id ?oid]]
-                       db-cast obj-id)
-          stack-item (stack/get-stack-item-by-object-ref db-cast obj-eid)
-          result (resolution/resolve-spell-with-selection db-cast :player-1 obj-id stack-item)
+          ;; Resolve via production path (resolve-one-item)
+          result (game/resolve-one-item db-cast :player-1)
           db-resolved (:db result)]
       ;; Spell should be in graveyard after resolution
       (is (= :graveyard (:object/zone (q/get-object db-resolved obj-id)))
@@ -280,13 +276,8 @@
                      :selection/target-requirement target-req
                      :selection/selected #{:player-2}}
           db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)
-          ;; Get the stack-item for the spell
-          obj-eid (d/q '[:find ?e . :in $ ?oid
-                         :where [?e :object/id ?oid]]
-                       db-cast obj-id)
-          stack-item (stack/get-stack-item-by-object-ref db-cast obj-eid)
-          ;; Resolve via resolve-spell-with-selection (needs stack-item)
-          result (resolution/resolve-spell-with-selection db-cast :player-1 obj-id stack-item)]
+          ;; Resolve via production path
+          result (game/resolve-one-item db-cast :player-1)]
       ;; Spell should be resolved (in graveyard)
       (is (= :graveyard (:object/zone (q/get-object (:db result) obj-id)))
           "Orim's Chant should be in graveyard after resolution")

@@ -9,19 +9,19 @@
     [fizzle.engine.events :as game-events]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
+    [fizzle.engine.resolution :as engine-resolution]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
-    [fizzle.engine.triggers :as triggers]
     [fizzle.engine.turn-based :as turn-based]
     [fizzle.engine.zones :as zones]
     [fizzle.events.abilities]
     [fizzle.events.selection]
+    [fizzle.events.selection.core :as sel-core]
     [fizzle.events.selection.costs :as sel-costs]
     [fizzle.events.selection.library]
-    [fizzle.events.selection.resolution :as resolution]
     [fizzle.events.selection.storm :as sel-storm]
     [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.events.selection.zone-ops]
@@ -287,118 +287,59 @@
     (cast-spell-handler db)))
 
 
-(defn- resolve-stack-item-effects
-  "Resolve a stack-item's effects using resolve-effect-target.
-   Handles :storm-copies effect by creating N spell copies via triggers/create-spell-copy.
-   Pure function: (db, stack-item) -> db"
-  [db stack-item]
-  (let [controller (:stack-item/controller stack-item)
-        source-id (:stack-item/source stack-item)
-        effects-list (or (:stack-item/effects stack-item) [])
-        stored-targets (:stack-item/targets stack-item)]
-    (reduce (fn [d effect]
-              (if (= :storm-copies (:effect/type effect))
-                ;; Storm: create N copies of the source spell
-                (let [copy-count (:effect/count effect 0)]
-                  (if (and (pos? copy-count) (queries/get-object d source-id))
-                    (loop [d' d
-                           remaining copy-count]
-                      (if (pos? remaining)
-                        (recur (triggers/create-spell-copy d' source-id controller)
-                               (dec remaining))
-                        d'))
-                    d))
-                (let [resolved (stack/resolve-effect-target effect source-id controller stored-targets)]
-                  (effects/execute-effect d controller resolved source-id))))
-            db
-            effects-list)))
+(defn- get-source-id
+  "Get the source object-id for a stack-item (for selection building)."
+  [game-db stack-item]
+  (or (when-let [obj-ref-raw (:stack-item/object-ref stack-item)]
+        (let [obj-ref (if (map? obj-ref-raw) (:db/id obj-ref-raw) obj-ref-raw)
+              obj (d/pull game-db [:object/id] obj-ref)]
+          (:object/id obj)))
+      (:stack-item/source stack-item)))
 
 
-(defn resolve-top-of-stack
-  "Resolve the topmost stack-item in LIFO order.
-   Pure function: (db, player-id) -> db
-
-   Returns unchanged db if stack is empty."
-  [db player-id]
-  (let [top-stack-item (stack/get-top-stack-item db)]
-    (cond
-      ;; Stack-item with object-ref (spell or storm copy)
-      (and top-stack-item (:stack-item/object-ref top-stack-item))
-      (let [obj-ref-raw (:stack-item/object-ref top-stack-item)
-            obj-ref (if (map? obj-ref-raw) (:db/id obj-ref-raw) obj-ref-raw)
-            obj (d/pull db [:object/id] obj-ref)
-            object-id (:object/id obj)
-            db-resolved (rules/resolve-spell db player-id object-id)]
-        (stack/remove-stack-item db-resolved (:db/id top-stack-item)))
-
-      ;; Stack-item without object-ref (activated-ability, trigger types, storm)
-      top-stack-item
-      (let [db-resolved (resolve-stack-item-effects db top-stack-item)]
-        (stack/remove-stack-item db-resolved (:db/id top-stack-item)))
-
-      ;; Empty stack
-      :else db)))
+(defn- build-selection-from-result
+  "Build pending-selection from a multimethod result that has :needs-selection.
+   Handles stored-player for targeted abilities (Cephalid Coliseum) and
+   adjusts selection fields for abilities vs spells."
+  [game-db player-id stack-item result]
+  (let [stack-item-eid (:db/id stack-item)
+        source-id (get-source-id game-db stack-item)
+        stored-player (:stored-player result)
+        sel-effect (:needs-selection result)
+        use-stored-player (and stored-player
+                               (= :player (:effect/selection sel-effect)))
+        sel-player-id (if use-stored-player stored-player player-id)
+        sel (sel-core/build-selection-for-effect
+              (:db result) sel-player-id source-id
+              sel-effect
+              (vec (:remaining-effects result)))
+        sel (if (= :activated-ability (:stack-item/type stack-item))
+              (-> sel
+                  (dissoc :selection/spell-id)
+                  (assoc :selection/stack-item-eid stack-item-eid
+                         :selection/source-type :stack-item))
+              sel)]
+    {:db (:db result) :pending-selection sel}))
 
 
 (defn resolve-one-item
-  "Resolve the topmost stack-item with selection awareness.
-   Pure function: (game-db, player-id) -> {:db game-db'} or {:db game-db' :pending-selection data}
-
-   Handles all stack-item types:
-   - Spell/storm-copy (has :stack-item/object-ref): resolves via resolution/resolve-spell-with-selection
-   - Activated ability: resolves via resolution/resolve-stack-item-ability-with-selection
-   - Other (triggers, storm meta): resolves via resolve-stack-item-effects
-   - Empty stack: returns {:db game-db} unchanged
-
-   When pending-selection is returned, the stack-item is NOT removed
-   (it stays on the stack until the selection completes)."
+  "Resolve the topmost stack-item. Returns {:db} or {:db :pending-selection}."
   [game-db player-id]
-  (let [top-stack-item (stack/get-top-stack-item game-db)]
-    (cond
-      ;; Spell or storm copy (has object-ref)
-      (and top-stack-item (:stack-item/object-ref top-stack-item))
-      (let [obj-ref-raw (:stack-item/object-ref top-stack-item)
-            obj-ref (if (map? obj-ref-raw) (:db/id obj-ref-raw) obj-ref-raw)
-            obj (d/pull game-db [:object/id] obj-ref)
-            object-id (:object/id obj)
-            stack-item-eid (:db/id top-stack-item)
-            result (resolution/resolve-spell-with-selection game-db player-id object-id top-stack-item)]
-        (if (:pending-selection result)
-          {:db (:db result) :pending-selection (:pending-selection result)}
-          {:db (stack/remove-stack-item (:db result) stack-item-eid)}))
+  (let [top (stack/get-top-stack-item game-db)]
+    (if-not top
+      {:db game-db}
+      (let [result (engine-resolution/resolve-stack-item game-db player-id top)]
+        (cond
+          (:needs-storm-split result)
+          (if-let [sel (sel-storm/build-storm-split-selection game-db player-id top)]
+            {:db game-db :pending-selection sel}
+            {:db (stack/remove-stack-item game-db (:db/id top))})
 
-      ;; Activated ability
-      (and top-stack-item (= :activated-ability (:stack-item/type top-stack-item)))
-      (let [stack-item-eid (:db/id top-stack-item)
-            result (resolution/resolve-stack-item-ability-with-selection game-db top-stack-item)]
-        (if (:pending-selection result)
-          {:db (:db result) :pending-selection (:pending-selection result)}
-          {:db (stack/remove-stack-item (:db result) stack-item-eid)}))
+          (:needs-selection result)
+          (build-selection-from-result game-db player-id top result)
 
-      ;; Targeted storm — needs split selection
-      (and top-stack-item
-           (= :storm (:stack-item/type top-stack-item))
-           (let [source-id (:stack-item/source top-stack-item)
-                 source-obj (queries/get-object game-db source-id)]
-             (when source-obj
-               (:card/targeting (:object/card source-obj)))))
-      (let [selection (sel-storm/build-storm-split-selection
-                        game-db player-id top-stack-item)]
-        (if selection
-          {:db game-db :pending-selection selection}
-          ;; No copies (count=0) or no valid targets — resolve normally
-          (let [stack-item-eid (:db/id top-stack-item)
-                db-resolved (resolve-stack-item-effects game-db top-stack-item)]
-            {:db (stack/remove-stack-item db-resolved stack-item-eid)})))
-
-      ;; Other stack-items (triggers, non-targeted storm, etc.)
-      top-stack-item
-      (let [stack-item-eid (:db/id top-stack-item)
-            db-resolved (resolve-stack-item-effects game-db top-stack-item)]
-        {:db (stack/remove-stack-item db-resolved stack-item-eid)})
-
-      ;; Empty stack
-      :else {:db game-db})))
+          :else
+          {:db (stack/remove-stack-item (:db result) (:db/id top))})))))
 
 
 ;; === Cleanup Step (MTG Rule 514) ===

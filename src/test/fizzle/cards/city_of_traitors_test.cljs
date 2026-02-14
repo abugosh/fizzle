@@ -78,7 +78,7 @@
       (is (= 1 (count (stack/get-all-stack-items db-after-island)))
           "CoT sacrifice trigger should be on stack")
       ;; Resolve the trigger
-      (let [db-after-resolve (game/resolve-top-of-stack db-after-island :player-1)]
+      (let [db-after-resolve (:db (game/resolve-one-item db-after-island :player-1))]
         ;; Verify CoT is now in graveyard
         (is (= :graveyard (:object/zone (q/get-object db-after-resolve cot-id)))
             "City of Traitors should be in graveyard after trigger resolves")
@@ -107,7 +107,7 @@
       (is (= 1 (count (stack/get-all-stack-items db-after-cot2)))
           "CoT #1 sacrifice trigger should be on stack when CoT #2 enters")
       ;; Resolve CoT #1's trigger
-      (let [db-after-resolve1 (game/resolve-top-of-stack db-after-cot2 :player-1)]
+      (let [db-after-resolve1 (:db (game/resolve-one-item db-after-cot2 :player-1))]
         (is (= :graveyard (:object/zone (q/get-object db-after-resolve1 cot-id-1)))
             "CoT #1 should be sacrificed")
         (is (= :battlefield (:object/zone (q/get-object db-after-resolve1 cot-id-2)))
@@ -118,7 +118,7 @@
           (is (= 1 (count (stack/get-all-stack-items db-after-island)))
               "CoT #2 sacrifice trigger should be on stack when Island enters")
           ;; Resolve CoT #2's trigger
-          (let [db-final (game/resolve-top-of-stack db-after-island :player-1)]
+          (let [db-final (:db (game/resolve-one-item db-after-island :player-1))]
             (is (= :graveyard (:object/zone (q/get-object db-final cot-id-2)))
                 "CoT #2 should be sacrificed")))))))
 
@@ -165,7 +165,7 @@
           _ (is (= :graveyard (:object/zone (q/get-object db-after-sacrifice cot-id)))
                 "Precondition: CoT in graveyard before trigger resolves")
           ;; Resolve the trigger - should handle gracefully
-          db-after-resolve (game/resolve-top-of-stack db-after-sacrifice :player-1)
+          db-after-resolve (:db (game/resolve-one-item db-after-sacrifice :player-1))
           obj-after (q/get-object db-after-resolve cot-id)]
       ;; CoT still in graveyard (can't sacrifice again)
       (is (= :graveyard (:object/zone obj-after))

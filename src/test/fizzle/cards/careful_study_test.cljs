@@ -19,8 +19,8 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.rules :as rules]
+    [fizzle.events.game :as game]
     [fizzle.events.selection.core :as core]
-    [fizzle.events.selection.resolution :as resolution]
     [fizzle.events.selection.zone-ops]
     [fizzle.test-helpers :as th]))
 
@@ -120,7 +120,7 @@
           _ (is (= :stack (th/get-object-zone db-after-cast cs-id))
                 "Precondition: Careful Study on stack")
           ;; Resolve with selection system
-          result (resolution/resolve-spell-with-selection db-after-cast :player-1 cs-id)]
+          result (game/resolve-one-item db-after-cast :player-1)]
       ;; Selection state should require 2 cards
       (is (= 2 (get-in result [:pending-selection :selection/select-count]))
           "Selection should require exactly 2 cards")
@@ -149,7 +149,7 @@
           ;; Cast Dark Ritual
           db-after-cast (rules/cast-spell db'' :player-1 dr-id)
           ;; Resolve with selection system
-          result (resolution/resolve-spell-with-selection db-after-cast :player-1 dr-id)]
+          result (game/resolve-one-item db-after-cast :player-1)]
       ;; Should NOT have pending selection
       (is (nil? (:pending-selection result))
           "Should NOT return pending selection for spells without selection effects")
@@ -182,7 +182,7 @@
           _ (is (= :stack (th/get-object-zone db-after-cast cs-id))
                 "Careful Study should be on stack")
           ;; Resolve - draw 0 (empty library), then discard 2 from hand
-          result (resolution/resolve-spell-with-selection db-after-cast :player-1 cs-id)]
+          result (game/resolve-one-item db-after-cast :player-1)]
       ;; Draw from empty library draws nothing - hand should have 2 cards
       ;; (started with 3, CS moved to stack, draw 0 from empty library)
       (is (= 2 (th/get-hand-count (:db result) :player-1))
@@ -212,7 +212,7 @@
           _ (is (= :stack (th/get-object-zone db-after-cast cs-id))
                 "Careful Study should be on stack")
           ;; Resolve - draw 1 (only card in library), then discard 2
-          result (resolution/resolve-spell-with-selection db-after-cast :player-1 cs-id)]
+          result (game/resolve-one-item db-after-cast :player-1)]
       ;; After draw, hand should have 2 cards (1 original + 1 drawn)
       ;; (started with 2, CS moved to stack, drew 1)
       (is (= 2 (th/get-hand-count (:db result) :player-1))
@@ -241,7 +241,7 @@
           _ (is (= :stack (th/get-object-zone db-cast cs-id))
                 "Precondition: CS on stack")
           ;; Resolve - draws 2, pauses for discard selection
-          result (resolution/resolve-spell-with-selection db-cast :player-1 cs-id)
+          result (game/resolve-one-item db-cast :player-1)
           sel (:pending-selection result)
           db-after-draw (:db result)]
       ;; Should have 2 cards in hand (drew 2, CS was cast from hand)

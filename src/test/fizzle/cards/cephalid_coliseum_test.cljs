@@ -23,7 +23,7 @@
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.abilities :as ability-events]
-    [fizzle.events.selection.resolution :as resolution]
+    [fizzle.events.game :as game]
     [fizzle.test-helpers :as th]))
 
 
@@ -421,8 +421,7 @@
           top-item (stack/get-top-stack-item db-after-confirm)
           _ (is (some? top-item) "Should have stack-item on stack")
           ;; Resolve the stack item ability (pass full entity, not eid)
-          resolve-result (resolution/resolve-stack-item-ability-with-selection
-                           db-after-confirm top-item)]
+          resolve-result (game/resolve-one-item db-after-confirm :player-1)]
       ;; After resolution, player should have drawn 3 cards
       (is (= 3 (th/get-hand-count (:db resolve-result) :player-1))
           "Player should have drawn 3 cards from threshold ability")

@@ -145,7 +145,7 @@
           ;; Cast storm spell (storm count becomes 3)
           db'' (rules/cast-spell db' :player-1 :storm-obj-1)
           ;; Resolve the storm trigger (top of stack)
-          db''' (game/resolve-top-of-stack db'' :player-1)
+          db''' (:db (game/resolve-one-item db'' :player-1))
           ;; Should have 2 copies on stack (spells cast before storm spell)
           stack-after (q/get-objects-in-zone db''' :player-1 :stack)]
       ;; 2 non-storm spells + original storm spell + 2 storm copies = 5 objects on stack
@@ -161,7 +161,7 @@
           ;; Cast storm spell
           db'' (rules/cast-spell db' :player-1 :storm-obj-1)
           ;; Resolve the storm trigger (top of stack)
-          db''' (game/resolve-top-of-stack db'' :player-1)
+          db''' (:db (game/resolve-one-item db'' :player-1))
           ;; Find copies (objects with :object/is-copy true)
           stack-objects (q/get-objects-in-zone db''' :player-1 :stack)
           copies (filter :object/is-copy stack-objects)]
@@ -179,7 +179,7 @@
           db'' (rules/cast-spell db' :player-1 :storm-obj-1)
           _ (is (= 2 (q/get-storm-count db'' :player-1)))
           ;; Resolve storm trigger (creates 1 copy)
-          db''' (game/resolve-top-of-stack db'' :player-1)]
+          db''' (:db (game/resolve-one-item db'' :player-1))]
       ;; Storm count should STILL be 2 (copies don't increment)
       (is (= 2 (q/get-storm-count db''' :player-1))
           "Storm count should not increase when copies created"))))
@@ -195,7 +195,7 @@
           db' (rules/cast-spell db :player-1 :storm-obj-1)
           _ (is (= 1 (q/get-storm-count db' :player-1)))
           ;; Resolve storm trigger (top of stack)
-          db'' (game/resolve-top-of-stack db' :player-1)
+          db'' (:db (game/resolve-one-item db' :player-1))
           ;; Count copies
           stack-objects (q/get-objects-in-zone db'' :player-1 :stack)
           copies (filter :object/is-copy stack-objects)]
@@ -209,7 +209,7 @@
           _ (is (= 1 (q/get-storm-count db' :player-1)))
           db'' (rules/cast-spell db' :player-1 :storm-obj-1)
           _ (is (= 2 (q/get-storm-count db'' :player-1)))
-          db''' (game/resolve-top-of-stack db'' :player-1)
+          db''' (:db (game/resolve-one-item db'' :player-1))
           stack-objects (q/get-objects-in-zone db''' :player-1 :stack)
           copies (filter :object/is-copy stack-objects)]
       (is (= 1 (count copies)) "Should have 1 copy after 1 prior spell"))))
@@ -224,7 +224,7 @@
           _ (is (= 2 (q/get-storm-count db' :player-1)))
           db'' (rules/cast-spell db' :player-1 :storm-obj-1)
           _ (is (= 3 (q/get-storm-count db'' :player-1)))
-          db''' (game/resolve-top-of-stack db'' :player-1)
+          db''' (:db (game/resolve-one-item db'' :player-1))
           stack-objects (q/get-objects-in-zone db''' :player-1 :stack)
           copies (filter :object/is-copy stack-objects)]
       (is (= 2 (count copies)) "Should have 2 copies after 2 prior spells"))))
@@ -242,7 +242,7 @@
                                                               :effect/count 3}]
                                         :stack-item/description "Storm - create 3 copies"})
           ;; Resolve should not crash, just return db with stack-item removed
-          db'' (game/resolve-top-of-stack db' :player-1)
+          db'' (:db (game/resolve-one-item db' :player-1))
           ;; Should have no copies created (source doesn't exist)
           stack-objects (q/get-objects-in-zone db'' :player-1 :stack)
           copies (filter :object/is-copy stack-objects)]
@@ -410,7 +410,7 @@
           _ (is (some? storm-trigger) "Storm trigger exists on stack")
 
           ;; Resolve storm trigger (creates 2 copies - spells before = 2)
-          db (game/resolve-top-of-stack db :player-1)
+          db (:db (game/resolve-one-item db :player-1))
 
           ;; Verify copies created
           stack-objects (q/get-objects-in-zone db :player-1 :stack)
@@ -440,7 +440,7 @@
           ;; Cast storm spell (creates trigger)
           db (rules/cast-spell db :player-1 :storm-obj-1)
           ;; Resolve storm trigger (creates 1 copy)
-          db (game/resolve-top-of-stack db :player-1)
+          db (:db (game/resolve-one-item db :player-1))
           ;; Find copy
           stack-objects (q/get-objects-in-zone db :player-1 :stack)
           copy (first (filter :object/is-copy stack-objects))]
@@ -459,7 +459,7 @@
           original (q/get-object db :storm-obj-1)
           original-pos (:object/position original)
           ;; Resolve storm trigger
-          db (game/resolve-top-of-stack db :player-1)
+          db (:db (game/resolve-one-item db :player-1))
           ;; Find copy
           stack-objects (q/get-objects-in-zone db :player-1 :stack)
           copy (first (filter :object/is-copy stack-objects))]
@@ -496,7 +496,7 @@
                  (rules/cast-spell :player-1 :ritual-1)
                  (rules/cast-spell :player-1 :brain-freeze-1))
           ;; Resolve storm trigger (creates 1 copy)
-          db (game/resolve-top-of-stack db :player-1)
+          db (:db (game/resolve-one-item db :player-1))
           ;; Find the copy on the stack
           stack-objects (q/get-objects-in-zone db :player-1 :stack)
           copy (first (filter :object/is-copy stack-objects))
@@ -522,7 +522,7 @@
           ;; Cast Brain Freeze (no storm copies, storm count = 0)
           db (rules/cast-spell db :player-1 :brain-freeze-1)
           ;; Resolve storm trigger (0 copies created)
-          db (game/resolve-top-of-stack db :player-1)
+          db (:db (game/resolve-one-item db :player-1))
           ;; Resolve original Brain Freeze
           db (rules/resolve-spell db :player-1 :brain-freeze-1)]
       ;; Original spell should be in graveyard
@@ -622,7 +622,7 @@
           _ (is (some? storm-trigger) "Storm trigger should exist")
 
           ;; Resolve storm trigger - this is the performance-critical part
-          db (game/resolve-top-of-stack db :player-1)
+          db (:db (game/resolve-one-item db :player-1))
 
           ;; Count copies created
           stack-objects (q/get-objects-in-zone db :player-1 :stack)

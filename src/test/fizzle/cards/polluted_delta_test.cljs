@@ -18,8 +18,8 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.stack :as stack]
     [fizzle.events.abilities :as ability-events]
+    [fizzle.events.game :as game]
     [fizzle.events.selection.library :as library]
-    [fizzle.events.selection.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -387,8 +387,7 @@
           top-item (stack/get-top-stack-item db-after-activate)
           _ (is (some? top-item) "Should have stack-item")
           ;; Resolve the stack item (pass full entity, not eid)
-          resolve-result (resolution/resolve-stack-item-ability-with-selection
-                           db-after-activate top-item)]
+          resolve-result (game/resolve-one-item db-after-activate :player-1)]
       ;; Should create tutor selection for library search
       (is (= :tutor (get-in resolve-result [:pending-selection :selection/type]))
           "Selection should be tutor type")

@@ -276,7 +276,7 @@
           (is (= :activated-ability (:stack-item/type top-item))
               "Stack item should be activated ability type")
           ;; Resolve the ability from the stack
-          (let [db-resolved (game/resolve-top-of-stack db-after-confirm :player-1)]
+          (let [db-resolved (:db (game/resolve-one-item db-after-confirm :player-1))]
             ;; Target enchantment should be destroyed (moved to graveyard)
             (is (= :graveyard (:object/zone (q/get-object db-resolved target-id)))
                 "Target enchantment should be in graveyard after ability resolves")

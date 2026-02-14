@@ -17,8 +17,8 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.zones :as zones]
+    [fizzle.events.game :as game]
     [fizzle.events.selection.library :as library]
-    [fizzle.events.selection.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -156,7 +156,7 @@
           _ (is (= :stack (th/get-object-zone db-after-cast ms-id))
                 "Merchant Scroll should be on stack")
           ;; Resolve with selection system
-          result (resolution/resolve-spell-with-selection db-after-cast :player-1 ms-id)]
+          result (game/resolve-one-item db-after-cast :player-1)]
       (is (= :tutor (get-in result [:pending-selection :selection/type]))
           "Selection effect type should be :tutor")
       (is (= :library (get-in result [:pending-selection :selection/zone]))
@@ -292,7 +292,7 @@
           ;; Cast
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
           ;; Resolve (triggers selection)
-          result (resolution/resolve-spell-with-selection db-after-cast :player-1 ms-id)
+          result (game/resolve-one-item db-after-cast :player-1)
           candidates (get-in result [:pending-selection :selection/candidates])]
       ;; Only Brain Freeze should be a candidate (blue instant)
       ;; Dark Ritual is black instant, Careful Study is blue sorcery
@@ -309,7 +309,7 @@
           [db' [_dr-id]] (th/add-cards-to-library db [:dark-ritual] :player-1)
           [db'' ms-id] (th/add-card-to-zone db' :merchant-scroll :hand :player-1)
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
-          result (resolution/resolve-spell-with-selection db-after-cast :player-1 ms-id)
+          result (game/resolve-one-item db-after-cast :player-1)
           candidates (get-in result [:pending-selection :selection/candidates])]
       (is (empty? candidates)
           "Dark Ritual (black instant) should not be a candidate"))))
@@ -322,7 +322,7 @@
           [db' [_cs-id]] (th/add-cards-to-library db [:careful-study] :player-1)
           [db'' ms-id] (th/add-card-to-zone db' :merchant-scroll :hand :player-1)
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
-          result (resolution/resolve-spell-with-selection db-after-cast :player-1 ms-id)
+          result (game/resolve-one-item db-after-cast :player-1)
           candidates (get-in result [:pending-selection :selection/candidates])]
       (is (empty? candidates)
           "Careful Study (blue sorcery) should not be a candidate"))))
@@ -335,7 +335,7 @@
           [db' [_bf-id]] (th/add-cards-to-library db [:brain-freeze] :player-1)
           [db'' ms-id] (th/add-card-to-zone db' :merchant-scroll :hand :player-1)
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
-          result (resolution/resolve-spell-with-selection db-after-cast :player-1 ms-id)]
+          result (game/resolve-one-item db-after-cast :player-1)]
       ;; Must have fail-to-find option (anti-pattern: NO auto-select)
       (is (true? (get-in result [:pending-selection :selection/allow-fail-to-find?]))
           "Must always allow fail-to-find")
@@ -353,7 +353,7 @@
           ;; No cards in library
           [db' ms-id] (th/add-card-to-zone db :merchant-scroll :hand :player-1)
           db-after-cast (rules/cast-spell db' :player-1 ms-id)
-          result (resolution/resolve-spell-with-selection db-after-cast :player-1 ms-id)]
+          result (game/resolve-one-item db-after-cast :player-1)]
       ;; No candidates
       (is (empty? (get-in result [:pending-selection :selection/candidates]))
           "Should have no candidates in empty library")
@@ -369,7 +369,7 @@
           [db' _] (th/add-cards-to-library db [:dark-ritual :careful-study :island] :player-1)
           [db'' ms-id] (th/add-card-to-zone db' :merchant-scroll :hand :player-1)
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
-          result (resolution/resolve-spell-with-selection db-after-cast :player-1 ms-id)]
+          result (game/resolve-one-item db-after-cast :player-1)]
       (is (empty? (get-in result [:pending-selection :selection/candidates]))
           "Should have no candidates (no blue instants)")
       (is (true? (get-in result [:pending-selection :selection/allow-fail-to-find?]))

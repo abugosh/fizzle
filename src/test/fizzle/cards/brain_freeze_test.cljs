@@ -11,11 +11,12 @@
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
+    [fizzle.engine.resolution :as engine-resolution]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.triggers :as triggers]
     [fizzle.events.game :as game]
-    [fizzle.events.selection.resolution :as resolution]
+    [fizzle.events.selection.core :as sel-core]
     [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
 
@@ -41,16 +42,16 @@
 
 
 (defn resolve-brain-freeze
-  "Resolve Brain Freeze through the selection resolution path.
-   Reads stored targets from stack-item and pre-resolves :any-player.
-   Returns updated db."
+  "Resolve Brain Freeze through the engine resolution multimethod.
+   Returns updated db with spell moved to graveyard/removed."
   [db player-id object-id]
   (let [obj-eid (d/q '[:find ?e . :in $ ?oid
                        :where [?e :object/id ?oid]]
                      db object-id)
         stack-item (stack/get-stack-item-by-object-ref db obj-eid)
-        result (resolution/resolve-spell-with-selection db player-id object-id stack-item)]
-    (:db result)))
+        result (engine-resolution/resolve-stack-item db player-id stack-item)
+        stack-item-eid (:db/id stack-item)]
+    (stack/remove-stack-item (:db result) stack-item-eid)))
 
 
 ;; === Card definition test ===
@@ -208,8 +209,12 @@
           [db3 bf-id] (th/add-card-to-zone db2r :brain-freeze :hand :player-1)
           db3m (mana/add-mana db3 :player-1 {:blue 1 :colorless 1})
           db3c (cast-brain-freeze-with-target db3m :player-1 bf-id :player-2)
-          ;; Resolve storm stack-item - creates 2 copies on stack
-          db4 (game/resolve-top-of-stack db3c :player-1)
+          ;; Resolve storm stack-item via storm-split selection
+          storm-result (game/resolve-one-item db3c :player-1)
+          storm-sel (:pending-selection storm-result)
+          ;; Confirm storm-split (all copies to opponent)
+          confirm-result (sel-core/execute-confirmed-selection (:db storm-result) storm-sel)
+          db4 (:db confirm-result)
           ;; Find the copies on the stack (is-copy = true)
           stack-objects (q/get-objects-in-zone db4 :player-1 :stack)
           copies (filter :object/is-copy stack-objects)
@@ -250,8 +255,14 @@
           [db2 bf-id] (th/add-card-to-zone db1r :brain-freeze :hand :player-1)
           db2m (mana/add-mana db2 :player-1 {:blue 1 :colorless 1})
           db2c (cast-brain-freeze-with-target db2m :player-1 bf-id :player-1)
-          ;; Resolve storm stack-item - creates 1 copy
-          db3 (game/resolve-top-of-stack db2c :player-1)
+          ;; Resolve storm stack-item via storm-split selection
+          storm-result (game/resolve-one-item db2c :player-1)
+          storm-sel (:pending-selection storm-result)
+          ;; Confirm storm-split (all copies to self)
+          storm-sel (assoc storm-sel :selection/allocation
+                           {:player-1 1 :player-2 0})
+          confirm-result (sel-core/execute-confirmed-selection (:db storm-result) storm-sel)
+          db3 (:db confirm-result)
           stack-objects (q/get-objects-in-zone db3 :player-1 :stack)
           copies (filter :object/is-copy stack-objects)
           copy-ids (mapv :object/id copies)]
@@ -287,7 +298,7 @@
       (is (= 0 (get-in storm-trigger [:stack-item/effects 0 :effect/count]))
           "Storm trigger count should be 0 (no previous spells)")
       ;; Resolve storm stack-item (creates 0 copies) then resolve original
-      (let [db-after-trigger (game/resolve-top-of-stack db-cast :player-1)
+      (let [db-after-trigger (:db (game/resolve-one-item db-cast :player-1))
             stack-objects (q/get-objects-in-zone db-after-trigger :player-1 :stack)
             copies (filter :object/is-copy stack-objects)]
         (is (= 0 (count copies))
