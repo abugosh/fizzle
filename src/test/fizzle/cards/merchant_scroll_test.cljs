@@ -83,7 +83,7 @@
 
 
 (deftest test-query-library-type-and-color
-  (testing "query-library-by-criteria requires ALL types (AND) and ANY color (OR)"
+  (testing "query-library-by-criteria matches ANY type (OR) and ANY color (OR)"
     (let [db (th/create-test-db {:mana {:blue 2}})
           ;; Add: Dark Ritual (black instant), Brain Freeze (blue instant), Careful Study (blue sorcery)
           [db' _] (th/add-cards-to-library db

@@ -148,6 +148,28 @@
    :card/effects []})
 
 
+(def test-artifact
+  {:card/id :test-artifact
+   :card/name "Test Artifact"
+   :card/cmc 1
+   :card/mana-cost {:colorless 1}
+   :card/colors #{}
+   :card/types #{:artifact}
+   :card/text "Test artifact."
+   :card/effects []})
+
+
+(def test-enchantment
+  {:card/id :test-enchantment
+   :card/name "Test Enchantment"
+   :card/cmc 2
+   :card/mana-cost {:white 2}
+   :card/colors #{:white}
+   :card/types #{:enchantment}
+   :card/text "Test enchantment."
+   :card/effects []})
+
+
 ;; === get-targeting-requirements Tests ===
 
 (deftest test_get_targeting_requirements_from_card
@@ -428,3 +450,31 @@
       ;; find-valid-targets returns [nil] since the option matches
       (is (= [nil] targets)
           "Should return [nil] when no opponent exists"))))
+
+
+;; =====================================================
+;; Multi-type targeting: unified criteria matching
+;; =====================================================
+
+(deftest test-find-valid-targets-multi-type-or
+  (testing "find-valid-targets with multi-type criteria uses OR (artifact OR enchantment)"
+    (let [db (init-game-state)
+          ;; Add artifact and enchantment to battlefield
+          [artifact-id db] (add-card-to-zone db :player-1 test-artifact :battlefield)
+          [enchantment-id db] (add-card-to-zone db :player-1 test-enchantment :battlefield)
+          ;; Also add a creature that should NOT match
+          [_creature-id db] (add-card-to-zone db :player-1 test-creature :battlefield)
+          ;; Seal of Cleansing-style: target artifact or enchantment
+          target-req {:target/id :target
+                      :target/type :object
+                      :target/zone :battlefield
+                      :target/controller :self
+                      :target/criteria {:card/types #{:artifact :enchantment}}
+                      :target/required true}
+          targets (targeting/find-valid-targets db :player-1 target-req)]
+      (is (= 2 (count targets))
+          "Should find both artifact AND enchantment (OR within types)")
+      (is (contains? (set targets) artifact-id)
+          "Should include the artifact")
+      (is (contains? (set targets) enchantment-id)
+          "Should include the enchantment"))))

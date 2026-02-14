@@ -168,20 +168,22 @@
        db player-id))
 
 
-(defn- matches-criteria?
+(defn matches-criteria?
   "Check if an object's card matches the given criteria.
+   All fields use OR logic within their category, AND logic between categories.
    Criteria map supports:
-     :card/types    - Set of types, object must have ALL (AND)
+     :card/types    - Set of types, object must have ANY (OR - artifact OR enchantment)
      :card/colors   - Set of colors, object must have ANY (OR - blue OR white)
-     :card/subtypes - Set of subtypes, object must have ANY (OR)"
+     :card/subtypes - Set of subtypes, object must have ANY (OR - island OR swamp)"
   [obj criteria]
   (let [card (:object/card obj)
         card-types (set (or (:card/types card) #{}))
         card-colors (set (or (:card/colors card) #{}))
         card-subtypes (set (or (:card/subtypes card) #{}))]
     (and
-      ;; All required types must be present (AND logic)
-      (every? card-types (get criteria :card/types #{}))
+      ;; At least one required type (OR logic) - empty criteria = matches all
+      (or (empty? (get criteria :card/types #{}))
+          (some card-types (get criteria :card/types #{})))
       ;; At least one required color (OR logic) - empty criteria = matches all
       (or (empty? (get criteria :card/colors #{}))
           (some card-colors (get criteria :card/colors #{})))
@@ -195,7 +197,7 @@
    Pure function: (db, player-id, zone, criteria) -> vector
 
    Criteria map supports:
-     :card/types    - Set of types, object must have ALL (AND)
+     :card/types    - Set of types, object must have ANY (OR - artifact OR enchantment)
      :card/colors   - Set of colors, object must have ANY (OR - blue OR white)
      :card/subtypes - Set of subtypes, object must have ANY (OR)
 
@@ -213,7 +215,7 @@
    Pure function: (db, player-id, criteria) -> vector
 
    Criteria map supports:
-     :card/types    - Set of types, object must have ALL (AND)
+     :card/types    - Set of types, object must have ANY (OR - artifact OR enchantment)
      :card/colors   - Set of colors, object must have ANY (OR - blue OR white)
      :card/subtypes - Set of subtypes, object must have ANY (OR)
 

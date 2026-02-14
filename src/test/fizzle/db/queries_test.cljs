@@ -316,8 +316,8 @@
 
 ;; === Criteria queries ===
 
-(deftest query-zone-by-criteria-type-and-logic-test
-  (testing "types use AND logic - must have ALL specified types"
+(deftest query-zone-by-criteria-type-filter-test
+  (testing "types filter objects - single type matches only that type"
     (let [db (th/create-test-db)
           ;; Add an instant (Dark Ritual) and a land (Island) to hand
           [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
@@ -397,6 +397,18 @@
   (testing "returns nil for nonexistent player"
     (let [db (th/create-test-db)]
       (is (nil? (q/query-library-by-criteria db :nonexistent {}))))))
+
+
+(deftest query-zone-by-criteria-multi-type-or-test
+  (testing "multiple types use OR logic - matches objects with ANY specified type"
+    (let [db (th/create-test-db)
+          ;; Add an instant (Dark Ritual) and a land (Island) to hand
+          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          [db'' _] (th/add-card-to-zone db' :island :hand :player-1)
+          ;; Query for instants OR lands - should get both
+          result (q/query-zone-by-criteria db'' :player-1 :hand {:card/types #{:instant :land}})]
+      (is (= 2 (count result))
+          "Both instant and land should match when querying for either type"))))
 
 
 ;; === Corner case tests ===

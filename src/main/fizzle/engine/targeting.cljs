@@ -22,21 +22,6 @@
       []))
 
 
-(defn- matches-criteria?
-  "Check if an object's card matches the targeting criteria.
-   For :card/types, uses OR logic: object matches if it has ANY of the specified types.
-   E.g., {:card/types #{:artifact :enchantment}} matches artifacts OR enchantments."
-  [obj criteria]
-  (let [card (:object/card obj)
-        card-types (set (or (:card/types card) #{}))
-        required-types (get criteria :card/types #{})]
-    ;; OR logic: object matches if any required type is in card's types
-    ;; This matches MTG: 'target artifact or enchantment' means either type
-    (if (empty? required-types)
-      true  ; No type restriction
-      (some card-types required-types))))
-
-
 (defn find-valid-targets
   "Find all objects/players that are valid targets for a requirement.
    Returns vector of valid target IDs (object UUIDs or player keywords)."
@@ -77,7 +62,7 @@
                                            (q/get-objects-in-zone db (q/get-opponent-id db player-id) zone))
                               (q/get-objects-in-zone db player-id zone))]
         (->> objects-in-zone
-             (filter #(matches-criteria? % criteria))
+             (filter #(q/matches-criteria? % criteria))
              (mapv :object/id)))
 
       :else [])))
@@ -118,7 +103,7 @@
               current-zone (:object/zone obj)
               criteria (:target/criteria target-requirement)]
           (and (= current-zone required-zone)
-               (matches-criteria? obj criteria)))
+               (q/matches-criteria? obj criteria)))
         ;; Object not found - target is illegal
         false)
 
