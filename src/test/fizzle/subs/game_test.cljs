@@ -360,3 +360,120 @@
                              :game/pending-selection selection}
                             [::subs/storm-split-source-name])]
       (is (nil? result)))))
+
+
+(defn- add-battlefield-permanent
+  "Add a permanent to a player's battlefield. Returns new game-db."
+  [game-db player-id card-name cmc types]
+  (let [conn (d/conn-from-db game-db)
+        player-eid (q/get-player-eid game-db player-id)
+        card-id (keyword (str "card-" (random-uuid)))
+        _ (d/transact! conn [{:card/id card-id
+                              :card/name card-name
+                              :card/cmc cmc
+                              :card/types types}])
+        card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] @conn card-id)]
+    (d/transact! conn [{:object/id (random-uuid)
+                        :object/card card-eid
+                        :object/zone :battlefield
+                        :object/owner player-eid
+                        :object/controller player-eid
+                        :object/tapped false}])
+    @conn))
+
+
+;; === ::battlefield subscription tests ===
+
+(deftest test-battlefield-empty-returns-empty-groups
+  (testing "battlefield returns empty groups when no permanents"
+    (let [game-db (make-game-db)
+          result (sub-value {:game/db game-db} [::subs/battlefield])]
+      (is (= [] (:creatures result)))
+      (is (= [] (:other result)))
+      (is (= [] (:lands result))))))
+
+
+(deftest test-battlefield-three-tier-grouping
+  (testing "battlefield separates creatures, other, and lands"
+    (let [game-db (-> (make-game-db)
+                      (add-battlefield-permanent :player-1 "Llanowar Elves" 1 #{:creature})
+                      (add-battlefield-permanent :player-1 "Chrome Mox" 0 #{:artifact})
+                      (add-battlefield-permanent :player-1 "Swamp" 0 #{:land}))
+          result (sub-value {:game/db game-db} [::subs/battlefield])]
+      (is (= 1 (count (:creatures result))))
+      (is (= 1 (count (:other result))))
+      (is (= 1 (count (:lands result))))
+      (is (= "Llanowar Elves" (get-in (first (:creatures result)) [:object/card :card/name])))
+      (is (= "Chrome Mox" (get-in (first (:other result)) [:object/card :card/name])))
+      (is (= "Swamp" (get-in (first (:lands result)) [:object/card :card/name]))))))
+
+
+(deftest test-battlefield-artifact-creature
+  (testing "battlefield puts artifact-creature in :creatures group"
+    (let [game-db (add-battlefield-permanent (make-game-db) :player-1 "Steel Golem" 3 #{:artifact :creature})
+          result (sub-value {:game/db game-db} [::subs/battlefield])]
+      (is (= 1 (count (:creatures result))))
+      (is (= [] (:other result)))
+      (is (= [] (:lands result))))))
+
+
+(deftest test-battlefield-sorted-by-cmc
+  (testing "battlefield groups are sorted by CMC then name"
+    (let [game-db (-> (make-game-db)
+                      (add-battlefield-permanent :player-1 "Tarmogoyf" 2 #{:creature})
+                      (add-battlefield-permanent :player-1 "Birds of Paradise" 1 #{:creature})
+                      (add-battlefield-permanent :player-1 "Dark Confidant" 2 #{:creature}))
+          result (sub-value {:game/db game-db} [::subs/battlefield])
+          names (mapv #(get-in % [:object/card :card/name]) (:creatures result))]
+      (is (= ["Birds of Paradise" "Dark Confidant" "Tarmogoyf"] names)))))
+
+
+(deftest test-battlefield-nil-when-no-game-db
+  (testing "battlefield returns nil when game-db is nil"
+    (let [result (sub-value {} [::subs/battlefield])]
+      (is (nil? result)))))
+
+
+;; === ::opponent-battlefield subscription tests ===
+
+(deftest test-opponent-battlefield-empty-returns-empty-groups
+  (testing "opponent-battlefield returns empty groups when no permanents"
+    (let [game-db (make-game-db)
+          result (sub-value {:game/db game-db} [::subs/opponent-battlefield])]
+      (is (= [] (:creatures result)))
+      (is (= [] (:other result)))
+      (is (= [] (:lands result))))))
+
+
+(deftest test-opponent-battlefield-three-tier-grouping
+  (testing "opponent-battlefield separates creatures, other, and lands for opponent"
+    (let [game-db (-> (make-game-db)
+                      (add-battlefield-permanent :opponent "Tarmogoyf" 2 #{:creature})
+                      (add-battlefield-permanent :opponent "Chalice of the Void" 0 #{:artifact})
+                      (add-battlefield-permanent :opponent "Island" 0 #{:land}))
+          result (sub-value {:game/db game-db} [::subs/opponent-battlefield])]
+      (is (= 1 (count (:creatures result))))
+      (is (= 1 (count (:other result))))
+      (is (= 1 (count (:lands result))))
+      (is (= "Tarmogoyf" (get-in (first (:creatures result)) [:object/card :card/name])))
+      (is (= "Chalice of the Void" (get-in (first (:other result)) [:object/card :card/name])))
+      (is (= "Island" (get-in (first (:lands result)) [:object/card :card/name]))))))
+
+
+(deftest test-battlefield-isolation
+  (testing "player and opponent battlefields don't cross-contaminate"
+    (let [game-db (-> (make-game-db)
+                      (add-battlefield-permanent :player-1 "Swamp" 0 #{:land})
+                      (add-battlefield-permanent :opponent "Island" 0 #{:land}))
+          player (sub-value {:game/db game-db} [::subs/battlefield])
+          opp (sub-value {:game/db game-db} [::subs/opponent-battlefield])]
+      (is (= 1 (count (:lands player))))
+      (is (= 1 (count (:lands opp))))
+      (is (= "Swamp" (get-in (first (:lands player)) [:object/card :card/name])))
+      (is (= "Island" (get-in (first (:lands opp)) [:object/card :card/name]))))))
+
+
+(deftest test-opponent-battlefield-nil-when-no-game-db
+  (testing "opponent-battlefield returns nil when game-db is nil"
+    (let [result (sub-value {} [::subs/opponent-battlefield])]
+      (is (nil? result)))))

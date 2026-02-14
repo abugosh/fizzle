@@ -18,3 +18,28 @@
         (group-by #(contains? (get-in % [:object/card :card/types]) :land) objects)]
     {:lands (vec (or lands []))
      :non-lands (vec (or non-lands []))}))
+
+
+(defn- classify-permanent-type
+  "Classify a permanent into :creatures, :lands, or :other.
+   Priority: creature > land > other.
+   Handles both sets and vectors from Datascript."
+  [obj]
+  (let [types (set (or (get-in obj [:object/card :card/types]) []))]
+    (cond
+      (contains? types :creature) :creatures
+      (contains? types :land) :lands
+      :else :other)))
+
+
+(defn group-by-type
+  "Split game objects into {:creatures [...] :other [...] :lands [...]}.
+   Classification priority: creature > land > other.
+   - Objects with :creature in :card/types → :creatures
+   - Objects with :land in :card/types (but not :creature) → :lands
+   - All others (including nil types) → :other"
+  [objects]
+  (let [grouped (group-by classify-permanent-type objects)]
+    {:creatures (vec (or (get grouped :creatures) []))
+     :other (vec (or (get grouped :other) []))
+     :lands (vec (or (get grouped :lands) []))}))

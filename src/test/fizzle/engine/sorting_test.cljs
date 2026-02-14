@@ -141,3 +141,98 @@
           result (sorting/group-by-land [no-types swamp])]
       (is (= 1 (count (:lands result))))
       (is (= 1 (count (:non-lands result)))))))
+
+
+;; === Three-tier grouping tests ===
+
+(deftest test-group-by-type-mixed-permanents
+  (testing "mixed battlefield separates creatures, other, and lands"
+    (let [swamp (make-obj "Swamp" 0 #{:land})
+          island (make-obj "Island" 0 #{:land})
+          elf (make-obj "Llanowar Elves" 1 #{:creature})
+          mox (make-obj "Chrome Mox" 0 #{:artifact})
+          enchant (make-obj "Necromancy" 3 #{:enchantment})
+          result (sorting/group-by-type [swamp island elf mox enchant])]
+      (is (= 1 (count (:creatures result))))
+      (is (= 2 (count (:other result))))
+      (is (= 2 (count (:lands result))))
+      (is (= #{"Llanowar Elves"}
+             (set (map #(get-in % [:object/card :card/name]) (:creatures result)))))
+      (is (= #{"Chrome Mox" "Necromancy"}
+             (set (map #(get-in % [:object/card :card/name]) (:other result)))))
+      (is (= #{"Swamp" "Island"}
+             (set (map #(get-in % [:object/card :card/name]) (:lands result))))))))
+
+
+(deftest test-group-by-type-empty-returns-empty-groups
+  (testing "empty input returns empty creatures, other, and lands"
+    (let [result (sorting/group-by-type [])]
+      (is (= [] (:creatures result)))
+      (is (= [] (:other result)))
+      (is (= [] (:lands result))))))
+
+
+(deftest test-group-by-type-all-lands
+  (testing "all lands go into :lands, other groups empty"
+    (let [swamp (make-obj "Swamp" 0 #{:land})
+          island (make-obj "Island" 0 #{:land})
+          result (sorting/group-by-type [swamp island])]
+      (is (= [] (:creatures result)))
+      (is (= [] (:other result)))
+      (is (= 2 (count (:lands result)))))))
+
+
+(deftest test-group-by-type-all-creatures
+  (testing "all creatures go into :creatures, other groups empty"
+    (let [elf (make-obj "Llanowar Elves" 1 #{:creature})
+          goblin (make-obj "Goblin Guide" 1 #{:creature})
+          result (sorting/group-by-type [elf goblin])]
+      (is (= 2 (count (:creatures result))))
+      (is (= [] (:other result)))
+      (is (= [] (:lands result))))))
+
+
+(deftest test-group-by-type-all-artifacts
+  (testing "all artifacts go into :other, other groups empty"
+    (let [mox (make-obj "Chrome Mox" 0 #{:artifact})
+          led (make-obj "Lion's Eye Diamond" 0 #{:artifact})
+          result (sorting/group-by-type [mox led])]
+      (is (= [] (:creatures result)))
+      (is (= 2 (count (:other result))))
+      (is (= [] (:lands result))))))
+
+
+(deftest test-group-by-type-artifact-creature
+  (testing "artifact-creature goes to :creatures (creature priority)"
+    (let [golem (make-obj "Steel Golem" 3 #{:artifact :creature})
+          result (sorting/group-by-type [golem])]
+      (is (= 1 (count (:creatures result))))
+      (is (= [] (:other result)))
+      (is (= [] (:lands result))))))
+
+
+(deftest test-group-by-type-artifact-land
+  (testing "artifact-land goes to :lands (land priority over artifact)"
+    (let [seat (make-obj "Seat of the Synod" 0 #{:artifact :land})
+          result (sorting/group-by-type [seat])]
+      (is (= [] (:creatures result)))
+      (is (= [] (:other result)))
+      (is (= 1 (count (:lands result)))))))
+
+
+(deftest test-group-by-type-land-creature
+  (testing "land-creature goes to :creatures (creature priority over land)"
+    (let [dryad (make-obj "Dryad Arbor" 0 #{:land :creature})
+          result (sorting/group-by-type [dryad])]
+      (is (= 1 (count (:creatures result))))
+      (is (= [] (:other result)))
+      (is (= [] (:lands result))))))
+
+
+(deftest test-group-by-type-nil-types
+  (testing "objects without :card/types go to :other"
+    (let [no-types (make-obj "Mystery Card" 1)
+          result (sorting/group-by-type [no-types])]
+      (is (= [] (:creatures result)))
+      (is (= 1 (count (:other result))))
+      (is (= [] (:lands result))))))

@@ -114,17 +114,24 @@
 
 (defn battlefield-view
   []
-  (let [{:keys [lands non-lands]} @(rf/subscribe [::subs/battlefield])]
+  (let [{:keys [creatures other lands]} @(rf/subscribe [::subs/battlefield])]
     [:div {:class "mb-4"}
      [:div {:class "text-text-label mb-1.5 text-xs"} "BATTLEFIELD"]
-     (if (or (seq non-lands) (seq lands))
+     (if (or (seq creatures) (seq other) (seq lands))
        [:div
-        (when (seq non-lands)
+        (when (seq creatures)
           [:div {:class "flex flex-wrap mb-2"}
-           (for [obj non-lands]
+           (for [obj creatures]
              ^{:key (:object/id obj)}
              [permanent-view obj])])
-        (when (and (seq non-lands) (seq lands))
+        (when (and (seq creatures) (or (seq other) (seq lands)))
+          [:hr {:class "border-border mb-2"}])
+        (when (seq other)
+          [:div {:class "flex flex-wrap mb-2"}
+           (for [obj other]
+             ^{:key (:object/id obj)}
+             [permanent-view obj])])
+        (when (and (seq other) (seq lands))
           [:hr {:class "border-border mb-2"}])
         (when (seq lands)
           [:div {:class "flex flex-wrap"}

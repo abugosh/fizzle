@@ -178,9 +178,22 @@
   (fn [game-db _]
     (when game-db
       (let [all (queries/get-objects-in-zone game-db :player-1 :battlefield)
-            {:keys [lands non-lands]} (sorting/group-by-land all)]
-        {:lands (sorting/sort-cards lands)
-         :non-lands (sorting/sort-cards non-lands)}))))
+            {:keys [creatures other lands]} (sorting/group-by-type all)]
+        {:creatures (sorting/sort-cards creatures)
+         :other (sorting/sort-cards other)
+         :lands (sorting/sort-cards lands)}))))
+
+
+(rf/reg-sub
+  ::opponent-battlefield
+  :<- [::game-db]
+  (fn [game-db _]
+    (when game-db
+      (let [all (queries/get-objects-in-zone game-db :opponent :battlefield)
+            {:keys [creatures other lands]} (sorting/group-by-type all)]
+        {:creatures (sorting/sort-cards creatures)
+         :other (sorting/sort-cards other)
+         :lands (sorting/sort-cards lands)}))))
 
 
 (rf/reg-sub
