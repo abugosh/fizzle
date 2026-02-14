@@ -5,7 +5,9 @@
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
     [fizzle.engine.effects :as fx]
-    [fizzle.engine.grants :as grants]))
+    [fizzle.engine.grants :as grants]
+    [fizzle.engine.zones :as zones]
+    [fizzle.test-helpers :as th]))
 
 
 ;; === execute-effect :add-mana tests ===
@@ -1567,3 +1569,173 @@
           "Winner should still be player-1")
       (is (= -5 (q/get-life-total db'' :player-2))
           "Life should be -5 after second hit"))))
+
+
+;; === execute-effect-checked: tagged return values for interactive effects ===
+
+(deftest execute-effect-checked-discard-player-returns-needs-selection
+  (testing "execute-effect-checked returns :needs-selection for :discard with :player selection"
+    (let [db (init-game-state)
+          effect {:effect/type :discard
+                  :effect/count 1
+                  :effect/selection :player}
+          result (fx/execute-effect-checked db :player-1 effect)]
+      (is (map? result) "Result should be a map")
+      (is (contains? result :db) "Result should contain :db")
+      (is (contains? result :needs-selection) "Result should contain :needs-selection")
+      (is (= :discard (:effect/type (:needs-selection result)))
+          "needs-selection should contain the effect data")
+      (is (= db (:db result)) "db should be unchanged for interactive effects"))))
+
+
+(deftest execute-effect-checked-tutor-returns-needs-selection
+  (testing "execute-effect-checked returns :needs-selection for :tutor"
+    (let [db (init-game-state)
+          effect {:effect/type :tutor
+                  :effect/criteria {:card/types [:instant]}}
+          result (fx/execute-effect-checked db :player-1 effect)]
+      (is (contains? result :needs-selection))
+      (is (= :tutor (:effect/type (:needs-selection result)))))))
+
+
+(deftest execute-effect-checked-scry-positive-returns-needs-selection
+  (testing "execute-effect-checked returns :needs-selection for :scry with amount > 0"
+    (let [db (init-game-state)
+          effect {:effect/type :scry :effect/amount 2}
+          result (fx/execute-effect-checked db :player-1 effect)]
+      (is (contains? result :needs-selection))
+      (is (= :scry (:effect/type (:needs-selection result)))))))
+
+
+(deftest execute-effect-checked-scry-zero-returns-plain-db
+  (testing "execute-effect-checked returns plain {:db db} for :scry with amount 0"
+    (let [db (init-game-state)
+          effect {:effect/type :scry :effect/amount 0}
+          result (fx/execute-effect-checked db :player-1 effect)]
+      (is (contains? result :db))
+      (is (not (contains? result :needs-selection))
+          "scry 0 should not need selection"))))
+
+
+(deftest execute-effect-checked-peek-and-select-returns-needs-selection
+  (testing "execute-effect-checked returns :needs-selection for :peek-and-select"
+    (let [db (init-game-state)
+          effect {:effect/type :peek-and-select :effect/count 3}
+          result (fx/execute-effect-checked db :player-1 effect)]
+      (is (contains? result :needs-selection))
+      (is (= :peek-and-select (:effect/type (:needs-selection result)))))))
+
+
+(deftest execute-effect-checked-return-from-graveyard-player-returns-needs-selection
+  (testing "execute-effect-checked returns :needs-selection for :return-from-graveyard with :player"
+    (let [db (init-game-state)
+          effect {:effect/type :return-from-graveyard
+                  :effect/count 3
+                  :effect/selection :player}
+          result (fx/execute-effect-checked db :player-1 effect)]
+      (is (contains? result :needs-selection))
+      (is (= :return-from-graveyard (:effect/type (:needs-selection result)))))))
+
+
+(deftest execute-effect-checked-return-from-graveyard-random-returns-plain-db
+  (testing "execute-effect-checked returns plain {:db db'} for :return-from-graveyard :random"
+    (let [db (init-game-state)
+          effect {:effect/type :return-from-graveyard
+                  :effect/count 1
+                  :effect/selection :random}
+          result (fx/execute-effect-checked db :player-1 effect)]
+      (is (contains? result :db))
+      (is (not (contains? result :needs-selection))
+          ":random selection should not need player interaction"))))
+
+
+(deftest execute-effect-checked-non-interactive-returns-plain-db
+  (testing "execute-effect-checked returns plain {:db db'} for non-interactive effects"
+    (let [db (init-game-state)
+          effect {:effect/type :add-mana :effect/mana {:black 3}}
+          result (fx/execute-effect-checked db :player-1 effect)]
+      (is (contains? result :db))
+      (is (not (contains? result :needs-selection)))
+      (is (= 3 (:black (q/get-mana-pool (:db result) :player-1)))
+          "Effect should still be applied in :db"))))
+
+
+(deftest execute-effect-checked-condition-met-returns-needs-selection
+  (testing "execute-effect-checked with met condition still returns :needs-selection"
+    (let [db (init-game-state)
+          ;; Add 7 cards to library, then move them to graveyard for threshold
+          [db-with-lib _lib-ids] (th/add-cards-to-library db
+                                                          [:dark-ritual :dark-ritual :dark-ritual
+                                                           :dark-ritual :dark-ritual :dark-ritual
+                                                           :dark-ritual]
+                                                          :player-1)
+          db-with-gy (reduce (fn [d _]
+                               (let [top (first (q/get-top-n-library d :player-1 1))]
+                                 (if top
+                                   (zones/move-to-zone d top :graveyard)
+                                   d)))
+                             db-with-lib (range 7))
+          effect {:effect/type :discard
+                  :effect/count 1
+                  :effect/selection :player
+                  :effect/condition {:condition/type :threshold}}
+          result (fx/execute-effect-checked db-with-gy :player-1 effect)]
+      (is (contains? result :needs-selection)
+          "When condition met, interactive effect should signal needs-selection"))))
+
+
+(deftest execute-effect-checked-condition-unmet-returns-plain-db
+  (testing "execute-effect-checked with unmet condition returns plain {:db db}"
+    (let [db (init-game-state)
+          ;; Empty graveyard - threshold NOT met
+          effect {:effect/type :discard
+                  :effect/count 1
+                  :effect/selection :player
+                  :effect/condition {:condition/type :threshold}}
+          result (fx/execute-effect-checked db :player-1 effect)]
+      (is (not (contains? result :needs-selection))
+          "When condition not met, should not need selection")
+      (is (= db (:db result)) "db should be unchanged"))))
+
+
+;; === reduce-effects: sequential execution with interactive pause ===
+
+(deftest reduce-effects-all-non-interactive
+  (testing "reduce-effects executes all non-interactive effects and returns {:db db'}"
+    (let [db (init-game-state)
+          effects [{:effect/type :add-mana :effect/mana {:black 3}}
+                   {:effect/type :add-mana :effect/mana {:red 2}}]
+          result (fx/reduce-effects db :player-1 effects)]
+      (is (contains? result :db))
+      (is (not (contains? result :needs-selection)))
+      (is (= 3 (:black (q/get-mana-pool (:db result) :player-1))))
+      (is (= 2 (:red (q/get-mana-pool (:db result) :player-1)))))))
+
+
+(deftest reduce-effects-pauses-on-interactive
+  (testing "reduce-effects pauses when an interactive effect is encountered"
+    (let [db (init-game-state)
+          effects [{:effect/type :add-mana :effect/mana {:black 3}}
+                   {:effect/type :discard :effect/count 1 :effect/selection :player}
+                   {:effect/type :add-mana :effect/mana {:red 2}}]
+          result (fx/reduce-effects db :player-1 effects)]
+      (is (contains? result :needs-selection)
+          "Should pause at the interactive effect")
+      (is (= :discard (:effect/type (:needs-selection result)))
+          "Should signal the interactive effect")
+      (is (= 3 (:black (q/get-mana-pool (:db result) :player-1)))
+          "Effects before interactive should be executed")
+      (is (zero? (or (:red (q/get-mana-pool (:db result) :player-1)) 0))
+          "Effects after interactive should NOT be executed")
+      (is (= [{:effect/type :add-mana :effect/mana {:red 2}}]
+             (:remaining-effects result))
+          "Remaining effects should be returned"))))
+
+
+(deftest reduce-effects-empty-list
+  (testing "reduce-effects with empty effects returns {:db db} unchanged"
+    (let [db (init-game-state)
+          result (fx/reduce-effects db :player-1 [])]
+      (is (contains? result :db))
+      (is (not (contains? result :needs-selection)))
+      (is (= db (:db result))))))

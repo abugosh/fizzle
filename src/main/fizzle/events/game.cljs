@@ -4,6 +4,7 @@
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as queries]
     [fizzle.db.schema :refer [schema]]
+    [fizzle.engine.card-spec :as card-spec]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.events :as game-events]
     [fizzle.engine.grants :as grants]
@@ -64,6 +65,60 @@
       must-contain)))
 
 
+(defn- get-card-eid
+  "Look up a card's entity ID by its :card/id keyword."
+  [db card-id]
+  (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] db card-id))
+
+
+(defn- get-player-eid
+  "Look up a player's entity ID by :player/id."
+  [db player-id]
+  (d/q '[:find ?e . :in $ ?pid :where [?e :player/id ?pid]] db player-id))
+
+
+(def ^:private empty-mana-pool
+  {:white 0 :blue 0 :black 0 :red 0 :green 0 :colorless 0})
+
+
+(defn- player-tx
+  "Return transaction data for a player entity."
+  [player-id name life land-plays opts]
+  [(merge {:player/id player-id
+           :player/name name
+           :player/life life
+           :player/mana-pool empty-mana-pool
+           :player/storm-count 0
+           :player/land-plays-left land-plays}
+          opts)])
+
+
+(defn- objects-tx
+  "Return transaction data for game objects in a zone.
+   For :hand, uses provided UUIDs. For :library, generates UUIDs and sets position."
+  [db card-ids zone owner-eid uuids]
+  (vec (map-indexed
+         (fn [i [uuid card-id]]
+           {:object/id uuid
+            :object/card (get-card-eid db card-id)
+            :object/zone zone
+            :object/owner owner-eid
+            :object/controller owner-eid
+            :object/tapped false
+            :object/position (if (= zone :library) i 0)})
+         (map vector uuids card-ids))))
+
+
+(defn- opponent-library-tx
+  "Return transaction data for opponent's library (40 placeholder cards)."
+  [db opp-eid]
+  (let [dr-eid (get-card-eid db :dark-ritual)]
+    (vec (for [i (range 40)]
+           {:object/id (random-uuid) :object/card dr-eid :object/zone :library
+            :object/owner opp-eid :object/controller opp-eid
+            :object/tapped false :object/position i}))))
+
+
 (defn init-game-state
   "Initialize a fresh game state from config.
    Config keys:
@@ -74,100 +129,33 @@
    Returns app-db map with :game/db, :active-screen :opening-hand,
    and opening-hand state keys."
   [{:keys [main-deck must-contain] :or {must-contain {}}}]
-  (let [conn (d/create-conn schema)]
-    ;; Transact card definitions
-    (d/transact! conn cards/all-cards)
-    ;; Transact player (start with empty mana pool - lands generate mana now)
-    (d/transact! conn [{:player/id :player-1
-                        :player/name "Player"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 0 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 1
-                        :player/max-hand-size 7}])
-    ;; Transact opponent (needed for Brain Freeze mill effect)
-    (d/transact! conn [{:player/id :opponent
-                        :player/name "Opponent"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 0 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 0
-                        :player/is-opponent true}])
-    ;; Get entity IDs for references
-    (let [db @conn
-          player-eid (d/q '[:find ?e .
-                            :in $ ?pid
-                            :where [?e :player/id ?pid]]
-                          db :player-1)
-          opp-eid (d/q '[:find ?e .
-                         :in $ ?pid
-                         :where [?e :player/id ?pid]]
-                       db :opponent)
-          ;; Helper to look up card entity ID
-          get-card-eid (fn [db card-id]
-                         (d/q '[:find ?e .
-                                :in $ ?cid
-                                :where [?e :card/id ?cid]]
-                              db card-id))
-          ;; Create player's shuffled deck and split into hand + library
-          shuffled-deck (deck-to-card-ids main-deck)
-          [sculpted-card-ids remaining-after-sculpt] (extract-sculpted-card-ids shuffled-deck must-contain)
-          random-draw-count (- 7 (count sculpted-card-ids))
-          random-card-ids (take random-draw-count remaining-after-sculpt)
-          library-card-ids (drop random-draw-count remaining-after-sculpt)
-          hand-card-ids (concat sculpted-card-ids random-card-ids)
-          ;; Generate UUIDs and track which are sculpted
-          sculpted-count (count sculpted-card-ids)
-          hand-uuids (repeatedly (count hand-card-ids) random-uuid)
-          sculpted-id-set (set (take sculpted-count hand-uuids))]
-      ;; Transact hand objects
-      (d/transact! conn
-                   (vec (map (fn [uuid card-id]
-                               {:object/id uuid
-                                :object/card (get-card-eid @conn card-id)
-                                :object/zone :hand
-                                :object/owner player-eid
-                                :object/controller player-eid
-                                :object/tapped false
-                                :object/position 0})
-                             hand-uuids hand-card-ids)))
-      ;; Transact library objects
-      (d/transact! conn
-                   (vec (map-indexed
-                          (fn [i card-id]
-                            {:object/id (random-uuid)
-                             :object/card (get-card-eid @conn card-id)
-                             :object/zone :library
-                             :object/owner player-eid
-                             :object/controller player-eid
-                             :object/tapped false
-                             :object/position i})
-                          library-card-ids)))
-      ;; Create opponent library (40 cards so mill has targets)
-      (let [dr-eid (get-card-eid @conn :dark-ritual)]
-        (d/transact! conn (vec (for [i (range 40)]
-                                 {:object/id (random-uuid) :object/card dr-eid :object/zone :library
-                                  :object/owner opp-eid :object/controller opp-eid
-                                  :object/tapped false :object/position i}))))
-      ;; Game state
-      (d/transact! conn [{:game/id :game-1
-                          :game/turn 1
-                          :game/phase :main1
-                          :game/active-player player-eid
-                          :game/priority player-eid}])
-      ;; Create game-rule trigger entities in Datascript (draw, untap)
-      (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid))
-      (merge
-        {:game/db @conn
-         :active-screen :opening-hand
-         :opening-hand/mulligan-count 0
-         :opening-hand/sculpted-ids sculpted-id-set
-         :opening-hand/must-contain (or must-contain {})
-         :opening-hand/phase :viewing
-         :game/game-over-dismissed false}
-        (history/init-history)))))
+  (card-spec/validate-cards! cards/all-cards)
+  (let [conn (d/create-conn schema)
+        _ (d/transact! conn cards/all-cards)
+        _ (d/transact! conn (player-tx :player-1 "Player" 20 1 {:player/max-hand-size 7}))
+        _ (d/transact! conn (player-tx :opponent "Opponent" 20 0 {:player/is-opponent true}))
+        db @conn
+        player-eid (get-player-eid db :player-1)
+        opp-eid (get-player-eid db :opponent)
+        shuffled-deck (deck-to-card-ids main-deck)
+        [sculpted-ids remaining] (extract-sculpted-card-ids shuffled-deck must-contain)
+        draw-count (- 7 (count sculpted-ids))
+        hand-ids (concat sculpted-ids (take draw-count remaining))
+        library-ids (drop draw-count remaining)
+        hand-uuids (repeatedly (count hand-ids) random-uuid)
+        sculpted-id-set (set (take (count sculpted-ids) hand-uuids))]
+    (d/transact! conn (objects-tx @conn hand-ids :hand player-eid hand-uuids))
+    (d/transact! conn (objects-tx @conn library-ids :library player-eid
+                                  (repeatedly (count library-ids) random-uuid)))
+    (d/transact! conn (opponent-library-tx @conn opp-eid))
+    (d/transact! conn [{:game/id :game-1 :game/turn 1 :game/phase :main1
+                        :game/active-player player-eid :game/priority player-eid}])
+    (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid))
+    (merge {:game/db @conn :active-screen :opening-hand
+            :opening-hand/mulligan-count 0 :opening-hand/sculpted-ids sculpted-id-set
+            :opening-hand/must-contain (or must-contain {})
+            :opening-hand/phase :viewing :game/game-over-dismissed false}
+           (history/init-history))))
 
 
 (rf/reg-event-db
@@ -532,7 +520,19 @@
    Creates a history entry for each resolved item, then applies them all.
    Handles fork creation when not at history tip (same as interceptor).
    Works at app-db level. Calls maybe-continue-cleanup at the end.
-   Pure function: (app-db) -> app-db"
+   Pure function: (app-db) -> app-db
+
+   INVARIANT: This handler bypasses the standard event-interceptor (used by
+   ::resolve-top and all other game events) because it batches multiple
+   stack-item resolutions into a single operation. It replicates the
+   interceptor's history-recording behavior manually:
+   - Creates individual history entries per resolved item (make-resolve-entry)
+   - Handles fork creation when not at history tip (apply-history-entries)
+   - Dispatches pending-selection when interactive effect encountered
+
+   If the event-interceptor gains new behavior (e.g., new side effects,
+   validation, or logging), this handler must be updated to match.
+   Compare with ::resolve-top (which uses the standard interceptor)."
   [app-db]
   (let [game-db (:game/db app-db)
         initial-ids (set (map :db/id (stack/get-all-stack-items game-db)))]
@@ -579,8 +579,8 @@
 ;; === Turn Structure ===
 
 (def phases
-  "MTG turn phases in order: untap → upkeep → draw → main1 → combat → main2 → end → cleanup"
-  [:untap :upkeep :draw :main1 :combat :main2 :end :cleanup])
+  "MTG turn phases in order. Delegates to engine/rules."
+  rules/phases)
 
 
 (defn next-phase
@@ -724,117 +724,61 @@
 
 ;; === Play Land ===
 
-(defn land-card?
-  "Check if an object's card has :land in its types.
-   Returns false if object or card not found."
-  [db object-id]
-  (let [obj (queries/get-object db object-id)]
-    (when obj
-      ;; get-object pulls card data nested under :object/card
-      (let [card (:object/card obj)
-            types (:card/types card)]
-        ;; types may be a set or vector depending on how it was stored
-        (contains? (set types) :land)))))
+(def land-card?
+  "Check if an object's card has :land in its types. Delegates to engine/rules."
+  rules/land-card?)
 
 
-(defn can-play-land?
-  "Check if a player can play a land from their hand.
-   Requires:
-   - Object is a land card
-   - Object is in player's hand
-   - Player has land plays remaining
-   - Current phase is main1 or main2
-   - Stack is empty
-   Returns true or false."
-  [db player-id object-id]
-  (let [game-state (queries/get-game-state db)
-        phase (:game/phase game-state)
-        player-eid (queries/get-player-eid db player-id)
-        land-plays (d/q '[:find ?plays .
-                          :in $ ?pid
-                          :where [?e :player/id ?pid]
-                          [?e :player/land-plays-left ?plays]]
-                        db player-id)
-        obj (queries/get-object db object-id)
-        owner-eid (:db/id (:object/owner obj))]
-    (boolean
-      (and player-eid
-           obj
-           (pos? (or land-plays 0))
-           (= (:object/zone obj) :hand)
-           (= owner-eid player-eid)
-           (land-card? db object-id)
-           (#{:main1 :main2} phase)
-           (stack/stack-empty? db)))))
+(def can-play-land?
+  "Check if a player can play a land from their hand. Delegates to engine/rules."
+  rules/can-play-land?)
 
 
 (defn play-land
   "Play a land from hand to battlefield.
    Pure function: (db, player-id, object-id) -> db
 
-   Validation:
-   - Player must have land-plays-left > 0
-   - Object must be in player's hand
-   - Card must be a land type
-   - Phase must be :main1 or :main2
+   Validates via rules/can-play-land?, then:
+   1. Moves land to battlefield and decrements land plays
+   2. Registers card triggers
+   3. Fires ETB effects from :card/etb-effects
+   4. Dispatches :land-entered event for triggers like City of Traitors
 
-   After moving to battlefield:
-   1. Registers card triggers
-   2. Fires ETB effects from :card/etb-effects
-   3. Dispatches :land-entered event for triggers like City of Traitors
-
-   Returns unchanged db if any validation fails."
+   Returns unchanged db if validation fails."
   [db player-id object-id]
-  (let [game-state (queries/get-game-state db)
-        phase (:game/phase game-state)
-        player-eid (queries/get-player-eid db player-id)
-        land-plays (d/q '[:find ?plays .
-                          :in $ ?pid
-                          :where [?e :player/id ?pid]
-                          [?e :player/land-plays-left ?plays]]
-                        db player-id)
-        obj (queries/get-object db object-id)
-        ;; get-object pulls refs as {:db/id N} maps, extract the eid
-        owner-eid (:db/id (:object/owner obj))]
-    (if (and player-eid
-             obj
-             (pos? (or land-plays 0))
-             (= (:object/zone obj) :hand)
-             (= owner-eid player-eid)
-             (land-card? db object-id)
-             (#{:main1 :main2} phase)
-             (stack/stack-empty? db))
-      (let [db-after-move (-> db
-                              (zones/move-to-zone object-id :battlefield)
-                              (d/db-with [[:db/add player-eid :player/land-plays-left (dec land-plays)]]))
-            ;; Get card data after move (object still has same card ref)
-            obj-after (queries/get-object db-after-move object-id)
-            card (:object/card obj-after)
-            etb-effects (:card/etb-effects card)
-            ;; Create Datascript trigger entities for card triggers
-            db-after-triggers (if (seq (:card/triggers card))
-                                (let [obj-eid (d/q '[:find ?e .
-                                                     :in $ ?oid
-                                                     :where [?e :object/id ?oid]]
-                                                   db-after-move object-id)
-                                      tx (trigger-db/create-triggers-for-card-tx
-                                           db-after-move obj-eid player-eid (:card/triggers card))]
-                                  (d/db-with db-after-move tx))
-                                db-after-move)
-            ;; Fire ETB effects if any
-            db-after-etb (if (seq etb-effects)
-                           (reduce (fn [db' effect]
-                                     ;; Resolve :self target to actual object-id
-                                     (let [resolved-effect (if (= :self (:effect/target effect))
-                                                             (assoc effect :effect/target object-id)
-                                                             effect)]
-                                       (effects/execute-effect db' player-id resolved-effect)))
-                                   db-after-triggers
-                                   etb-effects)
-                           db-after-triggers)]
-        ;; Dispatch :land-entered event (triggers City of Traitors sacrifice when another land enters)
-        (dispatch/dispatch-event db-after-etb (game-events/land-entered-event object-id player-id)))
-      db)))
+  (if-not (rules/can-play-land? db player-id object-id)
+    db
+    (let [player-eid (queries/get-player-eid db player-id)
+          land-plays (d/q '[:find ?plays .
+                            :in $ ?pid
+                            :where [?e :player/id ?pid]
+                            [?e :player/land-plays-left ?plays]]
+                          db player-id)
+          db-after-move (-> db
+                            (zones/move-to-zone object-id :battlefield)
+                            (d/db-with [[:db/add player-eid :player/land-plays-left (dec land-plays)]]))
+          obj-after (queries/get-object db-after-move object-id)
+          card (:object/card obj-after)
+          etb-effects (:card/etb-effects card)
+          db-after-triggers (if (seq (:card/triggers card))
+                              (let [obj-eid (d/q '[:find ?e .
+                                                   :in $ ?oid
+                                                   :where [?e :object/id ?oid]]
+                                                 db-after-move object-id)
+                                    tx (trigger-db/create-triggers-for-card-tx
+                                         db-after-move obj-eid player-eid (:card/triggers card))]
+                                (d/db-with db-after-move tx))
+                              db-after-move)
+          db-after-etb (if (seq etb-effects)
+                         (reduce (fn [db' effect]
+                                   (let [resolved-effect (if (= :self (:effect/target effect))
+                                                           (assoc effect :effect/target object-id)
+                                                           effect)]
+                                     (effects/execute-effect db' player-id resolved-effect)))
+                                 db-after-triggers
+                                 etb-effects)
+                         db-after-triggers)]
+      (dispatch/dispatch-event db-after-etb (game-events/land-entered-event object-id player-id)))))
 
 
 (rf/reg-event-db

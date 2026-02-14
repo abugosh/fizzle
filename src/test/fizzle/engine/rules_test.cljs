@@ -9,7 +9,8 @@
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.triggers]
-    [fizzle.engine.zones :as zones]))
+    [fizzle.engine.zones :as zones]
+    [fizzle.test-helpers :as th]))
 
 
 ;; === can-cast? tests ===
@@ -1463,3 +1464,56 @@
           db-off (rules/move-spell-off-stack db-with-copy :player-1 copy-id)]
       (is (nil? (q/get-object db-off copy-id))
           "Copy should cease to exist when countered"))))
+
+
+;; === phases constant ===
+
+(deftest phases-constant-test
+  (testing "phases is a vector of 8 MTG turn phases in order"
+    (is (= [:untap :upkeep :draw :main1 :combat :main2 :end :cleanup]
+           rules/phases))))
+
+
+;; === land-card? tests ===
+
+(deftest land-card-true-for-land-test
+  (testing "land-card? returns true for a land card"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :gemstone-mine :hand :player-1)]
+      (is (true? (rules/land-card? db obj-id))))))
+
+
+(deftest land-card-false-for-nonland-test
+  (testing "land-card? returns false for a non-land card"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)]
+      (is (not (rules/land-card? db obj-id))))))
+
+
+(deftest land-card-false-for-missing-object-test
+  (testing "land-card? returns falsy for non-existent object"
+    (let [db (th/create-test-db)]
+      (is (not (rules/land-card? db (random-uuid)))))))
+
+
+;; === can-play-land? tests ===
+
+(deftest can-play-land-true-when-conditions-met-test
+  (testing "can-play-land? returns true when all conditions met"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :gemstone-mine :hand :player-1)]
+      (is (true? (rules/can-play-land? db :player-1 obj-id))))))
+
+
+(deftest can-play-land-false-no-land-plays-test
+  (testing "can-play-land? returns false when no land plays remaining"
+    (let [db (th/create-test-db {:land-plays 0})
+          [db obj-id] (th/add-card-to-zone db :gemstone-mine :hand :player-1)]
+      (is (false? (rules/can-play-land? db :player-1 obj-id))))))
+
+
+(deftest can-play-land-false-for-nonland-test
+  (testing "can-play-land? returns false for non-land card"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)]
+      (is (false? (rules/can-play-land? db :player-1 obj-id))))))

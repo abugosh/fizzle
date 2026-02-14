@@ -2,54 +2,19 @@
   "Effect interpreter for Fizzle.
 
    Dispatches on :effect/type to execute card effects.
-   All functions are pure: (db, args) -> db"
+   All functions are pure: (db, args) -> db
+
+   Interactive effects (those requiring player selection) return tagged
+   values from execute-effect-impl: {:db db :needs-selection effect}.
+   Use execute-effect-checked to get the full tagged result, or
+   execute-effect for backward-compatible plain db return."
   (:require
     [datascript.core :as d]
     [fizzle.db.queries :as q]
+    [fizzle.engine.conditions :as conditions]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.zones :as zones]))
-
-
-;; === Condition System ===
-;; Effects may have an optional :effect/condition that gates execution.
-;; Condition is checked BEFORE effect runs. If not met, effect is skipped.
-
-
-(defmulti check-condition
-  "Check if an effect's condition is met. Dispatches on :condition/type.
-   Returns true if condition met, false otherwise.
-   Unknown condition types return false (fail-safe: don't execute)."
-  (fn [_db _player-id _effect condition] (:condition/type condition)))
-
-
-(defmethod check-condition :default
-  [_db _player-id _effect _condition]
-  ;; Unknown condition types return false (fail-safe: skip effect)
-  false)
-
-
-(defmethod check-condition :no-counters
-  [db _player-id effect condition]
-  "Check if target has no counters of the specified type.
-   Condition keys:
-     :condition/counter-type - The counter type to check (e.g., :mining)
-   Returns true if counter is 0, nil, or missing."
-  (let [target-id (:effect/target effect)
-        counter-type (:condition/counter-type condition)]
-    (if-let [obj-eid (d/q '[:find ?e .
-                            :in $ ?oid
-                            :where [?e :object/id ?oid]]
-                          db target-id)]
-      (let [counters (or (d/q '[:find ?c .
-                                :in $ ?e
-                                :where [?e :object/counters ?c]]
-                              db obj-eid)
-                         {})
-            count-value (get counters counter-type 0)]
-        (<= count-value 0))
-      ;; Object doesn't exist - condition met (vacuously true, effect will no-op anyway)
-      true)))
 
 
 ;; === Effect Execution ===
@@ -57,7 +22,7 @@
 
 (defmulti execute-effect-impl
   "Internal effect executor. Dispatches on :effect/type.
-   Use execute-effect instead - it handles condition checking.
+   Use execute-effect or execute-effect-checked instead.
 
    Arguments:
      db - Datascript database value
@@ -65,8 +30,10 @@
      effect - Map with :effect/type and effect-specific keys
      object-id - The object that is the source of this effect (may be nil)
 
-   Returns:
-     New db with effect applied.
+   Returns one of:
+     db - New db with effect applied (non-interactive effects)
+     {:db db :needs-selection effect} - Tagged value for interactive effects
+       that require player selection before they can execute.
 
    Unknown effect types return db unchanged (no-op)."
   (fn [_db _player-id effect _object-id] (:effect/type effect)))
@@ -78,18 +45,24 @@
   db)
 
 
+(defn- normalize-effect-result
+  "Normalize execute-effect-impl return value to a tagged map.
+   Plain db -> {:db db}, tagged map -> passed through."
+  [result]
+  (if (and (map? result) (contains? result :db))
+    result
+    {:db result}))
+
+
 (defn execute-effect
   "Execute an effect, checking condition first if present.
-   If :effect/condition exists and is not met, returns db unchanged.
-   If no condition or condition met, dispatches to execute-effect-impl.
+   Returns plain db (extracts :db from tagged results for backward compat).
 
    Arguments:
      db - Datascript database value
      player-id - The player who controls this effect
      effect - Map with :effect/type and effect-specific keys
      object-id - (Optional) The object that is the source of this effect.
-                 Used by effects like :grant-flashback that need to read
-                 stored targets from the casting object.
 
    Note: :self targets MUST be resolved to object-id by caller before
    calling this function. See events/game.cljs play-land for pattern."
@@ -97,10 +70,67 @@
    (execute-effect db player-id effect nil))
   ([db player-id effect object-id]
    (if-let [condition (:effect/condition effect)]
-     (if (check-condition db player-id effect condition)
-       (execute-effect-impl db player-id effect object-id)
-       db)
-     (execute-effect-impl db player-id effect object-id))))
+     (let [enriched (cond-> condition
+                      (:effect/target effect)
+                      (assoc :condition/target (:effect/target effect)))]
+       (if (conditions/check-condition db player-id enriched)
+         (:db (normalize-effect-result (execute-effect-impl db player-id effect object-id)))
+         db))
+     (:db (normalize-effect-result (execute-effect-impl db player-id effect object-id))))))
+
+
+(defn execute-effect-checked
+  "Execute an effect with full tagged result.
+   Returns {:db db'} for non-interactive effects, or
+   {:db db :needs-selection effect} for interactive effects.
+
+   When :effect/condition is present and not met, returns {:db db}
+   (no :needs-selection, since the effect is skipped).
+
+   Arguments:
+     db - Datascript database value
+     player-id - The player who controls this effect
+     effect - Map with :effect/type and effect-specific keys
+     object-id - (Optional) The object that is the source of this effect."
+  ([db player-id effect]
+   (execute-effect-checked db player-id effect nil))
+  ([db player-id effect object-id]
+   (if-let [condition (:effect/condition effect)]
+     (let [enriched (cond-> condition
+                      (:effect/target effect)
+                      (assoc :condition/target (:effect/target effect)))]
+       (if (conditions/check-condition db player-id enriched)
+         (normalize-effect-result (execute-effect-impl db player-id effect object-id))
+         {:db db}))
+     (normalize-effect-result (execute-effect-impl db player-id effect object-id)))))
+
+
+(defn reduce-effects
+  "Execute effects sequentially, pausing when an interactive effect is encountered.
+
+   Returns:
+     {:db db'} - All effects executed successfully (no interactive effects)
+     {:db db' :needs-selection effect :remaining-effects [...]} -
+       Paused at an interactive effect. :db has all effects before
+       the interactive one applied. :remaining-effects are the effects
+       after the interactive one that still need execution.
+
+   Arguments:
+     db - Datascript database value
+     player-id - The player who controls these effects
+     effects - Sequence of effect maps
+     object-id - (Optional) The object that is the source of these effects."
+  ([db player-id effects]
+   (reduce-effects db player-id effects nil))
+  ([db player-id effects object-id]
+   (loop [db db
+          [effect & remaining] (seq effects)]
+     (if-not effect
+       {:db db}
+       (let [result (execute-effect-checked db player-id effect object-id)]
+         (if (:needs-selection result)
+           (assoc result :remaining-effects (vec remaining))
+           (recur (:db result) remaining)))))))
 
 
 (defmethod execute-effect-impl :add-mana
@@ -274,7 +304,11 @@
   ;;
   ;; Effect keys:
   ;;   :effect/amount - Number of cards to draw (default 1)
-  ;;   :effect/target - Target player (defaults to caster)
+  ;;   :effect/target - Target player (:any-player, :opponent, or player-id)
+  ;;                    Defaults to caster if not specified.
+  ;;
+  ;; Interactive effect: Returns {:db db :needs-selection effect} if:
+  ;;   - :effect/target is :any-player (player chooses target)
   ;;
   ;; Handles edge cases:
   ;;   - Empty library: sets :game/loss-condition to :empty-library
@@ -287,20 +321,23 @@
     ;; Guard: draw 0 or negative is no-op
     (if (<= amount 0)
       db
-      ;; Guard: invalid player is no-op
-      (if-let [cards-to-draw (q/get-top-n-library db target amount)]
-        (let [actual-drawn (count cards-to-draw)
-              ;; Move cards from library to hand
-              db-after-draw (reduce (fn [db' oid]
-                                      (zones/move-to-zone db' oid :hand))
-                                    db
-                                    cards-to-draw)]
-          ;; If we couldn't draw all requested cards, set loss condition
-          (if (< actual-drawn amount)
-            (set-loss-condition db-after-draw :empty-library target)
-            db-after-draw))
-        ;; get-top-n-library returns nil if player doesn't exist
-        db))))
+      ;; Interactive: :any-player target requires selection
+      (if (= target :any-player)
+        {:db db :needs-selection effect}
+        ;; Guard: invalid player is no-op
+        (if-let [cards-to-draw (q/get-top-n-library db target amount)]
+          (let [actual-drawn (count cards-to-draw)
+                ;; Move cards from library to hand
+                db-after-draw (reduce (fn [db' oid]
+                                        (zones/move-to-zone db' oid :hand))
+                                      db
+                                      cards-to-draw)]
+            ;; If we couldn't draw all requested cards, set loss condition
+            (if (< actual-drawn amount)
+              (set-loss-condition db-after-draw :empty-library target)
+              db-after-draw))
+          ;; get-top-n-library returns nil if player doesn't exist
+          db)))))
 
 
 (defmethod execute-effect-impl :exile-self
@@ -361,23 +398,16 @@
   ;;                    Defaults to caster if not specified.
   ;;   :effect/count - Maximum cards to return (0-N)
   ;;   :effect/selection - How to select cards:
-  ;;     :player - Player chooses (returns db unchanged, UI handles)
+  ;;     :player - Player chooses (returns tagged value for selection)
   ;;     :random - Random selection (moves random cards to hand)
   ;;
   ;; For :selection :random:
   ;;   Randomly selects up to :count cards from target's graveyard
-  ;;   and moves them to target's hand.
+  ;;   and moves them to target's hand. Returns plain db.
   ;;
   ;; For :selection :player (or default):
-  ;;   Returns db unchanged. Selection handled at app-db level via
-  ;;   re-frame events when player confirms their selection.
-  ;;
-  ;; Handles edge cases:
-  ;;   - Empty graveyard: returns db unchanged (no-op)
-  ;;   - Fewer cards than count: returns all available cards
-  ;;   - :self target: resolves to caster's player-id
-  ;;   - :opponent target: resolves via get-opponent-id
-  ;;   - count <= 0 or nil: returns db unchanged (no-op)
+  ;;   Returns {:db db :needs-selection effect} — tagged value signaling
+  ;;   that this effect requires player selection.
   [db player-id effect _object-id]
   (let [target (get effect :effect/target player-id)
         target-player (cond
@@ -393,8 +423,8 @@
                           (zones/move-to-zone db' (:object/id obj) :hand))
                         db
                         selected))
-      ;; :player and default - return unchanged (UI handles)
-      db)))
+      ;; :player and default - signal need for player selection
+      {:db db :needs-selection effect})))
 
 
 (defmethod execute-effect-impl :sacrifice
@@ -459,26 +489,19 @@
   ;; Effect keys:
   ;;   :effect/count - Number of cards to discard
   ;;   :effect/selection - How to select cards:
-  ;;     :player - Player chooses (requires UI interaction, returns db unchanged)
+  ;;     :player - Player chooses (interactive, returns tagged value)
   ;;     :random - Random selection (not implemented yet)
   ;;     nil - Defaults to :player for now
   ;;
   ;; When :selection is :player:
-  ;;   This effect returns db UNCHANGED. The actual discard happens at the
-  ;;   app-db level via re-frame events when the player confirms their selection.
-  ;;   The calling code (resolve-spell) checks for :selection :player and sets up
-  ;;   pending selection state instead of expecting immediate resolution.
-  ;;
-  ;; Handles edge cases:
-  ;;   - :selection :player: Returns db unchanged (UI handles selection)
-  ;;   - Invalid player: no-op (returns db unchanged)
+  ;;   Returns {:db db :needs-selection effect} — tagged value signaling
+  ;;   that this effect requires player selection to complete. The
+  ;;   resolution layer builds the selection UI from the effect data.
   [db _player-id effect _object-id]
   (let [selection (get effect :effect/selection :player)]
     (case selection
-      ;; Player selection - return unchanged, UI will handle
-      :player db
-      ;; Default to player selection
-      db)))
+      :player {:db db :needs-selection effect}
+      {:db db :needs-selection effect})))
 
 
 (defmethod execute-effect-impl :tutor
@@ -489,15 +512,11 @@
   ;;   :effect/target-zone - Zone to move found card to (:hand for Merchant Scroll)
   ;;   :effect/shuffle? - Whether to shuffle after (default true)
   ;;
-  ;; This effect returns db UNCHANGED. The actual tutor happens at the
-  ;; app-db level via re-frame events when the player confirms their selection.
-  ;; The calling code checks for :tutor effect type and sets up pending selection.
-  ;;
-  ;; Selection is always required (anti-pattern: NO auto-select for tutors).
+  ;; Returns {:db db :needs-selection effect} — tagged value signaling
+  ;; that this effect requires player selection (library search).
   ;; Player must always have fail-to-find option (rules: hidden information).
-  [db _player-id _effect _object-id]
-  ;; Return unchanged - selection handled at app-db level
-  db)
+  [db _player-id effect _object-id]
+  {:db db :needs-selection effect})
 
 
 (defmethod execute-effect-impl :scry
@@ -506,13 +525,8 @@
   ;; Effect keys:
   ;;   :effect/amount - Number of cards to scry (default 0)
   ;;
-  ;; This effect returns db UNCHANGED. The actual scry happens at the
-  ;; app-db level via re-frame events when the player confirms their selection.
-  ;; The calling code checks for :scry effect type and sets up pending selection
-  ;; with the top N cards revealed.
-  ;;
-  ;; Player assigns each card to either top or bottom pile. Click order
-  ;; determines arrangement within each pile. On confirm, library is reordered.
+  ;; Returns {:db db :needs-selection effect} for scry > 0,
+  ;; or plain db for scry 0/negative (no-op, no selection needed).
   ;;
   ;; Edge cases:
   ;;   - amount <= 0: No-op (returns db unchanged, no selection needed)
@@ -522,7 +536,7 @@
   (let [amount (or (:effect/amount effect) 0)]
     (if (<= amount 0)
       db  ; No-op for scry 0, negative, or missing amount
-      db))) ; Return unchanged - selection handled at app-db level
+      {:db db :needs-selection effect})))
 
 
 (defmethod execute-effect-impl :peek-and-select
@@ -535,20 +549,10 @@
   ;;   :effect/remainder-zone - Zone for non-selected (default :bottom-of-library)
   ;;   :effect/shuffle-remainder? - Whether to shuffle remainder (default false)
   ;;
-  ;; This effect returns db UNCHANGED. The actual peek-and-select happens at
-  ;; the app-db level via re-frame events when the player confirms their selection.
-  ;; The calling code checks for :peek-and-select effect type and sets up
-  ;; pending selection with the top N cards revealed.
-  ;;
-  ;; Anti-pattern: NO auto-select even with 1 card (player must choose/fail-to-find).
-  ;;
-  ;; Edge cases:
-  ;;   - count <= 0: No-op (returns db unchanged, no selection needed)
-  ;;   - count > library size: Peek available cards only (handled in selection setup)
-  ;;   - missing count: Defaults to 0 (no-op)
-  [db _player-id _effect _object-id]
-  ;; Return unchanged - selection handled at app-db level
-  db)
+  ;; Returns {:db db :needs-selection effect} — tagged value signaling
+  ;; that this effect requires player selection (choose from revealed cards).
+  [db _player-id effect _object-id]
+  {:db db :needs-selection effect})
 
 
 (defmethod execute-effect-impl :grant-flashback

@@ -51,18 +51,24 @@
        db object-id))
 
 
-;; === register-sba! tests ===
+;; === check-sba multimethod tests ===
 
-(deftest test-register-sba
-  (testing "registered SBA check is invoked and its results returned"
-    (let [sentinel {:sba/type :test-custom :sba/target :player-1}
-          check-fn (fn [_db] [sentinel])]
-      (sba/register-sba! :test-custom-sba check-fn)
+(deftest test-check-sba-default-returns-empty
+  (testing "check-sba :default returns empty seq for unknown SBA types"
+    (let [db (init-game-state)
+          result (sba/check-sba db :nonexistent-type)]
+      (is (empty? result)
+          "Default check-sba should return empty seq"))))
+
+
+(deftest test-check-sba-defmethod-discovered
+  (testing "registered check-sba defmethod is discovered by check-all-sbas"
+    (let [sentinel {:sba/type :test-custom :sba/target :player-1}]
+      (defmethod sba/check-sba :test-custom-sba [_db _type] [sentinel])
       (let [results (sba/check-all-sbas (init-game-state))]
-        ;; Clean up: replace with no-op to avoid polluting later tests
-        (sba/register-sba! :test-custom-sba (fn [_db] []))
+        (remove-method sba/check-sba :test-custom-sba)
         (is (some #(= sentinel %) results)
-            "check-all-sbas should include results from registered SBA")))))
+            "check-all-sbas should include results from registered defmethod")))))
 
 
 ;; === check-all-sbas tests ===
@@ -131,20 +137,16 @@
     (let [iteration-counter (atom 0)
           ;; Track which SBAs have fired to prevent infinite loops
           a-fired (atom false)
-          b-fired (atom false)
-          ;; SBA-A: fires on first check, marks a-fired
-          sba-a-check (fn [_db]
-                        (if @a-fired
-                          []
-                          [{:sba/type :test-cascade-a :sba/target :player-1}]))
-          ;; SBA-B: fires only after A has fired
-          sba-b-check (fn [_db]
-                        (if (and @a-fired (not @b-fired))
-                          [{:sba/type :test-cascade-b :sba/target :player-1}]
-                          []))]
-      ;; Register SBA checks
-      (sba/register-sba! :test-cascade-a-check sba-a-check)
-      (sba/register-sba! :test-cascade-b-check sba-b-check)
+          b-fired (atom false)]
+      ;; Register SBA checks via defmethod
+      (defmethod sba/check-sba :test-cascade-a-check [_db _type]
+        (if @a-fired
+          []
+          [{:sba/type :test-cascade-a :sba/target :player-1}]))
+      (defmethod sba/check-sba :test-cascade-b-check [_db _type]
+        (if (and @a-fired (not @b-fired))
+          [{:sba/type :test-cascade-b :sba/target :player-1}]
+          []))
       ;; Register SBA executors
       (defmethod sba/execute-sba :test-cascade-a [db _sba]
         (reset! a-fired true)
@@ -162,7 +164,7 @@
         (is (true? @b-fired) "SBA-B should have fired (cascading)")
         (is (= 2 @iteration-counter) "Should have executed 2 SBAs across iterations"))
       ;; Clean up
-      (sba/register-sba! :test-cascade-a-check (fn [_db] []))
-      (sba/register-sba! :test-cascade-b-check (fn [_db] []))
+      (remove-method sba/check-sba :test-cascade-a-check)
+      (remove-method sba/check-sba :test-cascade-b-check)
       (remove-method sba/execute-sba :test-cascade-a)
       (remove-method sba/execute-sba :test-cascade-b))))

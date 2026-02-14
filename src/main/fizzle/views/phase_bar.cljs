@@ -1,5 +1,6 @@
 (ns fizzle.views.phase-bar
   (:require
+    [fizzle.engine.rules :as rules]
     [fizzle.events.game :as events]
     [fizzle.subs.game :as subs]
     [re-frame.core :as rf]))
@@ -25,7 +26,7 @@
      [:span {:class "font-bold text-text text-sm"}
       (str "Turn " current-turn)]
      [:div {:class "flex gap-1"}
-      (for [phase events/phases]
+      (for [phase rules/phases]
         ^{:key phase}
         [phase-indicator phase current-phase])]
      [:button {:class (str "py-1.5 px-3.5 border border-border rounded font-bold text-[13px] "

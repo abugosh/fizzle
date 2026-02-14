@@ -197,6 +197,68 @@
       {:db db :pending-selection nil})))
 
 
+(defn- pay-costs-and-create-stack-item
+  "Pay all ability costs and create a stack-item.
+   Returns {:db :pending-selection nil} or nil if costs can't be paid."
+  [db player-id object-id ability]
+  (when-let [db-after-costs (abilities/pay-all-costs db object-id (:ability/cost ability))]
+    {:db (stack/create-stack-item db-after-costs
+                                  {:stack-item/type :activated-ability
+                                   :stack-item/controller player-id
+                                   :stack-item/source object-id
+                                   :stack-item/effects (:ability/effects ability [])
+                                   :stack-item/description (:ability/description ability)})
+     :pending-selection nil}))
+
+
+(defn- activate-ability-with-generic-mana
+  "Handle ability activation that requires generic mana allocation.
+   Pays non-mana costs first, then enters mana allocation selection.
+   Falls back to direct cost payment if allocation builder returns nil."
+  [db player-id object-id ability]
+  (let [ability-cost (:ability/cost ability)
+        mana-cost (:mana ability-cost)
+        non-mana-costs (dissoc ability-cost :mana)
+        db-after-non-mana (if (seq non-mana-costs)
+                            (abilities/pay-all-costs db object-id non-mana-costs)
+                            db)]
+    (if-not db-after-non-mana
+      {:db db :pending-selection nil}
+      (let [sel (sel-costs/build-mana-allocation-selection
+                  db-after-non-mana player-id object-id
+                  {:mode/mana-cost mana-cost} mana-cost)]
+        (if sel
+          {:db db-after-non-mana
+           :pending-selection (assoc sel
+                                     :selection/source-type :ability
+                                     :selection/ability ability)}
+          (or (pay-costs-and-create-stack-item db player-id object-id ability)
+              {:db db :pending-selection nil}))))))
+
+
+(defn- activate-validated-ability
+  "Activate an ability that has passed validation checks.
+   Handles three paths: targeting, generic mana allocation, and direct cost payment."
+  [db player-id object-id ability-index ability]
+  (let [targeting-reqs (targeting/get-targeting-requirements ability)]
+    (cond
+      ;; Has targeting - pause for target selection (don't pay costs yet)
+      (seq targeting-reqs)
+      {:db db
+       :pending-selection (build-ability-target-selection
+                            db player-id object-id ability-index (first targeting-reqs))}
+
+      ;; Has generic mana cost - enter mana allocation
+      (and (:mana (:ability/cost ability))
+           (sel-costs/has-generic-mana-cost? (:mana (:ability/cost ability))))
+      (activate-ability-with-generic-mana db player-id object-id ability)
+
+      ;; No special handling - pay all costs directly and add to stack
+      :else
+      (or (pay-costs-and-create-stack-item db player-id object-id ability)
+          {:db db :pending-selection nil}))))
+
+
 (defn activate-ability
   "Activate a non-mana ability on a permanent (e.g., fetchlands).
    Pure function: (db, player-id, object-id, ability-index) -> {:db db :pending-selection nil}
@@ -224,70 +286,17 @@
   [db player-id object-id ability-index]
   (let [obj (queries/get-object db object-id)
         player-eid (queries/get-player-eid db player-id)]
-    (if (and obj
-             player-eid
-             (= (:object/zone obj) :battlefield)
-             (= (:db/id (:object/controller obj)) player-eid))
-      (let [card (:object/card obj)
-            card-abilities (:card/abilities card)
-            ability (nth card-abilities ability-index nil)]
-        (if (and ability
-                 (= :activated (:ability/type ability))
-                 (abilities/can-activate? db object-id ability))
-          ;; Check if ability has targeting requirements
-          (let [targeting-reqs (targeting/get-targeting-requirements ability)]
-            (if (seq targeting-reqs)
-              ;; Has targeting - pause for target selection (don't pay costs yet)
-              (let [first-req (first targeting-reqs)
-                    selection (build-ability-target-selection db player-id object-id ability-index first-req)]
-                {:db db
-                 :pending-selection selection})
-              ;; No targeting - check for generic mana allocation
-              (let [ability-cost (:ability/cost ability)
-                    mana-cost (:mana ability-cost)]
-                (if (and mana-cost (sel-costs/has-generic-mana-cost? mana-cost))
-                  ;; Has generic mana: pay non-mana costs first, then enter allocation
-                  (let [non-mana-costs (dissoc ability-cost :mana)
-                        db-after-non-mana (if (seq non-mana-costs)
-                                            (abilities/pay-all-costs db object-id non-mana-costs)
-                                            db)]
-                    (if db-after-non-mana
-                      (let [mode {:mode/mana-cost mana-cost}
-                            sel (sel-costs/build-mana-allocation-selection
-                                  db-after-non-mana player-id object-id mode mana-cost)]
-                        (if sel
-                          {:db db-after-non-mana
-                           :pending-selection (assoc sel
-                                                     :selection/source-type :ability
-                                                     :selection/ability ability)}
-                          ;; Builder returned nil: pay all costs normally, add to stack
-                          (let [db-all (abilities/pay-all-costs db object-id ability-cost)]
-                            (if db-all
-                              {:db (stack/create-stack-item db-all
-                                                            {:stack-item/type :activated-ability
-                                                             :stack-item/controller player-id
-                                                             :stack-item/source object-id
-                                                             :stack-item/effects (:ability/effects ability [])
-                                                             :stack-item/description (:ability/description ability)})
-                               :pending-selection nil}
-                              {:db db :pending-selection nil}))))
-                      ;; Non-mana costs failed to pay
-                      {:db db :pending-selection nil}))
-                  ;; No generic mana: pay all costs directly (existing code unchanged)
-                  (let [db-after-costs (abilities/pay-all-costs db object-id ability-cost)]
-                    (if db-after-costs
-                      (let [effects-list (:ability/effects ability [])
-                            db-with-item (stack/create-stack-item db-after-costs
-                                                                  {:stack-item/type :activated-ability
-                                                                   :stack-item/controller player-id
-                                                                   :stack-item/source object-id
-                                                                   :stack-item/effects effects-list
-                                                                   :stack-item/description (:ability/description ability)})]
-                        {:db db-with-item
-                         :pending-selection nil})
-                      {:db db :pending-selection nil}))))))
-          {:db db :pending-selection nil}))
-      {:db db :pending-selection nil})))
+    (if-not (and obj
+                 player-eid
+                 (= (:object/zone obj) :battlefield)
+                 (= (:db/id (:object/controller obj)) player-eid))
+      {:db db :pending-selection nil}
+      (let [ability (nth (:card/abilities (:object/card obj)) ability-index nil)]
+        (if-not (and ability
+                     (= :activated (:ability/type ability))
+                     (abilities/can-activate? db object-id ability))
+          {:db db :pending-selection nil}
+          (activate-validated-ability db player-id object-id ability-index ability))))))
 
 
 (rf/reg-event-db

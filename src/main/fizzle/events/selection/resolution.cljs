@@ -1,10 +1,11 @@
 (ns fizzle.events.selection.resolution
-  "Resolution bridge: detects selection effects, splits effect lists,
-   and orchestrates spell/ability resolution with selection pauses.
+  "Resolution bridge: uses tagged return values from execute-effect-impl
+   to detect selection effects. Orchestrates spell/ability resolution
+   with selection pauses.
 
-   This namespace requires only core.cljs and engine/* — zero domain
-   file imports. Builder dispatch goes through the
-   core/build-selection-for-effect multimethod."
+   Interactive effects self-declare via {:db db :needs-selection effect}
+   return values. The reduce-effects helper in engine/effects.cljs
+   automatically pauses when an interactive effect is encountered."
   (:require
     [datascript.core :as d]
     [fizzle.db.queries :as queries]
@@ -17,43 +18,8 @@
 
 
 ;; =====================================================
-;; Selection Detection Helpers
+;; Helpers
 ;; =====================================================
-
-(defn interactive-effect?
-  "Returns true if this effect requires player selection/interaction.
-   This is the single source of truth for which effects pause resolution
-   to collect player input via the selection system.
-
-   Checks:
-   - :effect/selection :player — explicit player-choice marker
-   - :effect/type :tutor — always interactive (search library)
-   - :effect/type :scry with amount > 0 — arrange top N cards
-   - :effect/target :any-player — choose target player
-   - :effect/type :peek-and-select — choose from revealed cards"
-  [effect]
-  (or (= :player (:effect/selection effect))
-      (= :tutor (:effect/type effect))
-      (and (= :scry (:effect/type effect))
-           (pos? (or (:effect/amount effect) 0)))
-      (= :any-player (:effect/target effect))
-      (= :peek-and-select (:effect/type effect))))
-
-
-(defn has-selection-effect?
-  "Check if any effect in the list requires player selection."
-  [effects]
-  (some interactive-effect? effects))
-
-
-(defn find-selection-effect-index
-  "Find the index of the first effect that requires player selection.
-   Returns nil if no selection effect found."
-  [effects]
-  (first (keep-indexed (fn [i effect]
-                         (when (interactive-effect? effect) i))
-                       effects)))
-
 
 (defn split-effects-around-index
   "Split effects list around the effect at idx.
@@ -63,6 +29,42 @@
     [(subvec v 0 idx)
      (nth v idx)
      (subvec v (inc idx))]))
+
+
+(defn- find-any-player-effect-index
+  "Find the index of the first effect targeting :any-player.
+   Used by stored-targets resolution to identify effects needing
+   pre-resolution with cast-time target data."
+  [effects]
+  (first (keep-indexed (fn [i effect]
+                         (when (= :any-player (:effect/target effect)) i))
+                       effects)))
+
+
+(defn- handle-reduce-result
+  "Handle the result of reduce-effects for spell resolution.
+   If paused at interactive effect, builds selection.
+   If complete, moves spell to its destination zone."
+  [result player-id object-id obj]
+  (if (:needs-selection result)
+    {:db (:db result)
+     :pending-selection (core/build-selection-for-effect
+                          (:db result) player-id object-id
+                          (:needs-selection result)
+                          (vec (:remaining-effects result)))}
+    (let [is-copy (:object/is-copy obj)
+          card (:object/card obj)
+          card-types (:card/types card)
+          cast-mode (:object/cast-mode obj)
+          mode-destination (:mode/on-resolve cast-mode)
+          destination (cond
+                        mode-destination mode-destination
+                        (rules/permanent-type? card-types) :battlefield
+                        :else :graveyard)]
+      {:db (if is-copy
+             (zones/remove-object (:db result) object-id)
+             (zones/move-to-zone (:db result) object-id destination))
+       :pending-selection nil})))
 
 
 ;; =====================================================
@@ -76,10 +78,8 @@
      :db - The updated game-db
      :pending-selection - Selection state if paused for selection, nil otherwise
 
-   When a selection effect is encountered:
-   - Effects before the selection are executed
-   - The selection effect creates pending selection state via build-selection-for-effect multimethod
-   - Effects after the selection are stored for later execution
+   Uses reduce-effects from engine/effects.cljs which automatically detects
+   interactive effects via tagged return values from execute-effect-impl.
 
    If stack-item has :stack-item/targets from cast-time targeting:
    - Uses stored targets instead of prompting
@@ -103,15 +103,12 @@
              stored-targets (or (:stack-item/targets stack-item)
                                 (:object/targets obj))
              effects-list (or (rules/get-active-effects game-db player-id card object-id) [])
-             selection-idx (find-selection-effect-index effects-list)
-             ;; Check if stored targets can satisfy an :any-player selection effect
-             ;; (Deep Analysis path: pre-resolve :any-player before executing)
-             has-stored-player-target (and stored-targets
+             ;; Check if stored targets can satisfy an :any-player effect
+             has-stored-player-target (and (seq stored-targets)
                                            (:player stored-targets)
-                                           selection-idx
-                                           (= :any-player (:effect/target (nth effects-list selection-idx))))]
+                                           (some #(= :any-player (:effect/target %)) effects-list))]
          (cond
-           ;; Stored player target + :any-player selection effect: pre-resolve and execute
+           ;; Stored player target + :any-player effect: pre-resolve and execute
            ;; (e.g., Deep Analysis — effect uses :any-player which execute-effect can't resolve)
            has-stored-player-target
            (let [cast-mode (:object/cast-mode obj)
@@ -152,24 +149,12 @@
                {:db (zones/move-to-zone game-db object-id destination)
                 :pending-selection nil}))
 
-           ;; No stored targets, no selection effect: resolve normally
-           (nil? selection-idx)
-           {:db (rules/resolve-spell game-db player-id object-id)
-            :pending-selection nil}
-
-           ;; Has selection effect without stored targets: pause for selection
+           ;; No stored targets: execute effects via reduce-effects.
+           ;; Tagged return values from execute-effect-impl automatically
+           ;; signal when player selection is needed — no pre-scanning required.
            :else
-           (let [[effects-before selection-effect effects-after]
-                 (split-effects-around-index effects-list selection-idx)
-                 db-after-before (reduce (fn [d effect]
-                                           (effects/execute-effect d player-id effect object-id))
-                                         game-db
-                                         effects-before)
-                 pending-selection (core/build-selection-for-effect
-                                     db-after-before player-id object-id
-                                     selection-effect (vec effects-after))]
-             {:db db-after-before
-              :pending-selection pending-selection})))))))
+           (let [result (effects/reduce-effects game-db player-id effects-list object-id)]
+             (handle-reduce-result result player-id object-id obj))))))))
 
 
 ;; =====================================================
@@ -178,7 +163,8 @@
 
 (defn resolve-stack-item-ability-with-selection
   "Resolve a stack-item for an activated ability, pausing if a selection effect is encountered.
-   Uses resolve-effect-target for all target resolution.
+   Uses resolve-effect-target for all target resolution, then reduce-effects
+   for sequential execution with automatic interactive effect detection.
 
    Arguments:
      game-db - Datascript database
@@ -191,87 +177,54 @@
         stack-item-eid (:db/id stack-item)
         effects-list (or (:stack-item/effects stack-item) [])
         stored-targets (:stack-item/targets stack-item)
-        selection-idx (find-selection-effect-index effects-list)
         stored-player (:player stored-targets)
-        has-stored-player-target (and stored-player
-                                      selection-idx
-                                      (= :any-player (:effect/target (nth effects-list selection-idx))))]
+        ;; Check for :any-player effect that can be satisfied by stored player target
+        any-player-idx (when stored-player
+                         (find-any-player-effect-index effects-list))
+        has-stored-player-target (boolean any-player-idx)]
     (cond
-      ;; Stored targets for player targeting
+      ;; Stored targets for player targeting (e.g., Cephalid Coliseum)
+      ;; Pre-resolve :any-player, execute, then handle remaining interactive effects
       has-stored-player-target
       (let [[effects-before player-target-effect effects-after]
-            (split-effects-around-index effects-list selection-idx)
+            (split-effects-around-index effects-list any-player-idx)
             resolved-player-effect (stack/resolve-effect-target player-target-effect source-id controller stored-targets)
             db-after-before (reduce (fn [d effect]
                                       (effects/execute-effect d controller
                                                               (stack/resolve-effect-target effect source-id controller nil)))
                                     game-db effects-before)
             db-after-player-effect (effects/execute-effect db-after-before controller resolved-player-effect)
-            next-selection-idx (find-selection-effect-index effects-after)]
-        (if next-selection-idx
-          (let [[effects-before-next next-selection-effect effects-after-next]
-                (split-effects-around-index effects-after next-selection-idx)
-                db-after-before-next (reduce (fn [d effect]
-                                               (effects/execute-effect d controller effect))
-                                             db-after-player-effect effects-before-next)
-                pending-selection (when (= :player (:effect/selection next-selection-effect))
-                                    {:selection/type :discard
-                                     :selection/card-source :hand
-                                     :selection/player-id stored-player
-                                     :selection/select-count (:effect/count next-selection-effect)
-                                     :selection/selected #{}
-                                     :selection/stack-item-eid stack-item-eid
-                                     :selection/source-type :stack-item
-                                     :selection/remaining-effects effects-after-next
-                                     :selection/validation :exact
-                                     :selection/auto-confirm? false})]
-            {:db db-after-before-next :pending-selection pending-selection})
-          (let [db-after-all (reduce (fn [d effect]
-                                       (effects/execute-effect d controller effect))
-                                     db-after-player-effect effects-after)]
-            {:db db-after-all :pending-selection nil})))
+            ;; Use reduce-effects for remaining effects — automatically detects
+            ;; interactive effects via tagged return values
+            result (effects/reduce-effects db-after-player-effect controller effects-after)]
+        (if (:needs-selection result)
+          (let [sel-effect (:needs-selection result)]
+            {:db (:db result)
+             :pending-selection (when (= :player (:effect/selection sel-effect))
+                                  {:selection/type :discard
+                                   :selection/card-source :hand
+                                   :selection/player-id stored-player
+                                   :selection/select-count (:effect/count sel-effect)
+                                   :selection/selected #{}
+                                   :selection/stack-item-eid stack-item-eid
+                                   :selection/source-type :stack-item
+                                   :selection/remaining-effects (vec (:remaining-effects result))
+                                   :selection/validation :exact
+                                   :selection/auto-confirm? false})})
+          {:db (:db result) :pending-selection nil}))
 
-      ;; No selection effect
-      (nil? selection-idx)
-      (let [db-after-effects (reduce
-                               (fn [d effect]
-                                 (let [resolved (stack/resolve-effect-target effect source-id controller stored-targets)]
-                                   (effects/execute-effect d controller resolved source-id)))
-                               game-db effects-list)]
-        {:db db-after-effects :pending-selection nil})
-
-      ;; Has selection effect without stored targets
+      ;; No stored player target: pre-resolve all targets, execute via reduce-effects
       :else
-      (let [[effects-before selection-effect effects-after]
-            (split-effects-around-index effects-list selection-idx)
-            db-after-before (reduce (fn [d effect]
-                                      (effects/execute-effect d controller
-                                                              (stack/resolve-effect-target effect source-id controller nil)))
-                                    game-db effects-before)
-            pending-selection (cond
-                                ;; Player target or known builder type: use multimethod + fixup
-                                (or (= :any-player (:effect/target selection-effect))
-                                    (= :tutor (:effect/type selection-effect)))
-                                (when-let [sel (core/build-selection-for-effect
-                                                 db-after-before controller stack-item-eid
-                                                 selection-effect effects-after)]
+      (let [resolved-effects (mapv #(stack/resolve-effect-target % source-id controller stored-targets) effects-list)
+            result (effects/reduce-effects game-db controller resolved-effects source-id)]
+        (if (:needs-selection result)
+          (let [sel (core/build-selection-for-effect
+                      (:db result) controller stack-item-eid
+                      (:needs-selection result) (vec (:remaining-effects result)))]
+            {:db (:db result)
+             :pending-selection (when sel
                                   (-> sel
                                       (dissoc :selection/spell-id)
                                       (assoc :selection/stack-item-eid stack-item-eid
-                                             :selection/source-type :stack-item)))
-
-                                ;; Discard selection: inline (player-id is controller for abilities)
-                                (= :player (:effect/selection selection-effect))
-                                {:selection/type :discard
-                                 :selection/card-source :hand
-                                 :selection/player-id controller
-                                 :selection/select-count (:effect/count selection-effect)
-                                 :selection/selected #{}
-                                 :selection/stack-item-eid stack-item-eid
-                                 :selection/source-type :stack-item
-                                 :selection/remaining-effects effects-after
-                                 :selection/validation :exact
-                                 :selection/auto-confirm? false}
-
-                                :else nil)]
-        {:db db-after-before :pending-selection pending-selection}))))
+                                             :selection/source-type :stack-item)))})
+          {:db (:db result) :pending-selection nil})))))

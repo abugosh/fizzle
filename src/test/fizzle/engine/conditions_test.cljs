@@ -100,3 +100,74 @@
           "Should have 6 cards after removal")
       (is (false? (conditions/threshold? db-6 :player-1))
           "Should lose threshold when dropping below 7"))))
+
+
+;; === check-condition multimethod tests ===
+
+(defn- add-permanent-with-counters
+  "Add a permanent to the battlefield with optional counters.
+   Returns [db object-id]."
+  [db player-id counters]
+  (let [conn (d/conn-from-db db)
+        player-eid (q/get-player-eid db player-id)
+        card-eid (d/q '[:find ?e .
+                        :where [?e :card/id :dark-ritual]]
+                      db)
+        object-id (random-uuid)
+        entity (cond-> {:object/id object-id
+                        :object/card card-eid
+                        :object/zone :battlefield
+                        :object/owner player-eid
+                        :object/controller player-eid
+                        :object/tapped false}
+                 counters (assoc :object/counters counters))]
+    (d/transact! conn [entity])
+    [@conn object-id]))
+
+
+(deftest test-check-condition-threshold-met
+  (testing "check-condition dispatches :threshold and returns true when met"
+    (let [db (-> (init-game-state)
+                 (add-cards-to-graveyard :player-1 7))]
+      (is (true? (conditions/check-condition db :player-1
+                                             {:condition/type :threshold}))))))
+
+
+(deftest test-check-condition-threshold-not-met
+  (testing "check-condition dispatches :threshold and returns false when not met"
+    (let [db (init-game-state)]
+      (is (false? (conditions/check-condition db :player-1
+                                              {:condition/type :threshold}))))))
+
+
+(deftest test-check-condition-no-counters-with-zero
+  (testing "check-condition :no-counters returns true when counter is 0"
+    (let [[db obj-id] (add-permanent-with-counters (init-game-state) :player-1
+                                                   {:mining 0})]
+      (is (true? (conditions/check-condition db :player-1
+                                             {:condition/type :no-counters
+                                              :condition/counter-type :mining
+                                              :condition/target obj-id}))))))
+
+
+(deftest test-check-condition-no-counters-with-counters
+  (testing "check-condition :no-counters returns false when counters present"
+    (let [[db obj-id] (add-permanent-with-counters (init-game-state) :player-1
+                                                   {:mining 3})]
+      (is (false? (conditions/check-condition db :player-1
+                                              {:condition/type :no-counters
+                                               :condition/counter-type :mining
+                                               :condition/target obj-id}))))))
+
+
+(deftest test-check-condition-unknown-type-returns-false
+  (testing "check-condition returns false for unknown condition types (fail closed)"
+    (let [db (init-game-state)]
+      (is (false? (conditions/check-condition db :player-1
+                                              {:condition/type :invented-condition}))))))
+
+
+(deftest test-check-condition-nil-returns-true
+  (testing "check-condition returns true for nil condition (no condition = always met)"
+    (let [db (init-game-state)]
+      (is (true? (conditions/check-condition db :player-1 nil))))))

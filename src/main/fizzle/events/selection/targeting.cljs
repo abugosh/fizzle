@@ -15,8 +15,7 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.selection.core :as core]
-    [fizzle.events.selection.costs :as sel-costs]
-    [fizzle.events.selection.resolution :as resolution]))
+    [fizzle.events.selection.costs :as sel-costs]))
 
 
 ;; =====================================================
@@ -178,33 +177,26 @@
         ;; Replace :any-player with selected target
         resolved-effect (assoc target-effect :effect/target selected-target)
         db-after-effect (effects/execute-effect game-db player-id resolved-effect)
-        ;; Check if remaining effects need selection
-        next-selection-idx (resolution/find-selection-effect-index remaining-effects)]
-    (if next-selection-idx
+        ;; Execute remaining effects via reduce-effects — automatically detects
+        ;; interactive effects via tagged return values from execute-effect-impl
+        result (effects/reduce-effects db-after-effect player-id remaining-effects)]
+    (if (:needs-selection result)
       ;; Chain to next selection (e.g., discard after draw)
-      (let [[effects-before-next next-selection-effect effects-after-next]
-            (resolution/split-effects-around-index remaining-effects next-selection-idx)
-            db-after-before (reduce (fn [d effect]
-                                      (effects/execute-effect d player-id effect))
-                                    db-after-effect
-                                    effects-before-next)
-            next-selection (when (= :player (:effect/selection next-selection-effect))
+      (let [sel-effect (:needs-selection result)
+            next-selection (when (= :player (:effect/selection sel-effect))
                              (cond-> {:selection/type :discard
                                       :selection/card-source :hand
                                       :selection/player-id selected-target
-                                      :selection/select-count (:effect/count next-selection-effect)
+                                      :selection/select-count (:effect/count sel-effect)
                                       :selection/selected #{}
                                       :selection/source-type source-type
-                                      :selection/remaining-effects effects-after-next}
+                                      :selection/remaining-effects (vec (:remaining-effects result))}
                                spell-id (assoc :selection/spell-id spell-id)
                                (:selection/stack-item-eid selection)
                                (assoc :selection/stack-item-eid (:selection/stack-item-eid selection))))]
-        {:db db-after-before :pending-selection next-selection})
-      ;; No more selections - execute all remaining (wrapper will handle cleanup)
-      {:db (reduce (fn [d effect]
-                     (effects/execute-effect d player-id effect))
-                   db-after-effect
-                   remaining-effects)})))
+        {:db (:db result) :pending-selection next-selection})
+      ;; No more selections - all remaining executed (wrapper will handle cleanup)
+      {:db (:db result)})))
 
 
 (defmethod core/execute-confirmed-selection :cast-time-targeting

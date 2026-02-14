@@ -314,3 +314,134 @@
           pool-after (q/get-mana-pool db' :player-1)]
       (is (= 1 (:black pool-after))
           "Should have 1 black mana remaining after paying 2"))))
+
+
+;; === :exile-cards cost tests ===
+
+(defn add-colored-card-to-graveyard
+  "Add a card with a specific color to a player's graveyard.
+   Returns updated db."
+  [db player-id color]
+  (let [conn (d/conn-from-db db)
+        player-eid (q/get-player-eid db player-id)
+        card-id (random-uuid)
+        obj-id (random-uuid)]
+    (d/transact! conn [{:db/id -1
+                        :card/id card-id
+                        :card/name (str (name color) " Test Card")
+                        :card/colors #{color}
+                        :card/types #{:instant}
+                        :card/mana-cost {color 1}}])
+    (let [card-eid (d/q '[:find ?e .
+                          :in $ ?cid
+                          :where [?e :card/id ?cid]]
+                        @conn card-id)]
+      (d/transact! conn [{:object/id obj-id
+                          :object/card card-eid
+                          :object/zone :graveyard
+                          :object/owner player-eid
+                          :object/controller player-eid
+                          :object/tapped false}]))
+    @conn))
+
+
+(deftest test-can-pay-exile-cards-sufficient-matching
+  (testing "can-pay? :exile-cards returns true when enough matching cards exist"
+    (let [db (-> (init-game-state)
+                 (add-colored-card-to-graveyard :player-1 :blue)
+                 (add-colored-card-to-graveyard :player-1 :blue)
+                 (add-colored-card-to-graveyard :player-1 :blue))
+          [db object-id] (add-permanent db :player-1)
+          cost {:exile-cards {:zone :graveyard
+                              :criteria {:card/colors #{:blue}}
+                              :count 2}}]
+      (is (true? (costs/can-pay? db object-id cost))))))
+
+
+(deftest test-can-pay-exile-cards-insufficient-matching
+  (testing "can-pay? :exile-cards returns false when not enough matching cards"
+    (let [db (add-colored-card-to-graveyard (init-game-state) :player-1 :blue)
+          [db object-id] (add-permanent db :player-1)
+          cost {:exile-cards {:zone :graveyard
+                              :criteria {:card/colors #{:blue}}
+                              :count 3}}]
+      (is (false? (costs/can-pay? db object-id cost))))))
+
+
+(deftest test-can-pay-exile-cards-wrong-color
+  (testing "can-pay? :exile-cards returns false when cards exist but wrong color"
+    (let [db (-> (init-game-state)
+                 (add-colored-card-to-graveyard :player-1 :black)
+                 (add-colored-card-to-graveyard :player-1 :black))
+          [db object-id] (add-permanent db :player-1)
+          cost {:exile-cards {:zone :graveyard
+                              :criteria {:card/colors #{:blue}}
+                              :count 1}}]
+      (is (false? (costs/can-pay? db object-id cost))))))
+
+
+(deftest test-can-pay-exile-cards-x-count
+  (testing "can-pay? :exile-cards with :x count requires at least 1 matching card"
+    (let [db (add-colored-card-to-graveyard (init-game-state) :player-1 :blue)
+          [db object-id] (add-permanent db :player-1)
+          cost {:exile-cards {:zone :graveyard
+                              :criteria {:card/colors #{:blue}}
+                              :count :x}}]
+      (is (true? (costs/can-pay? db object-id cost))))))
+
+
+(deftest test-can-pay-exile-cards-x-count-empty
+  (testing "can-pay? :exile-cards with :x count returns false when no matching cards"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          cost {:exile-cards {:zone :graveyard
+                              :criteria {:card/colors #{:blue}}
+                              :count :x}}]
+      (is (false? (costs/can-pay? db object-id cost))))))
+
+
+(deftest test-can-pay-exile-cards-excludes-self
+  (testing "can-pay? :exile-cards excludes the object itself from available cards"
+    ;; When casting from graveyard, the spell itself should not count
+    (let [db (init-game-state)
+          conn (d/conn-from-db db)
+          player-eid (q/get-player-eid db :player-1)
+          card-id (random-uuid)
+          obj-id (random-uuid)]
+      ;; Create a blue card in graveyard as our "spell"
+      (d/transact! conn [{:db/id -1
+                          :card/id card-id
+                          :card/name "Blue Spell"
+                          :card/colors #{:blue}
+                          :card/types #{:instant}
+                          :card/mana-cost {:blue 1}}])
+      (let [card-eid (d/q '[:find ?e .
+                            :in $ ?cid
+                            :where [?e :card/id ?cid]]
+                          @conn card-id)]
+        (d/transact! conn [{:object/id obj-id
+                            :object/card card-eid
+                            :object/zone :graveyard
+                            :object/owner player-eid
+                            :object/controller player-eid
+                            :object/tapped false}]))
+      ;; Only the spell itself is blue in graveyard - should not count
+      (let [db @conn
+            cost {:exile-cards {:zone :graveyard
+                                :criteria {:card/colors #{:blue}}
+                                :count :x}}]
+        (is (false? (costs/can-pay? db obj-id cost))
+            "Spell being cast should not count as available exile target")))))
+
+
+(deftest test-pay-exile-cards-returns-db-unchanged
+  (testing "pay-cost :exile-cards returns db unchanged (deferred to selection layer)"
+    (let [db (-> (init-game-state)
+                 (add-colored-card-to-graveyard :player-1 :blue)
+                 (add-colored-card-to-graveyard :player-1 :blue))
+          [db object-id] (add-permanent db :player-1)
+          cost {:exile-cards {:zone :graveyard
+                              :criteria {:card/colors #{:blue}}
+                              :count 2}}
+          db' (costs/pay-cost db object-id cost)]
+      (is (= db db')
+          "pay-cost :exile-cards should return db unchanged"))))

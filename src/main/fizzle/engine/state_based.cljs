@@ -1,29 +1,26 @@
 (ns fizzle.engine.state-based
   "State-based actions for Fizzle.
 
-   SBAs are checked after every game action. Uses registry pattern
-   for extensibility - add new SBA types without modifying existing code.
+   SBAs are checked after every game action. Uses multimethod pattern
+   for extensibility - add new SBA types by adding defmethods.
 
    All functions are pure: (db, args) -> db")
 
 
-;; Registry of SBA check functions
-;; Each check-fn: (db) -> seq of {:sba/type keyword :sba/target object-id}
-(defonce sba-registry (atom {}))
-
-
-(defn register-sba!
-  "Register a state-based action check function.
+(defmulti check-sba
+  "Check for a specific type of state-based action.
 
    Arguments:
-     sba-type - Keyword identifying the SBA (e.g. :zero-counters)
-     check-fn - Function (db) -> seq of SBA events to execute
+     db - Datascript database value
+     sba-type - Keyword identifying the SBA type
 
    Returns:
-     nil (side effect: updates registry)"
-  [sba-type check-fn]
-  (swap! sba-registry assoc sba-type check-fn)
-  nil)
+     Seq of SBA events: {:sba/type keyword :sba/target object-id}
+     Empty seq if no SBAs of this type apply."
+  (fn [_db sba-type] sba-type))
+
+
+(defmethod check-sba :default [_db _type] [])
 
 
 (defn check-all-sbas
@@ -35,8 +32,8 @@
    Returns:
      Seq of SBA events: {:sba/type keyword :sba/target object-id}"
   [db]
-  (mapcat (fn [[_type check-fn]] (check-fn db))
-          @sba-registry))
+  (let [sba-types (keys (dissoc (methods check-sba) :default))]
+    (mapcat #(check-sba db %) sba-types)))
 
 
 (defmulti execute-sba

@@ -5,11 +5,16 @@
     [datascript.core :as d]))
 
 
-(def trigger-type->event-type
-  "Map card trigger type to event type.
-   E.g., :becomes-tapped in card data becomes :permanent-tapped event."
-  {:becomes-tapped :permanent-tapped
-   :land-entered :land-entered})
+(defmulti trigger-type->event-type
+  "Map card trigger type to event type. Extensible via defmethod.
+   E.g., :becomes-tapped in card data becomes :permanent-tapped event.
+   Default returns the trigger-type unchanged (identity mapping)."
+  identity)
+
+
+(defmethod trigger-type->event-type :becomes-tapped [_] :permanent-tapped)
+(defmethod trigger-type->event-type :land-entered [_] :land-entered)
+(defmethod trigger-type->event-type :default [type] type)
 
 
 (defn- ref->eid
@@ -84,7 +89,7 @@
   (let [trigger-entities
         (mapv (fn [ct]
                 (let [trigger-type (:trigger/type ct)
-                      event-type (get trigger-type->event-type trigger-type trigger-type)
+                      event-type (trigger-type->event-type trigger-type)
                       trigger-filter (or (:trigger/filter ct)
                                          {:event/object-id :self})
                       base {:trigger/type trigger-type

@@ -250,14 +250,12 @@
           "Should track spell id for cleanup"))))
 
 
-(deftest deep-analysis-finds-any-player-target-test
-  (testing "find-selection-effect-index detects :any-player target"
+(deftest deep-analysis-any-player-effect-test
+  (testing "Deep Analysis draw effect has :any-player target requiring selection"
     (let [effects (:card/effects deep-analysis/deep-analysis)
-          idx (resolution/find-selection-effect-index effects)]
-      (is (= 0 idx)
-          "Should find the draw effect at index 0")
-      (is (= :any-player (:effect/target (nth effects idx)))
-          "Should detect :any-player target"))))
+          draw-effect (first effects)]
+      (is (= :any-player (:effect/target draw-effect))
+          "Draw effect should have :any-player target"))))
 
 
 (deftest deep-analysis-player-target-selection-state-test

@@ -9,19 +9,6 @@
     [fizzle.engine.effects :as effects]))
 
 
-(defn- check-condition
-  "Check if an ability's condition is met.
-   Dispatches on :condition/type within :ability/condition.
-   Returns true if no condition or condition is met."
-  [db player-id condition]
-  (if (nil? condition)
-    true ; No condition = always met
-    (case (:condition/type condition)
-      :threshold (conditions/threshold? db player-id)
-      ;; Unknown condition types fail closed (cannot activate)
-      false)))
-
-
 (defn can-activate?
   "Check if an ability can be activated.
 
@@ -51,7 +38,7 @@
          condition (:ability/condition ability)]
      (and
        ;; Check condition first (threshold, etc.)
-       (check-condition db player-id condition)
+       (conditions/check-condition db player-id condition)
        ;; Then check all costs can be paid
        (if (or (nil? cost) (empty? cost))
          true ; Free activation

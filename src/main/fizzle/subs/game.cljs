@@ -6,7 +6,6 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.sorting :as sorting]
     [fizzle.engine.stack :as stack]
-    [fizzle.events.game :as events]
     [re-frame.core :as rf]))
 
 
@@ -74,7 +73,7 @@
     (when (and game-db selected)
       (and (rules/can-cast? game-db :player-1 selected)
            ;; Exclude lands - they use play-land, not cast
-           (not (events/land-card? game-db selected))))))
+           (not (rules/land-card? game-db selected))))))
 
 
 (rf/reg-sub
@@ -83,7 +82,7 @@
   :<- [::selected-card]
   (fn [[game-db selected] _]
     (when (and game-db selected)
-      (events/can-play-land? game-db :player-1 selected))))
+      (rules/can-play-land? game-db :player-1 selected))))
 
 
 (rf/reg-sub
@@ -95,7 +94,7 @@
       (let [obj (queries/get-object game-db selected)]
         (when obj
           {:name (get-in obj [:object/card :card/name])
-           :land? (events/land-card? game-db selected)})))))
+           :land? (rules/land-card? game-db selected)})))))
 
 
 (rf/reg-sub

@@ -1,10 +1,11 @@
 (ns fizzle.engine.costs
-  "Cost payment system for abilities.
+  "Cost payment system for abilities and spells.
 
    Dispatches on cost type to pay costs.
    All functions are pure: (db, object-id, cost) -> db or nil."
   (:require
-    [datascript.core :as d]))
+    [datascript.core :as d]
+    [fizzle.db.queries :as q]))
 
 
 (defn get-object-eid
@@ -275,3 +276,36 @@
           new-pool (merge-with - current-pool required)]
       (d/db-with db [[:db/add controller-eid :player/mana-pool new-pool]]))
     db))
+
+
+;; === :exile-cards cost ===
+;; Used for costs like "exile X blue cards from your graveyard"
+;; Cost format: {:exile-cards {:zone :graveyard :criteria {...} :count N-or-:x}}
+;; Note: pay-cost returns db unchanged because actual exile is deferred
+;; to the event layer's selection system (player chooses which cards).
+
+(defmethod can-pay? :exile-cards [db object-id cost]
+  ;; Can pay exile-cards if:
+  ;; 1. Object exists (to find controller)
+  ;; 2. Controller has enough matching cards in the specified zone
+  ;; 3. The object itself is excluded (can't exile the spell you're casting)
+  (if-let [controller-eid (get-controller-eid db object-id)]
+    (let [config (:exile-cards cost)
+          zone (:zone config)
+          criteria (:criteria config)
+          required (:count config)
+          controller-id (get-player-id-from-eid db controller-eid)
+          all-available (q/query-zone-by-criteria db controller-id zone criteria)
+          available (filterv #(not= object-id (:object/id %)) all-available)
+          available-count (count available)]
+      (cond
+        (= required :x) (pos? available-count)
+        (zero? required) true
+        :else (>= available-count required)))
+    false))
+
+
+(defmethod pay-cost :exile-cards [db _object-id _cost]
+  ;; Actual exile is deferred to the event layer's selection system.
+  ;; Player must choose which cards to exile, so we return db unchanged.
+  db)

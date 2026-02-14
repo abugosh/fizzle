@@ -7,6 +7,7 @@
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.conditions :as conditions]
+    [fizzle.engine.costs :as costs]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
@@ -108,73 +109,36 @@
     []))
 
 
+(defn- additional-cost->cost-map
+  "Convert a namespaced additional cost to costs.cljs multimethod format.
+   {:cost/type :pay-life :cost/amount 3} -> {:pay-life 3}
+   {:cost/type :exile-cards :cost/zone z ...} -> {:exile-cards {:zone z ...}}"
+  [cost]
+  (case (:cost/type cost)
+    :pay-life {:pay-life (:cost/amount cost)}
+    :exile-cards {:exile-cards {:zone (:cost/zone cost)
+                                :criteria (:cost/criteria cost)
+                                :count (:cost/count cost)}}))
+
+
 (defn- can-pay-additional-cost?
   "Check if an additional cost can be paid.
-   Uses costs/can-pay? for recognized cost types."
+   Delegates to costs/can-pay? multimethod."
   [db _player-id object-id cost]
-  (case (:cost/type cost)
-    :pay-life (let [obj (q/get-object db object-id)
-                    controller-eid (:db/id (:object/controller obj))
-                    current-life (d/q '[:find ?life .
-                                        :in $ ?p
-                                        :where [?p :player/life ?life]]
-                                      db controller-eid)]
-                (>= (or current-life 0) (:cost/amount cost)))
-
-    :exile-cards (if-let [obj (q/get-object db object-id)]
-                   (let [;; Controller ref needs lookup to get player-id
-                         controller-eid (:db/id (:object/controller obj))
-                         controller-id (d/q '[:find ?pid .
-                                              :in $ ?e
-                                              :where [?e :player/id ?pid]]
-                                            db controller-eid)
-                         zone (:cost/zone cost)          ; e.g., :graveyard
-                         criteria (:cost/criteria cost)  ; e.g., {:card/colors #{:blue}}
-                         required (:cost/count cost)     ; integer or :x
-                         all-available (q/query-zone-by-criteria db controller-id zone criteria)
-                         ;; Exclude the spell being cast from available cards
-                         ;; (can't exile the card you're casting)
-                         available (filterv #(not= object-id (:object/id %)) all-available)
-                         available-count (count available)]
-                     (cond
-                       ;; For :x cost, need at least 1 card (X >= 1)
-                       (= required :x) (pos? available-count)
-                       ;; For count=0, vacuously true (no cards needed)
-                       (zero? required) true
-                       ;; For fixed count, need at least that many
-                       :else (>= available-count required)))
-                   ;; Object not found
-                   false)
-
-    ;; For unimplemented cost types, return false
-    ;; This ensures we don't accidentally allow casting when costs can't be validated
-    false))
+  (costs/can-pay? db object-id (additional-cost->cost-map cost)))
 
 
 (defn- pay-additional-cost
   "Pay a single additional cost. Returns updated db.
+   Delegates to costs/pay-cost multimethod.
    Precondition: cost has been validated with can-pay-additional-cost?
 
    Note: Some costs like :exile-cards require player selection and are
-   handled at the event layer. This function returns db unchanged for those,
+   handled at the event layer. costs/pay-cost returns db unchanged for those,
    and the actual payment happens after player confirms selection."
   [db _player-id object-id cost]
-  (case (:cost/type cost)
-    :pay-life (let [obj (q/get-object db object-id)
-                    controller-eid (:db/id (:object/controller obj))
-                    current-life (d/q '[:find ?life .
-                                        :in $ ?p
-                                        :where [?p :player/life ?life]]
-                                      db controller-eid)
-                    new-life (- current-life (:cost/amount cost))]
-                (d/db-with db [[:db/add controller-eid :player/life new-life]]))
-
-    ;; :exile-cards requires player selection - handled at event layer
-    ;; Return db unchanged here; actual exile happens after selection confirmed
-    :exile-cards db
-
-    ;; Unknown cost type - return db unchanged (validated in can-pay)
-    db))
+  (or (costs/pay-cost db object-id (additional-cost->cost-map cost))
+      db))
 
 
 (defn- pay-additional-costs
@@ -430,10 +394,14 @@
       (seq mode-effects)
       mode-effects
 
-      ;; Check threshold condition if card has it
-      (and (:threshold conditional-effects)
-           (conditions/threshold? db player-id))
-      (:threshold conditional-effects)
+      ;; Check conditional effects via unified condition multimethod
+      (seq conditional-effects)
+      (or (some (fn [[condition-key effects]]
+                  (when (conditions/check-condition db player-id
+                                                    {:condition/type condition-key})
+                    effects))
+                conditional-effects)
+          default-effects)
 
       ;; Fall back to default effects
       :else
@@ -501,3 +469,58 @@
               mode-destination (:mode/on-resolve cast-mode)
               destination (or mode-destination :graveyard)]
           (zones/move-to-zone db object-id destination))))))
+
+
+;; =====================================================
+;; Turn Phases
+;; =====================================================
+
+(def phases
+  "MTG turn phases in order: untap → upkeep → draw → main1 → combat → main2 → end → cleanup"
+  [:untap :upkeep :draw :main1 :combat :main2 :end :cleanup])
+
+
+;; =====================================================
+;; Land Plays
+;; =====================================================
+
+(defn land-card?
+  "Check if an object's card has :land in its types.
+   Returns false if object or card not found."
+  [db object-id]
+  (let [obj (q/get-object db object-id)]
+    (when obj
+      (let [card (:object/card obj)
+            types (:card/types card)]
+        (contains? (set types) :land)))))
+
+
+(defn can-play-land?
+  "Check if a player can play a land from their hand.
+   Requires:
+   - Object is a land card
+   - Object is in player's hand
+   - Player has land plays remaining
+   - Current phase is main1 or main2
+   - Stack is empty
+   Returns true or false."
+  [db player-id object-id]
+  (let [game-state (q/get-game-state db)
+        phase (:game/phase game-state)
+        player-eid (q/get-player-eid db player-id)
+        land-plays (d/q '[:find ?plays .
+                          :in $ ?pid
+                          :where [?e :player/id ?pid]
+                          [?e :player/land-plays-left ?plays]]
+                        db player-id)
+        obj (q/get-object db object-id)
+        owner-eid (:db/id (:object/owner obj))]
+    (boolean
+      (and player-eid
+           obj
+           (pos? (or land-plays 0))
+           (= (:object/zone obj) :hand)
+           (= owner-eid player-eid)
+           (land-card? db object-id)
+           (#{:main1 :main2} phase)
+           (stack/stack-empty? db)))))
