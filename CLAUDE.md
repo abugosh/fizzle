@@ -154,3 +154,33 @@ ADRs complement `fizzle-design.md` (design vision) and `fizzle-roadmap.md` (impl
 - Use re-frame events for all game state changes
 - Subscriptions compute derived state (e.g., castable cards, threshold status)
 - Views are pure Reagent components that subscribe to state
+
+### Card Testing Requirements
+
+Every card must have a dedicated test file (`src/test/fizzle/cards/<card>_test.cljs`) using `fizzle.test-helpers`. Full guide: [docs/testing-strategy.md](docs/testing-strategy.md).
+
+**Mandatory categories (every card):**
+- **A. Card definition** — verify ALL fields with exact values (not `some?`/`string?` — those are tautological)
+- **B. Cast-resolve happy path** — full cast/resolve cycle through production code
+- **C. Cannot-cast guards** — insufficient mana, wrong zone, no valid targets
+- **D. Storm count** — casting increments storm
+
+**Conditional categories (when applicable):**
+- **E.** Selection/modal tests (player choice cards)
+- **F.** Targeting tests (targeted spells)
+- **G.** Edge cases (2+ per card: empty zones, partial resources, zone restrictions)
+- **H.** Flashback tests
+- **I.** Trigger/ability tests
+
+| Card type | Min tests |
+|-----------|-----------|
+| Simple spell | 5 |
+| Targeted spell | 8 |
+| Selection spell | 8 |
+| Land with ability | 8 |
+| Flashback/Storm spell | 12 |
+
+**Top anti-patterns:**
+1. Reimplementing production handlers in tests (test through `rules/cast-spell`, not manual copies)
+2. Copy-pasted test variants that differ only by parameter (use `doseq`)
+3. Tautological assertions (`(is (some? x))` instead of `(is (= expected x))`)
