@@ -115,3 +115,88 @@
           activated {:ability/type :activated :ability/name "Draw"}
           obj {:object/card {:card/abilities [mana-ability activated]}}]
       (is (= [[1 activated]] (battlefield/get-activated-abilities obj))))))
+
+
+;; === get-type-border-class ===
+
+(deftest get-type-border-class-creature
+  (testing "creature types return green border"
+    (is (= "border-type-creature" (battlefield/get-type-border-class #{:creature} false)))
+    (is (= "border-type-creature-tapped" (battlefield/get-type-border-class #{:creature} true)))))
+
+
+(deftest get-type-border-class-land
+  (testing "land types return brown border"
+    (is (= "border-type-land" (battlefield/get-type-border-class #{:land} false)))
+    (is (= "border-type-land-tapped" (battlefield/get-type-border-class #{:land} true)))))
+
+
+(deftest get-type-border-class-artifact
+  (testing "artifact types return gray border"
+    (is (= "border-type-artifact" (battlefield/get-type-border-class #{:artifact} false)))
+    (is (= "border-type-artifact-tapped" (battlefield/get-type-border-class #{:artifact} true)))))
+
+
+(deftest get-type-border-class-enchantment
+  (testing "enchantment types return purple border"
+    (is (= "border-type-enchantment" (battlefield/get-type-border-class #{:enchantment} false)))
+    (is (= "border-type-enchantment-tapped" (battlefield/get-type-border-class #{:enchantment} true)))))
+
+
+(deftest get-type-border-class-artifact-creature
+  (testing "artifact-creature uses creature priority (green border)"
+    (is (= "border-type-creature" (battlefield/get-type-border-class #{:artifact :creature} false)))))
+
+
+(deftest get-type-border-class-land-creature
+  (testing "land-creature uses creature priority (green border)"
+    (is (= "border-type-creature" (battlefield/get-type-border-class #{:land :creature} false)))))
+
+
+(deftest get-type-border-class-artifact-land
+  (testing "artifact-land uses land priority over artifact (brown border)"
+    (is (= "border-type-land" (battlefield/get-type-border-class #{:artifact :land} false)))))
+
+
+(deftest get-type-border-class-nil
+  (testing "nil types default to artifact border (other)"
+    (is (= "border-type-artifact" (battlefield/get-type-border-class nil false)))))
+
+
+;; === get-color-identity-bg-class ===
+
+(deftest get-color-identity-bg-class-white
+  (testing "white color identity returns cream tint"
+    (is (= "bg-color-identity-white" (battlefield/get-color-identity-bg-class #{:white})))))
+
+
+(deftest get-color-identity-bg-class-blue
+  (testing "blue color identity returns blue tint"
+    (is (= "bg-color-identity-blue" (battlefield/get-color-identity-bg-class #{:blue})))))
+
+
+(deftest get-color-identity-bg-class-black
+  (testing "black color identity returns dark tint"
+    (is (= "bg-color-identity-black" (battlefield/get-color-identity-bg-class #{:black})))))
+
+
+(deftest get-color-identity-bg-class-red
+  (testing "red color identity returns red tint"
+    (is (= "bg-color-identity-red" (battlefield/get-color-identity-bg-class #{:red})))))
+
+
+(deftest get-color-identity-bg-class-green
+  (testing "green color identity returns green tint"
+    (is (= "bg-color-identity-green" (battlefield/get-color-identity-bg-class #{:green})))))
+
+
+(deftest get-color-identity-bg-class-multicolor
+  (testing "multicolor (2+ colors) returns gold tint"
+    (is (= "bg-color-identity-multicolor" (battlefield/get-color-identity-bg-class #{:blue :black})))
+    (is (= "bg-color-identity-multicolor" (battlefield/get-color-identity-bg-class #{:white :blue :black})))))
+
+
+(deftest get-color-identity-bg-class-colorless
+  (testing "colorless (empty or nil) returns neutral/default"
+    (is (= "bg-perm-bg" (battlefield/get-color-identity-bg-class #{})))
+    (is (= "bg-perm-bg" (battlefield/get-color-identity-bg-class nil)))))

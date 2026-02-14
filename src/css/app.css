@@ -33,6 +33,24 @@
   --color-perm-bg-tapped: #1a1a1a;
   --color-perm-text-tapped: #666;
 
+  /* Type-based border colors */
+  --color-type-border-creature: #5CB85C;
+  --color-type-border-creature-tapped: #3a5a3a;
+  --color-type-border-artifact: #9ca3af;
+  --color-type-border-artifact-tapped: #4a4a58;
+  --color-type-border-enchantment: #a78bfa;
+  --color-type-border-enchantment-tapped: #5a4a7a;
+  --color-type-border-land: #a16207;
+  --color-type-border-land-tapped: #5a4a2a;
+
+  /* MTG color identity background tints (subtle wash) */
+  --color-identity-white: rgba(245, 235, 220, 0.15);
+  --color-identity-blue: rgba(74, 155, 217, 0.12);
+  --color-identity-black: rgba(80, 60, 100, 0.15);
+  --color-identity-red: rgba(217, 83, 79, 0.12);
+  --color-identity-green: rgba(92, 184, 92, 0.12);
+  --color-identity-multicolor: rgba(255, 215, 0, 0.12);
+
   /* Ability colors */
   --color-ability-bg: #4a3a2a;
   --color-ability-text: #dd44aa;
