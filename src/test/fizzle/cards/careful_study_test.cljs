@@ -19,8 +19,9 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.rules :as rules]
-    [fizzle.engine.zones :as zones]
+    [fizzle.events.selection.core :as core]
     [fizzle.events.selection.resolution :as resolution]
+    [fizzle.events.selection.zone-ops]
     [fizzle.test-helpers :as th]))
 
 
@@ -258,33 +259,8 @@
             sel-with-choice (assoc sel :selection/selected card-ids)
             app-db {:game/db db-after-draw
                     :game/pending-selection sel-with-choice}
-            ;; Confirm discard via the production event handler
-            confirm-fn (fn [app-db-val]
-                         (let [selection (:game/pending-selection app-db-val)
-                               selected (:selection/selected selection)
-                               game-db (:game/db app-db-val)
-                               player-id (:selection/player-id selection)
-                               spell-id (:selection/spell-id selection)
-                               remaining-effects (:selection/remaining-effects selection)
-                               ;; Move selected cards to graveyard
-                               db-after-discard (reduce (fn [d oid]
-                                                          (let [obj (q/get-object d oid)]
-                                                            (if (and obj (= :hand (:object/zone obj)))
-                                                              (zones/move-to-zone d oid :graveyard)
-                                                              d)))
-                                                        game-db
-                                                        selected)
-                               ;; Execute remaining effects
-                               db-after-remaining (reduce (fn [d effect]
-                                                            (effects/execute-effect d player-id effect))
-                                                          db-after-discard
-                                                          (or remaining-effects []))
-                               ;; Move spell off stack
-                               db-final (zones/move-to-zone db-after-remaining spell-id :graveyard)]
-                           (-> app-db-val
-                               (assoc :game/db db-final)
-                               (dissoc :game/pending-selection))))
-            result-app-db (confirm-fn app-db)
+            ;; Confirm discard via the production confirm-selection-impl
+            result-app-db (core/confirm-selection-impl app-db)
             final-db (:game/db result-app-db)]
         ;; Hand should be empty (discarded 2 cards)
         (is (= 0 (th/get-hand-count final-db :player-1))

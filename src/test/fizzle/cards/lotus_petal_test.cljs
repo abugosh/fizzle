@@ -10,71 +10,22 @@
 
 ;; === Lotus Petal sacrifice for mana tests ===
 
-(deftest test-lotus-petal-sacrifice-for-black-mana
-  (testing "Lotus Petal sacrifices for black mana"
-    (let [db (th/create-test-db)
-          [db' obj-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-1)
-          _ (is (= :battlefield (th/get-object-zone db' obj-id))
-                "Precondition: Lotus Petal starts on battlefield")
-          initial-pool (q/get-mana-pool db' :player-1)
-          _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :black)]
-      (is (= :graveyard (th/get-object-zone db'' obj-id))
-          "Lotus Petal should be in graveyard after sacrifice")
-      (is (= 1 (:black (q/get-mana-pool db'' :player-1)))
-          "Black mana should be added to pool"))))
+(def ^:private mana-colors [:black :blue :white :red :green])
 
 
-(deftest test-lotus-petal-sacrifice-for-blue-mana
-  (testing "Lotus Petal sacrifices for blue mana"
-    (let [db (th/create-test-db)
-          [db' obj-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-1)
-          initial-pool (q/get-mana-pool db' :player-1)
-          _ (is (= 0 (:blue initial-pool)) "Precondition: blue mana is 0")
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :blue)]
-      (is (= :graveyard (th/get-object-zone db'' obj-id))
-          "Lotus Petal should be in graveyard after sacrifice")
-      (is (= 1 (:blue (q/get-mana-pool db'' :player-1)))
-          "Blue mana should be added to pool"))))
-
-
-(deftest test-lotus-petal-sacrifice-for-white-mana
-  (testing "Lotus Petal sacrifices for white mana"
-    (let [db (th/create-test-db)
-          [db' obj-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-1)
-          initial-pool (q/get-mana-pool db' :player-1)
-          _ (is (= 0 (:white initial-pool)) "Precondition: white mana is 0")
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :white)]
-      (is (= :graveyard (th/get-object-zone db'' obj-id))
-          "Lotus Petal should be in graveyard after sacrifice")
-      (is (= 1 (:white (q/get-mana-pool db'' :player-1)))
-          "White mana should be added to pool"))))
-
-
-(deftest test-lotus-petal-sacrifice-for-red-mana
-  (testing "Lotus Petal sacrifices for red mana"
-    (let [db (th/create-test-db)
-          [db' obj-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-1)
-          initial-pool (q/get-mana-pool db' :player-1)
-          _ (is (= 0 (:red initial-pool)) "Precondition: red mana is 0")
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :red)]
-      (is (= :graveyard (th/get-object-zone db'' obj-id))
-          "Lotus Petal should be in graveyard after sacrifice")
-      (is (= 1 (:red (q/get-mana-pool db'' :player-1)))
-          "Red mana should be added to pool"))))
-
-
-(deftest test-lotus-petal-sacrifice-for-green-mana
-  (testing "Lotus Petal sacrifices for green mana"
-    (let [db (th/create-test-db)
-          [db' obj-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-1)
-          initial-pool (q/get-mana-pool db' :player-1)
-          _ (is (= 0 (:green initial-pool)) "Precondition: green mana is 0")
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :green)]
-      (is (= :graveyard (th/get-object-zone db'' obj-id))
-          "Lotus Petal should be in graveyard after sacrifice")
-      (is (= 1 (:green (q/get-mana-pool db'' :player-1)))
-          "Green mana should be added to pool"))))
+(deftest test-lotus-petal-sacrifice-for-any-color
+  (doseq [color mana-colors]
+    (testing (str "Lotus Petal sacrifices for " (name color) " mana")
+      (let [db (th/create-test-db)
+            [db' obj-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-1)
+            initial-pool (q/get-mana-pool db' :player-1)
+            _ (is (= 0 (get initial-pool color))
+                  (str "Precondition: " (name color) " mana is 0"))
+            db'' (ability-events/activate-mana-ability db' :player-1 obj-id color)]
+        (is (= :graveyard (th/get-object-zone db'' obj-id))
+            (str "Lotus Petal should be in graveyard after sacrifice for " (name color)))
+        (is (= 1 (get (q/get-mana-pool db'' :player-1) color))
+            (str (name color) " mana should be added to pool"))))))
 
 
 ;; === Edge cases ===

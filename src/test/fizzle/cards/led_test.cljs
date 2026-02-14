@@ -11,56 +11,34 @@
 
 ;; === LED sacrifice + discard for mana tests ===
 
-(deftest test-led-sacrifice-and-discard-for-black-mana
-  (testing "LED sacrifices and discards hand for 3 black mana"
-    (let [db (th/create-test-db)
-          [db' led-id] (th/add-card-to-zone db :lions-eye-diamond :battlefield :player-1)
-          ;; Add 3 cards to hand
-          [db'' _] (th/add-card-to-zone db' :dark-ritual :hand :player-1)
-          [db''' _] (th/add-card-to-zone db'' :dark-ritual :hand :player-1)
-          [db'''' _] (th/add-card-to-zone db''' :dark-ritual :hand :player-1)
-          _ (is (= :battlefield (th/get-object-zone db'''' led-id))
-                "Precondition: LED starts on battlefield")
-          _ (is (= 3 (th/get-zone-count db'''' :hand :player-1))
-                "Precondition: 3 cards in hand")
-          initial-pool (q/get-mana-pool db'''' :player-1)
-          _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
-          db-after (ability-events/activate-mana-ability db'''' :player-1 led-id :black)]
-      (is (= :graveyard (th/get-object-zone db-after led-id))
-          "LED should be in graveyard after sacrifice")
-      (is (= 3 (:black (q/get-mana-pool db-after :player-1)))
-          "Black mana should be 3")
-      (is (= 0 (th/get-zone-count db-after :hand :player-1))
-          "Hand should be empty after discard")
-      (is (= 4 (th/get-zone-count db-after :graveyard :player-1))
-          "Graveyard should have 4 objects (3 hand cards + LED)"))))
+(def ^:private mana-colors [:black :blue :white :red :green])
 
 
-(deftest test-led-sacrifice-and-discard-for-blue-mana
-  (testing "LED sacrifices and discards hand for 3 blue mana"
-    (let [db (th/create-test-db)
-          [db' led-id] (th/add-card-to-zone db :lions-eye-diamond :battlefield :player-1)
-          [db'' _] (th/add-card-to-zone db' :dark-ritual :hand :player-1)
-          initial-pool (q/get-mana-pool db'' :player-1)
-          _ (is (= 0 (:blue initial-pool)) "Precondition: blue mana is 0")
-          db-after (ability-events/activate-mana-ability db'' :player-1 led-id :blue)]
-      (is (= :graveyard (th/get-object-zone db-after led-id))
-          "LED should be in graveyard after sacrifice")
-      (is (= 3 (:blue (q/get-mana-pool db-after :player-1)))
-          "Blue mana should be 3"))))
-
-
-(deftest test-led-sacrifice-and-discard-for-white-mana
-  (testing "LED sacrifices and discards hand for 3 white mana"
-    (let [db (th/create-test-db)
-          [db' led-id] (th/add-card-to-zone db :lions-eye-diamond :battlefield :player-1)
-          initial-pool (q/get-mana-pool db' :player-1)
-          _ (is (= 0 (:white initial-pool)) "Precondition: white mana is 0")
-          db-after (ability-events/activate-mana-ability db' :player-1 led-id :white)]
-      (is (= :graveyard (th/get-object-zone db-after led-id))
-          "LED should be in graveyard after sacrifice")
-      (is (= 3 (:white (q/get-mana-pool db-after :player-1)))
-          "White mana should be 3"))))
+(deftest test-led-sacrifice-and-discard-for-any-color
+  (doseq [color mana-colors]
+    (testing (str "LED sacrifices and discards hand for 3 " (name color) " mana")
+      (let [db (th/create-test-db)
+            [db' led-id] (th/add-card-to-zone db :lions-eye-diamond :battlefield :player-1)
+            ;; Add 3 cards to hand
+            [db'' _] (th/add-card-to-zone db' :dark-ritual :hand :player-1)
+            [db''' _] (th/add-card-to-zone db'' :dark-ritual :hand :player-1)
+            [db'''' _] (th/add-card-to-zone db''' :dark-ritual :hand :player-1)
+            _ (is (= :battlefield (th/get-object-zone db'''' led-id))
+                  (str "Precondition: LED starts on battlefield"))
+            _ (is (= 3 (th/get-zone-count db'''' :hand :player-1))
+                  (str "Precondition: 3 cards in hand"))
+            initial-pool (q/get-mana-pool db'''' :player-1)
+            _ (is (= 0 (get initial-pool color))
+                  (str "Precondition: " (name color) " mana is 0"))
+            db-after (ability-events/activate-mana-ability db'''' :player-1 led-id color)]
+        (is (= :graveyard (th/get-object-zone db-after led-id))
+            (str "LED should be in graveyard after sacrifice for " (name color)))
+        (is (= 3 (get (q/get-mana-pool db-after :player-1) color))
+            (str (name color) " mana should be 3"))
+        (is (= 0 (th/get-zone-count db-after :hand :player-1))
+            (str "Hand should be empty after discard for " (name color)))
+        (is (= 4 (th/get-zone-count db-after :graveyard :player-1))
+            (str "Graveyard should have 4 objects for " (name color)))))))
 
 
 (deftest test-led-with-empty-hand
