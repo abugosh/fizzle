@@ -119,6 +119,21 @@
             :object/tapped false :object/position i}))))
 
 
+(defn- opponent-battlefield-tx
+  "Return transaction data for opponent's starting battlefield (4 basic lands: 2 Island, 2 Swamp)."
+  [db opp-eid]
+  (let [island-eid (get-card-eid db :island)
+        swamp-eid (get-card-eid db :swamp)]
+    [{:object/id (random-uuid) :object/card island-eid :object/zone :battlefield
+      :object/owner opp-eid :object/controller opp-eid :object/tapped false}
+     {:object/id (random-uuid) :object/card island-eid :object/zone :battlefield
+      :object/owner opp-eid :object/controller opp-eid :object/tapped false}
+     {:object/id (random-uuid) :object/card swamp-eid :object/zone :battlefield
+      :object/owner opp-eid :object/controller opp-eid :object/tapped false}
+     {:object/id (random-uuid) :object/card swamp-eid :object/zone :battlefield
+      :object/owner opp-eid :object/controller opp-eid :object/tapped false}]))
+
+
 (defn init-game-state
   "Initialize a fresh game state from config.
    Config keys:
@@ -148,6 +163,7 @@
     (d/transact! conn (objects-tx @conn library-ids :library player-eid
                                   (repeatedly (count library-ids) random-uuid)))
     (d/transact! conn (opponent-library-tx @conn opp-eid))
+    (d/transact! conn (opponent-battlefield-tx @conn opp-eid))
     (d/transact! conn [{:game/id :game-1 :game/turn 1 :game/phase :main1
                         :game/active-player player-eid :game/priority player-eid}])
     (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid))
