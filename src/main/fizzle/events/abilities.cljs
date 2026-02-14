@@ -140,16 +140,19 @@
    Returns selection state map."
   [db player-id object-id ability-index target-req]
   (let [valid-targets (targeting/find-valid-targets db player-id target-req)]
-    {:selection/type :ability-targeting
-     :selection/player-id player-id
-     :selection/object-id object-id
-     :selection/ability-index ability-index
-     :selection/target-requirement target-req
-     :selection/valid-targets valid-targets
-     :selection/selected #{}
-     :selection/select-count 1
-     :selection/validation :exact
-     :selection/auto-confirm? true}))
+    (cond->
+      {:selection/type :ability-targeting
+       :selection/player-id player-id
+       :selection/object-id object-id
+       :selection/ability-index ability-index
+       :selection/target-requirement target-req
+       :selection/valid-targets valid-targets
+       :selection/selected #{}
+       :selection/select-count 1
+       :selection/validation :exact
+       :selection/auto-confirm? true}
+      (= :object (:target/type target-req))
+      (assoc :selection/card-source :valid-targets))))
 
 
 (defn confirm-ability-target

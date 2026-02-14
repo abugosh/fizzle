@@ -736,87 +736,106 @@
                        :extra-class "py-2.5 px-8"}]]]))
 
 
+;; === Selection Modal Registry ===
+;;
+;; Multimethod dispatches to the correct modal component per selection type.
+;; Adding a new selection type requires only a new defmethod here.
+;; Targeting types use a derived dispatch: player-targeting variants
+;; dispatch as :targeting-player to share the player-target-modal.
+
+(defn- modal-dispatch-key
+  "Derive dispatch key for selection modal multimethod.
+   Targeting types (cast-time-targeting, ability-targeting) that target a player
+   dispatch as :targeting-player to share player-target-modal rendering."
+  [selection]
+  (let [sel-type (:selection/type selection)
+        target-req (:selection/target-requirement selection)]
+    (if (and (#{:cast-time-targeting :ability-targeting} sel-type)
+             (= :player (:target/type target-req)))
+      :targeting-player
+      sel-type)))
+
+
+(defmulti render-selection-modal
+  "Render the appropriate modal component for a selection type.
+   Dispatches on modal-dispatch-key."
+  (fn [selection _cards] (modal-dispatch-key selection)))
+
+
+(defmethod render-selection-modal :scry [selection _cards]
+  [scry-modal selection])
+
+
+(defmethod render-selection-modal :pile-choice [selection cards]
+  [pile-choice-modal selection cards])
+
+
+(defmethod render-selection-modal :targeting-player [selection _cards]
+  [player-target-modal selection ::selection-events/confirm-selection])
+
+
+(defmethod render-selection-modal :cast-time-targeting [selection cards]
+  [object-target-modal selection cards
+   {:select-event ::selection-events/toggle-selection
+    :confirm-event ::selection-events/confirm-selection
+    :default-zone :graveyard
+    :selected-label "1 card selected"
+    :unselected-label "Select a card"}])
+
+
+(defmethod render-selection-modal :ability-targeting [selection cards]
+  [object-target-modal selection cards
+   {:select-event ::selection-events/toggle-selection
+    :confirm-event ::selection-events/confirm-selection
+    :default-zone :battlefield
+    :selected-label "1 target selected"
+    :unselected-label "Select a target"}])
+
+
+(defmethod render-selection-modal :player-target [selection _cards]
+  [player-target-modal selection ::selection-events/confirm-selection])
+
+
+(defmethod render-selection-modal :graveyard-return [selection cards]
+  [graveyard-selection-modal selection cards])
+
+
+(defmethod render-selection-modal :exile-cards-cost [selection cards]
+  [exile-cards-selection-modal selection cards])
+
+
+(defmethod render-selection-modal :x-mana-cost [selection _cards]
+  [x-mana-selection-modal selection])
+
+
+(defmethod render-selection-modal :peek-and-select [selection cards]
+  [peek-selection-modal selection cards])
+
+
+(defmethod render-selection-modal :order-bottom [_selection _cards]
+  [order-bottom-modal])
+
+
+(defmethod render-selection-modal :storm-split [selection _cards]
+  [storm-split-modal selection])
+
+
+(defmethod render-selection-modal :mana-allocation [_selection _cards]
+  nil)
+
+
+(defmethod render-selection-modal :default [selection cards]
+  [card-selection-modal selection cards])
+
+
 ;; === Selection Modal Router ===
 
 (defn selection-modal
   "Modal overlay for player selection.
    Shows when :game/pending-selection exists.
-   Handles discard, tutor, scry, graveyard-return, player-target effects, ability targeting, and cast-time targeting."
+   Dispatches to render-selection-modal multimethod."
   []
   (let [selection @(rf/subscribe [::subs/pending-selection])
         cards @(rf/subscribe [::subs/selection-cards])]
     (when selection
-      (let [selection-type (:selection/type selection)
-            ;; For ability/cast-time targeting, check if target is a player
-            target-req (:selection/target-requirement selection)
-            targets-player? (= :player (:target/type target-req))]
-        (cond
-          ;; Scry selection
-          (= selection-type :scry)
-          [scry-modal selection]
-
-          ;; Pile choice selection (Intuition-style: choose which cards go to hand)
-          (= selection-type :pile-choice)
-          [pile-choice-modal selection cards]
-
-          ;; Cast-time targeting a player (e.g., Deep Analysis when casting)
-          (and (= selection-type :cast-time-targeting) targets-player?)
-          [player-target-modal selection ::selection-events/confirm-selection]
-
-          ;; Cast-time targeting an object (e.g., Recoup targeting graveyard sorcery)
-          (and (= selection-type :cast-time-targeting) (not targets-player?))
-          [object-target-modal selection cards
-           {:select-event ::selection-events/toggle-selection
-            :confirm-event ::selection-events/confirm-selection
-            :default-zone :graveyard
-            :selected-label "1 card selected"
-            :unselected-label "Select a card"}]
-
-          ;; Ability targeting a player (e.g., Cephalid Coliseum threshold)
-          (and (= selection-type :ability-targeting) targets-player?)
-          [player-target-modal selection ::selection-events/confirm-selection]
-
-          ;; Ability targeting an object (e.g., Seal of Cleansing targeting artifact/enchantment)
-          (and (= selection-type :ability-targeting) (not targets-player?))
-          [object-target-modal selection cards
-           {:select-event ::selection-events/toggle-selection
-            :confirm-event ::selection-events/confirm-selection
-            :default-zone :battlefield
-            :selected-label "1 target selected"
-            :unselected-label "Select a target"}]
-
-          ;; Player target selection (for spell effects during resolution)
-          (= selection-type :player-target)
-          [player-target-modal selection ::selection-events/confirm-selection]
-
-          ;; Graveyard return selection (Ill-Gotten Gains style)
-          (= selection-type :graveyard-return)
-          [graveyard-selection-modal selection cards]
-
-          ;; Exile cards cost selection (Flash of Insight flashback)
-          (= selection-type :exile-cards-cost)
-          [exile-cards-selection-modal selection cards]
-
-          ;; X mana cost selection (spells with X in cost)
-          (= selection-type :x-mana-cost)
-          [x-mana-selection-modal selection]
-
-          ;; Peek-and-select selection (Flash of Insight effect)
-          (= selection-type :peek-and-select)
-          [peek-selection-modal selection cards]
-
-          ;; Order-bottom selection (choose order for bottom of library)
-          (= selection-type :order-bottom)
-          [order-bottom-modal]
-
-          ;; Storm split selection — distribute copies across targets
-          (= selection-type :storm-split)
-          [storm-split-modal selection]
-
-          ;; Mana allocation — handled by mana pool view, no modal needed
-          (= selection-type :mana-allocation)
-          nil
-
-          ;; Card selection (discard, tutor)
-          :else
-          [card-selection-modal selection cards])))))
+      (render-selection-modal selection cards))))

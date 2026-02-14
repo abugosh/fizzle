@@ -35,6 +35,7 @@
         ;; Actual count is min of requested and available candidates
         actual-select-count (min effect-select-count (count candidate-ids))]
     {:selection/zone :library
+     :selection/card-source :library
      :selection/select-count actual-select-count
      :selection/exact? true  ; Must select exactly this many (or fail-to-find)
      :selection/player-id player-id
@@ -77,6 +78,7 @@
                         candidates
                         #{})]
     {:selection/type :pile-choice
+     :selection/card-source :candidates
      :selection/candidates candidates
      :selection/hand-count hand-count
      :selection/select-count hand-count  ; Normalized for toggle-selection-impl
@@ -158,6 +160,7 @@
             (cond->
               {:selection/zone :peek  ; Distinct from :library (tutor)
                :selection/type :peek-and-select
+               :selection/card-source :candidates
                :selection/candidates candidate-ids
                :selection/select-count actual-select-count
                :selection/exact? false  ; Can select fewer (fail-to-find)

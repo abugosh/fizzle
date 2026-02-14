@@ -20,6 +20,7 @@
   "Build pending selection state for a discard effect."
   [player-id object-id discard-effect effects-after]
   {:selection/zone :hand
+   :selection/card-source :hand
    :selection/select-count (:effect/count discard-effect)
    :selection/player-id player-id
    :selection/selected #{}
@@ -44,6 +45,7 @@
         candidate-ids (set (map :object/id gy-cards))]
     {:selection/type :graveyard-return
      :selection/zone :graveyard
+     :selection/card-source :zone
      :selection/select-count (:effect/count effect)
      :selection/min-count 0
      :selection/player-id target-player

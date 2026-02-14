@@ -424,6 +424,7 @@
    Uses unified :discard type with :selection/cleanup? flag."
   [player-id discard-count]
   {:selection/zone :hand
+   :selection/card-source :hand
    :selection/select-count discard-count
    :selection/player-id player-id
    :selection/selected #{}

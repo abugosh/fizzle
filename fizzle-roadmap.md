@@ -70,7 +70,13 @@ Completed alongside the phases above:
 
 - **Unified Stack System** — Single stack-item entity type for spells, copies, triggers, and abilities
 - **Data-Driven Ability System** — Activated abilities defined as EDN data, interpreted by engine
-- **Test Quality Improvement** — 1094 tests, comprehensive coverage of engine, effects, and card interactions
+- **Test Quality Improvement** — Multiple rounds: engine coverage, card/event corner cases, tautological test removal
+- **Selection System Unification** — Unified data model, toggle handlers, confirm multimethod, auto-confirm for single-select
+- **Selection Decomposition** — Extracted domain modules: core, resolution, library, targeting, costs, zone_ops
+- **Interactive Effects Predicate** — Single source of truth (`interactive-effect?`) for effect interactivity
+- **Unified Target Storage** — Targets stored on stack-items instead of objects; storm copy inheritance
+- **Manual Mana Allocation** — MTGO-style interactive mana payment for generic costs
+- **Trigger Registry Migration** — Moved from atom into Datascript for immutability
 
 ---
 
@@ -87,23 +93,25 @@ Completed alongside the phases above:
 
 Work down the open backlog to make the tool presentable for sharing.
 
-**High priority (share-blocking):**
-- Win detection and lethal announcement
-- Consistent card sorting and grouping across zones and dialogs
-- Quick undo (pop last action without creating fork)
-- Always-visible graveyard and library card counts
-- Yield All (resolve entire stack in one action)
-- Enriched history entries with spell/land names and phase details
+**Completed (share-blocking):**
+- ~~Win detection and lethal announcement~~
+- ~~Consistent card sorting and grouping across zones and dialogs~~
+- ~~Quick undo (pop last action without creating fork)~~
+- ~~Always-visible graveyard and library card counts~~
+- ~~Yield All (resolve entire stack in one action)~~
+- ~~Enriched history entries with spell/land names and phase details~~
 
-**Important (quality of life):**
-- Consolidate controls: unified Play + Yield instead of Cast/Play Land/Resolve
+**Completed (quality of life):**
+- ~~Consolidate controls: unified Play + Yield instead of Cast/Play Land/Resolve~~
+- ~~Remove confirm step from selection dialogs (accept choice immediately)~~
+- ~~Manual mana allocation for generic costs~~
+
+**Remaining (quality of life):**
 - Show top stack item inline near Yield button
-- Remove confirm step from selection dialogs (accept choice immediately)
 - Flash of Insight: control order of cards placed on bottom of library
 - Brain Freeze: allow targeting any player with storm copy splitting
-- Manual mana allocation for generic costs
 
-**Nice to have (defer if needed):**
+**Remaining (nice to have):**
 - Keyboard shortcuts for core actions
 - Session statistics (win rate, avg kill turn, fizzle tracking)
 - Auto-resolve toggle
@@ -187,27 +195,30 @@ See design doc Section 7 for full bot system specification.
 
 Tracked in beads. Run `bd ready` for current available work.
 
+**Features:**
+
 | ID | Priority | Description |
 |----|----------|-------------|
-| fizzle-m95a | P2 | Consistent card sorting and grouping across all zones and dialogs |
-| fizzle-b4fd | P2 | Remove confirm step from selection dialogs |
-| fizzle-pi47 | P2 | Yield All: resolve entire stack in one action |
-| fizzle-pcig | P2 | Always-visible graveyard and library card counts |
-| fizzle-zww1 | P2 | Win detection and lethal announcement |
-| fizzle-9qp4 | P2 | Quick undo: pop last action without creating fork |
-| fizzle-txiw | P2 | Keyboard shortcuts for core actions |
+| fizzle-jesa | P2 | Design battlefield UX: layout, grouping, and visual hierarchy |
+| fizzle-txiw | P2 | Keyboard shortcuts for core actions (Play, Yield, Undo) |
 | fizzle-h538 | P2 | Show top stack item inline near Yield button |
-| fizzle-bwvv | P2 | Consolidate controls: Play + Yield |
 | fizzle-3cjd | P2 | Flash of Insight: control order of cards on bottom |
 | fizzle-zyrf | P2 | Brain Freeze: storm copy target splitting |
-| fizzle-ze3j | P2 | Enrich history entries with spell/land names |
-| fizzle-h5h | P2 | Manual mana allocation for generic costs |
-| fizzle-pt23 | P3 | Session statistics: win rate, avg kill turn |
 | fizzle-ngg7 | P3 | Auto-resolve toggle |
+| fizzle-pt23 | P3 | Session statistics: win rate, avg kill turn |
 | fizzle-dbkv | P3 | Visual card styling: color and type differentiation |
 | fizzle-ze66 | P3 | Hypergeometric Calculator Panel (epic) |
 | fizzle-n99x | P4 | Timed mode with chess-clock |
-| fizzle-6o7g | P4 | Goldfish with Hate Pieces (epic, deferred from Phase 4) |
+| fizzle-6o7g | P4 | Goldfish with Hate Pieces (epic) |
+
+**Refactoring:**
+
+| ID | Priority | Description |
+|----|----------|-------------|
+| fizzle-gvs7 | P3 | Refactor opponent turn: model as real turn with active-player switching |
+| fizzle-qrrf | P3 | Eliminate duplicate resolve path for stack items |
+| fizzle-72xq | P3 | Extract selection-valid? subscription to eliminate view validation duplication |
+| fizzle-lr5i | P4 | Extract shared get-object-eid query helper |
 
 ---
 

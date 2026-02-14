@@ -425,3 +425,98 @@
                                              {:black 2})]
       (is (= -2 (:black (q/get-mana-pool db' :player-1)))
           "Documents caller-responsibility contract: no internal validation"))))
+
+
+;; === Property-based invariant tests ===
+;;
+;; These tests verify mana system invariants across a range of inputs,
+;; using manually generated test cases (no test.check dependency).
+
+(def ^:private mana-colors [:white :blue :black :red :green :colorless])
+
+
+(def ^:private property-test-pools
+  "Diverse mana pool configurations for invariant testing."
+  [{:black 3}
+   {:blue 1 :red 1}
+   {:black 2 :blue 1 :green 1}
+   {:white 1 :blue 1 :black 1 :red 1 :green 1}
+   {:colorless 3}
+   {:colorless 2 :black 1}
+   {:black 5 :blue 3 :red 1}
+   {:green 10}
+   {:white 2 :blue 2 :black 2 :red 2 :green 2 :colorless 2}])
+
+
+(def ^:private property-test-costs
+  "Costs that can be paid from various pool configurations."
+  [{:black 1}
+   {:blue 1 :red 1}
+   {:colorless 2}
+   {:colorless 1 :black 1}
+   {:black 2 :blue 1}
+   {}
+   {:black 0}
+   {:colorless 3}
+   {:white 1 :blue 1 :black 1 :red 1 :green 1}])
+
+
+(deftest add-pay-roundtrip-invariant-test
+  (testing "add-mana then pay-mana returns pool to original state (from empty pool)"
+    ;; Property: For any mana map M, starting from an empty pool,
+    ;; add-mana(M) then pay-mana(M) should return to all zeros.
+    ;; Note: This holds from empty pools because pay-mana's generic
+    ;; heuristic will select the same pools that add-mana filled.
+    (doseq [mana-map property-test-pools]
+      (testing (str "roundtrip with " mana-map)
+        (let [db (init-game-state)
+              initial-pool (q/get-mana-pool db :player-1)
+              db-added (mana/add-mana db :player-1 mana-map)
+              db-paid (mana/pay-mana db-added :player-1 mana-map)]
+          (is (= initial-pool (q/get-mana-pool db-paid :player-1))
+              (str "Pool should return to initial state after add then pay " mana-map)))))))
+
+
+(deftest can-pay-pay-mana-consistency-invariant-test
+  (testing "If can-pay? returns true, pay-mana produces non-negative pool"
+    ;; Property: For any pool P and cost C, if can-pay?(P, C) is true,
+    ;; then pay-mana(P, C) should produce a pool where all values >= 0.
+    (doseq [pool-mana property-test-pools
+            cost property-test-costs]
+      (let [db (-> (init-game-state)
+                   (mana/add-mana :player-1 pool-mana))
+            payable? (mana/can-pay? db :player-1 cost)]
+        (when payable?
+          (testing (str "pool=" pool-mana " cost=" cost)
+            (let [db-paid (mana/pay-mana db :player-1 cost)
+                  final-pool (q/get-mana-pool db-paid :player-1)]
+              (doseq [color mana-colors]
+                (is (>= (get final-pool color 0) 0)
+                    (str color " should be non-negative after paying " cost
+                         " from pool " pool-mana))))))))))
+
+
+(deftest add-mana-no-negative-invariant-test
+  (testing "add-mana never produces negative pool values"
+    ;; Property: For any non-negative mana map M and any initial state,
+    ;; add-mana(M) should never produce negative values.
+    (doseq [mana-map property-test-pools]
+      (testing (str "adding " mana-map " to empty pool")
+        (let [db (init-game-state)
+              db' (mana/add-mana db :player-1 mana-map)
+              pool (q/get-mana-pool db' :player-1)]
+          (doseq [color mana-colors]
+            (is (>= (get pool color 0) 0)
+                (str color " should be non-negative after adding " mana-map)))))))
+
+  (testing "add-mana accumulation never produces negative values"
+    ;; Multiple add-mana calls should never produce negative values.
+    (let [db (init-game-state)
+          db-accumulated (reduce (fn [d mana-map]
+                                   (mana/add-mana d :player-1 mana-map))
+                                 db
+                                 property-test-pools)
+          pool (q/get-mana-pool db-accumulated :player-1)]
+      (doseq [color mana-colors]
+        (is (>= (get pool color 0) 0)
+            (str color " should be non-negative after accumulating all test pools"))))))

@@ -216,6 +216,7 @@
                                              db-after-player-effect effects-before-next)
                 pending-selection (when (= :player (:effect/selection next-selection-effect))
                                     {:selection/type :discard
+                                     :selection/card-source :hand
                                      :selection/player-id stored-player
                                      :selection/select-count (:effect/count next-selection-effect)
                                      :selection/selected #{}
@@ -262,6 +263,7 @@
                                 ;; Discard selection: inline (player-id is controller for abilities)
                                 (= :player (:effect/selection selection-effect))
                                 {:selection/type :discard
+                                 :selection/card-source :hand
                                  :selection/player-id controller
                                  :selection/select-count (:effect/count selection-effect)
                                  :selection/selected #{}

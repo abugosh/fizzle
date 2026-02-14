@@ -309,10 +309,9 @@
         (queries/get-hand game-db player-id)))))
 
 
-;; Returns the cards available for selection based on selection type.
-;; For :discard -> hand cards
-;; For :tutor -> library cards filtered to candidates
-;; For :cast-time-targeting -> objects from valid-targets
+;; Returns the cards available for selection based on :selection/card-source.
+;; Card-source is set by selection builders to decouple card retrieval from selection type.
+;; Non-card selection types (scry, storm-split, order-bottom, etc.) use their own subscriptions.
 (rf/reg-sub
   ::selection-cards
   :<- [::game-db]
@@ -320,65 +319,37 @@
   (fn [[game-db selection] _]
     (when (and game-db selection)
       (let [player-id (:selection/player-id selection)
-            selection-type (:selection/type selection)
+            card-source (:selection/card-source selection)
             zone (:selection/zone selection)]
-        (cond
-          ;; Pile choice: cards from candidates (still in library)
-          (= selection-type :pile-choice)
-          (let [candidates (:selection/candidates selection)]
-            (sorting/sort-cards
-              (->> candidates
-                   (map #(queries/get-object game-db %))
-                   (filterv some?))))
+        (sorting/sort-cards
+          (case card-source
+            ;; Map candidate IDs to card objects (pile-choice, exile-cards-cost, peek-and-select)
+            :candidates
+            (->> (:selection/candidates selection)
+                 (map #(queries/get-object game-db %))
+                 (filterv some?))
 
-          ;; Cast-time targeting with object targets (e.g., Recoup targeting graveyard sorcery)
-          (and (= selection-type :cast-time-targeting)
-               (= :object (get-in selection [:selection/target-requirement :target/type])))
-          (let [valid-target-ids (set (:selection/valid-targets selection))]
-            (sorting/sort-cards
-              (->> valid-target-ids
-                   (map #(queries/get-object game-db %))
-                   (filterv some?))))
+            ;; Map valid-target IDs to card objects (cast-time-targeting, ability-targeting)
+            :valid-targets
+            (->> (set (:selection/valid-targets selection))
+                 (map #(queries/get-object game-db %))
+                 (filterv some?))
 
-          ;; Ability targeting with object targets (e.g., Seal of Cleansing)
-          (and (= selection-type :ability-targeting)
-               (= :object (get-in selection [:selection/target-requirement :target/type])))
-          (let [valid-target-ids (set (:selection/valid-targets selection))]
-            (sorting/sort-cards
-              (->> valid-target-ids
-                   (map #(queries/get-object game-db %))
-                   (filterv some?))))
+            ;; Intersect candidates with library (tutor)
+            :library
+            (let [candidates (:selection/candidates selection)
+                  library (queries/get-objects-in-zone game-db player-id :library)]
+              (filterv #(contains? candidates (:object/id %)) library))
 
-          ;; Tutor: library cards filtered to candidates
-          (= selection-type :tutor)
-          (let [candidates (:selection/candidates selection)
-                library (queries/get-objects-in-zone game-db player-id :library)]
-            (sorting/sort-cards
-              (filterv #(contains? candidates (:object/id %)) library)))
+            ;; Query hand directly (discard)
+            :hand
+            (queries/get-hand game-db player-id)
 
-          ;; Discard: hand cards
-          (= selection-type :discard)
-          (sorting/sort-cards (queries/get-hand game-db player-id))
+            ;; Query by zone from selection metadata (graveyard-return, default)
+            :zone
+            (queries/get-objects-in-zone game-db player-id (or zone :hand))
 
-          ;; Exile-cards cost: cards from candidates (graveyard filtered by criteria)
-          (= selection-type :exile-cards-cost)
-          (let [candidates (:selection/candidates selection)]
-            (sorting/sort-cards
-              (->> candidates
-                   (map #(queries/get-object game-db %))
-                   (filterv some?))))
-
-          ;; Peek-and-select: top N cards from library
-          (= selection-type :peek-and-select)
-          (let [candidates (:selection/candidates selection)]
-            (sorting/sort-cards
-              (->> candidates
-                   (map #(queries/get-object game-db %))
-                   (filterv some?))))
-
-          ;; Default: use the zone from selection
-          :else
-          (sorting/sort-cards
+            ;; Fallback for selections without card-source metadata
             (queries/get-objects-in-zone game-db player-id (or zone :hand))))))))
 
 

@@ -76,6 +76,7 @@
     (when (seq candidate-ids)
       {:selection/zone zone
        :selection/type :exile-cards-cost
+       :selection/card-source :candidates
        :selection/candidates candidate-ids
        :selection/select-count (count candidate-ids)  ; Can select up to all candidates
        :selection/exact? false    ; Can select any number >= 1

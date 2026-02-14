@@ -53,16 +53,19 @@
    Returns selection state map."
   [game-db player-id object-id mode target-req]
   (let [valid-targets (targeting/find-valid-targets game-db player-id target-req)]
-    {:selection/type :cast-time-targeting
-     :selection/player-id player-id
-     :selection/object-id object-id
-     :selection/mode mode
-     :selection/target-requirement target-req
-     :selection/valid-targets valid-targets
-     :selection/selected #{}
-     :selection/select-count 1
-     :selection/validation :exact
-     :selection/auto-confirm? true}))
+    (cond->
+      {:selection/type :cast-time-targeting
+       :selection/player-id player-id
+       :selection/object-id object-id
+       :selection/mode mode
+       :selection/target-requirement target-req
+       :selection/valid-targets valid-targets
+       :selection/selected #{}
+       :selection/select-count 1
+       :selection/validation :exact
+       :selection/auto-confirm? true}
+      (= :object (:target/type target-req))
+      (assoc :selection/card-source :valid-targets))))
 
 
 ;; =====================================================
@@ -187,6 +190,7 @@
                                     effects-before-next)
             next-selection (when (= :player (:effect/selection next-selection-effect))
                              (cond-> {:selection/type :discard
+                                      :selection/card-source :hand
                                       :selection/player-id selected-target
                                       :selection/select-count (:effect/count next-selection-effect)
                                       :selection/selected #{}
