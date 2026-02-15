@@ -122,82 +122,89 @@
 
 (deftest get-type-border-class-creature
   (testing "creature types return green border"
-    (is (= "border-type-creature" (card-styles/get-type-border-class #{:creature} false)))
-    (is (= "border-type-creature-tapped" (card-styles/get-type-border-class #{:creature} true)))))
+    (is (= "border-type-border-creature" (card-styles/get-type-border-class #{:creature} false)))
+    (is (= "border-type-border-creature-tapped" (card-styles/get-type-border-class #{:creature} true)))))
 
 
 (deftest get-type-border-class-land
   (testing "land types return brown border"
-    (is (= "border-type-land" (card-styles/get-type-border-class #{:land} false)))
-    (is (= "border-type-land-tapped" (card-styles/get-type-border-class #{:land} true)))))
+    (is (= "border-type-border-land" (card-styles/get-type-border-class #{:land} false)))
+    (is (= "border-type-border-land-tapped" (card-styles/get-type-border-class #{:land} true)))))
 
 
 (deftest get-type-border-class-artifact
   (testing "artifact types return gray border"
-    (is (= "border-type-artifact" (card-styles/get-type-border-class #{:artifact} false)))
-    (is (= "border-type-artifact-tapped" (card-styles/get-type-border-class #{:artifact} true)))))
+    (is (= "border-type-border-artifact" (card-styles/get-type-border-class #{:artifact} false)))
+    (is (= "border-type-border-artifact-tapped" (card-styles/get-type-border-class #{:artifact} true)))))
 
 
 (deftest get-type-border-class-enchantment
   (testing "enchantment types return purple border"
-    (is (= "border-type-enchantment" (card-styles/get-type-border-class #{:enchantment} false)))
-    (is (= "border-type-enchantment-tapped" (card-styles/get-type-border-class #{:enchantment} true)))))
+    (is (= "border-type-border-enchantment" (card-styles/get-type-border-class #{:enchantment} false)))
+    (is (= "border-type-border-enchantment-tapped" (card-styles/get-type-border-class #{:enchantment} true)))))
 
 
 (deftest get-type-border-class-artifact-creature
   (testing "artifact-creature uses creature priority (green border)"
-    (is (= "border-type-creature" (card-styles/get-type-border-class #{:artifact :creature} false)))))
+    (is (= "border-type-border-creature" (card-styles/get-type-border-class #{:artifact :creature} false)))))
 
 
 (deftest get-type-border-class-land-creature
   (testing "land-creature uses creature priority (green border)"
-    (is (= "border-type-creature" (card-styles/get-type-border-class #{:land :creature} false)))))
+    (is (= "border-type-border-creature" (card-styles/get-type-border-class #{:land :creature} false)))))
 
 
 (deftest get-type-border-class-artifact-land
   (testing "artifact-land uses land priority over artifact (brown border)"
-    (is (= "border-type-land" (card-styles/get-type-border-class #{:artifact :land} false)))))
+    (is (= "border-type-border-land" (card-styles/get-type-border-class #{:artifact :land} false)))))
 
 
 (deftest get-type-border-class-nil
   (testing "nil types default to artifact border (other)"
-    (is (= "border-type-artifact" (card-styles/get-type-border-class nil false)))))
+    (is (= "border-type-border-artifact" (card-styles/get-type-border-class nil false)))))
 
 
 ;; === get-color-identity-bg-class ===
 
 (deftest get-color-identity-bg-class-white
   (testing "white color identity returns cream tint"
-    (is (= "bg-color-identity-white" (card-styles/get-color-identity-bg-class #{:white})))))
+    (is (= "bg-identity-white" (card-styles/get-color-identity-bg-class #{:white} nil)))))
 
 
 (deftest get-color-identity-bg-class-blue
   (testing "blue color identity returns blue tint"
-    (is (= "bg-color-identity-blue" (card-styles/get-color-identity-bg-class #{:blue})))))
+    (is (= "bg-identity-blue" (card-styles/get-color-identity-bg-class #{:blue} nil)))))
 
 
 (deftest get-color-identity-bg-class-black
   (testing "black color identity returns dark tint"
-    (is (= "bg-color-identity-black" (card-styles/get-color-identity-bg-class #{:black})))))
+    (is (= "bg-identity-black" (card-styles/get-color-identity-bg-class #{:black} nil)))))
 
 
 (deftest get-color-identity-bg-class-red
   (testing "red color identity returns red tint"
-    (is (= "bg-color-identity-red" (card-styles/get-color-identity-bg-class #{:red})))))
+    (is (= "bg-identity-red" (card-styles/get-color-identity-bg-class #{:red} nil)))))
 
 
 (deftest get-color-identity-bg-class-green
   (testing "green color identity returns green tint"
-    (is (= "bg-color-identity-green" (card-styles/get-color-identity-bg-class #{:green})))))
+    (is (= "bg-identity-green" (card-styles/get-color-identity-bg-class #{:green} nil)))))
 
 
 (deftest get-color-identity-bg-class-multicolor
   (testing "multicolor (2+ colors) returns gold tint"
-    (is (= "bg-color-identity-multicolor" (card-styles/get-color-identity-bg-class #{:blue :black})))
-    (is (= "bg-color-identity-multicolor" (card-styles/get-color-identity-bg-class #{:white :blue :black})))))
+    (is (= "bg-identity-multicolor" (card-styles/get-color-identity-bg-class #{:blue :black} nil)))
+    (is (= "bg-identity-multicolor" (card-styles/get-color-identity-bg-class #{:white :blue :black} nil)))))
 
 
-(deftest get-color-identity-bg-class-colorless
-  (testing "colorless (empty or nil) returns neutral/default"
-    (is (= "bg-perm-bg" (card-styles/get-color-identity-bg-class #{})))
-    (is (= "bg-perm-bg" (card-styles/get-color-identity-bg-class nil)))))
+(deftest get-color-identity-bg-class-colorless-land
+  (testing "colorless land returns brown tint"
+    (is (= "bg-identity-land" (card-styles/get-color-identity-bg-class #{} #{:land})))
+    (is (= "bg-identity-land" (card-styles/get-color-identity-bg-class nil #{:land})))))
+
+
+(deftest get-color-identity-bg-class-colorless-artifact
+  (testing "colorless non-land returns silver tint"
+    (is (= "bg-identity-colorless" (card-styles/get-color-identity-bg-class #{} #{:artifact})))
+    (is (= "bg-identity-colorless" (card-styles/get-color-identity-bg-class #{} nil)))
+    (is (= "bg-identity-colorless" (card-styles/get-color-identity-bg-class nil nil)))))

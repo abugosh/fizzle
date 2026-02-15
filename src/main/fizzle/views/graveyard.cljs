@@ -16,7 +16,7 @@
                        selected? "border-2 border-border-selected"
                        castable? "border border-gy-flashback-border"
                        :else (str "border " (card-styles/get-type-border-class card-types false)))
-        bg-class (card-styles/get-color-identity-bg-class card-colors)
+        bg-class (card-styles/get-color-identity-bg-class card-colors card-types)
         text-class (if (or selected? castable?)
                      "text-gy-flashback-text"
                      "text-text-muted")

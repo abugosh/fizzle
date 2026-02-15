@@ -92,7 +92,7 @@
          border-class (card-styles/get-type-border-class card-types tapped?)
          bg-class (if tapped?
                     "bg-perm-bg-tapped"
-                    (card-styles/get-color-identity-bg-class card-colors))
+                    (card-styles/get-color-identity-bg-class card-colors card-types))
          text-class (if tapped? "text-perm-text-tapped" "text-perm-text")]
      [:div {:class (str "border-2 rounded-md p-2 mr-1.5 mb-1.5 min-w-[100px] text-center "
                         border-class " " bg-class " " text-class

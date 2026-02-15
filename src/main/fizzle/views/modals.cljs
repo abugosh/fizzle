@@ -85,7 +85,7 @@
         border-class (if is-selected?
                        "border-[3px] border-border-accent"
                        (str "border-2 " (card-styles/get-type-border-class card-types false)))
-        bg-class (card-styles/get-color-identity-bg-class card-colors)]
+        bg-class (card-styles/get-color-identity-bg-class card-colors card-types)]
     ^{:key object-id}
     [:div {:class (str "rounded-md px-3.5 py-2.5 cursor-pointer min-w-[90px] text-center "
                        "select-none text-text transition-all duration-100 "
@@ -170,7 +170,7 @@
          border-class (if selected?
                         "border-[3px] border-border-accent"
                         (str "border-2 " (card-styles/get-type-border-class card-types false)))
-         bg-class (card-styles/get-color-identity-bg-class card-colors)]
+         bg-class (card-styles/get-color-identity-bg-class card-colors card-types)]
      [:div {:class (str "rounded-md px-3.5 py-2.5 cursor-pointer min-w-[90px] text-center "
                         "select-none text-text transition-all duration-100 "
                         border-class " " bg-class)
@@ -404,11 +404,12 @@
   [obj pile]
   (let [card (:object/card obj)
         card-name (or (:card/name card) "Unknown")
+        card-types (:card/types card)
         card-colors (:card/colors card)
         bg-class (case pile
                    :top "bg-scry-top-bg"
                    :bottom "bg-scry-bottom-bg"
-                   (card-styles/get-color-identity-bg-class card-colors))]
+                   (card-styles/get-color-identity-bg-class card-colors card-types))]
     [:div {:class (str "w-[100px] p-2 rounded-md border border-border-accent "
                        "text-center text-[11px] text-text cursor-pointer "
                        bg-class)}
@@ -488,7 +489,7 @@
         border-class (if ordered?
                        "border-[3px] border-border-accent"
                        (str "border-2 " (card-styles/get-type-border-class card-types false)))
-        bg-class (card-styles/get-color-identity-bg-class card-colors)]
+        bg-class (card-styles/get-color-identity-bg-class card-colors card-types)]
     [:div {:class (str "rounded-md px-3.5 py-2.5 cursor-pointer min-w-[90px] text-center "
                        "select-none text-text transition-all duration-100 "
                        border-class " " bg-class)

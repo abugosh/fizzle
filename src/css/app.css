@@ -43,13 +43,15 @@
   --color-type-border-land: #a16207;
   --color-type-border-land-tapped: #5a4a2a;
 
-  /* MTG color identity background tints (subtle wash) */
-  --color-identity-white: rgba(245, 235, 220, 0.15);
-  --color-identity-blue: rgba(74, 155, 217, 0.12);
-  --color-identity-black: rgba(80, 60, 100, 0.15);
-  --color-identity-red: rgba(217, 83, 79, 0.12);
-  --color-identity-green: rgba(92, 184, 92, 0.12);
-  --color-identity-multicolor: rgba(255, 215, 0, 0.12);
+  /* MTG color identity background tints */
+  --color-identity-white: rgba(245, 235, 220, 0.30);
+  --color-identity-blue: rgba(50, 120, 200, 0.25);
+  --color-identity-black: rgba(100, 60, 130, 0.30);
+  --color-identity-red: rgba(210, 70, 60, 0.25);
+  --color-identity-green: rgba(60, 160, 60, 0.25);
+  --color-identity-multicolor: rgba(255, 200, 0, 0.25);
+  --color-identity-land: rgba(140, 100, 50, 0.30);
+  --color-identity-colorless: rgba(160, 170, 185, 0.20);
 
   /* Ability colors */
   --color-ability-bg: #4a3a2a;
