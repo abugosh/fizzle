@@ -4,19 +4,24 @@
     [fizzle.events.opening-hand :as oh-events]
     [fizzle.subs.game :as game-subs]
     [fizzle.subs.opening-hand :as oh-subs]
+    [fizzle.views.card-styles :as card-styles]
     [re-frame.core :as rf]))
 
 
 (defn- card-view
   [obj sculpted? selected? on-click]
   (let [card-name (get-in obj [:object/card :card/name])
-        object-id (:object/id obj)]
+        object-id (:object/id obj)
+        card-types (get-in obj [:object/card :card/types])
+        card-colors (get-in obj [:object/card :card/colors])
+        border-class (cond
+                       selected? "border-border-selected"
+                       sculpted? "border-accent ring-2 ring-accent"
+                       :else (card-styles/get-type-border-class card-types false))
+        bg-class (card-styles/get-color-identity-bg-class card-colors)]
     [:div {:class (str "border-2 rounded-md px-3.5 py-2.5 mx-1.5 cursor-pointer "
                        "min-w-[100px] text-center select-none text-text "
-                       (cond
-                         selected? "border-border-selected bg-surface-hover"
-                         sculpted? "border-accent bg-surface-raised ring-2 ring-accent"
-                         :else "border-border bg-surface-raised"))
+                       border-class " " bg-class)
            :on-click (when on-click #(on-click object-id))}
      card-name
      (when sculpted?

@@ -2,21 +2,27 @@
   (:require
     [fizzle.events.game :as events]
     [fizzle.subs.game :as subs]
+    [fizzle.views.card-styles :as card-styles]
     [re-frame.core :as rf]))
 
 
 (defn- graveyard-card-view
   [obj has-flashback? castable? selected?]
   (let [card-name (get-in obj [:object/card :card/name])
-        object-id (:object/id obj)]
+        object-id (:object/id obj)
+        card-types (get-in obj [:object/card :card/types])
+        card-colors (get-in obj [:object/card :card/colors])
+        border-class (cond
+                       selected? "border-2 border-border-selected"
+                       castable? "border border-gy-flashback-border"
+                       :else (str "border " (card-styles/get-type-border-class card-types false)))
+        bg-class (card-styles/get-color-identity-bg-class card-colors)
+        text-class (if (or selected? castable?)
+                     "text-gy-flashback-text"
+                     "text-text-muted")
+        cursor-class (if castable? "cursor-pointer" "cursor-default")]
     [:div {:class (str "py-1 px-2 rounded text-xs select-none "
-                       (cond
-                         selected?
-                         "bg-gy-selected-bg border-2 border-border-selected text-gy-flashback-text cursor-pointer"
-                         castable?
-                         "bg-surface-hover border border-gy-flashback-border text-gy-flashback-text cursor-pointer"
-                         :else
-                         "bg-gy-card-bg border border-perm-border-tapped text-text-muted cursor-default"))
+                       border-class " " bg-class " " text-class " " cursor-class)
            :on-click (when castable?
                        #(rf/dispatch [::events/select-card object-id]))}
      card-name

@@ -2,18 +2,23 @@
   (:require
     [fizzle.events.game :as events]
     [fizzle.subs.game :as subs]
+    [fizzle.views.card-styles :as card-styles]
     [re-frame.core :as rf]))
 
 
 (defn- card-view
   [obj selected?]
   (let [card-name (get-in obj [:object/card :card/name])
-        object-id (:object/id obj)]
+        object-id (:object/id obj)
+        card-types (get-in obj [:object/card :card/types])
+        card-colors (get-in obj [:object/card :card/colors])
+        border-class (if selected?
+                       "border-border-selected"
+                       (card-styles/get-type-border-class card-types false))
+        bg-class (card-styles/get-color-identity-bg-class card-colors)]
     [:div {:class (str "border-2 rounded-md px-3.5 py-2.5 mx-1.5 cursor-pointer "
                        "min-w-[100px] text-center select-none text-text "
-                       (if selected?
-                         "border-border-selected bg-surface-hover"
-                         "border-border bg-surface-raised"))
+                       border-class " " bg-class)
            :on-click #(rf/dispatch [::events/select-card object-id])}
      card-name]))
 

@@ -6,6 +6,7 @@
     [fizzle.events.selection.costs :as cost-events]
     [fizzle.events.selection.storm :as storm-events]
     [fizzle.subs.game :as subs]
+    [fizzle.views.card-styles :as card-styles]
     [re-frame.core :as rf]))
 
 
@@ -24,16 +25,6 @@
 
 (def header-class
   "text-text text-lg m-0 mb-4")
-
-
-(defn- selectable-card-class
-  "Shared class string for cards that can be selected/deselected."
-  [selected?]
-  (str "rounded-md px-3.5 py-2.5 cursor-pointer min-w-[90px] text-center "
-       "select-none text-text transition-all duration-100 "
-       (if selected?
-         "border-[3px] border-border-accent bg-modal-selected-bg"
-         "border-2 border-border bg-surface-raised")))
 
 
 ;; === Shared Components ===
@@ -88,9 +79,17 @@
   [obj selected select-event]
   (let [card-name (get-in obj [:object/card :card/name])
         object-id (:object/id obj)
-        is-selected? (contains? selected object-id)]
+        is-selected? (contains? selected object-id)
+        card-types (get-in obj [:object/card :card/types])
+        card-colors (get-in obj [:object/card :card/colors])
+        border-class (if is-selected?
+                       "border-[3px] border-border-accent"
+                       (str "border-2 " (card-styles/get-type-border-class card-types false)))
+        bg-class (card-styles/get-color-identity-bg-class card-colors)]
     ^{:key object-id}
-    [:div {:class (selectable-card-class is-selected?)
+    [:div {:class (str "rounded-md px-3.5 py-2.5 cursor-pointer min-w-[90px] text-center "
+                       "select-none text-text transition-all duration-100 "
+                       border-class " " bg-class)
            :on-click #(rf/dispatch [select-event object-id])}
      card-name]))
 
@@ -165,8 +164,16 @@
    (selection-card-view obj selected? nil))
   ([obj selected? toggle-event]
    (let [card-name (get-in obj [:object/card :card/name])
-         object-id (:object/id obj)]
-     [:div {:class (selectable-card-class selected?)
+         object-id (:object/id obj)
+         card-types (get-in obj [:object/card :card/types])
+         card-colors (get-in obj [:object/card :card/colors])
+         border-class (if selected?
+                        "border-[3px] border-border-accent"
+                        (str "border-2 " (card-styles/get-type-border-class card-types false)))
+         bg-class (card-styles/get-color-identity-bg-class card-colors)]
+     [:div {:class (str "rounded-md px-3.5 py-2.5 cursor-pointer min-w-[90px] text-center "
+                        "select-none text-text transition-all duration-100 "
+                        border-class " " bg-class)
             :on-click #(rf/dispatch [(or toggle-event ::selection-events/toggle-selection) object-id])}
       card-name])))
 
@@ -392,16 +399,19 @@
 ;; === Scry Modal ===
 
 (defn- scry-card-view
-  "A card in the scry selection modal, showing pile assignment."
+  "A card in the scry selection modal, showing pile assignment.
+   Scry pile colors take priority over color identity."
   [obj pile]
   (let [card (:object/card obj)
-        card-name (or (:card/name card) "Unknown")]
+        card-name (or (:card/name card) "Unknown")
+        card-colors (:card/colors card)
+        bg-class (case pile
+                   :top "bg-scry-top-bg"
+                   :bottom "bg-scry-bottom-bg"
+                   (card-styles/get-color-identity-bg-class card-colors))]
     [:div {:class (str "w-[100px] p-2 rounded-md border border-border-accent "
                        "text-center text-[11px] text-text cursor-pointer "
-                       (case pile
-                         :top "bg-scry-top-bg"
-                         :bottom "bg-scry-bottom-bg"
-                         "bg-scry-unassigned-bg"))}
+                       bg-class)}
      card-name]))
 
 
@@ -472,12 +482,16 @@
   [obj ordered? index]
   (let [card (:object/card obj)
         card-name (or (:card/name card) "Unknown")
-        object-id (:object/id obj)]
+        object-id (:object/id obj)
+        card-types (:card/types card)
+        card-colors (:card/colors card)
+        border-class (if ordered?
+                       "border-[3px] border-border-accent"
+                       (str "border-2 " (card-styles/get-type-border-class card-types false)))
+        bg-class (card-styles/get-color-identity-bg-class card-colors)]
     [:div {:class (str "rounded-md px-3.5 py-2.5 cursor-pointer min-w-[90px] text-center "
                        "select-none text-text transition-all duration-100 "
-                       (if ordered?
-                         "border-[3px] border-border-accent bg-modal-selected-bg"
-                         "border-2 border-border bg-surface-raised"))
+                       border-class " " bg-class)
            :on-click #(rf/dispatch [(if ordered?
                                       ::selection-events/unorder-card
                                       ::selection-events/order-card)
