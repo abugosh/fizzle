@@ -77,6 +77,9 @@ Completed alongside the phases above:
 - **Unified Target Storage** — Targets stored on stack-items instead of objects; storm copy inheritance
 - **Manual Mana Allocation** — MTGO-style interactive mana payment for generic costs
 - **Trigger Registry Migration** — Moved from atom into Datascript for immutability
+- **Unified Stack Resolution** — Single multimethod dispatch with target threading, eliminating duplicate resolve paths
+- **Core Architecture Hardening** — SBA multimethod, tagged effect returns, unified targeting/cost/condition multimethods, cljs.spec card validation
+- **Test Infrastructure & Strategy** — Shared test helpers, property-based tests, card testing strategy documentation
 
 ---
 
@@ -105,17 +108,18 @@ Work down the open backlog to make the tool presentable for sharing.
 - ~~Consolidate controls: unified Play + Yield instead of Cast/Play Land/Resolve~~
 - ~~Remove confirm step from selection dialogs (accept choice immediately)~~
 - ~~Manual mana allocation for generic costs~~
+- ~~Show top stack item inline near Yield button~~
+- ~~Flash of Insight: control order of cards placed on bottom of library~~
+- ~~Brain Freeze: storm copy target splitting~~
 
-**Remaining (quality of life):**
-- Show top stack item inline near Yield button
-- Flash of Insight: control order of cards placed on bottom of library
-- Brain Freeze: allow targeting any player with storm copy splitting
+**Completed (quality of life, continued):**
+- ~~Battlefield UX redesign: 6-row mirrored layout, opponent zone, phase bar with life totals~~
+- ~~Visual card styling: type border colors and MTG color identity background tints across all views~~
 
 **Remaining (nice to have):**
 - Keyboard shortcuts for core actions
 - Session statistics (win rate, avg kill turn, fizzle tracking)
 - Auto-resolve toggle
-- Visual card styling (color and type differentiation)
 
 ### Step 2: Tactics System
 
@@ -199,14 +203,9 @@ Tracked in beads. Run `bd ready` for current available work.
 
 | ID | Priority | Description |
 |----|----------|-------------|
-| fizzle-jesa | P2 | Design battlefield UX: layout, grouping, and visual hierarchy |
 | fizzle-txiw | P2 | Keyboard shortcuts for core actions (Play, Yield, Undo) |
-| fizzle-h538 | P2 | Show top stack item inline near Yield button |
-| fizzle-3cjd | P2 | Flash of Insight: control order of cards on bottom |
-| fizzle-zyrf | P2 | Brain Freeze: storm copy target splitting |
 | fizzle-ngg7 | P3 | Auto-resolve toggle |
 | fizzle-pt23 | P3 | Session statistics: win rate, avg kill turn |
-| fizzle-dbkv | P3 | Visual card styling: color and type differentiation |
 | fizzle-ze66 | P3 | Hypergeometric Calculator Panel (epic) |
 | fizzle-n99x | P4 | Timed mode with chess-clock |
 | fizzle-6o7g | P4 | Goldfish with Hate Pieces (epic) |
@@ -216,7 +215,6 @@ Tracked in beads. Run `bd ready` for current available work.
 | ID | Priority | Description |
 |----|----------|-------------|
 | fizzle-gvs7 | P3 | Refactor opponent turn: model as real turn with active-player switching |
-| fizzle-qrrf | P3 | Eliminate duplicate resolve path for stack items |
 | fizzle-72xq | P3 | Extract selection-valid? subscription to eliminate view validation duplication |
 | fizzle-lr5i | P4 | Extract shared get-object-eid query helper |
 
