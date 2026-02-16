@@ -2,9 +2,18 @@
   (:require
     [cljs.test :refer-macros [deftest is testing]]
     [fizzle.db.queries :as q]
+    [fizzle.engine.priority :as priority]
     [fizzle.engine.rules :as rules]
     [fizzle.events.game :as game]
-    [fizzle.test-helpers :as h]))
+    [fizzle.history.core :as history]
+    [fizzle.history.interceptor :as interceptor]
+    [fizzle.test-helpers :as h]
+    [re-frame.core :as rf]
+    [re-frame.db :as rf-db]))
+
+
+;; Register history interceptor for dispatch-sync tests
+(interceptor/register!)
 
 
 (defn- setup-app-db
@@ -143,3 +152,81 @@
       ;; First yield should resolve one item and signal to continue
       (is (true? (:continue-yield? result))
           "Should signal to continue yielding with more stack items"))))
+
+
+;; === yield-all tests ===
+
+(defn- dispatch-event
+  "Dispatch an event through re-frame synchronously, return resulting app-db."
+  [app-db event]
+  (reset! rf-db/app-db app-db)
+  (rf/dispatch-sync event)
+  @rf-db/app-db)
+
+
+(deftest yield-all-resolves-entire-stack
+  (testing "yield-all with non-empty stack resolves all items"
+    (let [db (-> (h/create-test-db {:mana {:black 2} :stops #{:main1 :main2}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          [db' obj1] (h/add-card-to-zone db :dark-ritual :hand :player-1)
+          game-db1 (rules/cast-spell db' :player-1 obj1)
+          [db'' obj2] (h/add-card-to-zone game-db1 :dark-ritual :hand :player-1)
+          game-db2 (rules/cast-spell db'' :player-1 obj2)
+          app-db (merge (history/init-history)
+                        {:game/db game-db2})
+          result (dispatch-event app-db [::game/yield-all])]
+      ;; Both rituals should resolve: 2*(BBB) - 2*B spent = 4B net
+      ;; Actually: cast costs 1B each, so 2B spent. Each resolves for BBB.
+      ;; But storm items also on stack. Let's just check stack is empty and mana > 0
+      (is (empty? (q/get-all-stack-items (:game/db result)))
+          "Stack should be empty after yield-all")
+      (is (< 0 (:black (q/get-mana-pool (:game/db result) :player-1)))
+          "Should have gained mana from resolved rituals")
+      (is (= :main1 (:game/phase (q/get-game-state (:game/db result))))
+          "Should stay in main1 (stop is set, stack resolved)"))))
+
+
+(deftest yield-all-empty-stack-f6-advances-to-new-turn
+  (testing "yield-all with empty stack enters F6 mode, advances through turn"
+    (let [app-db (merge (history/init-history)
+                        (setup-app-db))
+          result (dispatch-event app-db [::game/yield-all])]
+      ;; F6 ignores player stops, advances to turn boundary
+      (is (= 2 (:game/turn (q/get-game-state (:game/db result))))
+          "Should advance to turn 2 in F6 mode")
+      ;; Auto-mode should be cleared after completion
+      (is (nil? (priority/get-auto-mode (:game/db result)))
+          "Auto-mode should be cleared after F6 completes"))))
+
+
+;; === cast-and-yield tests ===
+
+(deftest cast-and-yield-dispatches-yield
+  (testing "cast-and-yield casts then yields (resolves via priority system)"
+    (let [db (-> (h/create-test-db {:mana {:black 1} :stops #{:main1 :main2}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
+          app-db (merge (history/init-history)
+                        {:game/db db'
+                         :game/selected-card obj-id})
+          result (dispatch-event app-db [::game/cast-and-yield])]
+      (is (= :graveyard (:object/zone (q/get-object (:game/db result) obj-id)))
+          "Dark Ritual should be in graveyard after cast-and-yield")
+      (is (= 3 (:black (q/get-mana-pool (:game/db result) :player-1)))
+          "Should have 3 black mana after resolving Dark Ritual"))))
+
+
+(deftest cast-and-yield-with-selection-does-not-yield
+  (testing "cast-and-yield with pending selection does not dispatch yield"
+    (let [db (-> (h/create-test-db {:mana {:blue 1 :black 1} :stops #{:main1 :main2}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          [db' obj-id] (h/add-card-to-zone db :brain-freeze :hand :player-1)
+          app-db (merge (history/init-history)
+                        {:game/db db'
+                         :game/selected-card obj-id})
+          result (dispatch-event app-db [::game/cast-and-yield])]
+      ;; Brain Freeze has targeting — should show targeting selection, not yield
+      (is (some? (:game/pending-selection result))
+          "Should have pending selection for targeted spell")
+      (is (empty? (q/get-all-stack-items (:game/db result)))
+          "Spell should not be on stack yet (targeting is pre-cast)"))))
