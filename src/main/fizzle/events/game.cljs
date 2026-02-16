@@ -1,6 +1,7 @@
 (ns fizzle.events.game
   (:require
     [datascript.core :as d]
+    [fizzle.bots.protocol :as bot]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as queries]
     [fizzle.db.schema :refer [schema]]
@@ -9,6 +10,7 @@
     [fizzle.engine.events :as game-events]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
+    [fizzle.engine.priority :as priority]
     [fizzle.engine.resolution :as engine-resolution]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
@@ -674,6 +676,123 @@
           ;; Step 4: Apply history entries and set game-db
           (-> (apply-history-entries db entries)
               (assoc :game/db db-after-turn)))))))
+
+
+;; === Priority System ===
+
+(defn- advance-with-stops
+  "Advance phases until a stop is hit or a turn boundary is crossed.
+   Handles cleanup (begin-cleanup, opponent-draw, start-turn) automatically.
+   After crossing a turn boundary, continues advancing until the first stop.
+   If no stops are set, stops at the turn boundary (untap of new turn).
+   Returns {:app-db app-db'} with game-db at the stopped phase.
+   Pure function: (app-db) -> {:app-db app-db'}"
+  [app-db]
+  (let [game-db (:game/db app-db)
+        player-eid (queries/get-player-eid game-db :player-1)]
+    (loop [gdb game-db
+           crossed-turn? false]
+      (let [game-state (queries/get-game-state gdb)
+            current-phase (:game/phase game-state)
+            nxt (next-phase current-phase)]
+        (if (= nxt :cleanup)
+          ;; Advancing to cleanup: advance phase, begin cleanup, then cross turn boundary
+          (let [advanced-db (advance-phase gdb :player-1)
+                cleanup-result (begin-cleanup advanced-db :player-1)]
+            (if (:pending-selection cleanup-result)
+              ;; Cleanup needs discard — pause with pending-selection
+              {:app-db (-> app-db
+                           (assoc :game/db (:db cleanup-result))
+                           (assoc :game/pending-selection (:pending-selection cleanup-result)))}
+              ;; No discard needed — cross turn boundary
+              (let [db-after-cleanup (:db cleanup-result)
+                    db-after-draw (opponent-draw db-after-cleanup :player-1)
+                    db-after-turn (start-turn db-after-draw :player-1)
+                    new-player-eid (queries/get-player-eid db-after-turn :player-1)
+                    has-stops? (seq (:player/stops (d/pull db-after-turn [:player/stops] new-player-eid)))]
+                (if has-stops?
+                  ;; Has stops — continue advancing to first stop in new turn
+                  (recur db-after-turn true)
+                  ;; No stops set — stop at turn boundary
+                  {:app-db (assoc app-db :game/db db-after-turn)}))))
+          ;; Normal phase advance
+          (let [advanced-db (advance-phase gdb :player-1)]
+            ;; Check if new phase triggers anything on the stack
+            (if (not (queries/stack-empty? advanced-db))
+              ;; Stack triggered — stop and give priority
+              {:app-db (assoc app-db :game/db advanced-db)}
+              ;; Check stop
+              (if (priority/check-stop advanced-db player-eid nxt)
+                ;; Stop hit — pause here
+                {:app-db (assoc app-db :game/db advanced-db)}
+                ;; No stop — continue advancing
+                (recur advanced-db crossed-turn?)))))))))
+
+
+(defn yield-impl
+  "Core priority passing logic. Pure function on app-db.
+   Returns map with:
+     :app-db          — updated app-db (always present)
+     :continue-yield? — true if ::yield should re-dispatch (more stack items)
+
+   Flow:
+   1. Add current priority holder to passed set
+   2. If opponent is bot, auto-pass for bot
+   3. If both passed:
+      a. Reset passes
+      b. Stack non-empty: resolve one item
+      c. Stack empty: advance phases with stops
+   4. If not both passed: transfer priority"
+  [app-db]
+  (let [game-db (:game/db app-db)
+        holder-eid (priority/get-priority-holder-eid game-db)
+        ;; Step 1: current player passes
+        gdb (priority/yield-priority game-db holder-eid)
+        ;; Step 2: check if opponent is a bot and auto-pass
+        opponent-player-id (queries/get-opponent-id gdb :player-1)
+        gdb (if opponent-player-id
+              (let [archetype (bot/get-bot-archetype gdb opponent-player-id)]
+                (if (and archetype
+                         (= :pass (bot/bot-priority-decision archetype {})))
+                  (let [opp-eid (queries/get-player-eid gdb opponent-player-id)]
+                    (priority/yield-priority gdb opp-eid))
+                  gdb))
+              gdb)]
+    (if (priority/both-passed? gdb)
+      ;; Step 3: Both passed
+      (let [gdb (priority/reset-passes gdb)]
+        (if (not (queries/stack-empty? gdb))
+          ;; 3b: Stack non-empty — resolve one item
+          (let [result (resolve-one-item gdb :player-1)]
+            (if (:pending-selection result)
+              {:app-db (-> app-db
+                           (assoc :game/db (:db result))
+                           (assoc :game/pending-selection (:pending-selection result)))}
+              ;; Resolved one item — check if stack has more
+              (let [resolved-db (:db result)]
+                (if (not (queries/stack-empty? resolved-db))
+                  ;; More items on stack — signal to continue
+                  {:app-db (assoc app-db :game/db resolved-db)
+                   :continue-yield? true}
+                  ;; Stack now empty — stay in current phase (stop is set)
+                  {:app-db (maybe-continue-cleanup
+                             (assoc app-db :game/db resolved-db))}))))
+          ;; 3c: Stack empty — advance phases with stops
+          (advance-with-stops (assoc app-db :game/db gdb))))
+      ;; Step 4: Not both passed — transfer priority
+      {:app-db (assoc app-db :game/db (priority/transfer-priority gdb holder-eid))})))
+
+
+(rf/reg-event-fx
+  ::yield
+  (fn [{:keys [db]} _]
+    (if (:game/pending-selection db)
+      {:db db}
+      (let [result (yield-impl db)]
+        (if (:continue-yield? result)
+          {:db (:app-db result)
+           :fx [[:dispatch [::yield]]]}
+          {:db (:app-db result)})))))
 
 
 ;; === Play Land ===
