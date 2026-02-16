@@ -41,7 +41,15 @@
                      (and card-info (:land? card-info))
                      (str "Play " (:name card-info))
 
-                     :else "Play")]
+                     :else "Play")
+        play-yield-label (cond
+                           (and card-info (not (:land? card-info)))
+                           (str "Cast & Yield " (:name card-info))
+
+                           (and card-info (:land? card-info))
+                           (str "Play & Yield " (:name card-info))
+
+                           :else "Play & Yield")]
     [:div {:class "mb-4"}
      [:button {:class (btn-class play-enabled?)
                :disabled (not play-enabled?)
@@ -50,6 +58,13 @@
                            can-play-land? #(rf/dispatch [::events/play-land selected])
                            :else identity)}
       play-label]
+     [:button {:class (btn-class play-enabled?)
+               :disabled (not play-enabled?)
+               :on-click (cond
+                           can-cast? #(rf/dispatch [::events/cast-and-yield])
+                           can-play-land? #(rf/dispatch [::events/play-land selected])
+                           :else identity)}
+      play-yield-label]
      [:button {:class (btn-class (seq stack))
                :disabled (empty? stack)
                :on-click #(rf/dispatch [::events/resolve-top])}

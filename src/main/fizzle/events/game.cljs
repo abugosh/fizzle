@@ -486,6 +486,23 @@
           (assoc db :game/db (:db result)))))))
 
 
+(rf/reg-event-db
+  ::cast-and-yield
+  (fn [db _]
+    (let [new-db (cast-spell-handler db)]
+      (if (or (:game/pending-selection new-db)
+              (:game/pending-mode-selection new-db)
+              (not (seq (queries/get-all-stack-items (:game/db new-db)))))
+        new-db
+        (let [result (resolve-one-item (:game/db new-db) :player-1)]
+          (if (:pending-selection result)
+            (-> new-db
+                (assoc :game/db (:db result))
+                (assoc :game/pending-selection (:pending-selection result)))
+            (maybe-continue-cleanup
+              (assoc new-db :game/db (:db result)))))))))
+
+
 (rf/reg-event-fx
   ::resolve-all
   (fn [{:keys [db]} [_ initial-ids]]
