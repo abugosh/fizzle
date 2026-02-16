@@ -9,7 +9,14 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.events.game :as game]
-    [fizzle.history.core :as history]))
+    [fizzle.history.core :as history]
+    [fizzle.history.interceptor :as interceptor]
+    [re-frame.core :as rf]
+    [re-frame.db :as rf-db]))
+
+
+;; Register the history interceptor so dispatch-sync creates history entries
+(interceptor/register!)
 
 
 ;; === Test helpers ===
@@ -58,6 +65,31 @@
     [@conn obj-id]))
 
 
+(defn dispatch-resolve-all
+  "Dispatch ::resolve-all through re-frame and return the resulting app-db.
+   Since ::resolve-all uses recursive :fx dispatch, we loop dispatch-sync
+   until the event stops re-dispatching (stack empty, selection, or new items).
+   Max 20 iterations as safety."
+  [app-db]
+  (reset! rf-db/app-db app-db)
+  (rf/dispatch-sync [::game/resolve-all])
+  ;; After first dispatch-sync, the :fx dispatch is queued but not processed.
+  ;; We loop, re-dispatching with the initial-ids until stable.
+  (let [initial-ids (set (map :db/id (queries/get-all-stack-items (:game/db app-db))))]
+    (loop [iterations 0]
+      (let [db @rf-db/app-db]
+        (if (or (>= iterations 20)
+                (:game/pending-selection db)
+                (let [game-db (:game/db db)
+                      top (stack/get-top-stack-item game-db)]
+                  (or (nil? top)
+                      (not (contains? initial-ids (:db/id top))))))
+          db
+          (do
+            (rf/dispatch-sync [::game/resolve-all initial-ids])
+            (recur (inc iterations))))))))
+
+
 ;; === resolve-one-item tests (game-db level) ===
 
 (deftest test-resolve-one-item-spell
@@ -72,11 +104,10 @@
                 :mode/on-resolve :graveyard}
           db' (rules/cast-spell-mode db :player-1 object-id mode)
           ;; Filter to spell stack-items only (storm also creates a :storm item)
-          spell-items (filter #(:stack-item/object-ref %) (stack/get-all-stack-items db'))]
+          spell-items (filter #(:stack-item/object-ref %) (queries/get-all-stack-items db'))]
       ;; Should have a spell stack-item with object-ref
       (is (seq spell-items) "Should have spell stack-item")
       ;; Resolve via resolve-one-item (resolves top item which is :storm)
-      ;; Keep resolving until we hit the spell
       ;; Keep resolving until stack is empty (storm meta-item + spell)
       (loop [db db'
              iterations 0]
@@ -167,11 +198,8 @@
                 :mode/on-resolve :graveyard}
           db-cast (rules/cast-spell-mode db :player-1 obj-id mode)
           ;; Find the spell stack-item (not the storm meta-item)
-          spell-items (filter #(:stack-item/object-ref %) (stack/get-all-stack-items db-cast))]
+          spell-items (filter #(:stack-item/object-ref %) (queries/get-all-stack-items db-cast))]
       (is (seq spell-items) "Spell should be on stack")
-      ;; We need to resolve past any storm meta-item to get to the spell
-      ;; For Merchant Scroll (sorcery), storm count is 0 in fresh game, so
-      ;; the top of stack should be the spell itself
       ;; Resolve - should trigger tutor selection
       (let [result (game/resolve-one-item db-cast :player-1)]
         (is (some? (:pending-selection result))
@@ -184,31 +212,29 @@
           ;; Cast a spell first to get a source for storm copies
           [db' src-id] (add-card-to-zone db :dark-ritual :hand :player-1)
           db' (mana/add-mana db' :player-1 {:black 3})
-          ;; Put the spell object on the battlefield (as source reference for storm)
-          ;; Instead, create a storm stack-item directly
+          ;; Create a storm stack-item directly
           db' (stack/create-stack-item db'
                                        {:stack-item/type :storm
                                         :stack-item/controller :player-1
                                         :stack-item/source src-id
                                         :stack-item/effects [{:effect/type :storm-copies
                                                               :effect/count 2}]})
-          items-before (stack/get-all-stack-items db')]
+          items-before (queries/get-all-stack-items db')]
       ;; Should have 1 stack-item (the storm meta-item)
       (is (= 1 (count items-before)) "Should have 1 stack-item before resolution")
       ;; Resolve the storm item
       (let [result (game/resolve-one-item db' :player-1)
-            items-after (stack/get-all-stack-items (:db result))]
+            items-after (queries/get-all-stack-items (:db result))]
         (is (nil? (:pending-selection result)) "Storm should not need selection")
         ;; Storm meta-item should be removed, but copies created
-        ;; The storm item is removed, and 2 copies are created
         (is (= 2 (count items-after))
             "Should have 2 storm copy stack-items after resolution")))))
 
 
-;; === ::resolve-all tests (app-db level) ===
+;; === ::resolve-all tests (via re-frame dispatch) ===
 
 (deftest test-resolve-all-multiple-items
-  (testing "Multiple non-selection items all resolved in one dispatch"
+  (testing "Multiple non-selection items all resolved"
     (let [db (create-full-db)
           ;; Create 3 simple trigger stack-items
           db (stack/create-stack-item db
@@ -232,13 +258,11 @@
                                        :stack-item/effects [{:effect/type :lose-life
                                                              :effect/amount 1
                                                              :effect/target :controller}]})
-          _ (is (= 3 (count (stack/get-all-stack-items db))) "Should have 3 stack-items")
-          ;; Wrap in app-db
-          app-db {:game/db db}
-          ;; Call resolve-all handler
-          result (game/resolve-all-handler app-db)]
+          _ (is (= 3 (count (queries/get-all-stack-items db))) "Should have 3 stack-items")
+          app-db (merge (history/init-history) {:game/db db})
+          result (dispatch-resolve-all app-db)]
       ;; All 3 items should be resolved
-      (is (empty? (stack/get-all-stack-items (:game/db result)))
+      (is (empty? (queries/get-all-stack-items (:game/db result)))
           "All stack-items should be resolved")
       ;; All 3 effects executed (lost 3 life total)
       (is (= 17 (queries/get-life-total (:game/db result) :player-1))
@@ -268,17 +292,16 @@
                 :mode/additional-costs []
                 :mode/on-resolve :graveyard}
           db (rules/cast-spell-mode db :player-1 obj-id mode)
-          items-before (stack/get-all-stack-items db)]
+          items-before (queries/get-all-stack-items db)]
       ;; Should have 2+ items (spell + storm possibly + trigger)
       (is (>= (count items-before) 2) "Should have at least 2 stack items")
-      ;; Wrap in app-db
-      (let [app-db {:game/db db}
-            result (game/resolve-all-handler app-db)]
+      (let [app-db (merge (history/init-history) {:game/db db})
+            result (dispatch-resolve-all app-db)]
         ;; Should have pending selection (tutor on top stops resolution)
         (is (some? (:game/pending-selection result))
             "Should stop at selection")
         ;; The trigger item should still be on the stack (wasn't reached)
-        (is (seq (stack/get-all-stack-items (:game/db result)))
+        (is (seq (queries/get-all-stack-items (:game/db result)))
             "Items below selection should remain on stack")))))
 
 
@@ -294,14 +317,14 @@
                 :mode/additional-costs []
                 :mode/on-resolve :graveyard}
           db (rules/cast-spell-mode db :player-1 obj-id mode)
-          app-db {:game/db db}
-          result (game/resolve-all-handler app-db)]
+          app-db (merge (history/init-history) {:game/db db})
+          result (dispatch-resolve-all app-db)]
       ;; Should stop at the tutor's selection
       (is (some? (:game/pending-selection result))
           "Should return pending selection when only item needs selection")
       ;; The spell should still be on the stack (not removed by selection pause)
       (is (some #(:stack-item/object-ref %)
-                (stack/get-all-stack-items (:game/db result)))
+                (queries/get-all-stack-items (:game/db result)))
           "Spell stack-item should remain on stack"))))
 
 
@@ -317,14 +340,13 @@
                                        :stack-item/source src-id
                                        :stack-item/effects [{:effect/type :storm-copies
                                                              :effect/count 2}]})
-          items-before (stack/get-all-stack-items db)]
+          items-before (queries/get-all-stack-items db)]
       (is (= 1 (count items-before)) "Should have 1 stack-item (storm)")
-      ;; Wrap in app-db
-      (let [app-db {:game/db db}
-            result (game/resolve-all-handler app-db)]
+      (let [app-db (merge (history/init-history) {:game/db db})
+            result (dispatch-resolve-all app-db)]
         ;; Storm item should be resolved (removed)
         ;; But 2 new copies should be on the stack
-        (let [items-after (stack/get-all-stack-items (:game/db result))]
+        (let [items-after (queries/get-all-stack-items (:game/db result))]
           (is (= 2 (count items-after))
               "Should have 2 new copy stack-items (not resolved by resolve-all)")
           ;; No pending selection
@@ -342,10 +364,10 @@
                                        :stack-item/effects [{:effect/type :lose-life
                                                              :effect/amount 1
                                                              :effect/target :controller}]})
-          _ (is (= 1 (count (stack/get-all-stack-items db))) "Should have 1 stack-item")
-          app-db {:game/db db}
-          result (game/resolve-all-handler app-db)]
-      (is (empty? (stack/get-all-stack-items (:game/db result)))
+          _ (is (= 1 (count (queries/get-all-stack-items db))) "Should have 1 stack-item")
+          app-db (merge (history/init-history) {:game/db db})
+          result (dispatch-resolve-all app-db)]
+      (is (empty? (queries/get-all-stack-items (:game/db result)))
           "Stack-item should be resolved")
       (is (= 19 (queries/get-life-total (:game/db result) :player-1))
           "Effect should have executed"))))
@@ -354,8 +376,8 @@
 (deftest test-resolve-all-empty-stack
   (testing "Empty stack returns unchanged"
     (let [db (create-full-db)
-          app-db {:game/db db}
-          result (game/resolve-all-handler app-db)]
+          app-db (merge (history/init-history) {:game/db db})
+          result (dispatch-resolve-all app-db)]
       (is (= db (:game/db result))
           "DB should be unchanged for empty stack")
       (is (nil? (:game/pending-selection result))
@@ -392,11 +414,11 @@
           ;; Create app-db with history initialized
           app-db (merge (history/init-history) {:game/db db})
           entries-before (count (history/effective-entries app-db))
-          result (game/resolve-all-handler app-db)
+          result (dispatch-resolve-all app-db)
           entries-after (count (history/effective-entries result))]
       ;; Should have added exactly 3 entries (one per resolved item)
       (is (= 3 (- entries-after entries-before))
           "Should create one history entry per resolved item")
-      ;; History position should advance
-      (is (= (+ entries-before 2) (:history/position result))
-          "History position should advance to tip"))))
+      ;; History position should advance to tip
+      (is (= (dec entries-after) (:history/position result))
+          "History position should be at tip"))))

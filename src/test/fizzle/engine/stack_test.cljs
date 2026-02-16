@@ -138,7 +138,7 @@
                   (stack/create-stack-item {:stack-item/type :spell
                                             :stack-item/controller :player-1
                                             :stack-item/description "third"}))
-          items (stack/get-all-stack-items db')]
+          items (queries/get-all-stack-items db')]
       (is (= 3 (count items)))
       (is (= "third" (:stack-item/description (first items))))
       (is (= "first" (:stack-item/description (last items)))))))
@@ -149,13 +149,13 @@
 (deftest test-stack-empty
   (testing "Returns true on fresh db, false after add, true after remove"
     (let [db (init-game-state)]
-      (is (true? (stack/stack-empty? db)))
+      (is (true? (queries/stack-empty? db)))
       (let [db' (stack/create-stack-item db {:stack-item/type :spell
                                              :stack-item/controller :player-1})]
-        (is (false? (stack/stack-empty? db')))
+        (is (false? (queries/stack-empty? db')))
         (let [eid (:db/id (stack/get-top-stack-item db'))
               db'' (stack/remove-stack-item db' eid)]
-          (is (true? (stack/stack-empty? db''))))))))
+          (is (true? (queries/stack-empty? db''))))))))
 
 
 ;; === get-next-stack-order tests ===
@@ -441,13 +441,13 @@
                          :where [?e :object/id ?oid]]
                        db'' object-id)
           spell-item (stack/get-stack-item-by-object-ref db'' obj-eid)
-          all-items (stack/get-all-stack-items db'')
+          all-items (queries/get-all-stack-items db'')
           ability-item (first (filter #(= :activated-ability (:stack-item/type %)) all-items))]
       (is (> (:stack-item/position ability-item) (:stack-item/position spell-item))
           "Ability stack-item should be on top of stack")
       ;; Resolve top - should resolve the ability, not the spell
       (let [db-after (:db (game/resolve-one-item db'' :player-1))
-            remaining-items (stack/get-all-stack-items db-after)]
+            remaining-items (queries/get-all-stack-items db-after)]
         ;; Ability stack-item should be gone
         (is (empty? (filter #(= :activated-ability (:stack-item/type %)) remaining-items))
             "Ability stack-item should be resolved and removed")

@@ -2,10 +2,9 @@
   (:require
     [datascript.core :as d]
     [fizzle.db.queries :as queries]
-    [fizzle.engine.grants :as grants]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.sorting :as sorting]
-    [fizzle.engine.stack :as stack]
+    [fizzle.engine.validation :as validation]
     [re-frame.core :as rf]))
 
 
@@ -14,6 +13,9 @@
 (rf/reg-sub ::selected-card (fn [db _] (:game/selected-card db)))
 (rf/reg-sub ::active-screen (fn [db _] (:active-screen db)))
 (rf/reg-sub ::game-over-dismissed (fn [db _] (:game/game-over-dismissed db)))
+(rf/reg-sub ::stack-collapsed (fn [db _] (:ui/stack-collapsed db)))
+(rf/reg-sub ::gy-collapsed (fn [db _] (:ui/gy-collapsed db)))
+(rf/reg-sub ::history-collapsed (fn [db _] (:ui/history-collapsed db)))
 
 
 ;; Layer 3: derived subscriptions
@@ -43,7 +45,7 @@
   :<- [::game-db]
   (fn [game-db _]
     (when game-db
-      (let [stack-items (stack/get-all-stack-items game-db)
+      (let [stack-items (queries/get-all-stack-items game-db)
             ;; Exclude stack-items with object-refs (spells/copies) — the game object already represents them
             non-spell-items (remove :stack-item/object-ref stack-items)
             ;; Enrich with source card name for display
@@ -206,7 +208,7 @@
   "Check if a game object has flashback — either from card definition or granted."
   [game-db obj]
   (let [card-alternates (get-in obj [:object/card :card/alternate-costs] [])
-        granted-alternates (->> (grants/get-grants game-db (:object/id obj))
+        granted-alternates (->> (queries/get-grants game-db (:object/id obj))
                                 (filter #(= :alternate-cost (:grant/type %)))
                                 (map :grant/data))
         all-alternates (concat card-alternates granted-alternates)]
@@ -292,6 +294,14 @@
   ::pending-selection
   (fn [db _]
     (:game/pending-selection db)))
+
+
+(rf/reg-sub
+  ::selection-valid?
+  :<- [::pending-selection]
+  (fn [selection _]
+    (when selection
+      (validation/validate-selection selection))))
 
 
 (rf/reg-sub

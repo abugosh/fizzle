@@ -180,7 +180,7 @@
           _ (is (= 3 (q/get-storm-count db-bf-cast :player-1))
                 "Storm count should be 3 after casting Brain Freeze")
           ;; Storm trigger should be on the stack
-          all-items (stack/get-all-stack-items db-bf-cast)
+          all-items (q/get-all-stack-items db-bf-cast)
           storm-items (filter #(= :storm (:stack-item/type %)) all-items)]
       (is (= 1 (count storm-items))
           "One storm trigger should be on the stack")
@@ -294,7 +294,7 @@
           _ (is (= 1 (q/get-storm-count db-cast :player-1))
                 "Precondition: storm count is 1")
           storm-trigger (first (filter #(= :storm (:stack-item/type %))
-                                       (stack/get-all-stack-items db-cast)))]
+                                       (q/get-all-stack-items db-cast)))]
       (is (= 0 (get-in storm-trigger [:stack-item/effects 0 :effect/count]))
           "Storm trigger count should be 0 (no previous spells)")
       ;; Resolve storm stack-item (creates 0 copies) then resolve original
@@ -366,7 +366,7 @@
           ;; so the protection is in maybe-create-storm-trigger checking is-copy.
           ;; Verify by checking no storm triggers appeared after copy creation.
           triggers-before (filter #(= :storm (:stack-item/type %))
-                                  (stack/get-all-stack-items db-with-copy))
+                                  (q/get-all-stack-items db-with-copy))
           ;; Cast-spell on the copy would increment storm and check for storm trigger
           ;; but copies shouldn't be cast in normal game flow. The real protection
           ;; is that create-spell-copy puts them on stack directly without calling cast.

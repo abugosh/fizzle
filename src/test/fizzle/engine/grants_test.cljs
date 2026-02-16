@@ -85,7 +85,7 @@
                               :alternate/mana-cost {:colorless 1 :black 1}
                               :alternate/on-resolve :exile}}
           db' (grants/add-grant db obj-id grant)
-          obj-grants (grants/get-grants db' obj-id)]
+          obj-grants (q/get-grants db' obj-id)]
       (is (= 1 (count obj-grants))
           "Object should have one grant")
       (is (= :alternate-cost (:grant/type (first obj-grants)))
@@ -109,7 +109,7 @@
           db' (-> db
                   (grants/add-grant obj-id grant1)
                   (grants/add-grant obj-id grant2))
-          obj-grants (grants/get-grants db' obj-id)]
+          obj-grants (q/get-grants db' obj-id)]
       (is (= 2 (count obj-grants))
           "Object should have two grants"))))
 
@@ -120,7 +120,7 @@
   (testing "get-grants returns empty vector for object without grants"
     (let [db (init-game-state)
           [obj-id db] (add-card-to-zone db :player-1 test-sorcery :graveyard)
-          obj-grants (grants/get-grants db obj-id)]
+          obj-grants (q/get-grants db obj-id)]
       (is (= [] obj-grants)
           "Object without grants should return empty vector"))))
 
@@ -163,7 +163,7 @@
                  :grant/data {:alternate/id :flashback}}
           db' (grants/add-grant db obj-id grant)
           db'' (grants/remove-grant db' obj-id grant-id)
-          obj-grants (grants/get-grants db'' obj-id)]
+          obj-grants (q/get-grants db'' obj-id)]
       (is (= 0 (count obj-grants))
           "Grant should be removed"))))
 
@@ -194,7 +194,7 @@
                   (grants/add-grant obj-id grant2)
                   (grants/add-grant obj-id grant3))
           db'' (grants/remove-grants-by-source db' source-id)
-          obj-grants (grants/get-grants db'' obj-id)]
+          obj-grants (q/get-grants db'' obj-id)]
       (is (= 1 (count obj-grants))
           "Only grant from other source should remain")
       (is (= other-source-id (:grant/source (first obj-grants)))
@@ -324,7 +324,7 @@
                   (grants/add-grant obj-id grant2))
           ;; Expire at turn 1, cleanup phase
           db'' (grants/expire-grants db' 1 :cleanup)
-          remaining (grants/get-grants db'' obj-id)]
+          remaining (q/get-grants db'' obj-id)]
       (is (= 1 (count remaining))
           "Should have one remaining grant")
       (is (= :flashback-persists (get-in (first remaining) [:grant/data :alternate/id]))
@@ -352,9 +352,9 @@
                   (grants/add-grant obj-id1 grant1)
                   (grants/add-grant obj-id2 grant2))
           db'' (grants/expire-grants db' 1 :cleanup)]
-      (is (= 0 (count (grants/get-grants db'' obj-id1)))
+      (is (= 0 (count (q/get-grants db'' obj-id1)))
           "First object should have no grants")
-      (is (= 0 (count (grants/get-grants db'' obj-id2)))
+      (is (= 0 (count (q/get-grants db'' obj-id2)))
           "Second object should have no grants"))))
 
 
@@ -380,7 +380,7 @@
           ;; Add mana so the card would be castable
           db (mana/add-mana db :player-1 {:colorless 1 :black 1})
           ;; Verify grant exists and card is castable at main phase
-          _ (is (= 1 (count (grants/get-grants db obj-id)))
+          _ (is (= 1 (count (q/get-grants db obj-id)))
                 "Grant should exist before cleanup")
           _ (is (rules/can-cast? db :player-1 obj-id)
                 "Card should be castable via granted flashback before cleanup")
@@ -389,7 +389,7 @@
           result (game/begin-cleanup db :player-1)
           db' (:db result)]
       ;; Grant should be removed
-      (is (= 0 (count (grants/get-grants db' obj-id)))
+      (is (= 0 (count (q/get-grants db' obj-id)))
           "Grant should be expired after cleanup phase")
       ;; Card should no longer be castable (grant expired)
       ;; Move back to main1 to check castability without phase restriction
@@ -421,7 +421,7 @@
           result (game/begin-cleanup db :player-1)
           db' (:db result)]
       ;; Grant should still exist (expires turn 2)
-      (is (= 1 (count (grants/get-grants db' obj-id)))
+      (is (= 1 (count (q/get-grants db' obj-id)))
           "Grant should still exist (expires on turn 2)")
       ;; Card should still be castable at main phase (check without cleanup phase restriction)
       (let [db-main (d/db-with db' [[:db/add game-eid :game/phase :main1]])]
@@ -564,7 +564,7 @@
                   (grants/add-grant obj-id expired-object-grant)
                   (grants/add-player-grant :player-1 expired-player-grant)
                   (grants/expire-grants 1 :cleanup))]
-      (is (= 0 (count (grants/get-grants db' obj-id)))
+      (is (= 0 (count (q/get-grants db' obj-id)))
           "Object grant should be expired")
       (is (= 0 (count (grants/get-player-grants db' :player-1)))
           "Player grant should be expired"))))

@@ -261,7 +261,7 @@
       (is (= :graveyard (th/get-object-zone db-resolved recoup-id))
           "Recoup should go to graveyard after fizzling")
       ;; Target should have no grants (Recoup effect didn't happen)
-      (let [target-grants (grants/get-grants db-resolved sorcery-id)]
+      (let [target-grants (q/get-grants db-resolved sorcery-id)]
         (is (empty? target-grants)
             "Target should have no grants (Recoup fizzled)")))))
 
@@ -287,7 +287,7 @@
       (is (= :graveyard (th/get-object-zone db-resolved recoup-id))
           "Recoup should fizzle when its specific target is removed")
       ;; sorcery2 should NOT have grants
-      (is (empty? (grants/get-grants db-resolved sorcery2-id))
+      (is (empty? (q/get-grants db-resolved sorcery2-id))
           "Other sorceries should not gain flashback when Recoup fizzles"))))
 
 
@@ -308,12 +308,12 @@
           resolve-result (game/resolve-one-item db-cast :player-1)
           db-resolved (:db resolve-result)
           ;; Verify grant exists
-          _ (is (= 1 (count (grants/get-grants db-resolved sorcery-id)))
+          _ (is (= 1 (count (q/get-grants db-resolved sorcery-id)))
                 "Grant should exist before cleanup")
           ;; Run grant expiration (at turn 1, cleanup phase)
           db-expired (grants/expire-grants db-resolved 1 :cleanup)]
       ;; Grant should be removed
-      (is (empty? (grants/get-grants db-expired sorcery-id))
+      (is (empty? (q/get-grants db-expired sorcery-id))
           "Grant should be removed at cleanup phase"))))
 
 
@@ -334,7 +334,7 @@
           ;; Try to expire at main1 phase (before cleanup)
           db-not-expired (grants/expire-grants db-resolved 1 :main1)]
       ;; Grant should still exist
-      (is (= 1 (count (grants/get-grants db-not-expired sorcery-id)))
+      (is (= 1 (count (q/get-grants db-not-expired sorcery-id)))
           "Grant should NOT be removed during main phase"))))
 
 
@@ -417,7 +417,7 @@
           ;; Verify Recoup in graveyard, Careful Study has flashback
           _ (is (= :graveyard (th/get-object-zone db-resolved recoup-id))
                 "Recoup should be in graveyard after resolution")
-          _ (is (= 1 (count (grants/get-grants db-resolved sorcery-id)))
+          _ (is (= 1 (count (q/get-grants db-resolved sorcery-id)))
                 "Careful Study should have flashback grant")
           ;; Step 3: Verify Careful Study can be cast from graveyard
           _ (is (= :graveyard (th/get-object-zone db-resolved sorcery-id))

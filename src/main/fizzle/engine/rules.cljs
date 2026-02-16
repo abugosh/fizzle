@@ -95,7 +95,7 @@
   (if-let [obj (q/get-object db object-id)]
     (let [card (:object/card obj)
           current-zone (:object/zone obj)
-          object-grants (grants/get-grants db object-id)]
+          object-grants (q/get-grants db object-id)]
       (case current-zone
         :hand (let [primary (get-primary-mode card)
                     kicked (get-kicked-mode card)
@@ -523,4 +523,4 @@
            (= owner-eid player-eid)
            (land-card? db object-id)
            (#{:main1 :main2} phase)
-           (stack/stack-empty? db)))))
+           (q/stack-empty? db)))))

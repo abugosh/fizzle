@@ -14,7 +14,6 @@
     [datascript.core :as d]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
-    [fizzle.engine.stack :as stack]
     [fizzle.events.abilities :as ability-events]
     [fizzle.events.game :as game]
     [fizzle.test-helpers :as th]))
@@ -99,7 +98,7 @@
       (is (= 20 (q/get-life-total db-tapped :player-1))
           "Life unchanged — trigger on stack, not yet resolved")
       ;; Trigger is on the stack
-      (is (= 1 (count (stack/get-all-stack-items db-tapped)))
+      (is (= 1 (count (q/get-all-stack-items db-tapped)))
           "One trigger should be on the stack"))))
 
 
@@ -114,7 +113,7 @@
           db-resolved (:db (game/resolve-one-item db-tapped :player-1))]
       (is (= 19 (q/get-life-total db-resolved :player-1))
           "Player should lose 1 life after trigger resolves")
-      (is (= 0 (count (stack/get-all-stack-items db-resolved)))
+      (is (= 0 (count (q/get-all-stack-items db-resolved)))
           "Stack should be empty after resolving trigger"))))
 
 
@@ -193,7 +192,7 @@
           db-played (game/play-land db' :player-1 obj-id)
           ;; Tap to verify trigger fires (proof trigger was registered)
           db-tapped (ability-events/activate-mana-ability db-played :player-1 obj-id :black)]
-      (is (= 1 (count (stack/get-all-stack-items db-tapped)))
+      (is (= 1 (count (q/get-all-stack-items db-tapped)))
           "Trigger should fire — proves ETB registered the trigger"))))
 
 
@@ -207,5 +206,5 @@
       (is (= 1 (:black (q/get-mana-pool db-tapped :player-1)))
           "Mana should be added regardless of trigger registration")
       ;; No trigger on stack (triggers weren't registered via ETB)
-      (is (= 0 (count (stack/get-all-stack-items db-tapped)))
+      (is (= 0 (count (q/get-all-stack-items db-tapped)))
           "No trigger should fire — card bypassed ETB trigger registration"))))

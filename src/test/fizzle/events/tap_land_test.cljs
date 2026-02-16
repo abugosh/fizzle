@@ -4,7 +4,6 @@
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
-    [fizzle.engine.stack :as stack]
     [fizzle.engine.state-based :as state-based]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.turn-based :as turn-based]
@@ -130,7 +129,7 @@
           db-after-tap (ability-events/activate-mana-ability db' :player-1 obj-id :black)
           _ (is (= 20 (q/get-life-total db-after-tap :player-1))
                 "Life unchanged before trigger resolves (trigger on stack)")
-          _ (is (= 1 (count (stack/get-all-stack-items db-after-tap)))
+          _ (is (= 1 (count (q/get-all-stack-items db-after-tap)))
                 "One trigger should be on the stack")
           ;; Resolve the trigger
           db-after-resolve (:db (game/resolve-one-item db-after-tap :player-1))]
@@ -151,7 +150,7 @@
           db-after-second-tap (ability-events/activate-mana-ability db-after-first-tap :player-1 obj-id2 :blue)
           _ (is (= 20 (q/get-life-total db-after-second-tap :player-1))
                 "Life unchanged before triggers resolve")
-          _ (is (= 2 (count (stack/get-all-stack-items db-after-second-tap)))
+          _ (is (= 2 (count (q/get-all-stack-items db-after-second-tap)))
                 "Two triggers should be on the stack")
           ;; Resolve both triggers
           db-after-first-resolve (:db (game/resolve-one-item db-after-second-tap :player-1))
@@ -217,7 +216,7 @@
       ;; Verify trigger is on stack (damage not yet applied)
       (is (= 20 (q/get-life-total db-after-tap :player-1))
           "Life unchanged - trigger is on stack, can respond before damage")
-      (is (seq (stack/get-all-stack-items db-after-tap))
+      (is (seq (q/get-all-stack-items db-after-tap))
           "Trigger should be on the stack")
       ;; Verify mana was added immediately (before trigger resolves)
       (is (= 1 (:black (q/get-mana-pool db-after-tap :player-1)))
@@ -344,7 +343,7 @@
           db-after-tap (ability-events/activate-mana-ability db-with-ritual :player-1 cob-id :black)
           _ (is (= 1 (:black (q/get-mana-pool db-after-tap :player-1)))
                 "Should have 1 black mana from City of Brass")
-          _ (is (= 1 (count (stack/get-all-stack-items db-after-tap)))
+          _ (is (= 1 (count (q/get-all-stack-items db-after-tap)))
                 "City of Brass trigger on stack")
           _ (is (= 20 (q/get-life-total db-after-tap :player-1))
                 "Life unchanged - trigger not yet resolved")
@@ -365,14 +364,14 @@
                 "Dark Ritual produced 3 black mana")
           _ (is (= :graveyard (:object/zone (q/get-object db-after-first-resolve ritual-obj-id)))
                 "Dark Ritual in graveyard after resolution")
-          _ (is (= 1 (count (stack/get-all-stack-items db-after-first-resolve)))
+          _ (is (= 1 (count (q/get-all-stack-items db-after-first-resolve)))
                 "City of Brass trigger still on stack")
 
           ;; Step 4: Resolve top of stack again - now City of Brass trigger
           db-after-second-resolve (:db (game/resolve-one-item db-after-first-resolve :player-1))]
       (is (= 19 (q/get-life-total db-after-second-resolve :player-1))
           "NOW player loses 1 life from City of Brass trigger")
-      (is (= 0 (count (stack/get-all-stack-items db-after-second-resolve)))
+      (is (= 0 (count (q/get-all-stack-items db-after-second-resolve)))
           "Stack is empty"))))
 
 

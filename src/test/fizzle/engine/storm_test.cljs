@@ -103,7 +103,7 @@
   (testing "Casting spell with :storm keyword creates storm stack-item on stack"
     (let [db (init-storm-test-state)
           db' (rules/cast-spell db :player-1 :storm-obj-1)
-          stack-items (stack/get-all-stack-items db')
+          stack-items (q/get-all-stack-items db')
           storm-items (filter #(= :storm (:stack-item/type %)) stack-items)]
       ;; Should have spell + storm on stack
       (is (= 1 (count storm-items)) "Should have exactly 1 storm stack-item")
@@ -115,7 +115,7 @@
   (testing "Casting spell without :storm keyword does NOT create storm stack-item"
     (let [db (init-storm-test-state)
           db' (rules/cast-spell db :player-1 :non-storm-obj-1)
-          stack-items (stack/get-all-stack-items db')
+          stack-items (q/get-all-stack-items db')
           storm-items (filter #(= :storm (:stack-item/type %)) stack-items)]
       (is (= 0 (count storm-items)) "Non-storm spell should not create storm stack-item"))))
 
@@ -124,7 +124,7 @@
   (testing "Storm trigger has higher stack-order than spell (resolves first)"
     (let [db (init-storm-test-state)
           db' (rules/cast-spell db :player-1 :storm-obj-1)
-          stack-items (stack/get-all-stack-items db')
+          stack-items (q/get-all-stack-items db')
           storm-trigger (first (filter #(= :storm (:stack-item/type %)) stack-items))]
       ;; Trigger is first in LIFO order (highest stack-order)
       (is (= storm-trigger (first stack-items))
@@ -405,7 +405,7 @@
           _ (is (= 3 (q/get-storm-count db :player-1)) "Storm count = 3 after Brain Freeze")
 
           ;; Get storm trigger from stack
-          stack-items (stack/get-all-stack-items db)
+          stack-items (q/get-all-stack-items db)
           storm-trigger (first (filter #(= :storm (:stack-item/type %)) stack-items))
           _ (is (some? storm-trigger) "Storm trigger exists on stack")
 
@@ -476,7 +476,7 @@
           ;; Cast storm spell (gets position 1, trigger gets order 2)
           db (rules/cast-spell db :player-1 :storm-obj-1)
           storm-pos (:object/position (q/get-object db :storm-obj-1))
-          stack-items (stack/get-all-stack-items db)
+          stack-items (q/get-all-stack-items db)
           storm-trigger (first (filter #(= :storm (:stack-item/type %)) stack-items))
           trigger-order (:stack-item/position storm-trigger)]
       ;; Each item should have a distinct, increasing order
@@ -617,7 +617,7 @@
                 "Storm count should be 21 after casting")
 
           ;; Get and resolve storm trigger (creates 20 copies)
-          stack-items (stack/get-all-stack-items db)
+          stack-items (q/get-all-stack-items db)
           storm-trigger (first (filter #(= :storm (:stack-item/type %)) stack-items))
           _ (is (some? storm-trigger) "Storm trigger should exist")
 

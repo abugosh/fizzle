@@ -16,7 +16,6 @@
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.db.queries :as q]
-    [fizzle.engine.stack :as stack]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.zones :as zones]
     [fizzle.events.abilities :as ability-events]
@@ -56,7 +55,7 @@
       (is (= :battlefield (:object/zone (q/get-object db-after-play obj-id)))
           "City of Traitors should be on battlefield after entering")
       ;; Verify no trigger on stack (exclude-self filter should prevent)
-      (is (= 0 (count (stack/get-all-stack-items db-after-play)))
+      (is (= 0 (count (q/get-all-stack-items db-after-play)))
           "No trigger should fire when CoT enters (exclude-self filter)"))))
 
 
@@ -75,7 +74,7 @@
           ;; Play the Island (should trigger CoT sacrifice)
           db-after-island (game/play-land db'' :player-1 island-id)]
       ;; Verify CoT trigger is on stack
-      (is (= 1 (count (stack/get-all-stack-items db-after-island)))
+      (is (= 1 (count (q/get-all-stack-items db-after-island)))
           "CoT sacrifice trigger should be on stack")
       ;; Resolve the trigger
       (let [db-after-resolve (:db (game/resolve-one-item db-after-island :player-1))]
@@ -104,7 +103,7 @@
           [db'' cot-id-2] (th/add-card-to-zone db-after-cot1 :city-of-traitors :hand :player-1)
           db-after-cot2 (game/play-land db'' :player-1 cot-id-2)]
       ;; First CoT's trigger should be on stack
-      (is (= 1 (count (stack/get-all-stack-items db-after-cot2)))
+      (is (= 1 (count (q/get-all-stack-items db-after-cot2)))
           "CoT #1 sacrifice trigger should be on stack when CoT #2 enters")
       ;; Resolve CoT #1's trigger
       (let [db-after-resolve1 (:db (game/resolve-one-item db-after-cot2 :player-1))]
@@ -115,7 +114,7 @@
         ;; Now play an Island - should trigger CoT #2
         (let [[db''' island-id] (th/add-card-to-zone db-after-resolve1 :island :hand :player-1)
               db-after-island (game/play-land db''' :player-1 island-id)]
-          (is (= 1 (count (stack/get-all-stack-items db-after-island)))
+          (is (= 1 (count (q/get-all-stack-items db-after-island)))
               "CoT #2 sacrifice trigger should be on stack when Island enters")
           ;; Resolve CoT #2's trigger
           (let [db-final (:db (game/resolve-one-item db-after-island :player-1))]
@@ -135,7 +134,7 @@
           [db'' island-id] (th/add-card-to-zone db-after-cot :island :hand :player-1)
           db-after-island (game/play-land db'' :player-1 island-id)]
       ;; Trigger should be on stack, not resolved yet
-      (is (= 1 (count (stack/get-all-stack-items db-after-island)))
+      (is (= 1 (count (q/get-all-stack-items db-after-island)))
           "Trigger should be on stack")
       ;; CoT should still be on battlefield (can tap for mana in response)
       (is (= :battlefield (:object/zone (q/get-object db-after-island cot-id)))
@@ -158,7 +157,7 @@
           ;; Add Island to hand and play (trigger goes on stack)
           [db'' island-id] (th/add-card-to-zone db-after-cot :island :hand :player-1)
           db-after-island (game/play-land db'' :player-1 island-id)
-          _ (is (= 1 (count (stack/get-all-stack-items db-after-island)))
+          _ (is (= 1 (count (q/get-all-stack-items db-after-island)))
                 "Precondition: trigger on stack")
           ;; Manually sacrifice CoT (simulating response)
           db-after-sacrifice (zones/move-to-zone db-after-island cot-id :graveyard)
@@ -171,7 +170,7 @@
       (is (= :graveyard (:object/zone obj-after))
           "CoT should remain in graveyard")
       ;; No stack items (trigger resolved)
-      (is (= 0 (count (stack/get-all-stack-items db-after-resolve)))
+      (is (= 0 (count (q/get-all-stack-items db-after-resolve)))
           "Stack should be empty after trigger resolves"))))
 
 
@@ -195,5 +194,5 @@
           ;; Play the land
           db-after-play (game/play-land db'' :player-1 island-id)]
       ;; A trigger should be on stack (proving event was dispatched)
-      (is (= 1 (count (stack/get-all-stack-items db-after-play)))
+      (is (= 1 (count (q/get-all-stack-items db-after-play)))
           ":land-entered event should be dispatched when land enters"))))

@@ -252,7 +252,7 @@
           result (ability-events/activate-ability db'''' :player-1 obj-id 1)
           selection (:pending-selection result)
           ;; Stack should be empty (waiting for target)
-          _ (is (true? (stack/stack-empty? (:db result)))
+          _ (is (true? (q/stack-empty? (:db result)))
                 "Stack should be empty before target selected")
           ;; Confirm target selection (targeting self)
           selection-with-target (assoc selection :selection/selected #{:player-1})
@@ -325,7 +325,7 @@
       (is (= 1 (:selection/ability-index selection))
           "Selection should track ability index")
       ;; Stack should be empty (waiting for target)
-      (is (true? (stack/stack-empty? (:db result)))
+      (is (true? (q/stack-empty? (:db result)))
           "Stack should be empty before target confirmed")
       ;; Costs should NOT be paid yet
       (is (= :battlefield (th/get-object-zone (:db result) obj-id))
@@ -385,7 +385,7 @@
       (is (= initial-mana (q/get-mana-pool (:db final-result) :player-1))
           "Mana pool should be unchanged after cancellation")
       ;; Stack should be empty
-      (is (true? (stack/stack-empty? (:db final-result)))
+      (is (true? (q/stack-empty? (:db final-result)))
           "Stack should be empty after cancellation"))))
 
 

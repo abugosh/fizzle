@@ -106,7 +106,7 @@
           ;; Activate mana ability (should dispatch event via dispatch-event)
           db-after-tap (ability-events/activate-mana-ability db-with-trigger :player-1 obj-id :black)]
       ;; Verify stack-item is on the stack
-      (is (= 1 (count (stack/get-all-stack-items db-after-tap)))
+      (is (= 1 (count (q/get-all-stack-items db-after-tap)))
           "One stack-item should be on the stack after tapping CoB")
       (let [item (stack/get-top-stack-item db-after-tap)]
         (is (= :permanent-tapped (:stack-item/type item))
@@ -139,7 +139,7 @@
           db-with-trigger (register-cob-trigger db' obj-id :player-1)
           ;; First tap
           db-after-first-tap (ability-events/activate-mana-ability db-with-trigger :player-1 obj-id :black)
-          _ (is (= 1 (count (stack/get-all-stack-items db-after-first-tap)))
+          _ (is (= 1 (count (q/get-all-stack-items db-after-first-tap)))
                 "One trigger on stack after first tap")
           ;; Resolve first trigger
           db-after-first-resolve (:db (game/resolve-one-item db-after-first-tap :player-1))
@@ -154,7 +154,7 @@
                                  [[:db/add obj-eid :object/tapped false]])
           ;; Second tap
           db-after-second-tap (ability-events/activate-mana-ability db-untapped :player-1 obj-id :blue)
-          _ (is (= 1 (count (stack/get-all-stack-items db-after-second-tap)))
+          _ (is (= 1 (count (q/get-all-stack-items db-after-second-tap)))
                 "One trigger on stack after second tap")
           ;; Resolve second trigger
           db-after-second-resolve (:db (game/resolve-one-item db-after-second-tap :player-1))]
@@ -180,7 +180,7 @@
           ;; Tap only the first CoB
           db-after-tap (ability-events/activate-mana-ability db-with-t2 :player-1 obj-id-1 :black)]
       ;; Only one trigger should fire (the tapped CoB's trigger)
-      (is (= 1 (count (stack/get-all-stack-items db-after-tap)))
+      (is (= 1 (count (q/get-all-stack-items db-after-tap)))
           "Only one trigger should be on stack (the tapped CoB's trigger)"))))
 
 
@@ -194,7 +194,7 @@
           db-with-trigger (register-cob-trigger db' obj-id :player-1)
           ;; Tap to create trigger on stack
           db-after-tap (ability-events/activate-mana-ability db-with-trigger :player-1 obj-id :black)
-          _ (is (= 1 (count (stack/get-all-stack-items db-after-tap)))
+          _ (is (= 1 (count (q/get-all-stack-items db-after-tap)))
                 "Trigger on stack")
           ;; Sacrifice CoB with trigger on stack (unregisters future triggers)
           db-after-sacrifice (zones/move-to-zone db-after-tap obj-id :graveyard)
@@ -239,7 +239,7 @@
           event (game-events/permanent-tapped-event obj-id :player-1)
           db-after-dispatch (dispatch/dispatch-event db-with-trigger event)]
       ;; Trigger should be on stack
-      (is (= 1 (count (stack/get-all-stack-items db-after-dispatch)))
+      (is (= 1 (count (q/get-all-stack-items db-after-dispatch)))
           "Trigger should be added to stack when matching event dispatched"))))
 
 
@@ -255,5 +255,5 @@
           event (game-events/permanent-tapped-event obj-id-2 :player-1)
           db-after-dispatch (dispatch/dispatch-event db-with-trigger event)]
       ;; No trigger should fire (filter doesn't match)
-      (is (= 0 (count (stack/get-all-stack-items db-after-dispatch)))
+      (is (= 0 (count (q/get-all-stack-items db-after-dispatch)))
           "Trigger should NOT fire for a different object"))))

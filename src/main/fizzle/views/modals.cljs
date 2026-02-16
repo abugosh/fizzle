@@ -108,7 +108,7 @@
   (let [selected (or (:selection/selected selection) #{})
         target-req (:selection/target-requirement selection)
         zone-name (name (or (:target/zone target-req) default-zone))
-        valid? (= 1 (count selected))]
+        valid? @(rf/subscribe [::subs/selection-valid?])]
     [:div {:class overlay-class}
      [:div {:class (container-class {})}
       ;; Header
@@ -139,7 +139,7 @@
    All dispatch ::confirm-selection."
   [selection confirm-event]
   (let [selected (or (:selection/selected selection) #{})
-        valid? (= 1 (count selected))]
+        valid? @(rf/subscribe [::subs/selection-valid?])]
     [modal-wrapper {:title "Choose target player"
                     :max-width "400px"
                     :text-align "center"}
@@ -187,21 +187,7 @@
         selection-type (:selection/type selection)
         is-tutor? (= selection-type :tutor)
         is-multi-select? (and is-tutor? required-count (> required-count 1))
-        allow-fail-to-find? (:selection/allow-fail-to-find? selection)
-        ;; Validation logic:
-        ;; - Multi-select tutor: exactly select-count OR 0 if fail-to-find allowed
-        ;; - Single-select tutor: 0 (fail-to-find) or 1 card
-        ;; - Discard: exactly required-count
-        valid? (cond
-                 is-multi-select?
-                 (or (= current-count required-count)
-                     (and allow-fail-to-find? (zero? current-count)))
-
-                 is-tutor?
-                 (<= current-count 1)
-
-                 :else
-                 (= current-count required-count))
+        valid? @(rf/subscribe [::subs/selection-valid?])
         confirm-event ::selection-events/confirm-selection]
     [:div {:class overlay-class}
      [:div {:class (container-class {})}
@@ -263,7 +249,7 @@
   (let [selected (:selection/selected selection)
         hand-count (:selection/hand-count selection)
         current-count (count selected)
-        valid? (= current-count hand-count)]
+        valid? @(rf/subscribe [::subs/selection-valid?])]
     [:div {:class overlay-class}
      [:div {:class (container-class {})}
       ;; Header
@@ -296,8 +282,7 @@
   (let [selected (:selection/selected selection)
         max-count (:selection/select-count selection)
         current-count (count selected)
-        ;; Valid if 0 to max-count cards selected
-        valid? (<= current-count max-count)]
+        valid? @(rf/subscribe [::subs/selection-valid?])]
     [:div {:class overlay-class}
      [:div {:class (container-class {:border-color "gy-flashback-border"})}
       ;; Header
@@ -332,7 +317,7 @@
   [selection cards]
   (let [selected (:selection/selected selection)
         current-count (count selected)
-        valid? (pos? current-count)]
+        valid? @(rf/subscribe [::subs/selection-valid?])]
     [:div {:class overlay-class}
      [:div {:class (container-class {:border-color "gy-flashback-border"})}
       ;; Header
@@ -367,7 +352,7 @@
   (let [selected (:selection/selected selection)
         select-count (:selection/select-count selection)
         current-count (count selected)
-        valid? (<= current-count select-count)]
+        valid? @(rf/subscribe [::subs/selection-valid?])]
     [:div {:class overlay-class}
      [:div {:class (container-class {:border-color "gy-flashback-border"})}
       ;; Header

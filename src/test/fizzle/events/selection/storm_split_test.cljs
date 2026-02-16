@@ -138,7 +138,7 @@
                                                   :stack-item/effects [{:effect/type :storm-copies
                                                                         :effect/count 3}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
-                                  (stack/get-all-stack-items db-with-storm)))
+                                  (q/get-all-stack-items db-with-storm)))
           selection (storm/build-storm-split-selection db-with-storm :player-1 storm-si)]
       (is (some? selection) "Selection should not be nil")
       (is (= :storm-split (:selection/type selection)))
@@ -171,7 +171,7 @@
                                                   :stack-item/effects [{:effect/type :storm-copies
                                                                         :effect/count 0}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
-                                  (stack/get-all-stack-items db-with-storm)))
+                                  (q/get-all-stack-items db-with-storm)))
           selection (storm/build-storm-split-selection db-with-storm :player-1 storm-si)]
       (is (nil? selection) "Should return nil for 0 copies"))))
 
@@ -188,7 +188,7 @@
                                                   :stack-item/effects [{:effect/type :storm-copies
                                                                         :effect/count 3}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
-                                  (stack/get-all-stack-items db-with-storm)))
+                                  (q/get-all-stack-items db-with-storm)))
           selection (storm/build-storm-split-selection db-with-storm :player-1 storm-si)]
       (is (nil? selection) "Should return nil when source object not found"))))
 
@@ -204,7 +204,7 @@
                                                   :stack-item/effects [{:effect/type :storm-copies
                                                                         :effect/count 3}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
-                                  (stack/get-all-stack-items db-with-storm)))
+                                  (q/get-all-stack-items db-with-storm)))
           selection (storm/build-storm-split-selection db-with-storm :player-1 storm-si)]
       (is (some? selection) "Selection should not be nil")
       (is (= 1 (count (:selection/valid-targets selection)))
@@ -291,7 +291,7 @@
                                                   :stack-item/effects [{:effect/type :storm-copies
                                                                         :effect/count 3}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
-                                  (stack/get-all-stack-items db-with-storm)))
+                                  (q/get-all-stack-items db-with-storm)))
           selection {:selection/type :storm-split
                      :selection/copy-count 3
                      :selection/valid-targets [:opponent :player-1]
@@ -323,7 +323,7 @@
                                                   :stack-item/effects [{:effect/type :storm-copies
                                                                         :effect/count 3}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
-                                  (stack/get-all-stack-items db-with-storm)))
+                                  (q/get-all-stack-items db-with-storm)))
           selection {:selection/type :storm-split
                      :selection/copy-count 3
                      :selection/valid-targets [:opponent :player-1]
@@ -335,7 +335,7 @@
                      :selection/validation :always}
           result (core/execute-confirmed-selection db-with-storm selection)
           db-after (:db result)
-          all-items (stack/get-all-stack-items db-after)
+          all-items (q/get-all-stack-items db-after)
           copy-items (filter #(= :storm-copy (:stack-item/type %)) all-items)
           opp-targeted (filter #(= {:player :opponent} (:stack-item/targets %)) copy-items)
           self-targeted (filter #(= {:player :player-1} (:stack-item/targets %)) copy-items)]
@@ -359,7 +359,7 @@
                                                   :stack-item/effects [{:effect/type :storm-copies
                                                                         :effect/count 3}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
-                                  (stack/get-all-stack-items db-with-storm)))
+                                  (q/get-all-stack-items db-with-storm)))
           selection {:selection/type :storm-split
                      :selection/copy-count 3
                      :selection/valid-targets [:opponent :player-1]
@@ -372,7 +372,7 @@
           result (core/execute-confirmed-selection db-with-storm selection)
           db-after (:db result)
           storm-items (filter #(= :storm (:stack-item/type %))
-                              (stack/get-all-stack-items db-after))]
+                              (q/get-all-stack-items db-after))]
       (is (empty? storm-items)
           "Storm stack-item should be removed after confirm"))))
 
@@ -389,7 +389,7 @@
                                                   :stack-item/effects [{:effect/type :storm-copies
                                                                         :effect/count 3}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
-                                  (stack/get-all-stack-items db-with-storm)))
+                                  (q/get-all-stack-items db-with-storm)))
           selection {:selection/type :storm-split
                      :selection/copy-count 3
                      :selection/valid-targets [:opponent :player-1]

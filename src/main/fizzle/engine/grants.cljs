@@ -20,19 +20,11 @@
     [fizzle.db.queries :as q]))
 
 
-(defn get-grants
-  "Get all grants on an object.
-   Returns empty vector if object has no grants."
-  [db object-id]
-  (let [obj (q/get-object db object-id)]
-    (or (:object/grants obj) [])))
-
-
 (defn get-grants-by-type
   "Get grants of a specific type on an object.
    Returns empty vector if no matching grants."
   [db object-id grant-type]
-  (let [grants (get-grants db object-id)]
+  (let [grants (q/get-grants db object-id)]
     (filterv #(= grant-type (:grant/type %)) grants)))
 
 
@@ -44,7 +36,7 @@
                        :in $ ?oid
                        :where [?e :object/id ?oid]]
                      db object-id)
-        current-grants (get-grants db object-id)
+        current-grants (q/get-grants db object-id)
         new-grants (conj current-grants grant)]
     (d/db-with db [[:db/add obj-eid :object/grants new-grants]])))
 
@@ -57,7 +49,7 @@
                        :in $ ?oid
                        :where [?e :object/id ?oid]]
                      db object-id)
-        current-grants (get-grants db object-id)
+        current-grants (q/get-grants db object-id)
         new-grants (filterv #(not= grant-id (:grant/id %)) current-grants)]
     (if (= (count current-grants) (count new-grants))
       db  ; Grant not found, no change

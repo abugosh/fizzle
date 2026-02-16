@@ -5,8 +5,8 @@
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.cards.iggy-pop :as cards]
+    [fizzle.db.queries :as q]
     [fizzle.engine.events :as game-events]
-    [fizzle.engine.stack :as stack]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.events.game :as game]
@@ -86,7 +86,7 @@
           ;; Dispatch permanent-tapped event — should find trigger in Datascript
           event (game-events/permanent-tapped-event obj-id :player-1)
           db-after-dispatch (dispatch/dispatch-event db-after-play event)
-          items (stack/get-all-stack-items db-after-dispatch)]
+          items (q/get-all-stack-items db-after-dispatch)]
       (is (= 1 (count items))
           "Dispatch should find trigger in Datascript")
       (when (seq items)

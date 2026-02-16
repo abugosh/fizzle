@@ -23,26 +23,21 @@
     [fizzle.views.stack :as stack]
     [fizzle.views.zone-counts :as zone-counts]
     [re-frame.core :as rf]
-    [reagent.core :as r]
     [reagent.dom :as rdom]))
 
 
-(defonce stack-collapsed? (r/atom false))
-(defonce gy-collapsed? (r/atom false))
-(defonce history-collapsed? (r/atom false))
-
-
 (defn- collapsible-right-column
-  [title collapsed? & children]
-  [:div {:class (str "border-l border-border bg-surface-raised overflow-y-auto "
-                     (if @collapsed? "right-col-collapsed" "right-col-expanded"))}
-   [:div {:class "flex items-center cursor-pointer select-none gap-2 p-2 border-b border-border"
-          :on-click #(swap! collapsed? not)}
-    [:span {:class "text-text-label text-xs font-bold uppercase tracking-wider"} title]
-    [:span {:class "text-text-dim text-xs"}
-     (if @collapsed? "\u25B6" "\u25BC")]]
-   (when-not @collapsed?
-     (into [:div {:class "p-2"}] children))])
+  [title sub-key toggle-event & children]
+  (let [collapsed? @(rf/subscribe [sub-key])]
+    [:div {:class (str "border-l border-border bg-surface-raised overflow-y-auto "
+                       (if collapsed? "right-col-collapsed" "right-col-expanded"))}
+     [:div {:class "flex items-center cursor-pointer select-none gap-2 p-2 border-b border-border"
+            :on-click #(rf/dispatch [toggle-event])}
+      [:span {:class "text-text-label text-xs font-bold uppercase tracking-wider"} title]
+      [:span {:class "text-text-dim text-xs"}
+       (if collapsed? "\u25B6" "\u25BC")]]
+     (when-not collapsed?
+       (into [:div {:class "p-2"}] children))]))
 
 
 (defn- nav-btn-class
@@ -66,9 +61,9 @@
      [mana-pool/storm-count-view]]
     [zone-counts/zone-counts-view]]
    ;; Right columns: reference panels
-   [collapsible-right-column "Stack" stack-collapsed? [stack/stack-view]]
-   [collapsible-right-column "Graveyard" gy-collapsed? [graveyard/graveyard-view]]
-   [collapsible-right-column "History" history-collapsed? [history/history-sidebar]]
+   [collapsible-right-column "Stack" ::subs/stack-collapsed ::events/toggle-stack-collapsed [stack/stack-view]]
+   [collapsible-right-column "Graveyard" ::subs/gy-collapsed ::events/toggle-gy-collapsed [graveyard/graveyard-view]]
+   [collapsible-right-column "History" ::subs/history-collapsed ::events/toggle-history-collapsed [history/history-sidebar]]
    ;; Bottom: reserved for calculator panel
    [:div {:class "col-span-full"}]
    ;; Modals (overlay, not in grid flow)

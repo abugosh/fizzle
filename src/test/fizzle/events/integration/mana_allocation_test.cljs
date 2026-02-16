@@ -568,7 +568,7 @@
       (is (nil? (:pending-selection result))
           "Should NOT enter allocation for pure colored mana ability")
       ;; Stack-item should exist
-      (let [items (stack/get-all-stack-items (:db result))
+      (let [items (q/get-all-stack-items (:db result))
             ability-items (filter #(= :activated-ability (:stack-item/type %)) items)]
         (is (= 1 (count ability-items))
             "Should have ability stack-item")))))
@@ -621,7 +621,7 @@
       ;; Should be finalized
       (is (true? (:finalized? result)) "Should be finalized")
       ;; Stack-item should exist with :activated-ability type
-      (let [items (stack/get-all-stack-items (:db result))
+      (let [items (q/get-all-stack-items (:db result))
             ability-items (filter #(= :activated-ability (:stack-item/type %)) items)]
         (is (= 1 (count ability-items))
             "Should have exactly one :activated-ability stack-item"))

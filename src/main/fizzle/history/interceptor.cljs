@@ -13,6 +13,7 @@
   #{:fizzle.events.game/init-game
     :fizzle.events.game/cast-spell
     :fizzle.events.game/resolve-top
+    :fizzle.events.game/resolve-all
     :fizzle.events.game/advance-phase
     ;; start-turn creates its own history entries (opponent draw + turn start)
     :fizzle.events.game/play-land
@@ -84,11 +85,12 @@
                        had-pending? (get-in context [:coeffects :history/had-pending?])
                        selection-created (and (not had-pending?)
                                               (some? (:game/pending-selection db-after)))
-                       ;; Only resolve-top should trigger on selection-created.
+                       ;; resolve-top and resolve-all trigger on selection-created.
                        ;; cast-spell and activate-ability create selections that chain
                        ;; to confirm-selection (which has its own priority entry).
                        selection-triggers-entry (and selection-created
-                                                     (= event-id :fizzle.events.game/resolve-top))
+                                                     (#{:fizzle.events.game/resolve-top
+                                                        :fizzle.events.game/resolve-all} event-id))
                        casting-spell-id (get-in context [:coeffects :history/casting-spell-id])]
                    (if (and db-after game-db-after
                             (or game-db-changed selection-triggers-entry))

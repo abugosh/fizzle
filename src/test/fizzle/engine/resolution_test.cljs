@@ -22,7 +22,7 @@
           [db obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           db (rules/cast-spell db :player-1 obj-id)
           ;; Find the spell stack-item (not storm)
-          spell-items (filter #(:stack-item/object-ref %) (stack/get-all-stack-items db))
+          spell-items (filter #(:stack-item/object-ref %) (queries/get-all-stack-items db))
           stack-item (first spell-items)
           ;; Resolve via multimethod
           result (resolution/resolve-stack-item db :player-1 stack-item)]
@@ -71,7 +71,7 @@
           [db obj-id] (th/add-card-to-zone db :merchant-scroll :hand :player-1)
           db (rules/cast-spell db :player-1 obj-id)
           ;; Find the spell stack-item
-          spell-items (filter #(:stack-item/object-ref %) (stack/get-all-stack-items db))
+          spell-items (filter #(:stack-item/object-ref %) (queries/get-all-stack-items db))
           stack-item (first spell-items)
           result (resolution/resolve-stack-item db :player-1 stack-item)]
       ;; Should pause for selection
@@ -129,7 +129,7 @@
           db (d/db-with db [[:db/add obj-eid :object/cast-mode
                              {:mode/id :flashback :mode/on-resolve :exile}]])
           ;; Find the spell stack-item
-          spell-items (filter #(:stack-item/object-ref %) (stack/get-all-stack-items db))
+          spell-items (filter #(:stack-item/object-ref %) (queries/get-all-stack-items db))
           stack-item (first spell-items)
           result (resolution/resolve-stack-item db :player-1 stack-item)]
       ;; Spell should be in exile
@@ -145,7 +145,7 @@
           db (mana/add-mana db :player-1 {:black 2})
           db (rules/cast-spell db :player-1 obj-id)
           ;; Find the spell stack-item
-          spell-items (filter #(:stack-item/object-ref %) (stack/get-all-stack-items db))
+          spell-items (filter #(:stack-item/object-ref %) (queries/get-all-stack-items db))
           stack-item (first spell-items)
           result (resolution/resolve-stack-item db :player-1 stack-item)]
       ;; Spell should still be in graveyard

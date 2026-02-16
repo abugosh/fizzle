@@ -110,6 +110,25 @@
                   db))))
 
 
+(defn get-all-stack-items
+  "Get all stack-items in LIFO order (highest position first).
+   Returns vector, or empty vector if stack is empty."
+  [db]
+  (->> (d/q '[:find [(pull ?e [*]) ...]
+              :where [?e :stack-item/position _]]
+            db)
+       (sort-by :stack-item/position >)
+       (vec)))
+
+
+(defn get-grants
+  "Get all grants on an object.
+   Returns empty vector if object has no grants."
+  [db object-id]
+  (let [obj (get-object db object-id)]
+    (or (:object/grants obj) [])))
+
+
 ;; === Library Queries ===
 
 (defn get-top-n-library

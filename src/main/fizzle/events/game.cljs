@@ -26,7 +26,6 @@
     [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.events.selection.zone-ops]
     [fizzle.history.core :as history]
-    [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
 
 
@@ -170,7 +169,10 @@
     (merge {:game/db @conn :active-screen :opening-hand
             :opening-hand/mulligan-count 0 :opening-hand/sculpted-ids sculpted-id-set
             :opening-hand/must-contain (or must-contain {})
-            :opening-hand/phase :viewing :game/game-over-dismissed false}
+            :opening-hand/phase :viewing :game/game-over-dismissed false
+            :ui/stack-collapsed false
+            :ui/gy-collapsed false
+            :ui/history-collapsed false}
            (history/init-history))))
 
 
@@ -205,6 +207,24 @@
   ::dismiss-game-over
   (fn [db _]
     (assoc db :game/game-over-dismissed true)))
+
+
+(rf/reg-event-db
+  ::toggle-stack-collapsed
+  (fn [db _]
+    (update db :ui/stack-collapsed not)))
+
+
+(rf/reg-event-db
+  ::toggle-gy-collapsed
+  (fn [db _]
+    (update db :ui/gy-collapsed not)))
+
+
+(rf/reg-event-db
+  ::toggle-history-collapsed
+  (fn [db _]
+    (update db :ui/history-collapsed not)))
 
 
 (rf/reg-event-db
@@ -440,20 +460,6 @@
       app-db)))
 
 
-(defn- make-resolve-entry
-  "Create a history entry for a single stack-item resolution.
-   Uses pre-game-db to describe what was resolved, and game-db-after as the snapshot."
-  [pre-game-db game-db-after]
-  (let [event [::resolve-top]
-        description (or (descriptions/describe-event event pre-game-db game-db-after)
-                        "Resolve top of stack")
-        turn (try
-               (let [game-state (queries/get-game-state game-db-after)]
-                 (or (:game/turn game-state) 0))
-               (catch :default _ 0))]
-    (history/make-entry game-db-after ::resolve-top description turn)))
-
-
 (defn- apply-history-entries
   "Apply a sequence of history entries to app-db.
    First entry auto-forks if not at history tip; remaining entries append normally."
@@ -468,53 +474,6 @@
       (reduce history/append-entry db-with-first (rest entries)))))
 
 
-(defn resolve-all-handler
-  "Resolve all stack-items that were present when called, stopping at:
-   - A selection is needed (pending-selection)
-   - A newly-created item appears on top of stack (not in initial snapshot)
-   - The stack is empty
-
-   Creates a history entry for each resolved item, then applies them all.
-   Handles fork creation when not at history tip (same as interceptor).
-   Works at app-db level. Calls maybe-continue-cleanup at the end.
-   Pure function: (app-db) -> app-db
-
-   INVARIANT: This handler bypasses the standard event-interceptor (used by
-   ::resolve-top and all other game events) because it batches multiple
-   stack-item resolutions into a single operation. It replicates the
-   interceptor's history-recording behavior manually:
-   - Creates individual history entries per resolved item (make-resolve-entry)
-   - Handles fork creation when not at history tip (apply-history-entries)
-   - Dispatches pending-selection when interactive effect encountered
-
-   If the event-interceptor gains new behavior (e.g., new side effects,
-   validation, or logging), this handler must be updated to match.
-   Compare with ::resolve-top (which uses the standard interceptor)."
-  [app-db]
-  (let [game-db (:game/db app-db)
-        initial-ids (set (map :db/id (stack/get-all-stack-items game-db)))]
-    (if (empty? initial-ids)
-      app-db
-      (loop [game-db game-db
-             entries []]
-        (let [top (stack/get-top-stack-item game-db)]
-          (if (and top (contains? initial-ids (:db/id top)))
-            (let [pre-game-db game-db
-                  result (resolve-one-item game-db :player-1)]
-              (if (:pending-selection result)
-                ;; Stop at selection — apply entries so far (no entry for unresolved item)
-                (-> (apply-history-entries app-db entries)
-                    (assoc :game/db (:db result))
-                    (assoc :game/pending-selection (:pending-selection result)))
-                ;; Resolved — accumulate entry and continue
-                (let [entry (make-resolve-entry pre-game-db (:db result))]
-                  (recur (:db result) (conj entries entry)))))
-            ;; Stack empty or new item on top — apply all entries
-            (-> (apply-history-entries app-db entries)
-                (assoc :game/db game-db)
-                (maybe-continue-cleanup))))))))
-
-
 (rf/reg-event-db
   ::resolve-top
   (fn [db _]
@@ -527,10 +486,25 @@
           (assoc db :game/db (:db result)))))))
 
 
-(rf/reg-event-db
+(rf/reg-event-fx
   ::resolve-all
-  (fn [db _]
-    (resolve-all-handler db)))
+  (fn [{:keys [db]} [_ initial-ids]]
+    (let [game-db (:game/db db)
+          initial-ids (or initial-ids
+                          (set (map :db/id (queries/get-all-stack-items game-db))))]
+      (if (empty? initial-ids)
+        {:db db}
+        (let [top (stack/get-top-stack-item game-db)]
+          (if (and top (contains? initial-ids (:db/id top)))
+            (let [result (resolve-one-item game-db :player-1)]
+              (if (:pending-selection result)
+                {:db (-> db
+                         (assoc :game/db (:db result))
+                         (assoc :game/pending-selection (:pending-selection result)))}
+                {:db (assoc db :game/db (:db result))
+                 :fx [[:dispatch [::resolve-all initial-ids]]]}))
+            ;; Stack empty or new item on top — done, check cleanup
+            {:db (maybe-continue-cleanup (assoc db :game/db game-db))}))))))
 
 
 ;; === Turn Structure ===

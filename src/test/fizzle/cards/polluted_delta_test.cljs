@@ -282,13 +282,13 @@
           player-eid (q/get-player-eid db'' :player-1)
           db-with-life (d/db-with db'' [[:db/add player-eid :player/life 20]])
           ;; Verify no stack items before
-          _ (is (true? (stack/stack-empty? db-with-life))
+          _ (is (true? (q/stack-empty? db-with-life))
                 "Precondition: no items on stack")
           ;; Activate ability
           result (ability-events/activate-ability db-with-life :player-1 delta-id 0)
           db-after (:db result)]
       ;; Should have a stack-item
-      (is (false? (stack/stack-empty? db-after))
+      (is (false? (q/stack-empty? db-after))
           "Activated ability should create a stack-item")
       ;; Stack-item should be :activated-ability type
       (let [item (stack/get-top-stack-item db-after)]
@@ -313,7 +313,7 @@
       (is (= :graveyard (th/get-object-zone db-after delta-id))
           "Polluted Delta should be sacrificed immediately as cost")
       ;; But stack-item is still on stack (not yet resolved)
-      (is (false? (stack/stack-empty? db-after))
+      (is (false? (q/stack-empty? db-after))
           "Stack-item should still be on stack awaiting resolution"))))
 
 
@@ -348,7 +348,7 @@
           result (ability-events/activate-ability db-with-life :player-1 delta-id 0)
           db-after-activate (:db result)]
       ;; Stack-item is on stack
-      (is (false? (stack/stack-empty? db-after-activate))
+      (is (false? (q/stack-empty? db-after-activate))
           "Stack-item should be on stack")
       ;; Can still tap City of Brass for mana (responding to ability on stack)
       (let [db-after-tap (ability-events/activate-mana-ability db-after-activate :player-1 cob-id :blue)
@@ -356,7 +356,7 @@
         (is (= 1 (:blue mana-pool))
             "Should be able to tap City of Brass while ability is on stack")
         ;; Stack-item still on stack
-        (is (false? (stack/stack-empty? db-after-tap))
+        (is (false? (q/stack-empty? db-after-tap))
             "Stack-item should remain on stack after tapping for mana")))))
 
 

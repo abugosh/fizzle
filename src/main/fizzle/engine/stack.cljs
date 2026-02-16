@@ -58,25 +58,6 @@
        (first)))
 
 
-(defn get-all-stack-items
-  "Get all stack-items in LIFO order (highest position first).
-   Returns vector, or empty vector if stack is empty."
-  [db]
-  (->> (d/q '[:find [(pull ?e [*]) ...]
-              :where [?e :stack-item/position _]]
-            db)
-       (sort-by :stack-item/position >)
-       (vec)))
-
-
-(defn stack-empty?
-  "Check if there are no stack-items in the database."
-  [db]
-  (nil? (d/q '[:find ?e .
-               :where [?e :stack-item/position _]]
-             db)))
-
-
 (defn get-stack-item-by-object-ref
   "Find the stack-item that references a given game object EID.
    Returns entity map or nil."
