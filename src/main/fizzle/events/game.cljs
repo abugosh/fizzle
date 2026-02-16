@@ -26,6 +26,7 @@
     [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.events.selection.zone-ops]
     [fizzle.history.core :as history]
+    [fizzle.storage :as storage]
     [re-frame.core :as rf]))
 
 
@@ -147,10 +148,13 @@
   (let [conn (d/create-conn schema)
         _ (d/transact! conn cards/all-cards)
         _ (d/transact! conn (player-tx :player-1 "Player" 20 1 {:player/max-hand-size 7}))
-        _ (d/transact! conn (player-tx :opponent "Opponent" 20 0 {:player/is-opponent true}))
+        _ (d/transact! conn (player-tx :opponent "Opponent" 20 0
+                                       {:player/is-opponent true
+                                        :player/bot-archetype :goldfish}))
         db @conn
         player-eid (get-player-eid db :player-1)
         opp-eid (get-player-eid db :opponent)
+        stops (storage/load-stops)
         shuffled-deck (deck-to-card-ids main-deck)
         [sculpted-ids remaining] (extract-sculpted-card-ids shuffled-deck must-contain)
         draw-count (- 7 (count sculpted-ids))
@@ -166,6 +170,8 @@
     (d/transact! conn [{:game/id :game-1 :game/turn 1 :game/phase :main1
                         :game/active-player player-eid :game/priority player-eid}])
     (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid))
+    (d/transact! conn [[:db/add player-eid :player/stops (:player stops)]
+                       [:db/add opp-eid :player/stops (:opponent stops)]])
     (merge {:game/db @conn :active-screen :opening-hand
             :opening-hand/mulligan-count 0 :opening-hand/sculpted-ids sculpted-id-set
             :opening-hand/must-contain (or must-contain {})

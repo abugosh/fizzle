@@ -39,7 +39,9 @@
                            :game/turn 1
                            :game/phase :main1
                            :game/active-player player-eid
-                           :game/priority player-eid}]))
+                           :game/priority player-eid}])
+       (when-let [stops (:stops opts)]
+         (d/transact! conn [[:db/add player-eid :player/stops stops]])))
      @conn)))
 
 
@@ -166,14 +168,21 @@
 
 (defn add-opponent
   "Add :player-2 with standard opponent settings.
+   Opts map supports: {:bot-archetype :goldfish :stops #{:main1}}
    Returns updated db."
-  [db]
-  (let [conn (d/conn-from-db db)]
-    (d/transact! conn [{:player/id :player-2
-                        :player/name "Opponent"
-                        :player/life 20
-                        :player/mana-pool empty-mana-pool
-                        :player/storm-count 0
-                        :player/land-plays-left 1
-                        :player/is-opponent true}])
-    @conn))
+  ([db]
+   (add-opponent db {}))
+  ([db opts]
+   (let [conn (d/conn-from-db db)
+         base {:player/id :player-2
+               :player/name "Opponent"
+               :player/life 20
+               :player/mana-pool empty-mana-pool
+               :player/storm-count 0
+               :player/land-plays-left 1
+               :player/is-opponent true}
+         tx (cond-> base
+              (:bot-archetype opts) (assoc :player/bot-archetype (:bot-archetype opts))
+              (:stops opts) (assoc :player/stops (:stops opts)))]
+     (d/transact! conn [tx])
+     @conn)))

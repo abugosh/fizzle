@@ -112,3 +112,40 @@
             player (d/pull db' '[:player/is-opponent :player/life] player-eid)]
         (is (true? (:player/is-opponent player)))
         (is (= 20 (:player/life player)))))))
+
+
+(deftest add-opponent-with-bot-archetype-test
+  (testing "add-opponent with :bot-archetype sets the archetype"
+    (let [db (th/create-test-db)
+          db' (th/add-opponent db {:bot-archetype :goldfish})]
+      (let [player-eid (q/get-player-eid db' :player-2)
+            player (d/pull db' '[:player/bot-archetype :player/is-opponent] player-eid)]
+        (is (= :goldfish (:player/bot-archetype player)))
+        (is (true? (:player/is-opponent player)))))))
+
+
+(deftest add-opponent-with-stops-test
+  (testing "add-opponent with :stops sets the stops"
+    (let [db (th/create-test-db)
+          db' (th/add-opponent db {:stops #{:main1 :end}})]
+      (let [player-eid (q/get-player-eid db' :player-2)
+            player (d/pull db' '[:player/stops] player-eid)]
+        (is (= #{:main1 :end} (:player/stops player)))))))
+
+
+(deftest add-opponent-zero-arity-backward-compat-test
+  (testing "add-opponent 0-arity still works without opts"
+    (let [db (th/create-test-db)
+          db' (th/add-opponent db)]
+      (let [player-eid (q/get-player-eid db' :player-2)
+            player (d/pull db' '[:player/bot-archetype :player/stops] player-eid)]
+        (is (nil? (:player/bot-archetype player)))
+        (is (nil? (:player/stops player)))))))
+
+
+(deftest create-test-db-with-stops-test
+  (testing "create-test-db with :stops applies stops to player-1"
+    (let [db (th/create-test-db {:stops #{:main1 :main2 :combat}})]
+      (let [player-eid (q/get-player-eid db :player-1)
+            player (d/pull db '[:player/stops] player-eid)]
+        (is (= #{:main1 :main2 :combat} (:player/stops player)))))))
