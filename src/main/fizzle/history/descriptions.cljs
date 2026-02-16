@@ -71,6 +71,21 @@
        "Cast spell"))))
 
 
+(defn- describe-cast-and-yield
+  "Describe a cast-and-yield event. After this event, the spell is typically
+   resolved (off the stack), so we use casting-spell-id or pre-game-db to
+   find the card name. Falls back to game-db-after stack top if spell is
+   still on the stack (e.g., when resolution was skipped due to selection)."
+  [pre-game-db game-db-after casting-spell-id]
+  (let [card-name (or (get-card-name pre-game-db casting-spell-id)
+                      (get-card-name game-db-after casting-spell-id)
+                      (when-let [top (get-stack-top-info game-db-after)]
+                        (get-card-name game-db-after (:stack-item/source top))))]
+    (if card-name
+      (str "Cast & Yield " card-name)
+      "Cast & Yield")))
+
+
 (defn- describe-resolve-top
   "Describe a resolve-top event using pre-game-db (stack item about to resolve)."
   [pre-game-db]
@@ -203,6 +218,9 @@
 
      :fizzle.events.game/cast-spell
      (describe-cast-spell game-db-after casting-spell-id)
+
+     :fizzle.events.game/cast-and-yield
+     (describe-cast-and-yield pre-game-db game-db-after casting-spell-id)
 
      :fizzle.events.game/resolve-top
      (describe-resolve-top pre-game-db)

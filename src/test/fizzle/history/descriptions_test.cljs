@@ -700,6 +700,7 @@
   (testing "All priority event descriptions are non-empty strings (with nil dbs = fallback)"
     (let [events [[:fizzle.events.game/init-game]
                   [:fizzle.events.game/cast-spell]
+                  [:fizzle.events.game/cast-and-yield]
                   [:fizzle.events.game/resolve-top]
                   [:fizzle.events.game/advance-phase]
                   [:fizzle.events.game/start-turn]
@@ -715,3 +716,43 @@
                    [:fizzle.events.selection/confirm-selection] nil nil sel-type)]
         (is (pos? (count desc))
             (str "Description for confirm-selection/" sel-type " should be non-empty"))))))
+
+
+;; ============================================================
+;; cast-and-yield tests
+;; ============================================================
+
+(deftest test-cast-and-yield-shows-card-name-via-casting-spell-id
+  (testing "cast-and-yield shows card name using casting-spell-id (spell may be resolved off stack)"
+    (let [db (make-db)
+          [db card-eid] (add-card db test-instant)
+          [db obj-id] (add-object db card-eid :graveyard)]
+      ;; Spell is in graveyard (already resolved), but casting-spell-id identifies it
+      (is (= "Cast & Yield Dark Ritual"
+             (descriptions/describe-event
+               [:fizzle.events.game/cast-and-yield] db db nil obj-id))))))
+
+
+(deftest test-cast-and-yield-falls-back-to-stack-top
+  (testing "cast-and-yield falls back to stack top when casting-spell-id not available"
+    (let [db (make-db)
+          [db card-eid] (add-card db test-instant)
+          [db obj-id] (add-object db card-eid :hand)
+          player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] db)
+          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
+          db-after (stack/create-stack-item db {:stack-item/type :spell
+                                                :stack-item/controller player-eid
+                                                :stack-item/source obj-id
+                                                :stack-item/object-ref obj-eid
+                                                :stack-item/effects [{:effect/type :add-mana}]
+                                                :stack-item/description "Dark Ritual"})]
+      (is (= "Cast & Yield Dark Ritual"
+             (descriptions/describe-event
+               [:fizzle.events.game/cast-and-yield] nil db-after nil nil))))))
+
+
+(deftest test-cast-and-yield-nil-dbs-falls-back
+  (testing "cast-and-yield with nil dbs falls back to generic"
+    (is (= "Cast & Yield"
+           (descriptions/describe-event
+             [:fizzle.events.game/cast-and-yield] nil nil)))))

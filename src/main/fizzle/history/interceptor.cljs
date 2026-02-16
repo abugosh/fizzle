@@ -12,6 +12,7 @@
    stepping back always lands on a state where the player can act."
   #{:fizzle.events.game/init-game
     :fizzle.events.game/cast-spell
+    :fizzle.events.game/cast-and-yield
     :fizzle.events.game/resolve-top
     :fizzle.events.game/resolve-all
     :fizzle.events.game/advance-phase
@@ -90,7 +91,8 @@
                        ;; to confirm-selection (which has its own priority entry).
                        selection-triggers-entry (and selection-created
                                                      (#{:fizzle.events.game/resolve-top
-                                                        :fizzle.events.game/resolve-all} event-id))
+                                                        :fizzle.events.game/resolve-all
+                                                        :fizzle.events.game/cast-and-yield} event-id))
                        casting-spell-id (get-in context [:coeffects :history/casting-spell-id])]
                    (if (and db-after game-db-after
                             (or game-db-changed selection-triggers-entry))

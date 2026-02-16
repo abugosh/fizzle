@@ -154,6 +154,7 @@
 (deftest test-priority-events-all-have-descriptions
   (testing "All priority events produce named descriptions (not fallback)"
     (doseq [event [[:fizzle.events.game/cast-spell]
+                   [:fizzle.events.game/cast-and-yield]
                    [:fizzle.events.game/resolve-top]
                    [:fizzle.events.game/advance-phase]
                    ;; start-turn creates its own history entries (not via interceptor)
@@ -386,3 +387,54 @@
           result-db (get-in result [:effects :db])]
       (is (zero? (count (:history/main result-db)))
           "No entry when activate-ability only creates selection"))))
+
+
+(deftest test-cast-and-yield-creates-history-entry
+  (testing "cast-and-yield creates a history entry when game-db changes"
+    (let [old-game-db :db-old
+          new-game-db :db-new
+          pre-db (make-db-with-history old-game-db)
+          post-db (make-db-with-history new-game-db)
+          event [:fizzle.events.game/cast-and-yield]
+          context (make-context pre-db post-db event)
+          result (run-interceptor context)
+          result-db (get-in result [:effects :db])]
+      (is (= 1 (count (:history/main result-db)))
+          "One entry should be appended for cast-and-yield")
+      (is (= "Cast & Yield" (:entry/description (first (:history/main result-db))))
+          "Should have Cast & Yield description"))))
+
+
+(deftest test-cast-and-yield-selection-triggers-entry
+  (testing "cast-and-yield creates entry when selection created but game-db unchanged"
+    (let [same-db :db-same
+          pre-db (make-db-with-history same-db)
+          post-db (assoc (make-db-with-history same-db)
+                         :game/pending-selection {:selection/type :peek-and-select})
+          event [:fizzle.events.game/cast-and-yield]
+          context (make-context pre-db post-db event)
+          result (run-interceptor context)
+          result-db (get-in result [:effects :db])]
+      (is (= 1 (count (:history/main result-db)))
+          "Entry should be created when cast-and-yield creates a pending-selection"))))
+
+
+(deftest test-cast-and-yield-description-with-real-db
+  (testing "Cast-and-yield description includes card name with real Datascript db"
+    (let [db-before (create-game-db)
+          [db-with-card obj-id] (add-card-to-zone db-before :dark-ritual :hand :player-1)
+          db-mana (mana/add-mana db-with-card :player-1 {:black 1})
+          db-after-cast (rules/cast-spell db-mana :player-1 obj-id)
+          ;; Simulate full cast-and-yield: spell cast and resolved
+          db-after-resolve (rules/resolve-spell db-after-cast :player-1 obj-id)
+          ;; pre-db has the spell in hand (before cast), selected-card set
+          pre-db (assoc (make-db-with-history db-mana)
+                        :game/selected-card obj-id)
+          post-db (make-db-with-history db-after-resolve)
+          event [:fizzle.events.game/cast-and-yield]
+          context (make-context pre-db post-db event)
+          result (run-interceptor context)
+          result-db (get-in result [:effects :db])
+          entry (first (:history/main result-db))]
+      (is (= "Cast & Yield Dark Ritual" (:entry/description entry))
+          "Should include card name for cast-and-yield"))))
