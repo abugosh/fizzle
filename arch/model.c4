@@ -1,0 +1,31 @@
+// Fizzle System Model
+// MTG combo deck practice tool with fork/replay
+model {
+    fizzle = manager 'Fizzle' {
+        description 'MTG combo deck practice tool with fork/replay capabilities for Premodern storm combo players'
+    }
+
+    // Dependency edges (blocks = compile-time import dependency)
+
+    // Presentation imports engine for derived state (ADR-003)
+    fizzle.presentation -[blocks]-> fizzle.interpretationCore 'derived state queries'
+    // Presentation imports db for raw data
+    fizzle.presentation -[blocks]-> fizzle.dataFoundation 'raw data queries'
+    // Presentation dispatches re-frame events at runtime
+    fizzle.presentation -[relatesTo]-> fizzle.gameOrchestration 'dispatches game events'
+
+    // Game Orchestration delegates all rule computation to engine
+    fizzle.gameOrchestration -[blocks]-> fizzle.interpretationCore 'game rule delegation'
+    // Game Orchestration queries data
+    fizzle.gameOrchestration -[blocks]-> fizzle.dataFoundation 'data queries'
+
+    // Practice Platform intercepts game events for history
+    fizzle.practicePlatform -[blocks]-> fizzle.gameOrchestration 'history intercepts events'
+    // Practice Platform reads db for snapshots
+    fizzle.practicePlatform -[blocks]-> fizzle.dataFoundation 'snapshot reads'
+
+    // Engine uses queries for game state access
+    fizzle.interpretationCore -[blocks]-> fizzle.dataFoundation 'schema and queries'
+    // Engine interprets card EDN data
+    fizzle.interpretationCore -[blocks]-> fizzle.cardPool 'interprets card definitions'
+}

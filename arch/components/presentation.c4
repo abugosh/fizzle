@@ -1,0 +1,15 @@
+// Presentation — views and subscriptions
+model {
+    extend fizzle {
+        presentation = boundary 'Presentation' {
+            summary 'Reagent views and re-frame subscriptions rendering game UI'
+            description 'Encapsulates UX/UI changes. 17 view modules render game state, collect player input, and dispatch events. 4 subscription modules compute derived state by calling Interpretation Core directly (ADR-003). Views are pure Reagent components — no game logic. Subscriptions are the join point where raw data and computed state meet.'
+            metadata {
+                volatility_axis 'UX/UI changes and display logic'
+                layer 'boundary'
+                stability_state 'exploring'
+            }
+
+        }
+    }
+}

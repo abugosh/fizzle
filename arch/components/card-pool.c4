@@ -1,0 +1,15 @@
+// Card Pool — highest volatility, pure EDN data
+model {
+    extend fizzle {
+        cardPool = resourceAccessor 'Card Pool' {
+            summary 'Pure EDN card definitions interpreted by Interpretation Core'
+            description 'Encapsulates card data volatility. New cards are the most frequent change. Cards are data, not code — no case statements on card names. Effects, abilities, triggers, and keywords defined as EDN maps interpreted by engine multimethods.'
+            metadata {
+                volatility_axis 'new card definitions'
+                layer 'resourceAccessor'
+                stability_state 'stable'
+            }
+
+        }
+    }
+}

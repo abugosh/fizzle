@@ -1,0 +1,14 @@
+// Fork/Replay Flow
+// Navigate history, restore snapshot, take different action to create fork
+views {
+    dynamic view forkReplayFlow {
+        title 'Fork and Replay'
+        description 'Player rewinds via step-back, jump-to, or switch-branch. Practice Platform restores the stored Datascript snapshot internally (no Data Foundation call — pure value replacement in app-db). Taking a different action triggers the history interceptor in its :after phase, which detects position is not at tip and calls auto-fork to create a new branch. Immutability makes snapshot restore O(1) via structural sharing.'
+
+        fizzle.presentation -> fizzle.practicePlatform 'dispatch ::step-back, ::jump-to, or ::switch-branch'
+        fizzle.practicePlatform -> fizzle.practicePlatform 'restore snapshot from history entry (O(1) assoc of stored Datascript value)'
+        fizzle.presentation -> fizzle.gameOrchestration 'dispatch new game action (e.g. ::cast-spell)'
+        fizzle.gameOrchestration -> fizzle.interpretationCore 'execute new action'
+        fizzle.practicePlatform -> fizzle.practicePlatform 'interceptor :after phase, auto-fork if not at tip'
+    }
+}

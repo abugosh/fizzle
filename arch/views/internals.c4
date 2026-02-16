@@ -1,0 +1,10 @@
+// Internal Component Architecture
+// Shows all components within Fizzle and their relationships
+views {
+    view internals of fizzle {
+        title 'Fizzle Internals'
+        description 'Components and dependency edges within the Fizzle system. Solid arrows are compile-time imports (blocks), dashed arrows are runtime dispatch (relatesTo).'
+
+        include *
+    }
+}
