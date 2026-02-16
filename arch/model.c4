@@ -24,8 +24,18 @@ model {
     // Practice Platform reads db for snapshots
     fizzle.practicePlatform -[blocks]-> fizzle.dataFoundation 'snapshot reads'
 
+    // Game Orchestration calls bot logic during opponent turns (ADR-008)
+    fizzle.gameOrchestration -[blocks]-> fizzle.opponentAi 'bot action decisions'
+
     // Engine uses queries for game state access
     fizzle.interpretationCore -[blocks]-> fizzle.dataFoundation 'schema and queries'
     // Engine interprets card EDN data
     fizzle.interpretationCore -[blocks]-> fizzle.cardPool 'interprets card definitions'
+
+    // Opponent AI evaluates game state for decisions (ADR-008)
+    fizzle.opponentAi -[blocks]-> fizzle.interpretationCore 'game rule evaluation'
+    // Opponent AI queries game state
+    fizzle.opponentAi -[blocks]-> fizzle.dataFoundation 'game state queries'
+    // Opponent AI reads card definitions for bot decks
+    fizzle.opponentAi -[blocks]-> fizzle.cardPool 'bot deck card definitions'
 }

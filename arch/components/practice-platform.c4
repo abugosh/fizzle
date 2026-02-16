@@ -2,10 +2,10 @@
 model {
     extend fizzle {
         practicePlatform = manager 'Practice Platform' {
-            summary 'Fork/replay system, history tracking, and future practice features'
-            description 'Encapsulates practice feature changes. History subsystem is pure value replacement — never calls engine, enabling free fork/replay via structural sharing. Storage handles local persistence. Bots and tactics are planned but not yet implemented. Each subsystem owns its data and interpretation logic (ADR-002).'
+            summary 'Fork/replay system, history tracking, and future tactics features'
+            description 'Encapsulates practice feature changes. History subsystem is pure value replacement — never calls engine, enabling free fork/replay via structural sharing. Storage handles local persistence. Tactics are planned but not yet implemented. Bots split to Opponent AI component (ADR-008). Each subsystem owns its data and interpretation logic (ADR-002).'
             metadata {
-                volatility_axis 'practice features (history, bots, tactics)'
+                volatility_axis 'practice features (history, tactics)'
                 layer 'manager'
                 stability_state 'exploring'
             }

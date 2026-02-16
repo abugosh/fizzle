@@ -1,0 +1,15 @@
+// Opponent AI — bot decision logic and archetype dispatch
+model {
+    extend fizzle {
+        opponentAi = engine 'Opponent AI' {
+            summary 'Bot decision logic: takes game state, produces action choices via archetype dispatch'
+            description 'Encapsulates opponent behavior changes. Archetype-based dispatch (goldfish, burn, scripted, etc.) produces action decisions from game state. Owns bot definitions: deck configurations, heuristic rules, scripted action sequences. Game Orchestration calls bot logic during opponent turns and executes the chosen actions. Pure computation — no re-frame dependencies (same invariant as Interpretation Core, per ADR-001 principle).'
+            metadata {
+                volatility_axis 'opponent behavior rules and bot archetypes'
+                layer 'engine'
+                stability_state 'exploring'
+            }
+
+        }
+    }
+}
