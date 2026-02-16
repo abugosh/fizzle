@@ -60,3 +60,43 @@
         {}))
     (catch :default _
       {})))
+
+
+;; === Phase Stops ===
+
+(defn default-stops
+  "Return default phase stops.
+   Player stops at main phases; opponent has no stops."
+  []
+  {:player #{:main1 :main2}
+   :opponent #{}})
+
+
+(defn toggle-stop
+  "Add or remove a phase from a role's stop set.
+   role is :player or :opponent. phase is a phase keyword."
+  [stops role phase]
+  (update stops role (fn [s]
+                       (if (contains? s phase)
+                         (disj s phase)
+                         (conj s phase)))))
+
+
+(defn save-stops!
+  "Persist stops map to localStorage as EDN."
+  [stops]
+  (try
+    (.setItem js/localStorage "fizzle-stops" (pr-str stops))
+    (catch :default _)))
+
+
+(defn load-stops
+  "Load stops map from localStorage. Returns default-stops if missing or corrupt."
+  []
+  (try
+    (let [raw (.getItem js/localStorage "fizzle-stops")]
+      (if raw
+        (reader/read-string raw)
+        (default-stops)))
+    (catch :default _
+      (default-stops))))
