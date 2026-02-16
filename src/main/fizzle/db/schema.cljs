@@ -53,6 +53,8 @@
    :player/max-hand-size   {}  ; Maximum hand size (default 7, some effects modify)
    :player/is-opponent     {}  ; Boolean, for bot players
    :player/grants          {}  ; Vector of grant maps (temporary restrictions/effects)
+   :player/bot-archetype   {}  ; :goldfish | :burn | nil
+   :player/stops           {}  ; #{:main1 :main2 ...} — phases where player wants priority
 
    ;; === Game State (singleton) ===
    :game/id            {:db/unique :db.unique/identity}
@@ -63,6 +65,8 @@
    :game/priority      {:db/valueType :db.type/ref}  ; Who can act right now
    :game/winner        {:db/valueType :db.type/ref}  ; nil until game ends
    :game/loss-condition {}  ; Keyword like :empty-library, :life-zero when player loses
+   :game/passed         {:db/valueType :db.type/ref :db/cardinality :db.cardinality/many}  ; Players who have passed priority
+   :game/auto-mode      {}  ; :resolving | :f6 | nil
 
    ;; === Stack Items (unified stack representation) ===
    ;; Stack items represent anything on the stack awaiting resolution.
