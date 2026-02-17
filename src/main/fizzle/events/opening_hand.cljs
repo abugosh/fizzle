@@ -15,15 +15,16 @@
         must-contain (:opening-hand/must-contain app-db)
         mulligan-count (:opening-hand/mulligan-count app-db)
         ;; Move all hand cards back to library
-        hand-objs (queries/get-objects-in-zone game-db :player-1 :hand)
+        human-pid (queries/get-human-player-id game-db)
+        hand-objs (queries/get-objects-in-zone game-db human-pid :hand)
         db-after-return (reduce (fn [db obj]
                                   (zones/move-to-zone db (:object/id obj) :library))
                                 game-db
                                 hand-objs)
         ;; Shuffle library
-        db-shuffled (zones/shuffle-library db-after-return :player-1)
+        db-shuffled (zones/shuffle-library db-after-return human-pid)
         ;; Get all library objects grouped by card-id
-        lib-objs (queries/get-objects-in-zone db-shuffled :player-1 :library)
+        lib-objs (queries/get-objects-in-zone db-shuffled human-pid :library)
         ;; Extract sculpted cards from library
         [sculpted-objs remaining-lib] (if (empty? must-contain)
                                         [[] lib-objs]

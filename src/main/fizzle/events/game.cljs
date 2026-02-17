@@ -306,10 +306,11 @@
    Pure function: (app-db) -> app-db"
   [app-db]
   (let [game-db (:game/db app-db)
-        selected (:game/selected-card app-db)]
-    (if (and selected (rules/can-cast? game-db :player-1 selected))
-      (let [modes (rules/get-casting-modes game-db :player-1 selected)
-            castable-modes (filterv #(rules/can-cast-mode? game-db :player-1 selected %) modes)]
+        selected (:game/selected-card app-db)
+        human-pid (queries/get-human-player-id game-db)]
+    (if (and selected (rules/can-cast? game-db human-pid selected))
+      (let [modes (rules/get-casting-modes game-db human-pid selected)
+            castable-modes (filterv #(rules/can-cast-mode? game-db human-pid selected %) modes)]
         (cond
           ;; No castable modes - shouldn't happen if can-cast? passed
           (empty? castable-modes)
@@ -323,7 +324,7 @@
 
           ;; Single mode: check for X costs, targeting, then cast
           :else
-          (initiate-cast-with-mode app-db :player-1 selected (first castable-modes))))
+          (initiate-cast-with-mode app-db human-pid selected (first castable-modes))))
       app-db)))
 
 
@@ -488,7 +489,7 @@
 (rf/reg-event-db
   ::resolve-top
   (fn [db _]
-    (let [result (resolve-one-item (:game/db db) :player-1)]
+    (let [result (resolve-one-item (:game/db db) (queries/get-human-player-id (:game/db db)))]
       (if (:pending-selection result)
         (-> db
             (assoc :game/db (:db result))
@@ -507,7 +508,7 @@
         {:db db}
         (let [top (stack/get-top-stack-item game-db)]
           (if (and top (contains? initial-ids (:db/id top)))
-            (let [result (resolve-one-item game-db :player-1)]
+            (let [result (resolve-one-item game-db (queries/get-human-player-id game-db))]
               (if (:pending-selection result)
                 {:db (-> db
                          (assoc :game/db (:db result))
@@ -902,7 +903,7 @@
   ::play-land
   (fn [db [_ object-id]]
     (let [game-db (:game/db db)]
-      (assoc db :game/db (play-land game-db :player-1 object-id)))))
+      (assoc db :game/db (play-land game-db (queries/get-human-player-id game-db) object-id)))))
 
 
 (defn execute-bot-phase-action
@@ -928,9 +929,10 @@
   ::toggle-stop
   (fn [db [_ role phase]]
     (let [game-db (:game/db db)
+          human-pid (queries/get-human-player-id game-db)
           player-id (if (= role :opponent)
-                      (queries/get-opponent-id game-db :player-1)
-                      :player-1)
+                      (queries/get-opponent-id game-db human-pid)
+                      human-pid)
           storage-key (if (= role :opponent) :opponent :player)
           player-eid (queries/get-player-eid game-db player-id)
           current-stops (or (:player/stops (d/pull game-db [:player/stops] player-eid)) #{})
@@ -981,7 +983,7 @@
         object-id (:object-id pending)]
     (if (and pending object-id mode)
       ;; Use initiate-cast-with-mode to handle X costs, targeting, and casting
-      (-> (initiate-cast-with-mode app-db :player-1 object-id mode)
+      (-> (initiate-cast-with-mode app-db (queries/get-human-player-id (:game/db app-db)) object-id mode)
           (dissoc :game/pending-mode-selection))
       app-db)))
 

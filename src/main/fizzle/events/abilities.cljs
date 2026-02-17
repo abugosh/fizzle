@@ -121,7 +121,7 @@
   ::activate-mana-ability
   (fn [db [_ object-id mana-color]]
     (let [game-db (:game/db db)]
-      (assoc db :game/db (activate-mana-ability game-db :player-1 object-id mana-color)))))
+      (assoc db :game/db (activate-mana-ability game-db (queries/get-human-player-id game-db) object-id mana-color)))))
 
 
 ;; === Activate Non-Mana Ability ===
@@ -303,7 +303,7 @@
   ::activate-ability
   (fn [db [_ object-id ability-index]]
     (let [game-db (:game/db db)
-          result (activate-ability game-db :player-1 object-id ability-index)]
+          result (activate-ability game-db (queries/get-human-player-id game-db) object-id ability-index)]
       (cond-> (assoc db :game/db (:db result))
         ;; Clear selected card after activation (sacrifice may move it to graveyard,
         ;; and stale selection causes it to appear highlighted there)
