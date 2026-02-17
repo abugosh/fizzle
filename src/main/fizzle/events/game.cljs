@@ -829,21 +829,46 @@
         (yield-loop app-db)))))
 
 
+(defn- resolve-one-and-stop
+  "Resolve the top stack item with temporary :resolving auto-mode (so opponent
+   auto-passes), then clear auto-mode. Returns updated app-db. Used by
+   cast-and-yield and post-allocation auto-resolve."
+  [app-db]
+  (if (or (:game/pending-selection app-db)
+          (queries/stack-empty? (:game/db app-db)))
+    app-db
+    (let [adb (update app-db :game/db priority/set-auto-mode :resolving)
+          result (yield-impl adb)]
+      (update (:app-db result) :game/db priority/clear-auto-mode))))
+
+
 (rf/reg-event-fx
   ::cast-and-yield
   (fn [{:keys [db]} _]
     (let [new-db (cast-spell-handler db)]
-      (if (or (:game/pending-selection new-db)
-              (:game/pending-mode-selection new-db)
-              (not (seq (queries/get-all-stack-items (:game/db new-db)))))
+      (cond
+        ;; Pre-cast selection needed (mana allocation, targeting, etc.)
+        ;; Set yield flag so auto-resolve happens after selection completes
+        (:game/pending-selection new-db)
+        {:db (assoc-in new-db [:game/pending-selection :selection/yield-after-cast] true)}
+
+        ;; Mode selection needed — no yield flag (mode selection is a choice, not a cost)
+        (:game/pending-mode-selection new-db)
         {:db new-db}
-        ;; Cast succeeded, stack has items — set :resolving and yield
-        (let [app-db (update new-db :game/db priority/set-auto-mode :resolving)
-              result (yield-impl app-db)]
-          (if (:continue-yield? result)
-            {:db (:app-db result)
-             :fx [[:dispatch [::yield]]]}
-            {:db (:app-db result)}))))))
+
+        ;; Cast failed or nothing on stack
+        (not (seq (queries/get-all-stack-items (:game/db new-db))))
+        {:db new-db}
+
+        ;; Cast succeeded, stack has items — resolve just the top item, then stop.
+        :else
+        {:db (resolve-one-and-stop new-db)}))))
+
+
+(rf/reg-event-db
+  ::cast-and-yield-resolve
+  (fn [db _]
+    (resolve-one-and-stop db)))
 
 
 ;; === Play Land ===

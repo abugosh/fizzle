@@ -354,10 +354,18 @@
         (assoc-in [:game/pending-selection :selection/remaining-pool] original-pool))))
 
 
-(rf/reg-event-db
+(rf/reg-event-fx
   ::allocate-mana-color
-  (fn [db [_ color]]
-    (allocate-mana-color-impl db color)))
+  (fn [{:keys [db]} [_ color]]
+    (let [yield-after? (get-in db [:game/pending-selection :selection/yield-after-cast])
+          updated-db (allocate-mana-color-impl db color)]
+      (if (and yield-after?
+               (not (:game/pending-selection updated-db)))
+        ;; Mana allocation completed and cast-and-yield requested auto-resolve.
+        ;; Dispatch resolve via runtime keyword to avoid circular require.
+        {:db updated-db
+         :fx [[:dispatch [:fizzle.events.game/cast-and-yield-resolve]]]}
+        {:db updated-db}))))
 
 
 (rf/reg-event-db

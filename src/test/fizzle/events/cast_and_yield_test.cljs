@@ -7,7 +7,9 @@
    - Targeted spells show targeting selection without auto-yield
    - Generic mana cost shows mana allocation without auto-yield
    - No-op when nothing selected or can't cast
-   - Storm: spell resolves, copies remain on stack"
+   - Storm: spell resolves, copies remain on stack
+   - Regression: auto-mode cleared after resolve (no cascade)
+   - Regression: mana allocation triggers auto-yield"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
@@ -15,7 +17,9 @@
     [fizzle.db.queries :as queries]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.mana :as mana]
+    [fizzle.engine.priority :as priority]
     [fizzle.events.game :as game]
+    [fizzle.events.selection.costs :as sel-costs]
     [fizzle.history.core :as history]
     [fizzle.history.interceptor :as interceptor]
     [re-frame.core :as rf]
@@ -252,3 +256,104 @@
       ;; Spell should NOT be resolved
       (is (empty? (queries/get-all-stack-items (:game/db result)))
           "Spell should not be on stack yet (selection is pre-cast)"))))
+
+
+;; === Regression tests ===
+
+(deftest test-cast-and-yield-clears-auto-mode-after-resolve
+  (testing "Regression fizzle-4fpf: auto-mode should be nil after cast-and-yield (not :resolving)"
+    ;; Storm spell: after resolving storm-meta, stack still has copies + spell.
+    ;; Bug: auto-mode stays :resolving, causing cascading resolution in the browser.
+    ;; Fix: auto-mode should be cleared after one resolve.
+    (let [db (create-full-db)
+          conn (d/conn-from-db db)
+          _ (d/transact! conn [{:card/id :test-storm-ritual-auto
+                                :card/name "Test Storm Ritual Auto"
+                                :card/mana-cost {:black 1}
+                                :card/cmc 1
+                                :card/types #{:instant}
+                                :card/colors #{:black}
+                                :card/keywords #{:storm}
+                                :card/effects [{:effect/type :add-mana
+                                                :effect/mana {:black 2}}]}])
+          player-eid (queries/get-player-eid @conn :player-1)
+          _ (d/transact! conn [[:db/add player-eid :player/storm-count 2]])
+          card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]]
+                        @conn :test-storm-ritual-auto)
+          obj-id (random-uuid)
+          _ (d/transact! conn [{:object/id obj-id
+                                :object/card card-eid
+                                :object/zone :hand
+                                :object/owner player-eid
+                                :object/controller player-eid
+                                :object/tapped false}])
+          db (mana/add-mana @conn :player-1 {:black 1})
+          app-db (merge (history/init-history)
+                        {:game/db db
+                         :game/selected-card obj-id})
+          result (dispatch-cast-and-yield app-db)]
+      ;; Auto-mode must be nil — :resolving would cascade-resolve everything
+      (is (nil? (priority/get-auto-mode (:game/db result)))
+          "Auto-mode should be nil after cast-and-yield, not :resolving")
+      ;; Stack should still have items (copies + spell)
+      (is (pos? (count (queries/get-all-stack-items (:game/db result))))
+          "Stack should still have items (storm copies + spell)"))))
+
+
+(deftest test-cast-and-yield-generic-mana-sets-yield-flag
+  (testing "Regression fizzle-0v55: cast-and-yield sets yield flag on mana allocation selection"
+    (let [db (create-full-db)
+          [db obj-id] (add-card-to-zone db :merchant-scroll :hand :player-1)
+          db (mana/add-mana db :player-1 {:blue 1 :black 1})
+          app-db (merge (history/init-history)
+                        {:game/db db
+                         :game/selected-card obj-id})
+          result (dispatch-cast-and-yield app-db)
+          selection (:game/pending-selection result)]
+      ;; Selection should exist (mana allocation)
+      (is (some? selection) "Should have pending mana allocation selection")
+      ;; Selection should have yield-after-cast flag
+      (is (true? (:selection/yield-after-cast selection))
+          "Mana allocation selection should have :selection/yield-after-cast flag"))))
+
+
+(deftest test-cast-and-yield-generic-mana-auto-resolves
+  (testing "Regression fizzle-0v55: spell auto-resolves after mana allocation completes"
+    ;; Use a test card with generic mana cost and non-interactive effects
+    ;; (Merchant Scroll has interactive tutor effect, which pauses for selection)
+    (let [db (create-full-db)
+          conn (d/conn-from-db db)
+          _ (d/transact! conn [{:card/id :test-generic-draw
+                                :card/name "Test Generic Draw"
+                                :card/mana-cost {:colorless 1 :blue 1}
+                                :card/cmc 2
+                                :card/types #{:instant}
+                                :card/colors #{:blue}
+                                :card/effects [{:effect/type :draw
+                                                :effect/amount 1}]}])
+          db @conn
+          [db obj-id] (add-card-to-zone db :test-generic-draw :hand :player-1)
+          ;; Provide blue + black so allocation is needed for the 1 generic
+          db (mana/add-mana db :player-1 {:blue 1 :black 1})
+          app-db (merge (history/init-history)
+                        {:game/db db
+                         :game/selected-card obj-id})
+          ;; Step 1: cast-and-yield shows mana allocation
+          result (dispatch-cast-and-yield app-db)
+          _ (is (some? (:game/pending-selection result))
+                "Should have pending mana allocation selection")
+          ;; Step 2: complete mana allocation (allocate 1 black for generic cost)
+          _ (reset! rf-db/app-db result)
+          _ (rf/dispatch-sync [::sel-costs/allocate-mana-color :black])
+          after-alloc @rf-db/app-db
+          ;; Step 3: selection should be cleared (spell was cast)
+          _ (is (nil? (:game/pending-selection after-alloc))
+                "Selection should be cleared after mana allocation completes")
+          ;; Step 4: drain the resolve dispatch that should have been queued
+          _ (rf/dispatch-sync [::game/cast-and-yield-resolve])
+          after-yield @rf-db/app-db]
+      ;; Test spell should be resolved (in graveyard)
+      ;; The key point: the resolve after allocation should resolve the spell
+      ;; Bug: without the fix, spell stays on stack after allocation
+      (is (= :graveyard (:object/zone (queries/get-object (:game/db after-yield) obj-id)))
+          "Spell should be in graveyard after auto-resolve"))))

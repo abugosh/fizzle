@@ -41,7 +41,8 @@
   (let [collapsed (r/atom #{})]
     (fn []
       (let [groups @(rf/subscribe [::subs/entries-by-turn])
-            position @(rf/subscribe [::subs/position])]
+            position @(rf/subscribe [::subs/position])
+            collapsed-set @collapsed]
         (if (seq groups)
           (let [indexed-groups (second
                                  (reduce (fn [[offset acc] group]
@@ -60,9 +61,9 @@
                                            (if (contains? s turn)
                                              (disj s turn)
                                              (conj s turn))))}
-                 (str (if (contains? @collapsed turn) "\u25B6 " "\u25BC ")
+                 (str (if (contains? collapsed-set turn) "\u25B6 " "\u25BC ")
                       "Turn " turn)]
-                (when-not (contains? @collapsed turn)
+                (when-not (contains? collapsed-set turn)
                   (for [[i entry] (map-indexed vector entries)]
                     (let [abs-idx (+ offset i)]
                       ^{:key abs-idx}
@@ -86,7 +87,8 @@
   (let [editing (r/atom nil)]
     (fn []
       (let [forks @(rf/subscribe [::subs/forks])
-            current-branch @(rf/subscribe [::subs/current-branch])]
+            current-branch @(rf/subscribe [::subs/current-branch])
+            editing-state @editing]
         [:div
          [:div {:class "mb-2"}
           [:button {:class "py-1 px-2 text-xs border border-border rounded bg-surface-hover text-perm-text cursor-pointer"
@@ -102,12 +104,12 @@
          (for [fork forks]
            (let [fork-id (:fork/id fork)
                  active? (= fork-id current-branch)
-                 editing? (= fork-id (:fork-id @editing))]
+                 editing? (= fork-id (:fork-id editing-state))]
              ^{:key fork-id}
              [:div {:class "flex items-center gap-1 px-2 py-0.5 text-xs"}
               (if editing?
                 [:input {:class "bg-surface-raised border border-border-accent rounded-sm text-text text-xs px-1 py-px flex-1"
-                         :default-value (:value @editing)
+                         :default-value (:value editing-state)
                          :auto-focus true
                          :on-key-down (fn [e]
                                         (case (.-key e)
