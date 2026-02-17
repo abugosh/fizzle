@@ -13,6 +13,8 @@
   #{:fizzle.events.game/init-game
     :fizzle.events.game/cast-spell
     :fizzle.events.game/cast-and-yield
+    :fizzle.events.game/yield
+    :fizzle.events.game/yield-all
     :fizzle.events.game/resolve-top
     :fizzle.events.game/resolve-all
     :fizzle.events.game/advance-phase
@@ -92,6 +94,8 @@
                        selection-triggers-entry (and selection-created
                                                      (#{:fizzle.events.game/resolve-top
                                                         :fizzle.events.game/resolve-all
+                                                        :fizzle.events.game/yield
+                                                        :fizzle.events.game/yield-all
                                                         :fizzle.events.game/cast-and-yield} event-id))
                        casting-spell-id (get-in context [:coeffects :history/casting-spell-id])]
                    (if (and db-after game-db-after
