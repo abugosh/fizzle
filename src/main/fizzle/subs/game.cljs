@@ -113,6 +113,15 @@
     (when game-db (:game/turn (queries/get-game-state game-db)))))
 
 
+(rf/reg-sub
+  ::player-stops
+  :<- [::game-db]
+  (fn [game-db _]
+    (when game-db
+      (let [player-eid (queries/get-player-eid game-db :player-1)]
+        (or (:player/stops (d/pull game-db [:player/stops] player-eid)) #{})))))
+
+
 ;; === Game Over Subscriptions ===
 
 (rf/reg-sub

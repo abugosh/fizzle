@@ -912,6 +912,23 @@
       (assoc db :game/db (play-land game-db :player-1 object-id)))))
 
 
+;; === Phase Stops ===
+
+(rf/reg-event-db
+  ::toggle-stop
+  (fn [db [_ phase]]
+    (let [game-db (:game/db db)
+          player-eid (queries/get-player-eid game-db :player-1)
+          current-stops (or (:player/stops (d/pull game-db [:player/stops] player-eid)) #{})
+          new-stops (if (contains? current-stops phase)
+                      (disj current-stops phase)
+                      (conj current-stops phase))
+          all-stops (storage/load-stops)
+          updated-stops (assoc all-stops :player new-stops)]
+      (storage/save-stops! updated-stops)
+      (assoc db :game/db (priority/set-player-stops game-db player-eid new-stops)))))
+
+
 ;; === Tap Permanent ===
 
 (defn tap-permanent

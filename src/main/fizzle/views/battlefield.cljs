@@ -144,12 +144,17 @@
 
 
 (defn- phase-indicator
-  [phase current-phase]
-  [:span {:class (str "py-1 px-2 rounded text-[11px] "
-                      (if (= phase current-phase)
-                        "bg-accent text-white"
-                        "bg-transparent text-perm-text-tapped"))}
-   (name phase)])
+  [phase current-phase stops]
+  (let [has-stop? (contains? stops phase)]
+    [:div {:class "flex flex-col items-center cursor-pointer"
+           :on-click #(rf/dispatch [::events/toggle-stop phase])}
+     [:span {:class (str "py-1 px-2 rounded text-[11px] "
+                         (if (= phase current-phase)
+                           "bg-accent text-white"
+                           "bg-transparent text-perm-text-tapped"))}
+      (name phase)]
+     [:div {:class (str "w-1.5 h-1.5 rounded-full mt-0.5 "
+                        (if has-stop? "bg-accent" "bg-transparent"))}]]))
 
 
 (defn- phase-bar-section
@@ -159,33 +164,21 @@
         current-turn (or @(rf/subscribe [::subs/current-turn]) 1)
         player-life @(rf/subscribe [::subs/player-life])
         opponent-life @(rf/subscribe [::subs/opponent-life])
-        at-cleanup? (= current-phase :cleanup)
-        stack @(rf/subscribe [::subs/stack])
-        stack-active? (boolean (seq stack))]
+        stops (or @(rf/subscribe [::subs/player-stops]) #{})]
     [:div {:class "flex items-center justify-between gap-4 py-3 px-4 mb-2 mt-2 bg-surface-raised border-y border-surface-dim"}
      ;; Opponent life (left)
      [:div {:class "flex items-center gap-2"}
       [:span {:class "text-text-dim text-xs"} "Opp:"]
       [:span {:class (str "text-lg font-bold " (opponent/opponent-health-class opponent-life))}
        opponent-life]]
-     ;; Phase controls (center)
+     ;; Phase indicators (center)
      [:div {:class "flex items-center gap-3"}
       [:span {:class "font-bold text-text text-sm"}
        (str "Turn " current-turn)]
       [:div {:class "flex gap-1"}
        (for [phase rules/phases]
          ^{:key phase}
-         [phase-indicator phase current-phase])]
-      [:button {:class (str "py-1.5 px-3.5 border border-border rounded font-bold text-[13px] "
-                            (if stack-active?
-                              "cursor-not-allowed bg-surface-dim text-perm-text-tapped opacity-50"
-                              "cursor-pointer bg-btn-enabled-bg text-white"))
-                :disabled stack-active?
-                :on-click #(when-not stack-active?
-                             (rf/dispatch [(if at-cleanup?
-                                             ::events/start-turn
-                                             ::events/advance-phase)]))}
-       (if at-cleanup? "New Turn" "Next Phase")]]
+         [phase-indicator phase current-phase stops])]]
      ;; Player life (right)
      [:div {:class "flex items-center gap-2"}
       [:span {:class "text-text-dim text-xs"} "You:"]

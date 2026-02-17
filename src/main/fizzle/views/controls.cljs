@@ -65,15 +65,13 @@
                            can-play-land? #(rf/dispatch [::events/play-land selected])
                            :else identity)}
       play-yield-label]
-     [:button {:class (btn-class (seq stack))
-               :disabled (empty? stack)
-               :on-click #(rf/dispatch [::events/resolve-top])}
+     [:button {:class (btn-class true)
+               :on-click #(rf/dispatch [::events/yield])}
       (if-let [n (top-stack-item-name stack)]
         (str "Yield: " n)
         "Yield")]
-     [:button {:class (btn-class (> (count stack) 1))
-               :disabled (<= (count stack) 1)
-               :on-click #(rf/dispatch [::events/resolve-all])}
-      (if (> (count stack) 1)
+     [:button {:class (btn-class true)
+               :on-click #(rf/dispatch [::events/yield-all])}
+      (if (seq stack)
         (str "Yield All (" (count stack) ")")
         "Yield All")]]))
