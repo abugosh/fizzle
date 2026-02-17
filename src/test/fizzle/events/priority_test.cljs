@@ -307,3 +307,65 @@
             stops2 (:player/stops (d/pull (:game/db result2) [:player/stops] opp-eid))]
         (is (= #{} stops2)
             "Should have removed end from opponent stops")))))
+
+
+;; === Goldfish bot plays land integration tests ===
+
+(deftest goldfish-plays-land-on-main1
+  (testing "Goldfish bot plays a land from hand during its main1 phase"
+    (let [;; Start at main2 so yield-all takes us through opponent turn
+          db (-> (h/create-test-db {:stops #{:main1 :main2}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          [db' _] (h/add-card-to-zone db :plains :hand :player-2)
+          ;; Advance to main2 manually
+          game-db (-> db'
+                      (game/advance-phase :player-1)  ; main1 -> combat
+                      (game/advance-phase :player-1))  ; combat -> main2
+          app-db (merge (history/init-history) {:game/db game-db})
+          result (dispatch-event app-db [::game/yield-all])
+          result-db (:game/db result)]
+      ;; After full turn cycle, opponent should have played the land
+      (is (= 1 (count (q/get-objects-in-zone result-db :player-2 :battlefield)))
+          "Opponent should have 1 land on battlefield")
+      (is (= 0 (count (q/get-hand result-db :player-2)))
+          "Opponent hand should be empty after playing land"))))
+
+
+(deftest goldfish-no-land-in-hand-passes
+  (testing "Goldfish bot with no land in hand just passes through main1"
+    (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          ;; Advance to main2 manually (no lands in opponent hand)
+          game-db (-> db
+                      (game/advance-phase :player-1)  ; main1 -> combat
+                      (game/advance-phase :player-1))  ; combat -> main2
+          app-db (merge (history/init-history) {:game/db game-db})
+          result (dispatch-event app-db [::game/yield-all])
+          result-db (:game/db result)]
+      ;; Should complete turn cycle normally
+      (is (= 3 (:game/turn (q/get-game-state result-db)))
+          "Should advance to turn 3 even without land to play")
+      (is (= 0 (count (q/get-objects-in-zone result-db :player-2 :battlefield)))
+          "Opponent should have no permanents (no land was played)"))))
+
+
+(deftest goldfish-full-turn-cycle-with-library
+  (testing "Full turn cycle: goldfish draws card and plays land"
+    (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          ;; Add lands to opponent library (draw step will draw one)
+          [db' _] (h/add-cards-to-library db [:plains :island :swamp] :player-2)
+          ;; Advance to main2
+          game-db (-> db'
+                      (game/advance-phase :player-1)  ; main1 -> combat
+                      (game/advance-phase :player-1))  ; combat -> main2
+          app-db (merge (history/init-history) {:game/db game-db})
+          result (dispatch-event app-db [::game/yield-all])
+          result-db (:game/db result)]
+      ;; Opponent should have drawn 1 card and played it as a land
+      (is (= 1 (count (q/get-objects-in-zone result-db :player-2 :battlefield)))
+          "Opponent should have played 1 land on battlefield")
+      (is (= 2 (count (q/get-objects-in-zone result-db :player-2 :library)))
+          "Opponent library should have 2 cards remaining (drew 1 of 3)")
+      (is (= 3 (:game/turn (q/get-game-state result-db)))
+          "Should be turn 3 after full cycle"))))

@@ -1,8 +1,10 @@
 (ns fizzle.cards.basic-lands-test
-  "Tests for basic land cards (Island, Swamp)."
+  "Tests for basic land cards (Plains, Island, Swamp, Mountain, Forest)."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
+    [fizzle.cards.basic-lands :as basic-lands]
+    [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.events.abilities :as ability-events]
     [fizzle.events.game :as game]
@@ -25,6 +27,78 @@
          :where [?e :player/id ?pid]
          [?e :player/land-plays-left ?plays]]
        db player-id))
+
+
+;; === Card definition tests ===
+
+(deftest test-plains-card-definition
+  (testing "Plains has correct card fields"
+    (let [card basic-lands/plains]
+      (is (= :plains (:card/id card)))
+      (is (= "Plains" (:card/name card)))
+      (is (= 0 (:card/cmc card)))
+      (is (= {} (:card/mana-cost card)))
+      (is (= #{} (:card/colors card)))
+      (is (= #{:land} (:card/types card)))
+      (is (= #{:plains} (:card/subtypes card)))
+      (is (= #{:basic} (:card/supertypes card)))
+      (is (= "{T}: Add {W}." (:card/text card)))
+      (is (= 1 (count (:card/abilities card))))
+      (is (= {:white 1} (:ability/produces (first (:card/abilities card))))))))
+
+
+(deftest test-island-card-definition
+  (testing "Island has correct card fields"
+    (let [card cards/island]
+      (is (= :island (:card/id card)))
+      (is (= "Island" (:card/name card)))
+      (is (= #{:land} (:card/types card)))
+      (is (= #{:island} (:card/subtypes card)))
+      (is (= #{:basic} (:card/supertypes card)))
+      (is (= {:blue 1} (:ability/produces (first (:card/abilities card))))))))
+
+
+(deftest test-swamp-card-definition
+  (testing "Swamp has correct card fields"
+    (let [card cards/swamp]
+      (is (= :swamp (:card/id card)))
+      (is (= "Swamp" (:card/name card)))
+      (is (= #{:land} (:card/types card)))
+      (is (= #{:swamp} (:card/subtypes card)))
+      (is (= #{:basic} (:card/supertypes card)))
+      (is (= {:black 1} (:ability/produces (first (:card/abilities card))))))))
+
+
+(deftest test-mountain-card-definition
+  (testing "Mountain has correct card fields"
+    (let [card basic-lands/mountain]
+      (is (= :mountain (:card/id card)))
+      (is (= "Mountain" (:card/name card)))
+      (is (= 0 (:card/cmc card)))
+      (is (= {} (:card/mana-cost card)))
+      (is (= #{} (:card/colors card)))
+      (is (= #{:land} (:card/types card)))
+      (is (= #{:mountain} (:card/subtypes card)))
+      (is (= #{:basic} (:card/supertypes card)))
+      (is (= "{T}: Add {R}." (:card/text card)))
+      (is (= 1 (count (:card/abilities card))))
+      (is (= {:red 1} (:ability/produces (first (:card/abilities card))))))))
+
+
+(deftest test-forest-card-definition
+  (testing "Forest has correct card fields"
+    (let [card basic-lands/forest]
+      (is (= :forest (:card/id card)))
+      (is (= "Forest" (:card/name card)))
+      (is (= 0 (:card/cmc card)))
+      (is (= {} (:card/mana-cost card)))
+      (is (= #{} (:card/colors card)))
+      (is (= #{:land} (:card/types card)))
+      (is (= #{:forest} (:card/subtypes card)))
+      (is (= #{:basic} (:card/supertypes card)))
+      (is (= "{T}: Add {G}." (:card/text card)))
+      (is (= 1 (count (:card/abilities card))))
+      (is (= {:green 1} (:ability/produces (first (:card/abilities card))))))))
 
 
 ;; === Island tests ===
@@ -59,6 +133,48 @@
           "Swamp should be tapped after activating mana ability")
       (is (= 1 (:black (q/get-mana-pool db'' :player-1)))
           "Black mana should be added to pool"))))
+
+
+;; === Plains tests ===
+
+(deftest test-plains-taps-for-white-mana
+  (testing "Plains taps for white mana when activated"
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :plains :battlefield :player-1)
+          _ (is (= 0 (:white (q/get-mana-pool db' :player-1))) "Precondition: white mana is 0")
+          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :white)]
+      (is (true? (get-object-tapped db'' obj-id))
+          "Plains should be tapped after activating mana ability")
+      (is (= 1 (:white (q/get-mana-pool db'' :player-1)))
+          "White mana should be added to pool"))))
+
+
+;; === Mountain tests ===
+
+(deftest test-mountain-taps-for-red-mana
+  (testing "Mountain taps for red mana when activated"
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :mountain :battlefield :player-1)
+          _ (is (= 0 (:red (q/get-mana-pool db' :player-1))) "Precondition: red mana is 0")
+          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :red)]
+      (is (true? (get-object-tapped db'' obj-id))
+          "Mountain should be tapped after activating mana ability")
+      (is (= 1 (:red (q/get-mana-pool db'' :player-1)))
+          "Red mana should be added to pool"))))
+
+
+;; === Forest tests ===
+
+(deftest test-forest-taps-for-green-mana
+  (testing "Forest taps for green mana when activated"
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :forest :battlefield :player-1)
+          _ (is (= 0 (:green (q/get-mana-pool db' :player-1))) "Precondition: green mana is 0")
+          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :green)]
+      (is (true? (get-object-tapped db'' obj-id))
+          "Forest should be tapped after activating mana ability")
+      (is (= 1 (:green (q/get-mana-pool db'' :player-1)))
+          "Green mana should be added to pool"))))
 
 
 ;; === Playing from hand tests ===

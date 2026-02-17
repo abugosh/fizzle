@@ -357,41 +357,34 @@
           "Hand should have all 4 Dark Rituals (entire 7-card deck is drawn)"))))
 
 
-;; === Opponent battlefield initialization tests ===
+;; === Opponent initialization tests (bot-deck driven) ===
 
-(deftest test-opponent-starts-with-4-lands-on-battlefield
-  (testing "opponent starts with 4 basic lands on battlefield"
+(deftest test-opponent-starts-with-empty-battlefield
+  (testing "opponent starts with no cards on battlefield (goldfish plays from hand)"
     (let [db (init-and-get-db)
           battlefield (q/get-objects-in-zone db :opponent :battlefield)]
-      (is (= 4 (count battlefield))
-          "Opponent should have exactly 4 permanents on battlefield"))))
+      (is (= 0 (count battlefield))
+          "Opponent should have no permanents on battlefield"))))
 
 
-(deftest test-opponent-lands-are-island-and-swamp
-  (testing "opponent starting lands are 2 Island and 2 Swamp"
-    (let [db (init-and-get-db)
-          battlefield (q/get-objects-in-zone db :opponent :battlefield)
-          card-names (frequencies (map #(get-in % [:object/card :card/name]) battlefield))]
-      (is (= 2 (get card-names "Island" 0))
-          "Opponent should have 2 Islands")
-      (is (= 2 (get card-names "Swamp" 0))
-          "Opponent should have 2 Swamps"))))
-
-
-(deftest test-opponent-lands-are-untapped
-  (testing "opponent starting lands are all untapped"
-    (let [db (init-and-get-db)
-          battlefield (q/get-objects-in-zone db :opponent :battlefield)]
-      (is (every? #(false? (:object/tapped %)) battlefield)
-          "All opponent battlefield objects should be untapped"))))
-
-
-(deftest test-opponent-library-still-populated
-  (testing "opponent library still has 40 cards (unchanged from before)"
+(deftest test-opponent-library-populated-from-bot-deck
+  (testing "opponent library has 60 cards from bot-deck multimethod"
     (let [db (init-and-get-db)
           library (get-library-objects db :opponent)]
-      (is (= 40 (count library))
-          "Opponent library should have 40 cards"))))
+      (is (= 60 (count library))
+          "Opponent library should have 60 cards (from goldfish bot-deck)"))))
+
+
+(deftest test-opponent-library-contains-basic-lands
+  (testing "opponent library contains basic lands from goldfish deck"
+    (let [db (init-and-get-db)
+          library (get-library-objects db :opponent)
+          card-types (set (map #(get-in % [:object/card :card/id]) library))]
+      (is (contains? card-types :plains) "Should contain Plains")
+      (is (contains? card-types :island) "Should contain Island")
+      (is (contains? card-types :swamp) "Should contain Swamp")
+      (is (contains? card-types :mountain) "Should contain Mountain")
+      (is (contains? card-types :forest) "Should contain Forest"))))
 
 
 (deftest test-player-battlefield-empty

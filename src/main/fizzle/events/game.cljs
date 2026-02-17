@@ -112,28 +112,23 @@
 
 
 (defn- opponent-library-tx
-  "Return transaction data for opponent's library (40 placeholder cards)."
-  [db opp-eid]
-  (let [dr-eid (get-card-eid db :dark-ritual)]
-    (vec (for [i (range 40)]
-           {:object/id (random-uuid) :object/card dr-eid :object/zone :library
-            :object/owner opp-eid :object/controller opp-eid
-            :object/tapped false :object/position i}))))
-
-
-(defn- opponent-battlefield-tx
-  "Return transaction data for opponent's starting battlefield (4 basic lands: 2 Island, 2 Swamp)."
-  [db opp-eid]
-  (let [island-eid (get-card-eid db :island)
-        swamp-eid (get-card-eid db :swamp)]
-    [{:object/id (random-uuid) :object/card island-eid :object/zone :battlefield
-      :object/owner opp-eid :object/controller opp-eid :object/tapped false}
-     {:object/id (random-uuid) :object/card island-eid :object/zone :battlefield
-      :object/owner opp-eid :object/controller opp-eid :object/tapped false}
-     {:object/id (random-uuid) :object/card swamp-eid :object/zone :battlefield
-      :object/owner opp-eid :object/controller opp-eid :object/tapped false}
-     {:object/id (random-uuid) :object/card swamp-eid :object/zone :battlefield
-      :object/owner opp-eid :object/controller opp-eid :object/tapped false}]))
+  "Return transaction data for opponent's library from a deck list.
+   deck-list: vector of {:card/id :count} maps (from bot-deck multimethod)."
+  [db opp-eid deck-list]
+  (let [card-ids (into []
+                       (mapcat (fn [{:keys [card/id count]}]
+                                 (repeat count id)))
+                       deck-list)]
+    (vec (map-indexed
+           (fn [i card-id]
+             {:object/id (random-uuid)
+              :object/card (get-card-eid db card-id)
+              :object/zone :library
+              :object/owner opp-eid
+              :object/controller opp-eid
+              :object/tapped false
+              :object/position i})
+           (shuffle card-ids)))))
 
 
 (defn init-game-state
@@ -167,8 +162,7 @@
     (d/transact! conn (objects-tx @conn hand-ids :hand player-eid hand-uuids))
     (d/transact! conn (objects-tx @conn library-ids :library player-eid
                                   (repeatedly (count library-ids) random-uuid)))
-    (d/transact! conn (opponent-library-tx @conn opp-eid))
-    (d/transact! conn (opponent-battlefield-tx @conn opp-eid))
+    (d/transact! conn (opponent-library-tx @conn opp-eid (bot/bot-deck :goldfish)))
     (d/transact! conn [{:game/id :game-1 :game/turn 1 :game/phase :main1
                         :game/active-player player-eid :game/priority player-eid}])
     (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid :player-1))
@@ -651,6 +645,11 @@
 
 ;; === Priority System ===
 
+;; Forward declaration: execute-bot-phase-action is defined after play-land
+;; to avoid a circular dependency (advance-with-stops -> execute-bot-phase-action -> play-land)
+(declare execute-bot-phase-action)
+
+
 (defn- advance-with-stops
   "Advance phases until a stop is hit or a turn boundary is crossed.
    Handles cleanup and start-turn automatically.
@@ -662,7 +661,8 @@
   [app-db ignore-stops?]
   (let [game-db (:game/db app-db)
         active-player-id (queries/get-active-player-id game-db)
-        player-eid (queries/get-player-eid game-db active-player-id)]
+        player-eid (queries/get-player-eid game-db active-player-id)
+        archetype (bot/get-bot-archetype game-db active-player-id)]
     (loop [gdb game-db]
       (let [game-state (queries/get-game-state gdb)
             current-phase (:game/phase game-state)
@@ -683,7 +683,11 @@
                 ;; via recursive ::yield dispatch (re-reads active player from db)
                 {:app-db (assoc app-db :game/db db-after-turn)})))
           ;; Normal phase advance
-          (let [advanced-db (advance-phase gdb active-player-id)]
+          (let [advanced-db (advance-phase gdb active-player-id)
+                ;; Execute bot phase action if active player is a bot
+                advanced-db (if archetype
+                              (execute-bot-phase-action advanced-db archetype nxt active-player-id)
+                              advanced-db)]
             ;; Check if new phase triggers anything on the stack
             (if (not (queries/stack-empty? advanced-db))
               ;; Stack triggered — stop and give priority
@@ -962,6 +966,23 @@
   (fn [db [_ object-id]]
     (let [game-db (:game/db db)]
       (assoc db :game/db (play-land game-db :player-1 object-id)))))
+
+
+(defn- execute-bot-phase-action
+  "Execute a bot's phase action (e.g., play a land on main1).
+   Returns updated db after executing the action.
+   Pure function: (db, archetype, phase, player-id) -> db"
+  [db archetype phase player-id]
+  (let [action (bot/bot-phase-action archetype phase db player-id)]
+    (case (:action action)
+      :play-land
+      (let [hand (queries/get-hand db player-id)
+            land (first (filter #(contains? (set (:card/types (:object/card %))) :land) hand))]
+        (if land
+          (play-land db player-id (:object/id land))
+          db))
+      ;; :pass or unknown — do nothing
+      db)))
 
 
 ;; === Phase Stops ===
