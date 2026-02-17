@@ -28,6 +28,7 @@
     [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.events.selection.zone-ops]
     [fizzle.history.core :as history]
+    [fizzle.history.descriptions :as descriptions]
     [fizzle.storage :as storage]
     [re-frame.core :as rf]))
 
@@ -646,7 +647,7 @@
 ;; === Priority System ===
 
 ;; Forward declaration: execute-bot-phase-action is defined after play-land
-;; to avoid a circular dependency (advance-with-stops -> execute-bot-phase-action -> play-land)
+;; to avoid ordering issues (yield-impl -> execute-bot-phase-action -> play-land)
 (declare execute-bot-phase-action)
 
 
@@ -656,13 +657,16 @@
    After crossing a turn boundary, returns immediately — the caller (yield-impl)
    handles continuing through the new turn via recursive ::yield dispatch.
    When ignore-stops? is true (F6 mode), skips player phase stop checks.
+   When active player is a bot, advances exactly one phase and returns —
+   yield-impl handles bot actions and re-dispatches for each phase so that
+   each gets its own history entry (ADR-004 compliant).
    Returns {:app-db app-db'} with game-db at the stopped phase.
    Pure function: (app-db, ignore-stops?) -> {:app-db app-db'}"
   [app-db ignore-stops?]
   (let [game-db (:game/db app-db)
         active-player-id (queries/get-active-player-id game-db)
         player-eid (queries/get-player-eid game-db active-player-id)
-        archetype (bot/get-bot-archetype game-db active-player-id)]
+        is-bot (boolean (bot/get-bot-archetype game-db active-player-id))]
     (loop [gdb game-db]
       (let [game-state (queries/get-game-state gdb)
             current-phase (:game/phase game-state)
@@ -683,22 +687,21 @@
                 ;; via recursive ::yield dispatch (re-reads active player from db)
                 {:app-db (assoc app-db :game/db db-after-turn)})))
           ;; Normal phase advance
-          (let [advanced-db (advance-phase gdb active-player-id)
-                ;; Execute bot phase action if active player is a bot
-                advanced-db (if archetype
-                              (execute-bot-phase-action advanced-db archetype nxt active-player-id)
-                              advanced-db)]
+          (let [advanced-db (advance-phase gdb active-player-id)]
             ;; Check if new phase triggers anything on the stack
             (if (not (queries/stack-empty? advanced-db))
               ;; Stack triggered — stop and give priority
               {:app-db (assoc app-db :game/db advanced-db)}
-              ;; Check stop (skipped in F6 mode)
-              (if (and (not ignore-stops?)
-                       (priority/check-stop advanced-db player-eid nxt))
-                ;; Stop hit — pause here
+              ;; Bot turn: advance one phase and return (yield-impl handles actions + re-dispatch)
+              (if is-bot
                 {:app-db (assoc app-db :game/db advanced-db)}
-                ;; No stop or F6 — continue advancing
-                (recur advanced-db)))))))))
+                ;; Human turn: check stop (skipped in F6 mode)
+                (if (and (not ignore-stops?)
+                         (priority/check-stop advanced-db player-eid nxt))
+                  ;; Stop hit — pause here
+                  {:app-db (assoc app-db :game/db advanced-db)}
+                  ;; No stop or F6 — continue advancing
+                  (recur advanced-db))))))))))
 
 
 (defn- bot-turn?
@@ -810,6 +813,16 @@
                     {:app-db (:app-db result)
                      :continue-yield? true})))
 
+              ;; Bot turn, same player (advance-with-stops returned after one phase)
+              ;; Execute bot action for current phase, then continue via re-dispatch
+              ;; so each phase gets its own history entry (ADR-004 compliant)
+              is-bot-turn
+              (let [current-phase (:game/phase (queries/get-game-state result-db))
+                    bot-arch (bot/get-bot-archetype result-db new-active-id)
+                    acted-db (execute-bot-phase-action result-db bot-arch current-phase new-active-id)]
+                {:app-db (assoc (:app-db result) :game/db acted-db)
+                 :continue-yield? true})
+
               ;; F6 within same turn (no turn boundary crossed) — shouldn't happen
               ;; since F6 ignores stops and advances to turn boundary
               f6?
@@ -837,16 +850,34 @@
 
 (defn- yield-loop
   "Repeatedly call yield-impl until it stops returning :continue-yield?.
+   Creates a history entry at each step where game-db changes, so that
+   bot turns produce separate entries for each phase (ADR-004 compliant).
    Returns the final app-db. Safety limit of 100 iterations."
   [app-db]
   (loop [adb app-db
          n 100]
     (if (zero? n)
       adb
-      (let [result (yield-impl adb)]
+      (let [pre-db (:game/db adb)
+            result (yield-impl adb)
+            result-adb (:app-db result)
+            post-db (:game/db result-adb)
+            ;; Create history entry when game-db changed
+            result-adb (if (and post-db (not (identical? pre-db post-db)))
+                         (let [game-state (queries/get-game-state post-db)
+                               turn (or (:game/turn game-state) 0)
+                               desc (or (descriptions/describe-event
+                                          [::yield] pre-db post-db nil nil)
+                                        "Yield")
+                               entry (history/make-entry post-db ::yield desc turn)]
+                           (if (or (= -1 (:history/position result-adb))
+                                   (history/at-tip? result-adb))
+                             (history/append-entry result-adb entry)
+                             (history/auto-fork result-adb entry)))
+                         result-adb)]
         (if (:continue-yield? result)
-          (recur (:app-db result) (dec n))
-          (:app-db result))))))
+          (recur result-adb (dec n))
+          result-adb)))))
 
 
 (rf/reg-event-db

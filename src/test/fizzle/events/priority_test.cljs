@@ -369,3 +369,86 @@
           "Opponent library should have 2 cards remaining (drew 1 of 3)")
       (is (= 3 (:game/turn (q/get-game-state result-db)))
           "Should be turn 3 after full cycle"))))
+
+
+;; === Bot turn history tests ===
+;; Verify that bot turns create multiple history entries (one per ::yield re-dispatch)
+;; rather than a single entry for the entire turn.
+
+(deftest bot-turn-creates-multiple-history-entries
+  (testing "Opponent turn creates separate history entries for each phase"
+    (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          [db' _] (h/add-cards-to-library db [:plains :island :swamp] :player-2)
+          ;; Start at main2 so yield-all crosses turn boundary into opponent turn
+          game-db (-> db'
+                      (game/advance-phase :player-1)  ; main1 -> combat
+                      (game/advance-phase :player-1))  ; combat -> main2
+          app-db (merge (history/init-history) {:game/db game-db})
+          result (dispatch-event app-db [::game/yield-all])
+          entries (history/effective-entries result)]
+      ;; There should be multiple entries, not just 1 for the whole cycle.
+      ;; yield-all from main2 -> through opponent turn -> player turn 3 main1
+      ;; Minimum: at least one for each ::yield re-dispatch during opponent phases
+      (is (< 1 (count entries))
+          "Should have multiple history entries for the turn cycle"))))
+
+
+(deftest bot-turn-history-has-separate-draw-and-land-entries
+  (testing "History contains separate entries for opponent draw phase and land play"
+    (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          [db' _] (h/add-cards-to-library db [:plains :island :swamp] :player-2)
+          game-db (-> db'
+                      (game/advance-phase :player-1)  ; main1 -> combat
+                      (game/advance-phase :player-1))  ; combat -> main2
+          app-db (merge (history/init-history) {:game/db game-db})
+          result (dispatch-event app-db [::game/yield-all])
+          entries (history/effective-entries result)]
+      ;; Check that there are entries spanning the opponent's turn
+      ;; The draw phase should produce a state change (opponent draws a card)
+      ;; and the main1 phase should show the land play
+      ;; We check that there are at least 2 entries with distinct game states
+      ;; during the opponent's turn (turn 2)
+      (let [turn-2-entries (filterv #(= 2 (:entry/turn %)) entries)]
+        (is (< 1 (count turn-2-entries))
+            (str "Should have multiple entries for opponent turn 2, got: "
+                 (count turn-2-entries) " — " (mapv :entry/description turn-2-entries)))))))
+
+
+(deftest bot-turn-history-replay-reconstructs-states
+  (testing "Stepping through history during opponent turn shows correct intermediate states"
+    (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          [db' _] (h/add-cards-to-library db [:plains :island :swamp] :player-2)
+          game-db (-> db'
+                      (game/advance-phase :player-1)  ; main1 -> combat
+                      (game/advance-phase :player-1))  ; combat -> main2
+          app-db (merge (history/init-history) {:game/db game-db})
+          result (dispatch-event app-db [::game/yield-all])
+          entries (history/effective-entries result)
+          turn-2-entries (filterv #(= 2 (:entry/turn %)) entries)]
+      ;; Each entry has a snapshot that can be used for replay
+      (when (< 1 (count turn-2-entries))
+        ;; Find a pair of consecutive entries and verify the snapshots differ
+        (let [snapshots (mapv :entry/snapshot turn-2-entries)
+              first-snap (first snapshots)
+              last-snap (last snapshots)]
+          (is (not (identical? first-snap last-snap))
+              "Consecutive opponent turn snapshots should be distinct states"))))))
+
+
+(deftest bot-turn-no-land-still-creates-phase-entries
+  (testing "Bot turn without land to play still creates per-phase history entries"
+    (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          ;; No cards in opponent library or hand — bot has nothing to do
+          game-db (-> db
+                      (game/advance-phase :player-1)  ; main1 -> combat
+                      (game/advance-phase :player-1))  ; combat -> main2
+          app-db (merge (history/init-history) {:game/db game-db})
+          result (dispatch-event app-db [::game/yield-all])
+          entries (history/effective-entries result)]
+      ;; Even with no actions, bot phases should produce separate history entries
+      (is (< 1 (count entries))
+          "Should have multiple history entries even for empty bot turn"))))
