@@ -98,6 +98,18 @@
        db))
 
 
+(defn get-active-player-id
+  "Get the :player/id keyword of the active player.
+   Resolves the :game/active-player ref to a player-id keyword.
+   Returns nil if no game state exists."
+  [db]
+  (d/q '[:find ?pid .
+         :where [?g :game/id _]
+         [?g :game/active-player ?p]
+         [?p :player/id ?pid]]
+       db))
+
+
 (defn stack-empty?
   "Check if the stack has no items (no spells and no stack-items).
    The stack is shared between all players (MTG Rules 117, 405)."

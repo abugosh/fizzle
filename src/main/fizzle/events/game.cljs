@@ -459,7 +459,8 @@
     (if (and (= :cleanup (:game/phase (queries/get-game-state game-db)))
              (queries/stack-empty? game-db)
              (not (:game/pending-selection app-db)))
-      (let [result (begin-cleanup game-db :player-1)]
+      (let [active-player-id (queries/get-active-player-id game-db)
+            result (begin-cleanup game-db active-player-id)]
         (if (:pending-selection result)
           (-> app-db
               (assoc :game/db (:db result))
@@ -619,20 +620,21 @@
       ;; Block advance if pending selection exists (e.g., cleanup discard in progress)
       (if (:game/pending-selection db)
         db
-        (let [game-state (queries/get-game-state game-db)
+        (let [active-player-id (queries/get-active-player-id game-db)
+              game-state (queries/get-game-state game-db)
               current-phase (:game/phase game-state)
               new-phase (next-phase current-phase)]
           (if (= new-phase :cleanup)
             ;; Special cleanup handling: advance phase first, then begin cleanup
-            (let [advanced-db (advance-phase game-db :player-1)
-                  result (begin-cleanup advanced-db :player-1)]
+            (let [advanced-db (advance-phase game-db active-player-id)
+                  result (begin-cleanup advanced-db active-player-id)]
               (if (:pending-selection result)
                 (-> db
                     (assoc :game/db (:db result))
                     (assoc :game/pending-selection (:pending-selection result)))
                 (assoc db :game/db (:db result))))
             ;; Normal phase advancement
-            (assoc db :game/db (advance-phase game-db :player-1))))))))
+            (assoc db :game/db (advance-phase game-db active-player-id))))))))
 
 
 (rf/reg-event-db
@@ -642,11 +644,12 @@
       ;; Block start-turn if pending selection exists (e.g., cleanup discard)
       (if (:game/pending-selection db)
         db
-        (let [;; Step 1: Opponent draw (before player's turn)
-              db-after-draw (opponent-draw game-db :player-1)
+        (let [active-player-id (queries/get-active-player-id game-db)
+              ;; Step 1: Opponent draw (before player's turn)
+              db-after-draw (opponent-draw game-db active-player-id)
               drew? (not (identical? game-db db-after-draw))
               ;; Step 2: Turn mechanics (on post-draw state)
-              db-after-turn (start-turn db-after-draw :player-1)
+              db-after-turn (start-turn db-after-draw active-player-id)
               ;; Step 3: Build history entries
               game-state (queries/get-game-state db-after-turn)
               turn (:game/turn game-state)
@@ -673,15 +676,16 @@
    Pure function: (app-db, ignore-stops?) -> {:app-db app-db'}"
   [app-db ignore-stops?]
   (let [game-db (:game/db app-db)
-        player-eid (queries/get-player-eid game-db :player-1)]
+        active-player-id (queries/get-active-player-id game-db)
+        player-eid (queries/get-player-eid game-db active-player-id)]
     (loop [gdb game-db]
       (let [game-state (queries/get-game-state gdb)
             current-phase (:game/phase game-state)
             nxt (next-phase current-phase)]
         (if (= nxt :cleanup)
           ;; Advancing to cleanup: advance phase, begin cleanup, then cross turn boundary
-          (let [advanced-db (advance-phase gdb :player-1)
-                cleanup-result (begin-cleanup advanced-db :player-1)]
+          (let [advanced-db (advance-phase gdb active-player-id)
+                cleanup-result (begin-cleanup advanced-db active-player-id)]
             (if (:pending-selection cleanup-result)
               ;; Cleanup needs discard — pause with pending-selection
               {:app-db (-> app-db
@@ -689,9 +693,9 @@
                            (assoc :game/pending-selection (:pending-selection cleanup-result)))}
               ;; No discard needed — cross turn boundary, then stop
               (let [db-after-cleanup (:db cleanup-result)
-                    db-after-draw (opponent-draw db-after-cleanup :player-1)
-                    db-after-turn (start-turn db-after-draw :player-1)
-                    new-player-eid (queries/get-player-eid db-after-turn :player-1)
+                    db-after-draw (opponent-draw db-after-cleanup active-player-id)
+                    db-after-turn (start-turn db-after-draw active-player-id)
+                    new-player-eid (queries/get-player-eid db-after-turn active-player-id)
                     has-stops? (seq (:player/stops (d/pull db-after-turn [:player/stops] new-player-eid)))]
                 (if (and has-stops? (not ignore-stops?))
                   ;; Has stops and not F6 — continue advancing to first stop in new turn
@@ -699,7 +703,7 @@
                   ;; No stops or F6 — stop at turn boundary
                   {:app-db (assoc app-db :game/db db-after-turn)}))))
           ;; Normal phase advance
-          (let [advanced-db (advance-phase gdb :player-1)]
+          (let [advanced-db (advance-phase gdb active-player-id)]
             ;; Check if new phase triggers anything on the stack
             (if (not (queries/stack-empty? advanced-db))
               ;; Stack triggered — stop and give priority
@@ -741,7 +745,8 @@
         ;; Step 1: current player passes
         gdb (priority/yield-priority game-db holder-eid)
         ;; Step 2: auto-pass opponent (bot, auto-mode, or no opponent)
-        opponent-player-id (queries/get-opponent-id gdb :player-1)
+        active-player-id (queries/get-active-player-id gdb)
+        opponent-player-id (queries/get-opponent-id gdb active-player-id)
         gdb (if opponent-player-id
               (let [opp-eid (queries/get-player-eid gdb opponent-player-id)]
                 (if auto-mode
@@ -762,7 +767,7 @@
       (let [gdb (priority/reset-passes gdb)]
         (if (not (queries/stack-empty? gdb))
           ;; 3b: Stack non-empty — resolve one item
-          (let [result (resolve-one-item gdb :player-1)]
+          (let [result (resolve-one-item gdb active-player-id)]
             (if (:pending-selection result)
               ;; Selection needed — clear auto-mode, return selection
               {:app-db (-> app-db
