@@ -791,7 +791,7 @@
 (defn- resolve-one-and-stop
   "Resolve the top stack item with temporary :resolving auto-mode (so opponent
    auto-passes), then clear auto-mode. Returns updated app-db. Used by
-   cast-and-yield and post-allocation auto-resolve."
+   cast-and-yield and the :resolve-one-and-stop continuation."
   [app-db]
   (if (or (:game/pending-selection app-db)
           (queries/stack-empty? (:game/db app-db)))
@@ -801,17 +801,25 @@
       (update (:app-db result) :game/db priority/clear-auto-mode))))
 
 
+;; Register continuation: :resolve-one-and-stop
+;; Called by confirm-selection-impl when selection completes with this continuation.
+(defmethod sel-core/apply-continuation :resolve-one-and-stop
+  [_ app-db]
+  (resolve-one-and-stop app-db))
+
+
 (rf/reg-event-fx
   ::cast-and-yield
   (fn [{:keys [db]} _]
     (let [new-db (cast-spell-handler db)]
       (cond
         ;; Pre-cast selection needed (mana allocation, targeting, etc.)
-        ;; Set yield flag so auto-resolve happens after selection completes
+        ;; Set on-complete continuation so auto-resolve happens after selection completes
         (:game/pending-selection new-db)
-        {:db (assoc-in new-db [:game/pending-selection :selection/yield-after-cast] true)}
+        {:db (assoc-in new-db [:game/pending-selection :selection/on-complete]
+                       {:continuation/type :resolve-one-and-stop})}
 
-        ;; Mode selection needed — no yield flag (mode selection is a choice, not a cost)
+        ;; Mode selection needed — no continuation (mode selection is a choice, not a cost)
         (:game/pending-mode-selection new-db)
         {:db new-db}
 

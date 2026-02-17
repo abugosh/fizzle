@@ -300,8 +300,8 @@
           "Stack should still have items (storm copies + spell)"))))
 
 
-(deftest test-cast-and-yield-generic-mana-sets-yield-flag
-  (testing "Regression fizzle-0v55: cast-and-yield sets yield flag on mana allocation selection"
+(deftest test-cast-and-yield-generic-mana-sets-continuation
+  (testing "cast-and-yield sets on-complete continuation on mana allocation selection"
     (let [db (create-full-db)
           [db obj-id] (add-card-to-zone db :merchant-scroll :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1 :black 1})
@@ -312,9 +312,10 @@
           selection (:game/pending-selection result)]
       ;; Selection should exist (mana allocation)
       (is (some? selection) "Should have pending mana allocation selection")
-      ;; Selection should have yield-after-cast flag
-      (is (true? (:selection/yield-after-cast selection))
-          "Mana allocation selection should have :selection/yield-after-cast flag"))))
+      ;; Selection should have on-complete continuation
+      (is (= {:continuation/type :resolve-one-and-stop}
+             (:selection/on-complete selection))
+          "Mana allocation selection should have :selection/on-complete continuation"))))
 
 
 (deftest test-cast-and-yield-generic-mana-auto-resolves
@@ -357,3 +358,74 @@
       ;; Bug: without the fix, spell stays on stack after allocation
       (is (= :graveyard (:object/zone (queries/get-object (:game/db after-yield) obj-id)))
           "Spell should be in graveyard after auto-resolve"))))
+
+
+(deftest test-cast-and-yield-targeted-exact-mana-auto-resolves
+  (testing "Regression fizzle-y9yc: targeted spell with exact mana auto-resolves after targeting"
+    ;; Orim's Chant costs {W}, has targeting. With exact mana, targeting confirms
+    ;; via finalized path. The continuation must survive the finalized path and
+    ;; trigger resolve-one-and-stop.
+    (let [db (create-full-db)
+          [db obj-id] (add-card-to-zone db :orims-chant :hand :player-1)
+          db (mana/add-mana db :player-1 {:white 1})
+          app-db (merge (history/init-history)
+                        {:game/db db
+                         :game/selected-card obj-id})
+          ;; Step 1: cast-and-yield should show targeting selection
+          result (dispatch-cast-and-yield app-db)
+          _ (is (some? (:game/pending-selection result))
+                "Should have pending targeting selection")
+          _ (is (= :cast-time-targeting
+                   (:selection/type (:game/pending-selection result)))
+                "Selection type should be :cast-time-targeting")
+          ;; Selection should carry on-complete continuation
+          _ (is (= {:continuation/type :resolve-one-and-stop}
+                   (:selection/on-complete (:game/pending-selection result)))
+                "Targeting selection should carry on-complete continuation")
+          ;; Step 2: confirm targeting by selecting :player-1 as target
+          _ (reset! rf-db/app-db result)
+          _ (rf/dispatch-sync [:fizzle.events.selection/toggle-selection :player-1])
+          after-target @rf-db/app-db]
+      ;; After targeting confirms (auto-confirm on single select), the spell
+      ;; should be cast AND auto-resolved via the continuation protocol.
+      (is (nil? (:game/pending-selection after-target))
+          "Selection should be cleared after targeting confirms")
+      (is (= :graveyard (:object/zone (queries/get-object (:game/db after-target) obj-id)))
+          "Orim's Chant should be in graveyard after cast-and-yield auto-resolve")
+      (is (empty? (queries/get-all-stack-items (:game/db after-target)))
+          "Stack should be empty after auto-resolve"))))
+
+
+(deftest test-cast-and-yield-targeted-generic-mana-propagates-continuation
+  (testing "Continuation propagates from targeting to chained mana allocation"
+    ;; Brain Freeze costs {1}{U} and has targeting. cast-and-yield should:
+    ;; 1. Show targeting selection with on-complete
+    ;; 2. After target selected, chain to mana allocation with on-complete propagated
+    ;; 3. After mana allocation, continuation triggers auto-resolve
+    (let [db (create-full-db)
+          [db obj-id] (add-card-to-zone db :brain-freeze :hand :player-1)
+          db (mana/add-mana db :player-1 {:blue 1 :black 1})
+          app-db (merge (history/init-history)
+                        {:game/db db
+                         :game/selected-card obj-id})
+          ;; Step 1: cast-and-yield shows targeting selection
+          result (dispatch-cast-and-yield app-db)
+          _ (is (= :cast-time-targeting
+                   (:selection/type (:game/pending-selection result)))
+                "Should show targeting selection first")
+          _ (is (= {:continuation/type :resolve-one-and-stop}
+                   (:selection/on-complete (:game/pending-selection result)))
+                "Targeting selection should carry continuation")
+          ;; Step 2: select target (player-1 for self-mill in testing)
+          _ (reset! rf-db/app-db result)
+          _ (rf/dispatch-sync [:fizzle.events.selection/toggle-selection :player-1])
+          after-target @rf-db/app-db]
+      ;; After targeting, should chain to mana allocation with continuation propagated
+      (is (some? (:game/pending-selection after-target))
+          "Should chain to mana allocation after targeting")
+      (is (= :mana-allocation
+             (:selection/type (:game/pending-selection after-target)))
+          "Chained selection should be mana allocation")
+      (is (= {:continuation/type :resolve-one-and-stop}
+             (:selection/on-complete (:game/pending-selection after-target)))
+          "Continuation should propagate to chained mana allocation selection"))))

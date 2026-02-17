@@ -56,6 +56,30 @@
 
 
 ;; =====================================================
+;; Continuation Protocol
+;; =====================================================
+
+(defmulti apply-continuation
+  "Apply a continuation after selection completes.
+   Dispatches on (:continuation/type continuation).
+
+   Arguments:
+     continuation - Map with :continuation/type and continuation-specific data
+     app-db - The current app-db (selection already dissoc'd)
+
+   Returns updated app-db.
+
+   Defmethods are registered by domain modules (e.g., events/game.cljs
+   registers :resolve-one-and-stop)."
+  (fn [continuation _app-db] (:continuation/type continuation)))
+
+
+(defmethod apply-continuation :default
+  [_ app-db]
+  app-db)
+
+
+;; =====================================================
 ;; Stack-Item Cleanup Helper
 ;; =====================================================
 
@@ -105,27 +129,35 @@
 (defn confirm-selection-impl
   "Shared wrapper for all selection confirmations.
    1. Gets game-db and selection from app-db
-   2. Calls execute-confirmed-selection multimethod
-   3. Handles remaining-effects, cleanup, and chaining based on result
+   2. Reads :selection/on-complete continuation BEFORE dissoc
+   3. Calls execute-confirmed-selection multimethod
+   4. Handles remaining-effects, cleanup, and chaining based on result
+   5. Applies continuation (if present) after selection is cleared
 
    Returns updated app-db."
   [app-db]
   (let [selection (:game/pending-selection app-db)
+        on-complete (:selection/on-complete selection)
         game-db (:game/db app-db)
         result (execute-confirmed-selection game-db selection)]
     (cond
-      ;; Chain to next selection
+      ;; Chain to next selection — propagate on-complete to chained selection
       (:pending-selection result)
-      (-> app-db
-          (assoc :game/db (:db result))
-          (assoc :game/pending-selection (:pending-selection result)))
+      (let [chained-sel (cond-> (:pending-selection result)
+                          on-complete (assoc :selection/on-complete on-complete))]
+        (-> app-db
+            (assoc :game/db (:db result))
+            (assoc :game/pending-selection chained-sel)))
 
       ;; Fully handled (pre-cast, ability, pile-choice, scry, discard with cleanup?)
       (:finalized? result)
-      (cond-> app-db
-        true (assoc :game/db (:db result))
-        true (dissoc :game/pending-selection)
-        (:clear-selected-card? result) (dissoc :game/selected-card))
+      (let [updated (cond-> app-db
+                      true (assoc :game/db (:db result))
+                      true (dissoc :game/pending-selection)
+                      (:clear-selected-card? result) (dissoc :game/selected-card))]
+        (if on-complete
+          (apply-continuation on-complete updated)
+          updated))
 
       ;; Standard: execute remaining-effects and cleanup
       :else
@@ -135,10 +167,13 @@
                                          (effects/execute-effect d player-id effect))
                                        (:db result)
                                        (or remaining-effects []))
-            db-final (cleanup-selection-source db-after-remaining selection)]
-        (-> app-db
-            (assoc :game/db db-final)
-            (dissoc :game/pending-selection))))))
+            db-final (cleanup-selection-source db-after-remaining selection)
+            updated (-> app-db
+                        (assoc :game/db db-final)
+                        (dissoc :game/pending-selection))]
+        (if on-complete
+          (apply-continuation on-complete updated)
+          updated)))))
 
 
 ;; =====================================================
