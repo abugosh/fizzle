@@ -814,14 +814,19 @@
                      :continue-yield? true})))
 
               ;; Bot turn, same player (advance-with-stops returned after one phase)
-              ;; Execute bot action for current phase, then continue via re-dispatch
-              ;; so each phase gets its own history entry (ADR-004 compliant)
+              ;; Execute bot action for current phase, then check human's opponent-turn
+              ;; stops (stored on bot entity via setup). Pause if stop matches.
               is-bot-turn
               (let [current-phase (:game/phase (queries/get-game-state result-db))
                     bot-arch (bot/get-bot-archetype result-db new-active-id)
-                    acted-db (execute-bot-phase-action result-db bot-arch current-phase new-active-id)]
-                {:app-db (assoc (:app-db result) :game/db acted-db)
-                 :continue-yield? true})
+                    acted-db (execute-bot-phase-action result-db bot-arch current-phase new-active-id)
+                    bot-eid (queries/get-player-eid acted-db new-active-id)
+                    has-stop? (and (not auto-mode)
+                                   (priority/check-stop acted-db bot-eid current-phase))]
+                (if has-stop?
+                  {:app-db (assoc (:app-db result) :game/db acted-db)}
+                  {:app-db (assoc (:app-db result) :game/db acted-db)
+                   :continue-yield? true}))
 
               ;; F6 within same turn (no turn boundary crossed) — shouldn't happen
               ;; since F6 ignores stops and advances to turn boundary

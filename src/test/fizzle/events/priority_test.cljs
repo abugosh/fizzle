@@ -452,3 +452,45 @@
       ;; Even with no actions, bot phases should produce separate history entries
       (is (< 1 (count entries))
           "Should have multiple history entries even for empty bot turn"))))
+
+
+;; === Human stops during opponent (bot) turn ===
+
+(deftest bot-turn-respects-human-opponent-stop
+  (testing "Opponent turn pauses at phase where human has an opponent-turn stop set"
+    (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
+                 (h/add-opponent {:bot-archetype :goldfish :stops #{:draw}}))
+          ;; Advance to main2 — last player stop before turn boundary
+          game-db (-> db
+                      (game/advance-phase :player-1)  ; main1 -> combat
+                      (game/advance-phase :player-1)) ; combat -> main2
+          app-db {:game/db game-db}
+          ;; Loop yield-impl until it stops (simulates ::yield chain)
+          final (loop [adb app-db n 50]
+                  (if (zero? n) adb
+                      (let [result (game/yield-impl adb)]
+                        (if (:continue-yield? result)
+                          (recur (:app-db result) (dec n))
+                          (:app-db result)))))
+          result-db (:game/db final)]
+      (is (= :draw (:game/phase (q/get-game-state result-db)))
+          "Should stop at draw phase on opponent's turn")
+      (is (= 2 (:game/turn (q/get-game-state result-db)))
+          "Should be opponent's turn (turn 2)"))))
+
+
+(deftest bot-turn-f6-ignores-opponent-stops
+  (testing "F6 mode advances through opponent's turn ignoring human stops"
+    (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
+                 (h/add-opponent {:bot-archetype :goldfish :stops #{:draw}}))
+          game-db (-> db
+                      (game/advance-phase :player-1)  ; main1 -> combat
+                      (game/advance-phase :player-1)) ; combat -> main2
+          app-db (merge (history/init-history) {:game/db game-db})
+          ;; yield-all sets F6 mode, which should skip all stops
+          result (dispatch-event app-db [::game/yield-all])
+          result-db (:game/db result)]
+      (is (= :main1 (:game/phase (q/get-game-state result-db)))
+          "F6 should advance through opponent's turn to player's main1")
+      (is (= 3 (:game/turn (q/get-game-state result-db)))
+          "Should be player's turn 3 (past opponent's turn 2)"))))
