@@ -142,6 +142,55 @@
     "Start new turn"))
 
 
+(defn- describe-phase-result
+  "Describe the resulting game state after a yield: phase name and turn if changed."
+  [pre-game-db game-db-after]
+  (try
+    (let [after-state (queries/get-game-state game-db-after)
+          after-phase (:game/phase after-state)
+          after-turn (:game/turn after-state)
+          pre-turn (when pre-game-db
+                     (:game/turn (queries/get-game-state pre-game-db)))]
+      (cond
+        (and after-turn pre-turn (> after-turn pre-turn))
+        (str "Turn " after-turn " " (get phase-names after-phase after-phase))
+
+        after-phase
+        (get phase-names after-phase (name after-phase))
+
+        :else nil))
+    (catch :default _ nil)))
+
+
+(defn- describe-yield
+  "Describe a yield event: what resolved and/or where we ended up."
+  [pre-game-db game-db-after]
+  (let [resolved (when pre-game-db
+                   (when-let [top (get-stack-top-info pre-game-db)]
+                     (let [item-type (:stack-item/type top)
+                           card-name (get-card-name pre-game-db (:stack-item/source top))]
+                       (case item-type
+                         (:spell :storm-copy) card-name
+                         :activated-ability (when card-name (str card-name " ability"))
+                         :storm (:stack-item/description top)
+                         card-name))))
+        phase-desc (describe-phase-result pre-game-db game-db-after)]
+    (cond
+      (and resolved phase-desc) (str "Yield: " resolved " \u2192 " phase-desc)
+      resolved (str "Yield: " resolved)
+      phase-desc (str "Yield \u2192 " phase-desc)
+      :else "Yield")))
+
+
+(defn- describe-yield-all
+  "Describe a yield-all event: where we ended up after resolving everything."
+  [pre-game-db game-db-after]
+  (let [phase-desc (describe-phase-result pre-game-db game-db-after)]
+    (if phase-desc
+      (str "Yield All \u2192 " phase-desc)
+      "Yield All")))
+
+
 (defn- describe-play-land
   "Describe a play-land event. Event args contain [_ object-id]."
   [object-id game-db-after]
@@ -223,10 +272,10 @@
      (describe-cast-and-yield pre-game-db game-db-after casting-spell-id)
 
      :fizzle.events.game/yield
-     "Yield"
+     (describe-yield pre-game-db game-db-after)
 
      :fizzle.events.game/yield-all
-     "Yield All"
+     (describe-yield-all pre-game-db game-db-after)
 
      :fizzle.events.game/resolve-top
      (describe-resolve-top pre-game-db)

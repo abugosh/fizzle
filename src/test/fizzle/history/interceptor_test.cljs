@@ -337,8 +337,8 @@
           result (run-interceptor context)
           result-db (get-in result [:effects :db])
           entry (first (:history/main result-db))]
-      (is (= "Yield" (:entry/description entry))
-          "Should have Yield description"))))
+      (is (= "Yield \u2192 Combat" (:entry/description entry))
+          "Should have Yield description with target phase"))))
 
 
 (deftest test-yield-all-description-with-real-db
@@ -355,8 +355,8 @@
           result (run-interceptor context)
           result-db (get-in result [:effects :db])
           entry (first (:history/main result-db))]
-      (is (= "Yield All" (:entry/description entry))
-          "Should have Yield All description"))))
+      (is (= "Yield All \u2192 Main 2" (:entry/description entry))
+          "Should have Yield All description with target phase"))))
 
 
 (deftest test-cast-spell-selection-created-does-not-create-entry

@@ -278,14 +278,31 @@
     (let [app-db (merge (history/init-history)
                         (setup-app-db {:stops #{:main1 :main2}}))
           ;; Toggle off main2
-          result1 (dispatch-event app-db [::game/toggle-stop :main2])
+          result1 (dispatch-event app-db [::game/toggle-stop :player :main2])
           stops1 (:player/stops (d/pull (:game/db result1) [:player/stops]
                                         (q/get-player-eid (:game/db result1) :player-1)))]
       (is (= #{:main1} stops1)
           "Should have removed main2 from stops")
       ;; Toggle on combat
-      (let [result2 (dispatch-event result1 [::game/toggle-stop :combat])
+      (let [result2 (dispatch-event result1 [::game/toggle-stop :player :combat])
             stops2 (:player/stops (d/pull (:game/db result2) [:player/stops]
                                           (q/get-player-eid (:game/db result2) :player-1)))]
         (is (= #{:main1 :combat} stops2)
             "Should have added combat to stops")))))
+
+
+(deftest integration-stop-toggle-opponent-updates-game-state
+  (testing "toggle-stop :opponent updates opponent stops in game-db"
+    (let [app-db (merge (history/init-history)
+                        (setup-app-db {:stops #{:main1 :main2}}))
+          ;; Toggle on end for opponent
+          result1 (dispatch-event app-db [::game/toggle-stop :opponent :end])
+          opp-eid (q/get-player-eid (:game/db result1) :player-2)
+          stops1 (:player/stops (d/pull (:game/db result1) [:player/stops] opp-eid))]
+      (is (= #{:end} stops1)
+          "Should have added end to opponent stops")
+      ;; Toggle off end for opponent
+      (let [result2 (dispatch-event result1 [::game/toggle-stop :opponent :end])
+            stops2 (:player/stops (d/pull (:game/db result2) [:player/stops] opp-eid))]
+        (is (= #{} stops2)
+            "Should have removed end from opponent stops")))))

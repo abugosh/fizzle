@@ -122,6 +122,18 @@
         (or (:player/stops (d/pull game-db [:player/stops] player-eid)) #{})))))
 
 
+(rf/reg-sub
+  ::opponent-stops
+  :<- [::game-db]
+  (fn [game-db _]
+    (when game-db
+      (let [opponent-id (queries/get-opponent-id game-db :player-1)]
+        (if opponent-id
+          (let [opponent-eid (queries/get-player-eid game-db opponent-id)]
+            (or (:player/stops (d/pull game-db [:player/stops] opponent-eid)) #{}))
+          #{})))))
+
+
 ;; === Game Over Subscriptions ===
 
 (rf/reg-sub
