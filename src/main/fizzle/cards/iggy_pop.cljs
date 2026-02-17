@@ -9,6 +9,7 @@
     [fizzle.cards.deep-analysis :as deep-analysis]
     [fizzle.cards.flash-of-insight :as flash-of-insight]
     [fizzle.cards.ill-gotten-gains :as ill-gotten-gains]
+    [fizzle.cards.lightning-bolt :as lightning-bolt]
     [fizzle.cards.orims-chant :as orims-chant]
     [fizzle.cards.ray-of-revelation :as ray-of-revelation]
     [fizzle.cards.recoup :as recoup]
@@ -352,7 +353,7 @@
    careful-study mental-note opt merchant-scroll intuition polluted-delta
    basic-lands/plains basic-lands/mountain basic-lands/forest
    deep-analysis/deep-analysis cephalid-coliseum/cephalid-coliseum recoup/recoup
-   ill-gotten-gains/ill-gotten-gains orims-chant/orims-chant
+   ill-gotten-gains/ill-gotten-gains lightning-bolt/lightning-bolt orims-chant/orims-chant
    ray-of-revelation/ray-of-revelation seal-of-cleansing/seal-of-cleansing
    flash-of-insight/flash-of-insight])
 
