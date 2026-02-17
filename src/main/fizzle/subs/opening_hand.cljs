@@ -19,7 +19,7 @@
   :<- [::game-subs/game-db]
   (fn [game-db _]
     (when game-db
-      (count (queries/get-objects-in-zone game-db :player-1 :library)))))
+      (count (queries/get-objects-in-zone game-db (queries/get-human-player-id game-db) :library)))))
 
 
 (rf/reg-sub

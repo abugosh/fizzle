@@ -163,6 +163,18 @@
            (mapv first)))))  ; extract just object-ids
 
 
+(defn get-human-player-id
+  "Get the :player/id keyword of the human player.
+   Returns the stored :game/human-player-id from game state.
+   Returns :player-1 as fallback if not set."
+  [db]
+  (or (d/q '[:find ?hid .
+             :where [?g :game/id _]
+             [?g :game/human-player-id ?hid]]
+           db)
+      :player-1))
+
+
 (defn get-opponent-id
   "Get the opponent player's ID for a given player.
    Returns the player-id of the player marked as opponent.

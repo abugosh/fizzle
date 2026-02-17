@@ -40,7 +40,8 @@
                            :game/turn 1
                            :game/phase :main1
                            :game/active-player player-eid
-                           :game/priority player-eid}])
+                           :game/priority player-eid
+                           :game/human-player-id :player-1}])
        (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid :player-1))
        (when-let [stops (:stops opts)]
          (d/transact! conn [[:db/add player-eid :player/stops stops]])))

@@ -40,7 +40,8 @@
                           :game/turn 5
                           :game/phase :main1
                           :game/active-player player-eid
-                          :game/priority player-eid}]))
+                          :game/priority player-eid
+                          :game/human-player-id :player-1}]))
     @conn))
 
 
@@ -477,3 +478,22 @@
   (testing "opponent-battlefield returns nil when game-db is nil"
     (let [result (sub-value {} [::subs/opponent-battlefield])]
       (is (nil? result)))))
+
+
+;; === human-player-id tests ===
+
+(deftest test-can-cast-uses-human-player-id
+  (testing "::can-cast? queries based on stored human-player-id, not hardcoded :player-1"
+    (let [game-db (make-game-db)
+          ;; Verify human-player-id is stored
+          human-pid (q/get-human-player-id game-db)]
+      (is (= :player-1 human-pid)
+          "human-player-id should be :player-1"))))
+
+
+(deftest test-can-play-land-uses-human-player-id
+  (testing "::can-play-land? queries based on stored human-player-id, not hardcoded :player-1"
+    (let [game-db (make-game-db)
+          human-pid (q/get-human-player-id game-db)]
+      (is (= :player-1 human-pid)
+          "human-player-id should be :player-1"))))

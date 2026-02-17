@@ -170,7 +170,8 @@
                                   (repeatedly (count library-ids) random-uuid)))
     (d/transact! conn (opponent-deck-tx @conn opp-eid (bot/bot-deck :goldfish)))
     (d/transact! conn [{:game/id :game-1 :game/turn 1 :game/phase :main1
-                        :game/active-player player-eid :game/priority player-eid}])
+                        :game/active-player player-eid :game/priority player-eid
+                        :game/human-player-id :player-1}])
     (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid :player-1))
     (d/transact! conn (turn-based/create-turn-based-triggers-tx opp-eid :opponent))
     (d/transact! conn [[:db/add player-eid :player/stops (:player stops)]

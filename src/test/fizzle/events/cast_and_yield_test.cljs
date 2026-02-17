@@ -56,7 +56,8 @@
                           :game/turn 1
                           :game/phase :main1
                           :game/active-player player-eid
-                          :game/priority player-eid}]))
+                          :game/priority player-eid
+                          :game/human-player-id :player-1}]))
     @conn))
 
 

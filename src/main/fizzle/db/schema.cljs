@@ -67,6 +67,7 @@
    :game/loss-condition {}  ; Keyword like :empty-library, :life-zero when player loses
    :game/passed         {:db/valueType :db.type/ref :db/cardinality :db.cardinality/many}  ; Players who have passed priority
    :game/auto-mode      {}  ; :resolving | :f6 | nil
+   :game/human-player-id {}  ; :player-1 — explicit identity of the human player
 
    ;; === Stack Items (unified stack representation) ===
    ;; Stack items represent anything on the stack awaiting resolution.

@@ -23,21 +23,22 @@
   ::hand
   :<- [::game-db]
   (fn [game-db _]
-    (when game-db (sorting/sort-cards (queries/get-hand game-db :player-1)))))
+    (when game-db
+      (sorting/sort-cards (queries/get-hand game-db (queries/get-human-player-id game-db))))))
 
 
 (rf/reg-sub
   ::mana-pool
   :<- [::game-db]
   (fn [game-db _]
-    (when game-db (queries/get-mana-pool game-db :player-1))))
+    (when game-db (queries/get-mana-pool game-db (queries/get-human-player-id game-db)))))
 
 
 (rf/reg-sub
   ::storm-count
   :<- [::game-db]
   (fn [game-db _]
-    (when game-db (queries/get-storm-count game-db :player-1))))
+    (when game-db (queries/get-storm-count game-db (queries/get-human-player-id game-db)))))
 
 
 (rf/reg-sub
@@ -45,7 +46,8 @@
   :<- [::game-db]
   (fn [game-db _]
     (when game-db
-      (let [stack-items (queries/get-all-stack-items game-db)
+      (let [human-pid (queries/get-human-player-id game-db)
+            stack-items (queries/get-all-stack-items game-db)
             ;; Exclude stack-items with object-refs (spells/copies) — the game object already represents them
             non-spell-items (remove :stack-item/object-ref stack-items)
             ;; Enrich with source card name for display
@@ -57,7 +59,7 @@
                                        si)
                                      si))
                                  non-spell-items)
-            spells (queries/get-objects-in-zone game-db :player-1 :stack)
+            spells (queries/get-objects-in-zone game-db human-pid :stack)
             order-key (fn [item]
                         (or (:stack-item/position item)
                             (:object/position item)
@@ -73,9 +75,10 @@
   :<- [::selected-card]
   (fn [[game-db selected] _]
     (when (and game-db selected)
-      (and (rules/can-cast? game-db :player-1 selected)
-           ;; Exclude lands - they use play-land, not cast
-           (not (rules/land-card? game-db selected))))))
+      (let [human-pid (queries/get-human-player-id game-db)]
+        (and (rules/can-cast? game-db human-pid selected)
+             ;; Exclude lands - they use play-land, not cast
+             (not (rules/land-card? game-db selected)))))))
 
 
 (rf/reg-sub
@@ -84,7 +87,7 @@
   :<- [::selected-card]
   (fn [[game-db selected] _]
     (when (and game-db selected)
-      (rules/can-play-land? game-db :player-1 selected))))
+      (rules/can-play-land? game-db (queries/get-human-player-id game-db) selected))))
 
 
 (rf/reg-sub
@@ -118,7 +121,8 @@
   :<- [::game-db]
   (fn [game-db _]
     (when game-db
-      (let [player-eid (queries/get-player-eid game-db :player-1)]
+      (let [human-pid (queries/get-human-player-id game-db)
+            player-eid (queries/get-player-eid game-db human-pid)]
         (or (:player/stops (d/pull game-db [:player/stops] player-eid)) #{})))))
 
 
@@ -127,7 +131,8 @@
   :<- [::game-db]
   (fn [game-db _]
     (when game-db
-      (let [opponent-id (queries/get-opponent-id game-db :player-1)]
+      (let [human-pid (queries/get-human-player-id game-db)
+            opponent-id (queries/get-opponent-id game-db human-pid)]
         (if opponent-id
           (let [opponent-eid (queries/get-player-eid game-db opponent-id)]
             (or (:player/stops (d/pull game-db [:player/stops] opponent-eid)) #{}))
@@ -150,15 +155,16 @@
   :<- [::game-db]
   (fn [game-db _]
     (when game-db
-      (let [game-state (queries/get-game-state game-db)
+      (let [human-pid (queries/get-human-player-id game-db)
+            game-state (queries/get-game-state game-db)
             winner-ref (:game/winner game-state)]
         (when winner-ref
           (let [winner-pid (:player/id (d/pull game-db [:player/id] (:db/id winner-ref)))
-                outcome (if (= :player-1 winner-pid) :win :loss)]
+                outcome (if (= human-pid winner-pid) :win :loss)]
             {:outcome outcome
              :turn (:game/turn game-state)
              :condition (:game/loss-condition game-state)
-             :storm-count (queries/get-storm-count game-db :player-1)
+             :storm-count (queries/get-storm-count game-db human-pid)
              :opponent-life (queries/get-life-total game-db :opponent)
              :opponent-library-size (count (queries/get-objects-in-zone game-db :opponent :library))}))))))
 
@@ -178,14 +184,15 @@
   ::life-total
   :<- [::game-db]
   (fn [game-db [_ player-id]]
-    (when game-db (queries/get-life-total game-db (or player-id :player-1)))))
+    (when game-db
+      (queries/get-life-total game-db (or player-id (queries/get-human-player-id game-db))))))
 
 
 (rf/reg-sub
   ::player-life
   :<- [::game-db]
   (fn [game-db _]
-    (when game-db (queries/get-life-total game-db :player-1))))
+    (when game-db (queries/get-life-total game-db (queries/get-human-player-id game-db)))))
 
 
 (rf/reg-sub
@@ -200,7 +207,8 @@
   :<- [::game-db]
   (fn [game-db _]
     (when game-db
-      (let [all (queries/get-objects-in-zone game-db :player-1 :battlefield)
+      (let [human-pid (queries/get-human-player-id game-db)
+            all (queries/get-objects-in-zone game-db human-pid :battlefield)
             {:keys [creatures other lands]} (sorting/group-by-type all)]
         {:creatures (sorting/sort-cards creatures)
          :other (sorting/sort-cards other)
@@ -244,9 +252,10 @@
   :<- [::game-db]
   (fn [game-db _]
     (when game-db
-      (let [gy-cards (queries/get-objects-in-zone game-db :player-1 :graveyard)]
+      (let [human-pid (queries/get-human-player-id game-db)
+            gy-cards (queries/get-objects-in-zone game-db human-pid :graveyard)]
         (->> gy-cards
-             (filter #(rules/can-cast? game-db :player-1 (:object/id %)))
+             (filter #(rules/can-cast? game-db human-pid (:object/id %)))
              (map :object/id)
              set)))))
 
@@ -257,7 +266,8 @@
   :<- [::game-db]
   (fn [game-db _]
     (when game-db
-      (let [gy-cards (queries/get-objects-in-zone game-db :player-1 :graveyard)]
+      (let [human-pid (queries/get-human-player-id game-db)
+            gy-cards (queries/get-objects-in-zone game-db human-pid :graveyard)]
         (->> gy-cards
              (filter #(has-flashback? game-db %))
              (map :object/id)
@@ -270,7 +280,8 @@
   :<- [::graveyard-sort-mode]
   (fn [[game-db sort-mode] _]
     (when game-db
-      (let [all (queries/get-objects-in-zone game-db :player-1 :graveyard)]
+      (let [human-pid (queries/get-human-player-id game-db)
+            all (queries/get-objects-in-zone game-db human-pid :graveyard)]
         (if (= sort-mode :sorted)
           (let [flashback (filterv #(has-flashback? game-db %) all)
                 remainder (filterv #(not (has-flashback? game-db %)) all)]
@@ -287,9 +298,10 @@
   :<- [::game-db]
   (fn [game-db _]
     (when game-db
-      (let [gy-count (count (queries/get-objects-in-zone game-db :player-1 :graveyard))
-            lib-count (count (queries/get-objects-in-zone game-db :player-1 :library))
-            exile-count (count (queries/get-objects-in-zone game-db :player-1 :exile))]
+      (let [human-pid (queries/get-human-player-id game-db)
+            gy-count (count (queries/get-objects-in-zone game-db human-pid :graveyard))
+            lib-count (count (queries/get-objects-in-zone game-db human-pid :library))
+            exile-count (count (queries/get-objects-in-zone game-db human-pid :exile))]
         {:graveyard gy-count
          :library lib-count
          :exile exile-count
