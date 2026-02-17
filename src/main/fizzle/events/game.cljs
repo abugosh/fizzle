@@ -112,24 +112,28 @@
          (map vector uuids card-ids))))
 
 
-(defn- opponent-library-tx
-  "Return transaction data for opponent's library from a deck list.
+(defn- opponent-deck-tx
+  "Return transaction data for opponent's library and opening hand from a deck list.
+   Shuffles the deck, draws 7 for hand, rest goes in library.
    deck-list: vector of {:card/id :count} maps (from bot-deck multimethod)."
   [db opp-eid deck-list]
-  (let [card-ids (into []
-                       (mapcat (fn [{:keys [card/id count]}]
-                                 (repeat count id)))
-                       deck-list)]
-    (vec (map-indexed
-           (fn [i card-id]
-             {:object/id (random-uuid)
-              :object/card (get-card-eid db card-id)
-              :object/zone :library
-              :object/owner opp-eid
-              :object/controller opp-eid
-              :object/tapped false
-              :object/position i})
-           (shuffle card-ids)))))
+  (let [card-ids (shuffle
+                   (into []
+                         (mapcat (fn [{:keys [card/id count]}]
+                                   (repeat count id)))
+                         deck-list))
+        hand-ids (take 7 card-ids)
+        library-ids (drop 7 card-ids)
+        make-obj (fn [card-id zone position]
+                   {:object/id (random-uuid)
+                    :object/card (get-card-eid db card-id)
+                    :object/zone zone
+                    :object/owner opp-eid
+                    :object/controller opp-eid
+                    :object/tapped false
+                    :object/position position})]
+    (into (vec (map #(make-obj % :hand 0) hand-ids))
+          (map-indexed (fn [i card-id] (make-obj card-id :library i)) library-ids))))
 
 
 (defn init-game-state
@@ -163,7 +167,7 @@
     (d/transact! conn (objects-tx @conn hand-ids :hand player-eid hand-uuids))
     (d/transact! conn (objects-tx @conn library-ids :library player-eid
                                   (repeatedly (count library-ids) random-uuid)))
-    (d/transact! conn (opponent-library-tx @conn opp-eid (bot/bot-deck :goldfish)))
+    (d/transact! conn (opponent-deck-tx @conn opp-eid (bot/bot-deck :goldfish)))
     (d/transact! conn [{:game/id :game-1 :game/turn 1 :game/phase :main1
                         :game/active-player player-eid :game/priority player-eid}])
     (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid :player-1))

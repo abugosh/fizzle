@@ -367,12 +367,20 @@
           "Opponent should have no permanents on battlefield"))))
 
 
+(deftest test-opponent-starts-with-7-card-hand
+  (testing "opponent starts with 7-card opening hand drawn from library"
+    (let [db (init-and-get-db)
+          hand (get-hand-objects db :opponent)]
+      (is (= 7 (count hand))
+          "Opponent hand should have 7 cards"))))
+
+
 (deftest test-opponent-library-populated-from-bot-deck
-  (testing "opponent library has 60 cards from bot-deck multimethod"
+  (testing "opponent library has 53 cards (60 minus 7-card hand)"
     (let [db (init-and-get-db)
           library (get-library-objects db :opponent)]
-      (is (= 60 (count library))
-          "Opponent library should have 60 cards (from goldfish bot-deck)"))))
+      (is (= 53 (count library))
+          "Opponent library should have 53 cards after drawing 7"))))
 
 
 (deftest test-opponent-library-contains-basic-lands
