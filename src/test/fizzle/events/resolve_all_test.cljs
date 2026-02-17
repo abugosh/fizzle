@@ -386,39 +386,5 @@
 
 ;; === History logging tests ===
 
-(deftest test-resolve-all-creates-history-entries
-  (testing "Resolve-all creates one history entry per resolved item"
-    (let [db (create-full-db)
-          ;; Create 3 simple trigger stack-items
-          db (stack/create-stack-item db
-                                      {:stack-item/type :permanent-tapped
-                                       :stack-item/controller :player-1
-                                       :stack-item/source (random-uuid)
-                                       :stack-item/effects [{:effect/type :lose-life
-                                                             :effect/amount 1
-                                                             :effect/target :controller}]})
-          db (stack/create-stack-item db
-                                      {:stack-item/type :permanent-tapped
-                                       :stack-item/controller :player-1
-                                       :stack-item/source (random-uuid)
-                                       :stack-item/effects [{:effect/type :lose-life
-                                                             :effect/amount 1
-                                                             :effect/target :controller}]})
-          db (stack/create-stack-item db
-                                      {:stack-item/type :permanent-tapped
-                                       :stack-item/controller :player-1
-                                       :stack-item/source (random-uuid)
-                                       :stack-item/effects [{:effect/type :lose-life
-                                                             :effect/amount 1
-                                                             :effect/target :controller}]})
-          ;; Create app-db with history initialized
-          app-db (merge (history/init-history) {:game/db db})
-          entries-before (count (history/effective-entries app-db))
-          result (dispatch-resolve-all app-db)
-          entries-after (count (history/effective-entries result))]
-      ;; Should have added exactly 3 entries (one per resolved item)
-      (is (= 3 (- entries-after entries-before))
-          "Should create one history entry per resolved item")
-      ;; History position should advance to tip
-      (is (= (dec entries-after) (:history/position result))
-          "History position should be at tip"))))
+;; History entry test for resolve-all moved to priority_test.cljs
+;; (::yield-all is now the user-facing action that creates history entries)

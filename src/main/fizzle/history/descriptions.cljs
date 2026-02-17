@@ -222,6 +222,12 @@
      :fizzle.events.game/cast-and-yield
      (describe-cast-and-yield pre-game-db game-db-after casting-spell-id)
 
+     :fizzle.events.game/yield
+     "Yield"
+
+     :fizzle.events.game/yield-all
+     "Yield All"
+
      :fizzle.events.game/resolve-top
      (describe-resolve-top pre-game-db)
 

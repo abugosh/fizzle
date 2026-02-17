@@ -15,9 +15,6 @@
     :fizzle.events.game/cast-and-yield
     :fizzle.events.game/yield
     :fizzle.events.game/yield-all
-    :fizzle.events.game/resolve-top
-    :fizzle.events.game/resolve-all
-    :fizzle.events.game/advance-phase
     ;; start-turn creates its own history entries (opponent draw + turn start)
     :fizzle.events.game/play-land
     :fizzle.events.abilities/activate-mana-ability
@@ -88,13 +85,11 @@
                        had-pending? (get-in context [:coeffects :history/had-pending?])
                        selection-created (and (not had-pending?)
                                               (some? (:game/pending-selection db-after)))
-                       ;; resolve-top and resolve-all trigger on selection-created.
+                       ;; yield/yield-all/cast-and-yield trigger on selection-created.
                        ;; cast-spell and activate-ability create selections that chain
                        ;; to confirm-selection (which has its own priority entry).
                        selection-triggers-entry (and selection-created
-                                                     (#{:fizzle.events.game/resolve-top
-                                                        :fizzle.events.game/resolve-all
-                                                        :fizzle.events.game/yield
+                                                     (#{:fizzle.events.game/yield
                                                         :fizzle.events.game/yield-all
                                                         :fizzle.events.game/cast-and-yield} event-id))
                        casting-spell-id (get-in context [:coeffects :history/casting-spell-id])]

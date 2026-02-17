@@ -143,20 +143,20 @@
   (testing "Entry uses description from describe-event when available"
     (let [pre-db (make-db-with-history :db-old)
           post-db (make-db-with-history :db-new)
-          event [:fizzle.events.game/advance-phase]
+          event [:fizzle.events.game/yield]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])
           entry (first (:history/main result-db))]
-      (is (= "Advance phase" (:entry/description entry))))))
+      (is (= "Yield" (:entry/description entry))))))
 
 
 (deftest test-priority-events-all-have-descriptions
   (testing "All priority events produce named descriptions (not fallback)"
     (doseq [event [[:fizzle.events.game/cast-spell]
                    [:fizzle.events.game/cast-and-yield]
-                   [:fizzle.events.game/resolve-top]
-                   [:fizzle.events.game/advance-phase]
+                   [:fizzle.events.game/yield]
+                   [:fizzle.events.game/yield-all]
                    ;; start-turn creates its own history entries (not via interceptor)
                    [:fizzle.events.game/play-land :obj-1]
                    [:fizzle.events.game/init-game]
@@ -212,12 +212,12 @@
           ;; Post-db has same game-db but gained a pending-selection
           post-db (assoc (make-db-with-history same-db)
                          :game/pending-selection {:selection/type :peek-and-select})
-          event [:fizzle.events.game/resolve-top]
+          event [:fizzle.events.game/yield]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])]
       (is (= 1 (count (:history/main result-db)))
-          "Entry should be created when resolve-top creates a pending-selection"))))
+          "Entry should be created when yield creates a pending-selection"))))
 
 
 (deftest test-after-skips-when-selection-already-existed
@@ -229,7 +229,7 @@
           ;; Post-db still has a pending-selection (same or different)
           post-db (assoc (make-db-with-history same-db)
                          :game/pending-selection {:selection/type :discard})
-          event [:fizzle.events.game/resolve-top]
+          event [:fizzle.events.game/yield]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])]
@@ -243,7 +243,7 @@
           pre-db (make-db-with-history same-db)
           post-db (assoc (make-db-with-history same-db)
                          :game/pending-selection {:selection/type :peek-and-select})
-          event [:fizzle.events.game/resolve-top]
+          event [:fizzle.events.game/yield]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])
@@ -322,44 +322,41 @@
           "Turn should be 1 from real game state"))))
 
 
-(deftest test-advance-phase-description-with-real-db
-  (testing "Advance phase description includes phase name with real Datascript db"
+(deftest test-yield-description-with-real-db
+  (testing "Yield description with real Datascript db"
     (let [db-before (create-game-db)
-          ;; Simulate advancing to combat phase
+          ;; Simulate a game-db change from yielding
           conn (d/conn-from-db db-before)
           game-eid (d/q '[:find ?e . :where [?e :game/id :game-1]] db-before)
           _ (d/transact! conn [[:db/add game-eid :game/phase :combat]])
           db-after @conn
           pre-db (make-db-with-history db-before)
           post-db (make-db-with-history db-after)
-          event [:fizzle.events.game/advance-phase]
+          event [:fizzle.events.game/yield]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])
           entry (first (:history/main result-db))]
-      (is (= "Advance to Combat" (:entry/description entry))
-          "Should include phase name from real game state"))))
+      (is (= "Yield" (:entry/description entry))
+          "Should have Yield description"))))
 
 
-(deftest test-resolve-top-description-with-real-db
-  (testing "Resolve top description includes card name with real Datascript db"
+(deftest test-yield-all-description-with-real-db
+  (testing "Yield-all description with real Datascript db"
     (let [db-before (create-game-db)
-          [db-with-card obj-id] (add-card-to-zone db-before :dark-ritual :hand :player-1)
-          db-mana (mana/add-mana db-with-card :player-1 {:black 1})
-          ;; Cast spell to put it on stack
-          db-on-stack (rules/cast-spell db-mana :player-1 obj-id)
-          ;; Resolve it
-          db-after-resolve (rules/resolve-spell db-on-stack :player-1 obj-id)
-          ;; Use db-on-stack as pre-db (spell was on stack before resolve)
-          pre-db (make-db-with-history db-on-stack)
-          post-db (make-db-with-history db-after-resolve)
-          event [:fizzle.events.game/resolve-top]
+          conn (d/conn-from-db db-before)
+          game-eid (d/q '[:find ?e . :where [?e :game/id :game-1]] db-before)
+          _ (d/transact! conn [[:db/add game-eid :game/phase :main2]])
+          db-after @conn
+          pre-db (make-db-with-history db-before)
+          post-db (make-db-with-history db-after)
+          event [:fizzle.events.game/yield-all]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])
           entry (first (:history/main result-db))]
-      (is (= "Resolve Dark Ritual" (:entry/description entry))
-          "Should include card name from real db"))))
+      (is (= "Yield All" (:entry/description entry))
+          "Should have Yield All description"))))
 
 
 (deftest test-cast-spell-selection-created-does-not-create-entry

@@ -1,6 +1,7 @@
 (ns fizzle.events.priority-test
   (:require
     [cljs.test :refer-macros [deftest is testing]]
+    [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.priority :as priority]
     [fizzle.engine.rules :as rules]
@@ -230,3 +231,61 @@
           "Should have pending selection for targeted spell")
       (is (empty? (q/get-all-stack-items (:game/db result)))
           "Spell should not be on stack yet (targeting is pre-cast)"))))
+
+
+;; === Integration Tests (Step Group 10) ===
+
+(deftest integration-cast-yield-resolve-mana
+  (testing "Full cast -> yield -> resolve -> mana added flow"
+    (let [db (-> (h/create-test-db {:mana {:black 1} :stops #{:main1 :main2}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
+          ;; Cast spell (puts on stack, spends mana)
+          app-db (merge (history/init-history)
+                        {:game/db (rules/cast-spell db' :player-1 obj-id)})
+          ;; Yield to resolve (dispatch through re-frame)
+          result (dispatch-event app-db [::game/yield])
+          result-db (:game/db result)]
+      ;; Spell should have resolved
+      (is (= :graveyard (:object/zone (q/get-object result-db obj-id)))
+          "Dark Ritual should be in graveyard after resolution")
+      (is (= 3 (:black (q/get-mana-pool result-db :player-1)))
+          "Should have BBB from resolved Dark Ritual")
+      (is (= :main1 (:game/phase (q/get-game-state result-db)))
+          "Should stay in main1 (stop is set)")
+      ;; History should have an entry
+      (is (< 0 (count (history/effective-entries result)))
+          "Should have created history entries"))))
+
+
+(deftest integration-f6-through-full-turn-cycle
+  (testing "F6 (yield-all on empty stack) advances through full turn"
+    (let [app-db (merge (history/init-history)
+                        (setup-app-db))
+          result (dispatch-event app-db [::game/yield-all])
+          result-db (:game/db result)]
+      (is (= 2 (:game/turn (q/get-game-state result-db)))
+          "Should advance to turn 2")
+      (is (nil? (priority/get-auto-mode result-db))
+          "Auto-mode should be cleared after F6")
+      ;; History should have entries for the turn transition
+      (is (< 0 (count (history/effective-entries result)))
+          "Should have created history entries for turn transition"))))
+
+
+(deftest integration-stop-toggle-updates-game-state
+  (testing "toggle-stop event updates player stops in game-db"
+    (let [app-db (merge (history/init-history)
+                        (setup-app-db {:stops #{:main1 :main2}}))
+          ;; Toggle off main2
+          result1 (dispatch-event app-db [::game/toggle-stop :main2])
+          stops1 (:player/stops (d/pull (:game/db result1) [:player/stops]
+                                        (q/get-player-eid (:game/db result1) :player-1)))]
+      (is (= #{:main1} stops1)
+          "Should have removed main2 from stops")
+      ;; Toggle on combat
+      (let [result2 (dispatch-event result1 [::game/toggle-stop :combat])
+            stops2 (:player/stops (d/pull (:game/db result2) [:player/stops]
+                                          (q/get-player-eid (:game/db result2) :player-1)))]
+        (is (= #{:main1 :combat} stops2)
+            "Should have added combat to stops")))))
