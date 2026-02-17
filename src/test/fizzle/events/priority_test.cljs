@@ -29,6 +29,14 @@
      {:game/db db})))
 
 
+(defn- dispatch-event
+  "Dispatch an event through re-frame synchronously, return resulting app-db."
+  [app-db event]
+  (reset! rf-db/app-db app-db)
+  (rf/dispatch-sync event)
+  @rf-db/app-db)
+
+
 ;; === Test 1: yield on empty stack, stops at main1+main2 ===
 
 (deftest yield-empty-stack-advances-past-combat-to-main2
@@ -61,7 +69,7 @@
 ;; === Test 3: yield at main2 advances through turn boundary ===
 
 (deftest yield-at-main2-advances-to-new-turn-main1
-  (testing "yield from main2 advances through end, cleanup, new turn, to main1"
+  (testing "yield from main2 advances through end, cleanup, opponent turn, to main1"
     (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
                  (h/add-opponent {:bot-archetype :goldfish}))
           ;; Advance to main2 manually
@@ -69,13 +77,14 @@
                       (game/advance-phase :player-1)  ; main1 -> combat
                       (game/advance-phase :player-1)  ; combat -> main2
                       )
-          app-db {:game/db game-db}
-          result (game/yield-impl app-db)
-          result-db (:game/db (:app-db result))]
+          ;; Use yield-all which loops synchronously through turns
+          app-db (merge (history/init-history) {:game/db game-db})
+          result (dispatch-event app-db [::game/yield-all])
+          result-db (:game/db result)]
       (is (= :main1 (:game/phase (q/get-game-state result-db)))
-          "Should advance to main1 of next turn")
-      (is (= 2 (:game/turn (q/get-game-state result-db)))
-          "Should be turn 2"))))
+          "Should advance to main1 of next player turn")
+      (is (= 3 (:game/turn (q/get-game-state result-db)))
+          "Should be turn 3 (player T1 -> opponent T2 -> player T3)"))))
 
 
 ;; === Test 4: yield with selection-needed spell ===
@@ -157,14 +166,6 @@
 
 ;; === yield-all tests ===
 
-(defn- dispatch-event
-  "Dispatch an event through re-frame synchronously, return resulting app-db."
-  [app-db event]
-  (reset! rf-db/app-db app-db)
-  (rf/dispatch-sync event)
-  @rf-db/app-db)
-
-
 (deftest yield-all-resolves-entire-stack
   (testing "yield-all with non-empty stack resolves all items"
     (let [db (-> (h/create-test-db {:mana {:black 2} :stops #{:main1 :main2}})
@@ -188,13 +189,13 @@
 
 
 (deftest yield-all-empty-stack-f6-advances-to-new-turn
-  (testing "yield-all with empty stack enters F6 mode, advances through turn"
+  (testing "yield-all with empty stack enters F6 mode, advances through turn and opponent turn"
     (let [app-db (merge (history/init-history)
                         (setup-app-db))
           result (dispatch-event app-db [::game/yield-all])]
-      ;; F6 ignores player stops, advances to turn boundary
-      (is (= 2 (:game/turn (q/get-game-state (:game/db result))))
-          "Should advance to turn 2 in F6 mode")
+      ;; F6 ignores player stops, advances through player turn, opponent turn, to next player turn
+      (is (= 3 (:game/turn (q/get-game-state (:game/db result))))
+          "Should advance to turn 3 (player T1 -> opponent T2 -> player T3)")
       ;; Auto-mode should be cleared after completion
       (is (nil? (priority/get-auto-mode (:game/db result)))
           "Auto-mode should be cleared after F6 completes"))))
@@ -259,13 +260,13 @@
 
 
 (deftest integration-f6-through-full-turn-cycle
-  (testing "F6 (yield-all on empty stack) advances through full turn"
+  (testing "F6 (yield-all on empty stack) advances through full turn cycle"
     (let [app-db (merge (history/init-history)
                         (setup-app-db))
           result (dispatch-event app-db [::game/yield-all])
           result-db (:game/db result)]
-      (is (= 2 (:game/turn (q/get-game-state result-db)))
-          "Should advance to turn 2")
+      (is (= 3 (:game/turn (q/get-game-state result-db)))
+          "Should advance to turn 3 (player T1 -> opponent T2 -> player T3)")
       (is (nil? (priority/get-auto-mode result-db))
           "Auto-mode should be cleared after F6")
       ;; History should have entries for the turn transition

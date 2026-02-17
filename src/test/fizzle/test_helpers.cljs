@@ -7,7 +7,8 @@
     [datascript.core :as d]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
-    [fizzle.db.schema :refer [schema]]))
+    [fizzle.db.schema :refer [schema]]
+    [fizzle.engine.turn-based :as turn-based]))
 
 
 (def ^:private empty-mana-pool
@@ -40,6 +41,7 @@
                            :game/phase :main1
                            :game/active-player player-eid
                            :game/priority player-eid}])
+       (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid :player-1))
        (when-let [stops (:stops opts)]
          (d/transact! conn [[:db/add player-eid :player/stops stops]])))
      @conn)))
@@ -167,7 +169,7 @@
 
 
 (defn add-opponent
-  "Add :player-2 with standard opponent settings.
+  "Add :player-2 with standard opponent settings and turn-based triggers.
    Opts map supports: {:bot-archetype :goldfish :stops #{:main1}}
    Returns updated db."
   ([db]
@@ -185,4 +187,6 @@
               (:bot-archetype opts) (assoc :player/bot-archetype (:bot-archetype opts))
               (:stops opts) (assoc :player/stops (:stops opts)))]
      (d/transact! conn [tx])
+     (let [opp-eid (q/get-player-eid @conn :player-2)]
+       (d/transact! conn (turn-based/create-turn-based-triggers-tx opp-eid :player-2)))
      @conn)))

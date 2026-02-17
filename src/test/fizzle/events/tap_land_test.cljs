@@ -21,7 +21,7 @@
         conn (d/conn-from-db db)
         player-eid (q/get-player-eid @conn :player-1)]
     ;; Add game-rule triggers (draw-step, untap-step)
-    (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid))
+    (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid :player-1))
     @conn))
 
 

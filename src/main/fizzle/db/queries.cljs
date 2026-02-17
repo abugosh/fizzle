@@ -176,6 +176,18 @@
        db player-id))
 
 
+(defn get-other-player-id
+  "Get the other player's ID (for active player switching).
+   Returns the player-id of any player that isn't the given player-id.
+   Returns nil if no other player exists."
+  [db player-id]
+  (d/q '[:find ?pid .
+         :in $ ?my-pid
+         :where [?p :player/id ?pid]
+         [(not= ?pid ?my-pid)]]
+       db player-id))
+
+
 (defn get-max-hand-size
   "Get the maximum hand size for a player.
    Returns 7 (MTG default) if :player/max-hand-size is not set."

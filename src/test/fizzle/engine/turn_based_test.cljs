@@ -50,7 +50,7 @@
                           :game/active-player player-eid
                           :game/priority player-eid}])
       ;; Turn-based triggers in Datascript
-      (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid)))
+      (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid :player-1)))
     @conn))
 
 
@@ -144,19 +144,19 @@
 
 
 (deftest test-draw-trigger-has-correct-filter
-  (testing "draw trigger has filter for draw phase"
+  (testing "draw trigger has filter for draw phase and player"
     (let [db (init-test-game)
           all-triggers (trigger-db/get-all-triggers db)
           draw-trigger (first (filter #(= :draw-step (:trigger/type %)) all-triggers))]
-      (is (= {:event/phase :draw} (:trigger/filter draw-trigger))))))
+      (is (= {:event/phase :draw :event/player :player-1} (:trigger/filter draw-trigger))))))
 
 
 (deftest test-untap-trigger-has-correct-filter
-  (testing "untap trigger has filter for untap phase"
+  (testing "untap trigger has filter for untap phase and player"
     (let [db (init-test-game)
           all-triggers (trigger-db/get-all-triggers db)
           untap-trigger (first (filter #(= :untap-step (:trigger/type %)) all-triggers))]
-      (is (= {:event/phase :untap} (:trigger/filter untap-trigger))))))
+      (is (= {:event/phase :untap :event/player :player-1} (:trigger/filter untap-trigger))))))
 
 
 (deftest test-turn-based-triggers-dont-use-stack
@@ -289,7 +289,7 @@
                                 :game/active-player p1-eid
                                 :game/priority p1-eid}])
           ;; Turn-based triggers for player 1
-          _ (d/transact! conn (turn-based/create-turn-based-triggers-tx p1-eid))
+          _ (d/transact! conn (turn-based/create-turn-based-triggers-tx p1-eid :player-1))
           ;; Add tapped permanent for player 1
           _ (d/transact! conn [{:object/id (random-uuid)
                                 :object/card card-eid

@@ -171,7 +171,8 @@
     (d/transact! conn (opponent-battlefield-tx @conn opp-eid))
     (d/transact! conn [{:game/id :game-1 :game/turn 1 :game/phase :main1
                         :game/active-player player-eid :game/priority player-eid}])
-    (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid))
+    (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid :player-1))
+    (d/transact! conn (turn-based/create-turn-based-triggers-tx opp-eid :opponent))
     (d/transact! conn [[:db/add player-eid :player/stops (:player stops)]
                        [:db/add opp-eid :player/stops (:opponent stops)]])
     (merge {:game/db @conn :active-screen :opening-hand
@@ -573,44 +574,38 @@
       db)))
 
 
-(defn opponent-draw
-  "Draw a card for the opponent (goldfish turn).
-   Uses the draw effect which naturally triggers loss condition on empty library.
-   No-op if no opponent exists.
-   Pure function: (db, player-id) -> db"
-  [db player-id]
-  (if-let [opponent-id (queries/get-opponent-id db player-id)]
-    (effects/execute-effect db opponent-id
-                            {:effect/type :draw :effect/amount 1})
-    db))
-
-
 (defn start-turn
-  "Start a new turn: increment turn counter, set phase to untap,
-   reset storm count and land plays to 1, clear mana pool.
+  "Start a new turn: switch active player, increment turn counter,
+   set phase to untap, reset storm count and land plays, clear mana pool.
    Pure function: (db, player-id) -> db
 
+   player-id is the player whose turn just ended (active player before switch).
+   The next player is determined by alternating: player-id's opponent becomes
+   the new active player.
+
    Returns db unchanged if the stack is non-empty.
-   Note: Opponent draw is handled by the ::start-turn event handler
-   (not here) so it can create a separate history entry.
    Untap happens via :untap-step trigger when phase changes to :untap.
-   This dispatches the :phase-entered event to fire the turn-based action."
+   Draw happens via :draw-step trigger when phase changes to :draw."
   [db player-id]
   (if-not (queries/stack-empty? db)
     db
     (let [game-state (queries/get-game-state db)
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
-          player-eid (queries/get-player-eid db player-id)
+          ;; Switch active player to the other player
+          next-player-id (or (queries/get-other-player-id db player-id) player-id)
+          next-player-eid (queries/get-player-eid db next-player-id)
           current-turn (or (:game/turn game-state) 0)
           new-turn (inc current-turn)]
       (-> db
-          (mana/empty-pool player-id)
+          (mana/empty-pool next-player-id)
           (d/db-with [[:db/add game-eid :game/turn new-turn]
                       [:db/add game-eid :game/phase :untap]
-                      [:db/add player-eid :player/storm-count 0]
-                      [:db/add player-eid :player/land-plays-left 1]])
+                      [:db/add game-eid :game/active-player next-player-eid]
+                      [:db/add game-eid :game/priority next-player-eid]
+                      [:db/add next-player-eid :player/storm-count 0]
+                      [:db/add next-player-eid :player/land-plays-left 1]])
           ;; Dispatch untap phase event to fire turn-based actions
-          (dispatch/dispatch-event (game-events/phase-entered-event :untap new-turn player-id))))))
+          (dispatch/dispatch-event (game-events/phase-entered-event :untap new-turn next-player-id))))))
 
 
 (rf/reg-event-db
@@ -645,22 +640,12 @@
       (if (:game/pending-selection db)
         db
         (let [active-player-id (queries/get-active-player-id game-db)
-              ;; Step 1: Opponent draw (before player's turn)
-              db-after-draw (opponent-draw game-db active-player-id)
-              drew? (not (identical? game-db db-after-draw))
-              ;; Step 2: Turn mechanics (on post-draw state)
-              db-after-turn (start-turn db-after-draw active-player-id)
-              ;; Step 3: Build history entries
+              db-after-turn (start-turn game-db active-player-id)
               game-state (queries/get-game-state db-after-turn)
               turn (:game/turn game-state)
-              entries (cond-> []
-                        drew? (conj (history/make-entry db-after-draw ::start-turn
-                                                        "Opponent draws" turn))
-                        true (conj (history/make-entry db-after-turn ::start-turn
-                                                       (str "Start Turn " turn)
-                                                       turn)))]
-          ;; Step 4: Apply history entries and set game-db
-          (-> (apply-history-entries db entries)
+              entry (history/make-entry db-after-turn ::start-turn
+                                        (str "Start Turn " turn) turn)]
+          (-> (apply-history-entries db [entry])
               (assoc :game/db db-after-turn)))))))
 
 
@@ -668,9 +653,9 @@
 
 (defn- advance-with-stops
   "Advance phases until a stop is hit or a turn boundary is crossed.
-   Handles cleanup (begin-cleanup, opponent-draw, start-turn) automatically.
-   After crossing a turn boundary, continues advancing until the first stop.
-   If no stops are set, stops at the turn boundary (untap of new turn).
+   Handles cleanup and start-turn automatically.
+   After crossing a turn boundary, returns immediately — the caller (yield-impl)
+   handles continuing through the new turn via recursive ::yield dispatch.
    When ignore-stops? is true (F6 mode), skips player phase stop checks.
    Returns {:app-db app-db'} with game-db at the stopped phase.
    Pure function: (app-db, ignore-stops?) -> {:app-db app-db'}"
@@ -691,17 +676,12 @@
               {:app-db (-> app-db
                            (assoc :game/db (:db cleanup-result))
                            (assoc :game/pending-selection (:pending-selection cleanup-result)))}
-              ;; No discard needed — cross turn boundary, then stop
+              ;; No discard needed — cross turn boundary (start-turn switches active player)
               (let [db-after-cleanup (:db cleanup-result)
-                    db-after-draw (opponent-draw db-after-cleanup active-player-id)
-                    db-after-turn (start-turn db-after-draw active-player-id)
-                    new-player-eid (queries/get-player-eid db-after-turn active-player-id)
-                    has-stops? (seq (:player/stops (d/pull db-after-turn [:player/stops] new-player-eid)))]
-                (if (and has-stops? (not ignore-stops?))
-                  ;; Has stops and not F6 — continue advancing to first stop in new turn
-                  (recur db-after-turn)
-                  ;; No stops or F6 — stop at turn boundary
-                  {:app-db (assoc app-db :game/db db-after-turn)}))))
+                    db-after-turn (start-turn db-after-cleanup active-player-id)]
+                ;; Always return at turn boundary — yield-impl handles continuation
+                ;; via recursive ::yield dispatch (re-reads active player from db)
+                {:app-db (assoc app-db :game/db db-after-turn)})))
           ;; Normal phase advance
           (let [advanced-db (advance-phase gdb active-player-id)]
             ;; Check if new phase triggers anything on the stack
@@ -717,11 +697,19 @@
                 (recur advanced-db)))))))))
 
 
+(defn- bot-turn?
+  "Check if the active player is a bot.
+   Pure function: (db) -> boolean"
+  [db]
+  (let [active-id (queries/get-active-player-id db)]
+    (boolean (bot/get-bot-archetype db active-id))))
+
+
 (defn yield-impl
   "Core priority passing logic. Pure function on app-db.
    Returns map with:
      :app-db          — updated app-db (always present)
-     :continue-yield? — true if ::yield should re-dispatch (more stack items)
+     :continue-yield? — true if ::yield should re-dispatch (more stack items or bot turn)
 
    Auto-mode behavior:
      :resolving — Both players auto-pass each cycle. Resolves stack items.
@@ -730,9 +718,14 @@
      :f6        — Both players auto-pass. Advances phases ignoring player stops.
                   Stops at turn boundary. Clears auto-mode when done.
 
+   Bot turn behavior:
+     When active player is a bot, both players auto-pass every cycle.
+     Bot turn advances phase-by-phase via recursive ::yield dispatch.
+     Each dispatch goes through the history interceptor (ADR-004 compliant).
+
    Normal flow:
    1. Add current priority holder to passed set
-   2. If opponent is bot, auto-pass for bot
+   2. Auto-pass non-active player (bot, auto-mode, or bot-turn)
    3. If both passed:
       a. Reset passes
       b. Stack non-empty: resolve one item
@@ -741,18 +734,19 @@
   [app-db]
   (let [game-db (:game/db app-db)
         auto-mode (priority/get-auto-mode game-db)
+        is-bot-turn (bot-turn? game-db)
         holder-eid (priority/get-priority-holder-eid game-db)
         ;; Step 1: current player passes
         gdb (priority/yield-priority game-db holder-eid)
-        ;; Step 2: auto-pass opponent (bot, auto-mode, or no opponent)
+        ;; Step 2: auto-pass non-active player (bot, auto-mode, or bot-turn)
         active-player-id (queries/get-active-player-id gdb)
         opponent-player-id (queries/get-opponent-id gdb active-player-id)
         gdb (if opponent-player-id
               (let [opp-eid (queries/get-player-eid gdb opponent-player-id)]
-                (if auto-mode
-                  ;; In auto-mode, opponent always auto-passes
+                (if (or auto-mode is-bot-turn)
+                  ;; In auto-mode or bot turn, non-active player always auto-passes
                   (priority/yield-priority gdb opp-eid)
-                  ;; Normal mode: check if opponent is a bot
+                  ;; Normal mode: check if non-active player is a bot
                   (let [archetype (bot/get-bot-archetype gdb opponent-player-id)]
                     (if (and archetype
                              (= :pass (bot/bot-priority-decision archetype {})))
@@ -787,11 +781,39 @@
                                (assoc app-db :game/db resolved-db))})))))
           ;; 3c: Stack empty — advance phases with stops
           (let [f6? (= :f6 auto-mode)
-                result (advance-with-stops (assoc app-db :game/db gdb) f6?)]
-            ;; Clear auto-mode after F6 advances
-            (if f6?
+                result (advance-with-stops (assoc app-db :game/db gdb) f6?)
+                result-db (:game/db (:app-db result))
+                ;; Detect if a turn boundary was crossed (active player changed)
+                new-active-id (queries/get-active-player-id result-db)
+                crossed-turn? (not= active-player-id new-active-id)]
+            (cond
+              ;; Pending selection (e.g., cleanup discard) — pause
+              (:game/pending-selection (:app-db result))
+              result
+
+              ;; Turn boundary crossed — continue via recursive yield
+              ;; (re-reads active player from db for correct phase advancement)
+              crossed-turn?
+              (let [new-is-bot (bot-turn? result-db)]
+                (if new-is-bot
+                  ;; Bot turn — keep going (preserve F6 if active)
+                  {:app-db (:app-db result)
+                   :continue-yield? true}
+                  ;; Player turn — clear F6 if active, then continue to first stop
+                  (if f6?
+                    {:app-db (update (:app-db result) :game/db priority/clear-auto-mode)
+                     :continue-yield? true}
+                    {:app-db (:app-db result)
+                     :continue-yield? true})))
+
+              ;; F6 within same turn (no turn boundary crossed) — shouldn't happen
+              ;; since F6 ignores stops and advances to turn boundary
+              f6?
               (update result :app-db
                       (fn [adb] (update adb :game/db priority/clear-auto-mode)))
+
+              ;; Normal: same player's turn, stop here
+              :else
               result))))
       ;; Step 4: Not both passed — transfer priority
       {:app-db (assoc app-db :game/db (priority/transfer-priority gdb holder-eid))})))

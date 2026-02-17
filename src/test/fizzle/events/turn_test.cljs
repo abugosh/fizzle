@@ -6,6 +6,7 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.stack :as stack]
+    [fizzle.engine.turn-based :as turn-based]
     [fizzle.events.game :as game]))
 
 
@@ -550,20 +551,28 @@
 
 
 ;; === Opponent draw step tests ===
+;; Opponent draws via draw-step trigger on their own draw phase.
+;; start-turn switches active player to opponent, advance-phase to draw fires trigger.
 
-(deftest test-opponent-draws-card-on-start-turn
-  (testing "Starting a new turn draws a card for the opponent"
+(deftest test-opponent-draws-card-on-draw-phase
+  (testing "Opponent draws a card when their draw phase is entered via trigger"
     (let [db (-> (init-game-state)
                  (add-opponent)
-                 (add-library-cards :player-2 5)
-                 (set-phase :cleanup)
-                 (set-turn 1))
+                 (add-library-cards :player-2 5))
+          ;; Add draw-step trigger for opponent
+          conn (d/conn-from-db db)
+          opp-eid (q/get-player-eid @conn :player-2)
+          _ (d/transact! conn (fizzle.engine.turn-based/create-turn-based-triggers-tx opp-eid :player-2))
+          db (d/db-with @conn [])
+          ;; Set up: switch to opponent's turn at untap
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]
+                            [:db/add game-eid :game/phase :upkeep]
+                            [:db/add game-eid :game/turn 2]])
           lib-before (count-zone db :player-2 :library)
           hand-before (count-zone db :player-2 :hand)
-          ;; Event handler calls opponent-draw then start-turn
-          db' (-> db
-                  (game/opponent-draw :player-1)
-                  (game/start-turn :player-1))]
+          ;; Advance to draw phase — triggers opponent draw
+          db' (game/advance-phase db :player-2)]
       (is (= (dec lib-before) (count-zone db' :player-2 :library))
           "opponent library should shrink by 1")
       (is (= (inc hand-before) (count-zone db' :player-2 :hand))
@@ -571,15 +580,21 @@
 
 
 (deftest test-opponent-empty-library-draw-sets-loss
-  (testing "Opponent drawing from empty library sets loss condition and winner"
+  (testing "Opponent drawing from empty library on their draw phase sets loss condition"
     (let [db (-> (init-game-state)
-                 (add-opponent)
-                 ;; No library cards for opponent
-                 (set-phase :cleanup)
-                 (set-turn 1))
-          db' (-> db
-                  (game/opponent-draw :player-1)
-                  (game/start-turn :player-1))]
+                 (add-opponent))
+          ;; Add draw-step trigger for opponent (no library cards)
+          conn (d/conn-from-db db)
+          opp-eid (q/get-player-eid @conn :player-2)
+          _ (d/transact! conn (fizzle.engine.turn-based/create-turn-based-triggers-tx opp-eid :player-2))
+          db @conn
+          ;; Set up opponent's turn at upkeep
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]
+                            [:db/add game-eid :game/phase :upkeep]
+                            [:db/add game-eid :game/turn 2]])
+          ;; Advance to draw — triggers draw from empty library
+          db' (game/advance-phase db :player-2)]
       (is (= :empty-library (get-loss-condition db'))
           "loss condition should be :empty-library")
       (is (= :player-1 (get-winner db'))
@@ -590,26 +605,30 @@
   (testing "Opponent with 1 card draws it, next turn draw fails and triggers loss"
     (let [db (-> (init-game-state)
                  (add-opponent)
-                 (add-library-cards :player-2 1)
-                 (set-phase :cleanup)
-                 (set-turn 1))
-          ;; First start-turn: opponent draws last card
-          db-after-turn-2 (-> db
-                              (game/opponent-draw :player-1)
-                              (game/start-turn :player-1))]
-      (is (= 0 (count-zone db-after-turn-2 :player-2 :library))
+                 (add-library-cards :player-2 1))
+          ;; Add draw-step trigger for opponent
+          conn (d/conn-from-db db)
+          opp-eid (q/get-player-eid @conn :player-2)
+          _ (d/transact! conn (fizzle.engine.turn-based/create-turn-based-triggers-tx opp-eid :player-2))
+          db @conn
+          ;; First opponent draw phase: draws last card
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]
+                            [:db/add game-eid :game/phase :upkeep]
+                            [:db/add game-eid :game/turn 2]])
+          db-after-draw (game/advance-phase db :player-2)]
+      (is (= 0 (count-zone db-after-draw :player-2 :library))
           "opponent library should be empty after drawing last card")
-      (is (nil? (get-loss-condition db-after-turn-2))
+      (is (nil? (get-loss-condition db-after-draw))
           "no loss condition yet — drawing last card is fine")
-      ;; Second start-turn: opponent draws from empty library → loss
-      (let [db-at-cleanup (-> db-after-turn-2
-                              (set-phase :cleanup))
-            db-after-turn-3 (-> db-at-cleanup
-                                (game/opponent-draw :player-1)
-                                (game/start-turn :player-1))]
-        (is (= :empty-library (get-loss-condition db-after-turn-3))
+      ;; Second opponent draw phase: draws from empty library → loss
+      (let [db-at-upkeep (d/db-with db-after-draw
+                                    [[:db/add game-eid :game/phase :upkeep]
+                                     [:db/add game-eid :game/turn 4]])
+            db-after-draw-2 (game/advance-phase db-at-upkeep :player-2)]
+        (is (= :empty-library (get-loss-condition db-after-draw-2))
             "loss condition should fire on failed draw")
-        (is (= :player-1 (get-winner db-after-turn-3))
+        (is (= :player-1 (get-winner db-after-draw-2))
             "player should win when opponent draws from empty library")))))
 
 
