@@ -252,6 +252,7 @@
   (if-let [config (:setup/stashed-config db)]
     (let [game-db (game/init-game-state {:main-deck (:setup/main-deck config)
                                          :clock-turns (:setup/clock-turns config)
+                                         :bot-archetype (get config :setup/bot-archetype :goldfish)
                                          :must-contain (get config :setup/must-contain {})})]
       (assoc game-db :setup/stashed-config config))
     db))

@@ -2,6 +2,7 @@
   "Tests for setup screen events - deck config, sideboard swaps, presets."
   (:require
     [cljs.test :refer-macros [deftest testing is use-fixtures]]
+    [fizzle.bots.protocol :as bot]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.events.setup :as setup]
     [fizzle.storage :as storage]))
@@ -345,6 +346,20 @@
           db-after (setup/new-game-handler db)]
       (is (= db db-after)
           "Should return db unchanged"))))
+
+
+(deftest test-new-game-preserves-bot-archetype
+  (testing "new-game uses stashed bot-archetype instead of defaulting to goldfish"
+    (let [setup-db (-> (setup/init-setup-handler {})
+                       (assoc :setup/bot-archetype :burn))
+          game-db (setup/start-game-handler setup-db)
+          ;; Verify burn was used in the original game
+          _ (is (= :burn (bot/get-bot-archetype (:game/db game-db) :opponent))
+                "Original game should have burn bot")
+          ;; Re-deal via new-game-handler
+          new-db (setup/new-game-handler game-db)]
+      (is (= :burn (bot/get-bot-archetype (:game/db new-db) :opponent))
+          "New game should preserve burn bot archetype from stashed config"))))
 
 
 ;; === Toggle Must-Contain ===

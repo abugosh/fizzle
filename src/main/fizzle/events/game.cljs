@@ -764,8 +764,9 @@
 
 (defn- yield-loop
   "Repeatedly call yield-impl until it stops returning :continue-yield?.
-   Creates a history entry at each step where game-db changes, so that
-   bot turns produce separate entries for each phase (ADR-004 compliant).
+   Creates a history entry at each step where game-db changes, filtering
+   out bot phase advances (bot active, stack empty, same turn) to reduce
+   history noise.
    Returns the final app-db. Safety limit of 100 iterations."
   [app-db]
   (loop [adb app-db
@@ -776,8 +777,10 @@
             result (yield-impl adb)
             result-adb (:app-db result)
             post-db (:game/db result-adb)
-            ;; Create history entry when game-db changed
-            result-adb (if (and post-db (not (identical? pre-db post-db)))
+            ;; Create history entry when game-db changed and not a filtered bot phase
+            result-adb (if (and post-db
+                                (not (identical? pre-db post-db))
+                                (game-loop/should-create-history-entry? pre-db post-db))
                          (let [game-state (queries/get-game-state post-db)
                                turn (or (:game/turn game-state) 0)
                                desc (or (descriptions/describe-event

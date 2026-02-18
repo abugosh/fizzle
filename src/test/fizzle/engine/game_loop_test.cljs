@@ -122,6 +122,53 @@
           "Passes should be reset after all-passed"))))
 
 
+(deftest negotiate-priority-human-not-auto-passed-when-stack-non-empty-on-bot-turn
+  (testing "human is NOT auto-passed when stack is non-empty during bot turn"
+    (let [db (-> (h/create-test-db {:mana {:black 1} :stops #{:main1}})
+                 (h/add-opponent {:bot-archetype :burn}))
+          [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
+          game-db (rules/cast-spell db' :player-1 obj-id)
+          ;; Switch active player to bot
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db)
+          opp-eid (q/get-player-eid game-db :player-2)
+          game-db (d/db-with game-db [[:db/add game-eid :game/active-player opp-eid]])
+          app-db {:game/db game-db}
+          result (game-loop/negotiate-priority app-db)]
+      (is (false? (:all-passed? result))
+          "Human should get priority when stack is non-empty during bot turn"))))
+
+
+(deftest negotiate-priority-human-auto-passed-when-stack-empty-on-bot-turn
+  (testing "human IS auto-passed when stack is empty during bot turn"
+    (let [db (-> (h/create-test-db {:stops #{:main1}})
+                 (h/add-opponent {:bot-archetype :burn}))
+          ;; Switch active player to bot
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          opp-eid (q/get-player-eid db :player-2)
+          db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]])
+          app-db {:game/db db}
+          result (game-loop/negotiate-priority app-db)]
+      (is (true? (:all-passed? result))
+          "Human should be auto-passed when stack is empty during bot turn"))))
+
+
+(deftest negotiate-priority-auto-mode-overrides-stack-check
+  (testing "auto-mode overrides stack-non-empty check during bot turn"
+    (let [db (-> (h/create-test-db {:mana {:black 1} :stops #{:main1}})
+                 (h/add-opponent {:bot-archetype :burn}))
+          [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
+          game-db (-> (rules/cast-spell db' :player-1 obj-id)
+                      (priority/set-auto-mode :resolving))
+          ;; Switch active player to bot
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db)
+          opp-eid (q/get-player-eid game-db :player-2)
+          game-db (d/db-with game-db [[:db/add game-eid :game/active-player opp-eid]])
+          app-db {:game/db game-db}
+          result (game-loop/negotiate-priority app-db)]
+      (is (true? (:all-passed? result))
+          "Auto-mode (F6/resolving) should still auto-pass even with stack non-empty"))))
+
+
 ;; === handle-loop-state :stack-resolution ===
 
 (deftest stack-resolution-resolves-one-item-signals-continue
@@ -333,3 +380,73 @@
           result (game/yield-impl app-db)]
       (is (true? (:continue-yield? result))
           "Bot turn should signal continue for phase-by-phase advancement"))))
+
+
+;; === should-create-history-entry? ===
+
+(deftest history-entry-skipped-for-bot-phase-advance
+  (testing "returns false when bot is active, stack empty, same turn"
+    (let [db (-> (h/create-test-db {:stops #{}})
+                 (h/add-opponent {:bot-archetype :burn}))
+          ;; Switch active to bot
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          opp-eid (q/get-player-eid db :player-2)
+          pre-db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]])
+          ;; Advance one phase (still bot turn, still empty stack, still same turn)
+          post-db (game/advance-phase pre-db :player-2)]
+      (is (false? (game-loop/should-create-history-entry? pre-db post-db))
+          "Bot phase advance should be filtered out"))))
+
+
+(deftest history-entry-created-for-human-phase-advance
+  (testing "returns true when human is active (even with empty stack, same turn)"
+    (let [db (-> (h/create-test-db {:stops #{}})
+                 (h/add-opponent {:bot-archetype :burn}))
+          pre-db db
+          post-db (game/advance-phase db :player-1)]
+      (is (true? (game-loop/should-create-history-entry? pre-db post-db))
+          "Human phase advance should NOT be filtered"))))
+
+
+(deftest history-entry-created-when-stack-was-non-empty
+  (testing "returns true when pre-db had items on stack (bot spell resolution)"
+    (let [db (-> (h/create-test-db {:mana {:black 1} :stops #{}})
+                 (h/add-opponent {:bot-archetype :burn}))
+          [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
+          pre-db (rules/cast-spell db' :player-1 obj-id)
+          ;; Switch active to bot
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] pre-db)
+          opp-eid (q/get-player-eid pre-db :player-2)
+          pre-db (d/db-with pre-db [[:db/add game-eid :game/active-player opp-eid]])
+          ;; Resolve to empty stack
+          result (game/resolve-one-item pre-db :player-2)
+          post-db (:db result)]
+      (is (true? (game-loop/should-create-history-entry? pre-db post-db))
+          "Stack was non-empty in pre-db — entry should be created"))))
+
+
+(deftest history-entry-created-at-turn-boundary
+  (testing "returns true when turn number changes (even during bot phase)"
+    (let [db (-> (h/create-test-db {:stops #{}})
+                 (h/add-opponent {:bot-archetype :burn}))
+          ;; Advance human turn to get to bot turn (turn 2)
+          result (game/advance-with-stops {:game/db db} true)
+          pre-db db
+          post-db (:game/db (:app-db result))]
+      (is (true? (game-loop/should-create-history-entry? pre-db post-db))
+          "Turn boundary should create entry"))))
+
+
+(deftest history-entry-created-when-stack-becomes-non-empty
+  (testing "returns true when post-db has items on stack (bot casts)"
+    (let [db (-> (h/create-test-db {:mana {:black 1} :stops #{}})
+                 (h/add-opponent {:bot-archetype :burn}))
+          ;; Switch active to bot
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          opp-eid (q/get-player-eid db :player-2)
+          pre-db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]])
+          ;; Cast a spell (stack becomes non-empty)
+          [pre-db' obj-id] (h/add-card-to-zone pre-db :dark-ritual :hand :player-2)
+          post-db (rules/cast-spell pre-db' :player-2 obj-id)]
+      (is (true? (game-loop/should-create-history-entry? pre-db' post-db))
+          "Stack becoming non-empty should create entry"))))

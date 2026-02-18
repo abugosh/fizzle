@@ -15,6 +15,24 @@
     [fizzle.engine.priority :as priority]))
 
 
+(defn should-create-history-entry?
+  "Returns true if a history entry should be created for this game-db change.
+   Filters out bot phase advances where the bot is active, stack is empty
+   in both states, and the turn number hasn't changed.
+   Returns true (create entry) if either db is not a valid Datascript db."
+  [pre-db post-db]
+  (try
+    (let [active-pid (queries/get-active-player-id post-db)
+          is-bot (boolean (bot/get-bot-archetype post-db active-pid))
+          pre-stack-empty (queries/stack-empty? pre-db)
+          post-stack-empty (queries/stack-empty? post-db)
+          pre-turn (:game/turn (queries/get-game-state pre-db))
+          post-turn (:game/turn (queries/get-game-state post-db))]
+      (not (and is-bot pre-stack-empty post-stack-empty (= pre-turn post-turn))))
+    (catch :default _
+      true)))
+
+
 (defn derive-loop-state
   "Derive the current game loop state from game-db.
    Returns one of:
@@ -52,11 +70,15 @@
         gdb (priority/yield-priority game-db holder-eid)
         ;; Step 2: auto-pass non-active player
         active-player-id (queries/get-active-player-id gdb)
-        opponent-player-id (queries/get-opponent-id gdb active-player-id)
+        active-eid (queries/get-player-eid gdb active-player-id)
+        opponent-player-id (queries/get-other-player-id gdb active-player-id)
         gdb (if opponent-player-id
               (let [opp-eid (queries/get-player-eid gdb opponent-player-id)]
-                (if (or auto-mode is-bot-turn)
-                  (priority/yield-priority gdb opp-eid)
+                (if (or auto-mode (and is-bot-turn (queries/stack-empty? gdb)))
+                  ;; Auto-pass both players (bot turn with empty stack, or auto-mode)
+                  (-> gdb
+                      (priority/yield-priority active-eid)
+                      (priority/yield-priority opp-eid))
                   (let [archetype (bot/get-bot-archetype gdb opponent-player-id)]
                     (if (and archetype
                              (= :pass (bot/bot-priority-decision

@@ -1,6 +1,7 @@
 (ns fizzle.history.interceptor
   (:require
     [fizzle.db.queries :as queries]
+    [fizzle.engine.game-loop :as game-loop]
     [fizzle.history.core :as history]
     [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
@@ -94,7 +95,10 @@
                                                         :fizzle.events.game/cast-and-yield} event-id))
                        casting-spell-id (get-in context [:coeffects :history/casting-spell-id])]
                    (if (and db-after game-db-after
-                            (or game-db-changed selection-triggers-entry))
+                            (or game-db-changed selection-triggers-entry)
+                            ;; Filter out bot phase advances (bot active, stack empty, same turn)
+                            (or (not game-db-changed)
+                                (game-loop/should-create-history-entry? pre-game-db game-db-after)))
                      (let [description (or (descriptions/describe-event
                                              event pre-game-db game-db-after
                                              selection-type casting-spell-id)
