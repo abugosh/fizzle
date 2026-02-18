@@ -8,8 +8,7 @@
    - bot-deck: the deck list for a bot archetype"
   (:require
     [datascript.core :as d]
-    [fizzle.db.queries :as queries]
-    [fizzle.engine.rules :as rules]))
+    [fizzle.db.queries :as queries]))
 
 
 (defn get-bot-archetype
@@ -36,14 +35,29 @@
   :pass)
 
 
+(defn- has-untapped-red-source?
+  "Check if a player has an untapped land that produces red mana."
+  [db player-id]
+  (let [battlefield (queries/get-objects-in-zone db player-id :battlefield)]
+    (some (fn [obj]
+            (and (not (:object/tapped obj))
+                 (some (fn [ability]
+                         (and (= :mana (:ability/type ability))
+                              (get (:ability/produces ability) :red)))
+                       (get-in obj [:object/card :card/abilities]))))
+          battlefield)))
+
+
 (defmethod bot-priority-decision :burn
   [_ context]
   (let [db (:db context)
         player-id (:player-id context)]
     (if (and db player-id)
-      (let [castable (rules/get-castable-cards db player-id)
-            bolt (first (filter #(= :lightning-bolt (get-in % [:object/card :card/id])) castable))]
-        (if bolt
+      (let [hand (queries/get-objects-in-zone db player-id :hand)
+            bolt (first (filter #(= :lightning-bolt (get-in % [:object/card :card/id])) hand))]
+        (if (and bolt
+                 (has-untapped-red-source? db player-id)
+                 (queries/stack-empty? db))
           (let [human-pid (queries/get-human-player-id db)]
             {:action :cast-spell
              :object-id (:object/id bolt)

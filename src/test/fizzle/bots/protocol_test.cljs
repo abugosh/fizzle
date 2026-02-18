@@ -5,7 +5,6 @@
     [fizzle.bots.protocol :as bot]
     [fizzle.cards.lightning-bolt :as lightning-bolt]
     [fizzle.db.queries :as q]
-    [fizzle.engine.mana :as mana]
     [fizzle.test-helpers :as h]))
 
 
@@ -116,14 +115,14 @@
 
 ;; === Burn Bot Tests ===
 
-(deftest burn-priority-decision-returns-cast-when-bolt-and-mana
-  (testing "burn bot returns cast action when bolt in hand and mana available"
+(deftest burn-priority-decision-returns-cast-when-bolt-and-mountain
+  (testing "burn bot returns cast action when bolt in hand and untapped Mountain"
     (let [db (h/create-test-db)
           conn (d/conn-from-db db)
           _ (d/transact! conn [lightning-bolt/lightning-bolt])
           db (h/add-opponent @conn)
           [db obj-id] (h/add-card-to-zone db :lightning-bolt :hand :player-2)
-          db (mana/add-mana db :player-2 {:red 1})
+          [db _mtn-id] (h/add-card-to-zone db :mountain :battlefield :player-2)
           decision (bot/bot-priority-decision :burn {:db db :player-id :player-2})]
       (is (map? decision)
           "Should return an action map, not :pass")
@@ -135,8 +134,8 @@
           "Should target the human player"))))
 
 
-(deftest burn-priority-decision-returns-pass-without-mana
-  (testing "burn bot passes when no mana available"
+(deftest burn-priority-decision-returns-pass-without-untapped-lands
+  (testing "burn bot passes when no untapped red sources"
     (let [db (h/create-test-db)
           conn (d/conn-from-db db)
           _ (d/transact! conn [lightning-bolt/lightning-bolt])
@@ -144,14 +143,16 @@
           [db _] (h/add-card-to-zone db :lightning-bolt :hand :player-2)
           decision (bot/bot-priority-decision :burn {:db db :player-id :player-2})]
       (is (= :pass decision)
-          "Should pass when no mana to cast bolt"))))
+          "Should pass when no untapped lands to produce red"))))
 
 
 (deftest burn-priority-decision-returns-pass-without-bolt
   (testing "burn bot passes when no bolt in hand"
     (let [db (h/create-test-db)
-          db (h/add-opponent db)
-          db (mana/add-mana db :player-2 {:red 1})
+          conn (d/conn-from-db db)
+          _ (d/transact! conn [lightning-bolt/lightning-bolt])
+          db (h/add-opponent @conn)
+          [db _] (h/add-card-to-zone db :mountain :battlefield :player-2)
           decision (bot/bot-priority-decision :burn {:db db :player-id :player-2})]
       (is (= :pass decision)
           "Should pass when no bolt in hand"))))
