@@ -48,6 +48,17 @@
           battlefield)))
 
 
+(defn- get-other-player-id
+  "Find the other player's ID (not the given player).
+   Returns nil if no other player exists."
+  [db player-id]
+  (d/q '[:find ?pid .
+         :in $ ?my-pid
+         :where [?p :player/id ?pid]
+         [(not= ?pid ?my-pid)]]
+       db player-id))
+
+
 (defmethod bot-priority-decision :burn
   [_ context]
   (let [db (:db context)
@@ -58,10 +69,12 @@
         (if (and bolt
                  (has-untapped-red-source? db player-id)
                  (queries/stack-empty? db))
-          (let [human-pid (queries/get-human-player-id db)]
-            {:action :cast-spell
-             :object-id (:object/id bolt)
-             :target human-pid})
+          (let [opponent-pid (get-other-player-id db player-id)]
+            (if opponent-pid
+              {:action :cast-spell
+               :object-id (:object/id bolt)
+               :target opponent-pid}
+              :pass))
           :pass))
       :pass)))
 

@@ -131,7 +131,7 @@
       (is (= obj-id (:object-id decision))
           "Should target the bolt in hand")
       (is (= :player-1 (:target decision))
-          "Should target the human player"))))
+          "Should dynamically resolve opponent as target"))))
 
 
 (deftest burn-priority-decision-returns-pass-without-untapped-lands
@@ -162,6 +162,19 @@
   (testing "burn bot passes when context is empty"
     (is (= :pass (bot/bot-priority-decision :burn {}))
         "Should pass with empty context")))
+
+
+(deftest burn-priority-decision-returns-pass-without-opponent
+  (testing "burn bot passes when no opponent exists (goldfish mode)"
+    (let [db (h/create-test-db)
+          conn (d/conn-from-db db)
+          _ (d/transact! conn [lightning-bolt/lightning-bolt])
+          db @conn
+          [db _] (h/add-card-to-zone db :lightning-bolt :hand :player-1)
+          [db _] (h/add-card-to-zone db :mountain :battlefield :player-1)
+          decision (bot/bot-priority-decision :burn {:db db :player-id :player-1})]
+      (is (= :pass decision)
+          "Should pass when no other player exists to target"))))
 
 
 (deftest burn-phase-action-main1-returns-play-land
