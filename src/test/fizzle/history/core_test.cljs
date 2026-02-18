@@ -26,6 +26,33 @@
       (is (= 1 (:entry/turn entry))))))
 
 
+(deftest test-make-entry-with-principal
+  (testing "6-arity make-entry stores principal and is-bot? fields"
+    (let [entry (history/make-entry :db-0 :yield "Cast Lightning Bolt" 2 :player-2 true)]
+      (is (= :player-2 (:entry/principal entry))
+          "Principal should be stored")
+      (is (true? (:entry/is-bot? entry))
+          "is-bot? should be true for bot entries"))))
+
+
+(deftest test-make-entry-human-principal
+  (testing "6-arity make-entry with human principal"
+    (let [entry (history/make-entry :db-0 :cast-spell "Cast Dark Ritual" 1 :player-1 false)]
+      (is (= :player-1 (:entry/principal entry))
+          "Principal should be human player")
+      (is (false? (:entry/is-bot? entry))
+          "is-bot? should be false for human entries"))))
+
+
+(deftest test-make-entry-4-arity-backward-compat
+  (testing "4-arity make-entry defaults principal to nil and is-bot? to false"
+    (let [entry (history/make-entry :db-0 :cast-spell "Cast Dark Ritual" 1)]
+      (is (nil? (:entry/principal entry))
+          "Principal should default to nil")
+      (is (false? (:entry/is-bot? entry))
+          "is-bot? should default to false"))))
+
+
 ;; === append-entry tests ===
 
 (deftest test-append-entry-empty-history

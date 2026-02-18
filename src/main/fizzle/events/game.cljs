@@ -646,8 +646,11 @@
               db-after-turn (start-turn game-db active-player-id)
               game-state (queries/get-game-state db-after-turn)
               turn (:game/turn game-state)
+              new-active-pid (queries/get-active-player-id db-after-turn)
+              new-is-bot? (boolean (bot/get-bot-archetype db-after-turn new-active-pid))
               entry (history/make-entry db-after-turn ::start-turn
-                                        (str "Start Turn " turn) turn)]
+                                        (str "Start Turn " turn) turn
+                                        new-active-pid new-is-bot?)]
           (-> (apply-history-entries db [entry])
               (assoc :game/db db-after-turn)))))))
 
@@ -719,35 +722,25 @@
      :continue-yield? — true if ::yield should re-dispatch (more stack items or bot turn)
 
    Thin orchestrator that delegates to game-loop module:
-   0. Check if active player is a bot with a priority action (cast spell)
    1. Negotiate priority (game-loop/negotiate-priority)
    2. If all passed: derive state and dispatch to handler
-   3. If not all passed: return (priority transferred)"
+   3. If not all passed: return (priority transferred)
+
+   Bot priority decisions (casting spells) are handled by
+   handle-loop-state :bot-phase, not here."
   [app-db]
-  (let [game-db (:game/db app-db)
-        active-player-id (queries/get-active-player-id game-db)
-        archetype (bot/get-bot-archetype game-db active-player-id)
-        ;; Check bot priority decision before negotiate-priority
-        bot-decision (when archetype
-                       (bot/bot-priority-decision archetype
-                                                  {:db game-db :player-id active-player-id}))]
-    (if (and (map? bot-decision) (= :cast-spell (:action bot-decision)))
-      ;; Bot wants to cast — execute action and continue yield loop
-      (let [acted-db (bot-actions/execute-bot-priority-action game-db bot-decision)]
-        {:app-db (assoc app-db :game/db acted-db)
-         :continue-yield? true})
-      ;; Bot passes or no bot — proceed with normal priority negotiation
-      (let [result (game-loop/negotiate-priority app-db)]
-        (if (:all-passed? result)
-          (let [negotiated-app-db (:app-db result)
-                game-db (:game/db negotiated-app-db)
-                state (game-loop/derive-loop-state game-db)]
-            (game-loop/handle-loop-state state negotiated-app-db
-                                         {:resolve-one-item resolve-one-item
-                                          :advance-with-stops advance-with-stops
-                                          :execute-bot-phase-action execute-bot-phase-action
-                                          :maybe-continue-cleanup maybe-continue-cleanup}))
-          {:app-db (:app-db result)})))))
+  (let [result (game-loop/negotiate-priority app-db)]
+    (if (:all-passed? result)
+      (let [negotiated-app-db (:app-db result)
+            game-db (:game/db negotiated-app-db)
+            state (game-loop/derive-loop-state game-db)]
+        (game-loop/handle-loop-state state negotiated-app-db
+                                     {:resolve-one-item resolve-one-item
+                                      :advance-with-stops advance-with-stops
+                                      :execute-bot-phase-action execute-bot-phase-action
+                                      :execute-bot-priority-action bot-actions/execute-bot-priority-action
+                                      :maybe-continue-cleanup maybe-continue-cleanup}))
+      {:app-db (:app-db result)})))
 
 
 (rf/reg-event-fx
@@ -783,10 +776,12 @@
                                 (game-loop/should-create-history-entry? pre-db post-db))
                          (let [game-state (queries/get-game-state post-db)
                                turn (or (:game/turn game-state) 0)
+                               active-pid (queries/get-active-player-id post-db)
+                               active-is-bot? (boolean (bot/get-bot-archetype post-db active-pid))
                                desc (or (descriptions/describe-event
-                                          [::yield] pre-db post-db nil nil)
+                                          [::yield] pre-db post-db nil nil active-is-bot?)
                                         "Yield")
-                               entry (history/make-entry post-db ::yield desc turn)]
+                               entry (history/make-entry post-db ::yield desc turn active-pid active-is-bot?)]
                            (if (or (= -1 (:history/position result-adb))
                                    (history/at-tip? result-adb))
                              (history/append-entry result-adb entry)

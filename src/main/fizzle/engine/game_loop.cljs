@@ -15,10 +15,16 @@
     [fizzle.engine.priority :as priority]))
 
 
+(def priority-phases
+  "Phases where players receive priority per MTG rules.
+   Untap and cleanup do not grant priority."
+  #{:upkeep :draw :main1 :combat :main2 :end})
+
+
 (defn should-create-history-entry?
   "Returns true if a history entry should be created for this game-db change.
-   Filters out bot phase advances where the bot is active, stack is empty
-   in both states, and the turn number hasn't changed.
+   Filters out bot noise: phase advances (both stacks empty, same turn) and
+   priority transfers (both stacks in same state, same phase, same turn).
    Returns true (create entry) if either db is not a valid Datascript db."
   [pre-db post-db]
   (try
@@ -27,8 +33,13 @@
           pre-stack-empty (queries/stack-empty? pre-db)
           post-stack-empty (queries/stack-empty? post-db)
           pre-turn (:game/turn (queries/get-game-state pre-db))
-          post-turn (:game/turn (queries/get-game-state post-db))]
-      (not (and is-bot pre-stack-empty post-stack-empty (= pre-turn post-turn))))
+          post-turn (:game/turn (queries/get-game-state post-db))
+          pre-phase (:game/phase (queries/get-game-state pre-db))
+          post-phase (:game/phase (queries/get-game-state post-db))
+          same-stack-state (or (and pre-stack-empty post-stack-empty)
+                               (and (not pre-stack-empty) (not post-stack-empty)
+                                    (= pre-phase post-phase)))]
+      (not (and is-bot same-stack-state (= pre-turn post-turn))))
     (catch :default _
       true)))
 
@@ -169,12 +180,24 @@
       (let [current-phase (:game/phase (queries/get-game-state result-db))
             bot-arch (bot/get-bot-archetype result-db new-active-id)
             acted-db (execute-bot-phase-action result-db bot-arch current-phase new-active-id)
-            bot-eid (queries/get-player-eid acted-db new-active-id)
+            ;; Bot priority loop: let bot cast spells before stop check
+            ;; Only consult bot during phases that grant priority (not untap/cleanup)
+            execute-bot-priority-action (:execute-bot-priority-action opts)
+            final-db (if (and execute-bot-priority-action (priority-phases current-phase))
+                       (loop [db acted-db, n 20]
+                         (if (zero? n) db
+                             (let [decision (bot/bot-priority-decision bot-arch {:db db :player-id new-active-id})]
+                               (if (and (map? decision) (= :cast-spell (:action decision)))
+                                 (let [cast-db (execute-bot-priority-action db decision)]
+                                   (recur cast-db (dec n)))
+                                 db))))
+                       acted-db)
+            bot-eid (queries/get-player-eid final-db new-active-id)
             has-stop? (and (not auto-mode)
-                           (priority/check-stop acted-db bot-eid current-phase))]
+                           (priority/check-stop final-db bot-eid current-phase))]
         (if has-stop?
-          {:app-db (assoc (:app-db result) :game/db acted-db)}
-          {:app-db (assoc (:app-db result) :game/db acted-db)
+          {:app-db (assoc (:app-db result) :game/db final-db)}
+          {:app-db (assoc (:app-db result) :game/db final-db)
            :continue-yield? true})))))
 
 

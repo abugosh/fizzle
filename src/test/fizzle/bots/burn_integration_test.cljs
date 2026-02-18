@@ -12,9 +12,11 @@
     [fizzle.bots.protocol :as bot]
     [fizzle.cards.lightning-bolt :as lightning-bolt]
     [fizzle.db.queries :as q]
+    [fizzle.engine.game-loop :as game-loop]
     [fizzle.engine.priority :as priority]
     [fizzle.events.game :as game]
     [fizzle.history.core :as history]
+    [fizzle.history.descriptions :as descriptions]
     [fizzle.test-helpers :as th]))
 
 
@@ -280,3 +282,143 @@
           "Should reach at least turn 3 (human->bot->human)")
       (is (= :player-1 (q/get-active-player-id result-db))
           "Active player at turn 3 should be human"))))
+
+
+;; === Bot priority in handle-loop-state :bot-phase tests ===
+
+(defn- setup-bot-at-draw
+  "Create an app-db with a burn bot at :draw phase.
+   Bot has Mountains on battlefield and Bolts in hand, with a stop on :main1.
+   When handle-loop-state :bot-phase runs, it advances draw->main1,
+   executes bot phase action (play land), then bot priority (cast bolt),
+   then checks stop on main1."
+  [{:keys [mountains bolts]}]
+  (let [db (th/create-test-db {:stops #{}})
+        conn (d/conn-from-db db)
+        _ (d/transact! conn [lightning-bolt/lightning-bolt])
+        db (th/add-opponent @conn {:bot-archetype :burn :stops #{:main1}})]
+    ;; Add Mountains to battlefield
+    (let [[db _] (reduce (fn [[db' _] _]
+                           (th/add-card-to-zone db' :mountain :battlefield :player-2))
+                         [db nil]
+                         (range mountains))
+          ;; Add Bolts to hand
+          [db _] (reduce (fn [[db' _] _]
+                           (th/add-card-to-zone db' :lightning-bolt :hand :player-2))
+                         [db nil]
+                         (range bolts))
+          ;; Set active player to bot, phase to draw
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          opp-eid (q/get-player-eid db :player-2)
+          db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]
+                            [:db/add game-eid :game/priority opp-eid]
+                            [:db/add game-eid :game/phase :draw]])]
+      (merge (history/init-history)
+             {:game/db db}))))
+
+
+(deftest bot-casts-before-stop
+  (testing "bot priority action puts bolt on stack before human stop fires"
+    (let [app-db (setup-bot-at-draw {:mountains 1 :bolts 1})
+          ;; Call handle-loop-state :bot-phase directly
+          ;; Advances draw->main1, executes phase action (play land),
+          ;; then bot priority should cast bolt, then stop fires on main1
+          result (game-loop/handle-loop-state :bot-phase app-db
+                                              {:advance-with-stops game/advance-with-stops
+                                               :execute-bot-phase-action game/execute-bot-phase-action
+                                               :execute-bot-priority-action bot-actions/execute-bot-priority-action})
+          result-db (:game/db (:app-db result))]
+      ;; Bolt should be on stack before human gets control
+      (is (not (q/stack-empty? result-db))
+          "Bolt should be on stack after bot priority action in :bot-phase handler")
+      ;; Should NOT signal continue (stop fired with bolt on stack)
+      (is (nil? (:continue-yield? result))
+          "Should pause at stop with bolt on stack"))))
+
+
+(deftest bot-passes-at-stop-empty-stack
+  (testing "bot with no resources passes, stop fires with empty stack"
+    (let [app-db (setup-bot-at-draw {:mountains 0 :bolts 0})
+          result (game-loop/handle-loop-state :bot-phase app-db
+                                              {:advance-with-stops game/advance-with-stops
+                                               :execute-bot-phase-action game/execute-bot-phase-action
+                                               :execute-bot-priority-action bot-actions/execute-bot-priority-action})
+          result-db (:game/db (:app-db result))]
+      (is (q/stack-empty? result-db)
+          "Stack should be empty when bot has no resources")
+      ;; With stop on main1 on the bot entity, should pause
+      (is (nil? (:continue-yield? result))
+          "Should pause at stop even with empty stack"))))
+
+
+(deftest multiple-bot-casts-before-stop
+  (testing "bot casts multiple bolts before stop fires (burn bot only casts one due to stack-empty? guard)"
+    (let [app-db (setup-bot-at-draw {:mountains 3 :bolts 3})
+          result (game-loop/handle-loop-state :bot-phase app-db
+                                              {:advance-with-stops game/advance-with-stops
+                                               :execute-bot-phase-action game/execute-bot-phase-action
+                                               :execute-bot-priority-action bot-actions/execute-bot-priority-action})
+          result-db (:game/db (:app-db result))]
+      ;; Burn bot guards on stack-empty?, so only casts one bolt per priority loop
+      (is (not (q/stack-empty? result-db))
+          "At least one bolt should be on stack")
+      (is (nil? (:continue-yield? result))
+          "Should pause at stop with bolt on stack"))))
+
+
+(deftest yield-impl-no-bot-priority-check
+  (testing "yield-impl delegates bot priority to bot-phase handler, not its own code"
+    (let [app-db (setup-bot-at-draw {:mountains 1 :bolts 1})
+          ;; Call yield-impl — it should delegate to handle-loop-state :bot-phase
+          ;; which handles both phase action and priority action
+          result (game/yield-impl app-db)]
+      ;; yield-impl should reach handle-loop-state :bot-phase which handles the bot cast
+      ;; After bot-phase handles priority + stop, the result should have bolt on stack
+      (is (not (q/stack-empty? (:game/db (:app-db result))))
+          "Bolt should be on stack (placed by bot-phase handler, not yield-impl)"))))
+
+
+;; === History description tests for bot casts ===
+
+(deftest bot-cast-history-description
+  (testing "yield-loop produces 'Cast Lightning Bolt' description for bot cast"
+    (let [app-db (setup-bot-at-draw {:mountains 1 :bolts 1})
+          game-db (:game/db app-db)
+          ;; Replicate ::yield-all logic (yield-loop is private)
+          ;; Set F6 mode and run yield-impl loop with history entry creation
+          app-db (assoc app-db :game/db (priority/set-auto-mode game-db :f6))
+          final-adb (loop [adb app-db, n 200]
+                      (if (zero? n)
+                        adb
+                        (let [pre-db (:game/db adb)
+                              result (game/yield-impl adb)
+                              result-adb (:app-db result)
+                              post-db (:game/db result-adb)
+                              ;; Create history entry like yield-loop does
+                              result-adb (if (and post-db
+                                                  (not (identical? pre-db post-db))
+                                                  (game-loop/should-create-history-entry? pre-db post-db))
+                                           (let [game-state (q/get-game-state post-db)
+                                                 turn (or (:game/turn game-state) 0)
+                                                 active-pid (q/get-active-player-id post-db)
+                                                 active-is-bot? (boolean (bot/get-bot-archetype post-db active-pid))
+                                                 desc (or (descriptions/describe-event
+                                                            [:fizzle.events.game/yield] pre-db post-db nil nil active-is-bot?)
+                                                          "Yield")
+                                                 entry (history/make-entry post-db :fizzle.events.game/yield desc turn)]
+                                             (if (or (= -1 (:history/position result-adb))
+                                                     (history/at-tip? result-adb))
+                                               (history/append-entry result-adb entry)
+                                               (history/auto-fork result-adb entry)))
+                                           result-adb)]
+                          (if (:continue-yield? result)
+                            (recur result-adb (dec n))
+                            result-adb))))
+          entries (:history/main final-adb)
+          descs (mapv :entry/description entries)]
+      ;; Should have at least one "Cast Lightning Bolt" entry
+      (is (some #(= "Cast Lightning Bolt" %) descs)
+          (str "History should contain 'Cast Lightning Bolt' entry. Got: " (pr-str descs)))
+      ;; Should have at least one "Resolve Lightning Bolt" entry
+      (is (some #(= "Resolve Lightning Bolt" %) descs)
+          (str "History should contain 'Resolve Lightning Bolt' entry. Got: " (pr-str descs))))))

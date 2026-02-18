@@ -2,6 +2,8 @@
   (:require
     [cljs.test :refer-macros [deftest is testing]]
     [datascript.core :as d]
+    [fizzle.bots.actions :as bot-actions]
+    [fizzle.cards.lightning-bolt :as lightning-bolt]
     [fizzle.db.queries :as q]
     [fizzle.engine.game-loop :as game-loop]
     [fizzle.engine.priority :as priority]
@@ -450,3 +452,105 @@
           post-db (rules/cast-spell pre-db' :player-2 obj-id)]
       (is (true? (game-loop/should-create-history-entry? pre-db' post-db))
           "Stack becoming non-empty should create entry"))))
+
+
+(deftest history-entry-filtered-for-bot-priority-transfer
+  (testing "returns false when bot is active, both stacks non-empty, same phase and turn"
+    (let [db (-> (h/create-test-db {:mana {:black 1} :stops #{}})
+                 (h/add-opponent {:bot-archetype :burn}))
+          [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
+          pre-db (rules/cast-spell db' :player-1 obj-id)
+          ;; Switch active to bot
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] pre-db)
+          opp-eid (q/get-player-eid pre-db :player-2)
+          pre-db (d/db-with pre-db [[:db/add game-eid :game/active-player opp-eid]])
+          ;; Post-db: same state but priority bits flipped (priority transfer)
+          ;; Stack still non-empty, same phase, same turn
+          post-db (priority/yield-priority pre-db opp-eid)]
+      (is (false? (game-loop/should-create-history-entry? pre-db post-db))
+          "Priority-transfer-only change during bot turn should be filtered"))))
+
+
+;; === Phase guard for bot priority ===
+
+(defn- setup-burn-bot-at-phase
+  "Create an app-db with burn bot at a specific phase, with mountains and bolts."
+  [phase {:keys [mountains bolts]}]
+  (let [db (h/create-test-db {:stops #{}})
+        conn (d/conn-from-db db)
+        _ (d/transact! conn [lightning-bolt/lightning-bolt])
+        db (h/add-opponent @conn {:bot-archetype :burn :stops #{phase}})]
+    (let [[db _] (reduce (fn [[db' _] _]
+                           (h/add-card-to-zone db' :mountain :battlefield :player-2))
+                         [db nil]
+                         (range mountains))
+          [db _] (reduce (fn [[db' _] _]
+                           (h/add-card-to-zone db' :lightning-bolt :hand :player-2))
+                         [db nil]
+                         (range bolts))
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          opp-eid (q/get-player-eid db :player-2)
+          ;; Set the phase one step before the target so advance-with-stops moves to it
+          ;; For untap: start at draw of previous turn won't work. Instead, set phase directly.
+          ;; We'll set the result-db phase directly via the advance-with-stops mock.
+          db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]
+                            [:db/add game-eid :game/priority opp-eid]
+                            [:db/add game-eid :game/phase phase]])]
+      {:game/db db})))
+
+
+(deftest bot-does-not-cast-in-untap
+  (testing "bot priority loop is skipped during untap phase"
+    (let [;; Set bot at :draw, advance-with-stops will go to :main1.
+          ;; But we want to test untap specifically. Set bot at :untap directly
+          ;; and use a mock advance-with-stops that just returns same phase.
+          app-db (setup-burn-bot-at-phase :main1 {:mountains 1 :bolts 1})
+          ;; Override game-db phase to untap AFTER advance
+          ;; Use a custom advance-with-stops that returns untap phase
+          mock-advance (fn [adb _]
+                         (let [gdb (:game/db adb)
+                               game-eid (d/q '[:find ?e . :where [?e :game/id _]] gdb)
+                               untap-db (d/db-with gdb [[:db/add game-eid :game/phase :untap]])]
+                           {:app-db (assoc adb :game/db untap-db)}))
+          result (game-loop/handle-loop-state :bot-phase app-db
+                                              {:advance-with-stops mock-advance
+                                               :execute-bot-phase-action game/execute-bot-phase-action
+                                               :execute-bot-priority-action bot-actions/execute-bot-priority-action})
+          result-db (:game/db (:app-db result))]
+      (is (q/stack-empty? result-db)
+          "Bot should NOT cast during untap — no priority in untap"))))
+
+
+(deftest bot-does-not-cast-in-cleanup
+  (testing "bot priority loop is skipped during cleanup phase"
+    (let [app-db (setup-burn-bot-at-phase :main1 {:mountains 1 :bolts 1})
+          mock-advance (fn [adb _]
+                         (let [gdb (:game/db adb)
+                               game-eid (d/q '[:find ?e . :where [?e :game/id _]] gdb)
+                               cleanup-db (d/db-with gdb [[:db/add game-eid :game/phase :cleanup]])]
+                           {:app-db (assoc adb :game/db cleanup-db)}))
+          result (game-loop/handle-loop-state :bot-phase app-db
+                                              {:advance-with-stops mock-advance
+                                               :execute-bot-phase-action game/execute-bot-phase-action
+                                               :execute-bot-priority-action bot-actions/execute-bot-priority-action})
+          result-db (:game/db (:app-db result))]
+      (is (q/stack-empty? result-db)
+          "Bot should NOT cast during cleanup — no priority in cleanup"))))
+
+
+(deftest bot-casts-in-main1
+  (testing "bot priority loop runs during main1 phase"
+    (let [app-db (setup-burn-bot-at-phase :draw {:mountains 1 :bolts 1})
+          ;; advance-with-stops will advance draw->main1 for bot
+          mock-advance (fn [adb _]
+                         (let [gdb (:game/db adb)
+                               game-eid (d/q '[:find ?e . :where [?e :game/id _]] gdb)
+                               main1-db (d/db-with gdb [[:db/add game-eid :game/phase :main1]])]
+                           {:app-db (assoc adb :game/db main1-db)}))
+          result (game-loop/handle-loop-state :bot-phase app-db
+                                              {:advance-with-stops mock-advance
+                                               :execute-bot-phase-action game/execute-bot-phase-action
+                                               :execute-bot-priority-action bot-actions/execute-bot-priority-action})
+          result-db (:game/db (:app-db result))]
+      (is (not (q/stack-empty? result-db))
+          "Bot SHOULD cast during main1 — priority is granted"))))

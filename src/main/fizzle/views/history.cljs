@@ -73,8 +73,11 @@
                                            "text-text border-l-accent bg-mode-btn-bg"
                                            (if (> abs-idx position)
                                              "text-perm-text-tapped opacity-40 border-l-transparent"
-                                             "text-text border-l-transparent")))
+                                             "text-text border-l-transparent"))
+                                         (when (:entry/is-bot? entry) " italic"))
                              :on-click #(rf/dispatch [::events/jump-to abs-idx])}
+                       (when (:entry/is-bot? entry)
+                         [:span {:class "text-[10px] text-text-dim mr-1"} "Bot"])
                        (:entry/description entry)])))])])
           [:div {:class "text-border text-xs px-2 py-1"}
            "No actions yet"])))))

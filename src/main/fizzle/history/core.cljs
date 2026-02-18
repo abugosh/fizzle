@@ -10,11 +10,15 @@
 
 
 (defn make-entry
-  [game-db event-type description turn]
-  {:entry/snapshot game-db
-   :entry/event-type event-type
-   :entry/description description
-   :entry/turn turn})
+  ([game-db event-type description turn]
+   (make-entry game-db event-type description turn nil false))
+  ([game-db event-type description turn principal is-bot?]
+   {:entry/snapshot game-db
+    :entry/event-type event-type
+    :entry/description description
+    :entry/turn turn
+    :entry/principal principal
+    :entry/is-bot? (boolean is-bot?)}))
 
 
 (defn get-fork

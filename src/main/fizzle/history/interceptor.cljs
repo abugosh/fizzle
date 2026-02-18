@@ -1,5 +1,6 @@
 (ns fizzle.history.interceptor
   (:require
+    [fizzle.bots.protocol :as bot]
     [fizzle.db.queries :as queries]
     [fizzle.engine.game-loop :as game-loop]
     [fizzle.history.core :as history]
@@ -99,15 +100,19 @@
                             ;; Filter out bot phase advances (bot active, stack empty, same turn)
                             (or (not game-db-changed)
                                 (game-loop/should-create-history-entry? pre-game-db game-db-after)))
-                     (let [description (or (descriptions/describe-event
+                     (let [active-pid (try (queries/get-active-player-id game-db-after)
+                                           (catch :default _ nil))
+                           active-is-bot? (boolean (when active-pid
+                                                     (bot/get-bot-archetype game-db-after active-pid)))
+                           description (or (descriptions/describe-event
                                              event pre-game-db game-db-after
-                                             selection-type casting-spell-id)
+                                             selection-type casting-spell-id active-is-bot?)
                                            (name event-id))
                            ;; Use pre-game-db for snapshot when game-db unchanged
                            ;; (selection-created case), since that's the meaningful state
                            snapshot-db (if game-db-changed game-db-after pre-game-db)
                            turn (get-turn snapshot-db)
-                           entry (history/make-entry snapshot-db event-id description turn)]
+                           entry (history/make-entry snapshot-db event-id description turn active-pid active-is-bot?)]
                        (if (or (= -1 (:history/position db-after))
                                (history/at-tip? db-after))
                          (assoc-in context [:effects :db] (history/append-entry db-after entry))
