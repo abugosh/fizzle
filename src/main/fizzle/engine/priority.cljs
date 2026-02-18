@@ -8,6 +8,12 @@
     [datascript.core :as d]))
 
 
+(def priority-phases
+  "Phases where players receive priority per MTG rules.
+   Untap and cleanup do not grant priority."
+  #{:upkeep :draw :main1 :combat :main2 :end})
+
+
 (defn get-priority-holder-eid
   "Get the entity ID of the player who currently holds priority."
   [db]

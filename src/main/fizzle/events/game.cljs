@@ -8,7 +8,6 @@
     [fizzle.engine.card-spec :as card-spec]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.events :as game-events]
-    [fizzle.engine.game-loop :as game-loop]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.priority :as priority]
@@ -862,6 +861,48 @@
           result)))))
 
 
+(defn negotiate-priority
+  "Handle priority passing between players.
+   Returns {:app-db updated-app-db, :all-passed? bool}.
+
+   When all-passed? is true, passes are reset in the returned app-db.
+   When all-passed? is false, priority has been transferred to the opponent.
+
+   Pure function: (app-db) -> {:app-db app-db', :all-passed? bool}"
+  [app-db]
+  (let [game-db (:game/db app-db)
+        auto-mode (priority/get-auto-mode game-db)
+        is-bot-turn (boolean (bot/get-bot-archetype game-db (queries/get-active-player-id game-db)))
+        holder-eid (priority/get-priority-holder-eid game-db)
+        ;; Step 1: current player passes
+        gdb (priority/yield-priority game-db holder-eid)
+        ;; Step 2: auto-pass non-active player
+        active-player-id (queries/get-active-player-id gdb)
+        active-eid (queries/get-player-eid gdb active-player-id)
+        opponent-player-id (queries/get-other-player-id gdb active-player-id)
+        gdb (if opponent-player-id
+              (let [opp-eid (queries/get-player-eid gdb opponent-player-id)]
+                (if (or auto-mode (and is-bot-turn (queries/stack-empty? gdb)))
+                  ;; Auto-pass both players (bot turn with empty stack, or auto-mode)
+                  (-> gdb
+                      (priority/yield-priority active-eid)
+                      (priority/yield-priority opp-eid))
+                  (let [archetype (bot/get-bot-archetype gdb opponent-player-id)]
+                    (if (and archetype
+                             (= :pass (bot/bot-priority-decision
+                                        archetype {:db gdb :player-id opponent-player-id})))
+                      (priority/yield-priority gdb opp-eid)
+                      gdb))))
+              gdb)
+        all-passed (or (not opponent-player-id)
+                       (priority/both-passed? gdb))]
+    (if all-passed
+      {:app-db (assoc app-db :game/db (priority/reset-passes gdb))
+       :all-passed? true}
+      {:app-db (assoc app-db :game/db (priority/transfer-priority gdb holder-eid))
+       :all-passed? false})))
+
+
 (defn yield-impl
   "Core priority passing logic. Pure function on app-db.
    Returns map with:
@@ -873,7 +914,7 @@
    3. If all passed and stack empty → advance phases
    4. If not all passed → priority transferred, wait"
   [app-db]
-  (let [result (game-loop/negotiate-priority app-db)]
+  (let [result (negotiate-priority app-db)]
     (if (:all-passed? result)
       (let [negotiated-app-db (:app-db result)
             game-db (:game/db negotiated-app-db)]

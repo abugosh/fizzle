@@ -507,3 +507,184 @@
           "F6 should advance through opponent's turn to player's main1")
       (is (= 3 (:game/turn (q/get-game-state result-db)))
           "Should be player's turn 3 (past opponent's turn 2)"))))
+
+
+;; === negotiate-priority tests (moved from game_loop_test) ===
+
+(deftest negotiate-priority-normal-mode-bot-auto-passes
+  (testing "bot opponent auto-passes in normal mode"
+    (let [db (-> (h/create-test-db {:stops #{:main1}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          app-db {:game/db db}
+          result (game/negotiate-priority app-db)]
+      (is (true? (:all-passed? result))
+          "Both should have passed (human passed, bot auto-passed)"))))
+
+
+(deftest negotiate-priority-auto-mode-both-pass
+  (testing "both pass in auto-mode (:resolving)"
+    (let [db (-> (h/create-test-db {:stops #{:main1}})
+                 (h/add-opponent {:bot-archetype :goldfish})
+                 (priority/set-auto-mode :resolving))
+          app-db {:game/db db}
+          result (game/negotiate-priority app-db)]
+      (is (true? (:all-passed? result))))))
+
+
+(deftest negotiate-priority-bot-turn-both-pass
+  (testing "both pass during bot turn"
+    (let [db (-> (h/create-test-db {:stops #{:main1}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          opp-eid (q/get-player-eid db :player-2)
+          db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]])
+          app-db {:game/db db}
+          result (game/negotiate-priority app-db)]
+      (is (true? (:all-passed? result))))))
+
+
+(deftest negotiate-priority-single-player-one-pass-suffices
+  (testing "single player: one pass suffices"
+    (let [db (h/create-test-db {:stops #{:main1}})
+          app-db {:game/db db}
+          result (game/negotiate-priority app-db)]
+      (is (true? (:all-passed? result))
+          "Single player should have all-passed after one pass"))))
+
+
+(deftest negotiate-priority-transfers-when-not-all-passed
+  (testing "transfers priority when opponent hasn't passed"
+    (let [db (-> (h/create-test-db {:stops #{:main1}})
+                 (h/add-opponent {}))
+          app-db {:game/db db}
+          result (game/negotiate-priority app-db)]
+      (is (false? (:all-passed? result))
+          "Should not be all-passed when opponent is human and didn't pass"))))
+
+
+(deftest negotiate-priority-returns-app-db-with-reset-passes
+  (testing "resets passes in returned app-db when all passed"
+    (let [db (-> (h/create-test-db {:stops #{:main1}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          app-db {:game/db db}
+          result (game/negotiate-priority app-db)
+          result-db (:game/db (:app-db result))]
+      (is (empty? (priority/get-passed-eids result-db))
+          "Passes should be reset after all-passed"))))
+
+
+(deftest negotiate-priority-human-not-auto-passed-when-stack-non-empty-on-bot-turn
+  (testing "human is NOT auto-passed when stack is non-empty during bot turn"
+    (let [db (-> (h/create-test-db {:mana {:black 1} :stops #{:main1}})
+                 (h/add-opponent {:bot-archetype :burn}))
+          [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
+          game-db (rules/cast-spell db' :player-1 obj-id)
+          ;; Switch active player to bot
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db)
+          opp-eid (q/get-player-eid game-db :player-2)
+          game-db (d/db-with game-db [[:db/add game-eid :game/active-player opp-eid]])
+          app-db {:game/db game-db}
+          result (game/negotiate-priority app-db)]
+      (is (false? (:all-passed? result))
+          "Human should get priority when stack is non-empty during bot turn"))))
+
+
+(deftest negotiate-priority-human-auto-passed-when-stack-empty-on-bot-turn
+  (testing "human IS auto-passed when stack is empty during bot turn"
+    (let [db (-> (h/create-test-db {:stops #{:main1}})
+                 (h/add-opponent {:bot-archetype :burn}))
+          ;; Switch active player to bot
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          opp-eid (q/get-player-eid db :player-2)
+          db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]])
+          app-db {:game/db db}
+          result (game/negotiate-priority app-db)]
+      (is (true? (:all-passed? result))
+          "Human should be auto-passed when stack is empty during bot turn"))))
+
+
+(deftest negotiate-priority-auto-mode-overrides-stack-check
+  (testing "auto-mode overrides stack-non-empty check during bot turn"
+    (let [db (-> (h/create-test-db {:mana {:black 1} :stops #{:main1}})
+                 (h/add-opponent {:bot-archetype :burn}))
+          [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
+          game-db (-> (rules/cast-spell db' :player-1 obj-id)
+                      (priority/set-auto-mode :resolving))
+          ;; Switch active player to bot
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db)
+          opp-eid (q/get-player-eid game-db :player-2)
+          game-db (d/db-with game-db [[:db/add game-eid :game/active-player opp-eid]])
+          app-db {:game/db game-db}
+          result (game/negotiate-priority app-db)]
+      (is (true? (:all-passed? result))
+          "Auto-mode (F6/resolving) should still auto-pass even with stack non-empty"))))
+
+
+;; === Unique yield-impl tests (moved from game_loop_test) ===
+
+(deftest yield-impl-clears-resolving-auto-mode-when-stack-empties
+  (testing "yield-impl clears :resolving auto-mode when stack empties"
+    (let [db (-> (h/create-test-db {:mana {:black 1} :stops #{:main1}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
+          game-db (-> (rules/cast-spell db' :player-1 obj-id)
+                      (priority/set-auto-mode :resolving))
+          app-db {:game/db game-db}
+          result (game/yield-impl app-db)]
+      (is (nil? (priority/get-auto-mode (:game/db (:app-db result))))
+          "Auto-mode should be cleared when stack empties during :resolving"))))
+
+
+(deftest yield-impl-bot-turn-advances-single-phase
+  (testing "yield-impl during bot turn processes one phase at a time"
+    (let [db (-> (h/create-test-db {:stops #{}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          ;; Switch active player to bot
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          opp-eid (q/get-player-eid db :player-2)
+          game-db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]
+                                 [:db/add game-eid :game/priority opp-eid]])
+          app-db {:game/db game-db}
+          result (game/yield-impl app-db)]
+      (is (true? (:continue-yield? result))
+          "Bot turn should signal continue for phase-by-phase advancement"))))
+
+
+(deftest yield-impl-cleanup-discard-returns-pending-selection
+  (testing "cleanup discard returns pending-selection"
+    (let [db (-> (h/create-test-db {:stops #{}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          ;; Add 8 cards to hand (need to discard 1 at cleanup)
+          [db' _] (h/add-card-to-zone db :dark-ritual :hand :player-1)
+          [db' _] (h/add-card-to-zone db' :dark-ritual :hand :player-1)
+          [db' _] (h/add-card-to-zone db' :dark-ritual :hand :player-1)
+          [db' _] (h/add-card-to-zone db' :dark-ritual :hand :player-1)
+          [db' _] (h/add-card-to-zone db' :dark-ritual :hand :player-1)
+          [db' _] (h/add-card-to-zone db' :dark-ritual :hand :player-1)
+          [db' _] (h/add-card-to-zone db' :dark-ritual :hand :player-1)
+          [db' _] (h/add-card-to-zone db' :dark-ritual :hand :player-1)
+          ;; Advance to end phase (one before cleanup)
+          game-db (-> db'
+                      (game/advance-phase :player-1)   ; main1 -> combat
+                      (game/advance-phase :player-1)   ; combat -> main2
+                      (game/advance-phase :player-1))  ; main2 -> end
+          app-db {:game/db game-db}
+          result (game/yield-impl app-db)]
+      (is (some? (:game/pending-selection (:app-db result)))
+          "Should return pending-selection for cleanup discard"))))
+
+
+(deftest yield-impl-bot-phase-does-not-cast-spells
+  (testing "yield-impl during bot turn does not cast spells (only phase actions)"
+    (let [db (-> (h/create-test-db {:stops #{}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          ;; Switch active player to bot
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          opp-eid (q/get-player-eid db :player-2)
+          game-db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]
+                                 [:db/add game-eid :game/priority opp-eid]])
+          app-db {:game/db game-db}
+          result (game/yield-impl app-db)
+          result-db (:game/db (:app-db result))]
+      (is (q/stack-empty? result-db)
+          "Bot phase should not put anything on stack"))))
