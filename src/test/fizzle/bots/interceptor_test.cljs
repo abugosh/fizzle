@@ -124,12 +124,12 @@
       (let [[tap-event] dispatches]
         (is (= ::abilities/activate-mana-ability (first (second tap-event)))
             "First dispatch should be ::activate-mana-ability"))
-      ;; Last dispatch should be bot-cast-spell with target
+      ;; Last dispatch should be cast-spell with opts map
       (let [[_ cast-args] (last dispatches)]
-        (is (= ::game/bot-cast-spell (first cast-args))
-            "Last dispatch should be ::bot-cast-spell")
-        (is (= :player-2 (second cast-args))
-            "Cast dispatch should include bot player-id")))))
+        (is (= ::game/cast-spell (first cast-args))
+            "Last dispatch should be ::cast-spell")
+        (is (= :player-2 (:player-id (second cast-args)))
+            "Cast dispatch opts should include bot player-id")))))
 
 
 (deftest build-bot-dispatches-includes-player-id-in-tap
@@ -147,8 +147,8 @@
 
 ;; === Bot Cast Spell Event (through standard path) ===
 
-(deftest bot-cast-spell-event-puts-bolt-on-stack
-  (testing "::bot-cast-spell casts through rules/cast-spell-mode and puts bolt on stack"
+(deftest bot-cast-spell-via-cast-spell-handler-puts-bolt-on-stack
+  (testing "cast-spell-handler with opts casts targeted spell for bot"
     (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 1})
           game-db (:game/db app-db)
           ;; First tap the mountain manually (simulating the tap dispatch)
@@ -158,9 +158,11 @@
           ;; Now find the bolt
           hand (q/get-objects-in-zone game-db :player-2 :hand)
           bolt (first (filter #(= :lightning-bolt (get-in % [:object/card :card/id])) hand))
-          ;; Call the handler directly with target (opponent = :player-1)
+          ;; Call cast-spell-handler with opts (same path as human, with explicit args)
           app-db (assoc app-db :game/db game-db)
-          result-db (game/bot-cast-spell-handler app-db :player-2 (:object/id bolt) :player-1)
+          result-db (game/cast-spell-handler app-db {:player-id :player-2
+                                                     :object-id (:object/id bolt)
+                                                     :target :player-1})
           result-game-db (:game/db result-db)]
       (is (not (q/stack-empty? result-game-db))
           "Stack should have the bolt on it")
@@ -175,13 +177,15 @@
 
 
 (deftest bot-cast-spell-respects-can-cast-validation
-  (testing "::bot-cast-spell returns unchanged db when can-cast? fails"
+  (testing "cast-spell-handler with opts returns unchanged db when can-cast? fails"
     (let [app-db (setup-burn-bot-app-db {:mountains 0 :bolts 1})
           game-db (:game/db app-db)
           ;; Bot has bolt but no mana (didn't tap)
           hand (q/get-objects-in-zone game-db :player-2 :hand)
           bolt (first (filter #(= :lightning-bolt (get-in % [:object/card :card/id])) hand))
-          result-db (game/bot-cast-spell-handler app-db :player-2 (:object/id bolt) :player-1)
+          result-db (game/cast-spell-handler app-db {:player-id :player-2
+                                                     :object-id (:object/id bolt)
+                                                     :target :player-1})
           result-game-db (:game/db result-db)]
       (is (q/stack-empty? result-game-db)
           "Stack should be empty when bot can't cast"))))

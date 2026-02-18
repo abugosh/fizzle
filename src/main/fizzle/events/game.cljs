@@ -246,8 +246,9 @@
 (defn- initiate-cast-with-mode
   "Start casting a spell with a specific mode.
    Checks for X costs and targeting before actually casting.
+   When target is provided and spell has targeting, casts directly with stored target.
    Returns updated app-db."
-  [app-db player-id object-id mode]
+  [app-db player-id object-id mode target]
   (let [game-db (:game/db app-db)
         obj (queries/get-object game-db object-id)
         card (:object/card obj)
@@ -271,7 +272,20 @@
             (assoc :game/pending-selection sel)
             (dissoc :game/selected-card)))
 
-      ;; Check for targeting requirements
+      ;; Check for targeting requirements with pre-determined target
+      (and target (seq targeting-reqs))
+      (let [first-req (first targeting-reqs)
+            sel {:selection/player-id player-id
+                 :selection/object-id object-id
+                 :selection/mode mode
+                 :selection/target-requirement first-req
+                 :selection/selected #{target}}
+            db-after (sel-targeting/confirm-cast-time-target game-db sel)]
+        (-> app-db
+            (assoc :game/db db-after)
+            (dissoc :game/selected-card)))
+
+      ;; Check for targeting requirements (interactive)
       (seq targeting-reqs)
       (let [first-req (first targeting-reqs)
             sel (sel-targeting/build-cast-time-target-selection game-db player-id object-id mode first-req)]
@@ -301,82 +315,41 @@
 (defn cast-spell-handler
   "Handle cast-spell event: check casting modes and either auto-cast,
    show mode selector, or initiate casting with X cost/targeting checks.
-   Pure function: (app-db) -> app-db"
-  [app-db]
-  (let [game-db (:game/db app-db)
-        selected (:game/selected-card app-db)
-        human-pid (queries/get-human-player-id game-db)]
-    (if (and selected (rules/can-cast? game-db human-pid selected))
-      (let [modes (rules/get-casting-modes game-db human-pid selected)
-            castable-modes (filterv #(rules/can-cast-mode? game-db human-pid selected %) modes)]
-        (cond
-          ;; No castable modes - shouldn't happen if can-cast? passed
-          (empty? castable-modes)
-          app-db
+   Accepts optional opts map with :player-id, :object-id, :target.
+   When opts provided, uses explicit values instead of human-pid/selected-card.
+   Pure function: (app-db, opts?) -> app-db"
+  ([app-db] (cast-spell-handler app-db nil))
+  ([app-db opts]
+   (let [game-db (:game/db app-db)
+         player-id (or (:player-id opts)
+                       (queries/get-human-player-id game-db))
+         object-id (or (:object-id opts)
+                       (:game/selected-card app-db))
+         target (:target opts)]
+     (if (and object-id (rules/can-cast? game-db player-id object-id))
+       (let [modes (rules/get-casting-modes game-db player-id object-id)
+             castable-modes (filterv #(rules/can-cast-mode? game-db player-id object-id %) modes)]
+         (cond
+           ;; No castable modes - shouldn't happen if can-cast? passed
+           (empty? castable-modes)
+           app-db
 
-          ;; Multiple modes: show selector first (X costs/targeting checked after mode selection)
-          (> (count castable-modes) 1)
-          (assoc app-db :game/pending-mode-selection
-                 {:object-id selected
-                  :modes castable-modes})
+           ;; Multiple modes: show selector first (X costs/targeting checked after mode selection)
+           (> (count castable-modes) 1)
+           (assoc app-db :game/pending-mode-selection
+                  {:object-id object-id
+                   :modes castable-modes})
 
-          ;; Single mode: check for X costs, targeting, then cast
-          :else
-          (initiate-cast-with-mode app-db human-pid selected (first castable-modes))))
-      app-db)))
+           ;; Single mode: check for X costs, targeting, then cast
+           :else
+           (initiate-cast-with-mode app-db player-id object-id (first castable-modes) target)))
+       app-db))))
 
 
 (rf/reg-event-db
   ::cast-spell
-  (fn [db _]
-    (cast-spell-handler db)))
-
-
-(defn bot-cast-spell-handler
-  "Handle bot cast: validate and cast a spell for a given player.
-   Uses rules/cast-spell-mode (same as human after selections complete).
-   If the spell has targeting, stores the pre-determined target on the stack-item.
-   Pure function: (app-db, player-id, object-id, target) -> app-db"
-  [app-db player-id object-id target]
-  (let [game-db (:game/db app-db)]
-    (if-not (rules/can-cast? game-db player-id object-id)
-      app-db
-      (let [modes (rules/get-casting-modes game-db player-id object-id)
-            castable-modes (filterv #(rules/can-cast-mode? game-db player-id object-id %) modes)]
-        (if (empty? castable-modes)
-          app-db
-          (let [mode (first castable-modes)
-                db-after-cast (rules/cast-spell-mode game-db player-id object-id mode)
-                ;; Store target on stack-item if spell has targeting
-                obj (queries/get-object game-db object-id)
-                card (:object/card obj)
-                targeting-reqs (targeting/get-targeting-requirements card)
-                db-after-targets
-                (if (and target (seq targeting-reqs))
-                  (let [target-req (first targeting-reqs)
-                        target-id (:target/id target-req)
-                        ;; Find the stack-item for this spell
-                        obj-eid (d/q '[:find ?e .
-                                       :in $ ?oid
-                                       :where [?e :object/id ?oid]]
-                                     db-after-cast object-id)
-                        stack-item-eid (when obj-eid
-                                         (d/q '[:find ?e .
-                                                :in $ ?obj-eid
-                                                :where [?e :stack-item/object-ref ?obj-eid]]
-                                              db-after-cast obj-eid))]
-                    (if stack-item-eid
-                      (d/db-with db-after-cast
-                                 [[:db/add stack-item-eid :stack-item/targets {target-id target}]])
-                      db-after-cast))
-                  db-after-cast)]
-            (assoc app-db :game/db db-after-targets)))))))
-
-
-(rf/reg-event-db
-  ::bot-cast-spell
-  (fn [db [_ player-id object-id target]]
-    (bot-cast-spell-handler db player-id object-id target)))
+  (fn [db [_ opts]]
+    (cast-spell-handler db opts)))
 
 
 (defn- get-source-id
@@ -913,7 +886,9 @@
             (or auto-mode
                 (player-is-bot? gdb opp-eid)
                 (and (player-is-bot? gdb active-eid)
-                     (queries/stack-empty? gdb)))))
+                     (queries/stack-empty? gdb)
+                     (not (priority/check-stop gdb active-eid
+                                               (:game/phase (queries/get-game-state gdb))))))))
         gdb (if should-auto-pass-opponent?
               (let [opp-eid (queries/get-player-eid gdb opponent-player-id)]
                 (-> gdb
@@ -1176,7 +1151,7 @@
         object-id (:object-id pending)]
     (if (and pending object-id mode)
       ;; Use initiate-cast-with-mode to handle X costs, targeting, and casting
-      (-> (initiate-cast-with-mode app-db (queries/get-human-player-id (:game/db app-db)) object-id mode)
+      (-> (initiate-cast-with-mode app-db (queries/get-human-player-id (:game/db app-db)) object-id mode nil)
           (dissoc :game/pending-mode-selection))
       app-db)))
 

@@ -11,12 +11,13 @@
 
    All game events (::cast-spell, ::yield, etc.) remain bot-unaware.
    The interceptor bridges between bot protocol decisions and standard events.
-   Bot taps dispatch ::activate-mana-ability. Bot casts dispatch ::bot-cast-spell.
+   Bot taps dispatch ::activate-mana-ability. Bot casts dispatch ::cast-spell with opts.
    Each dispatch goes through the full event pipeline (history, validation)."
   (:require
     [fizzle.bots.protocol :as bot]
     [fizzle.db.queries :as queries]
     [fizzle.engine.priority :as priority]
+    [fizzle.engine.rules :as rules]
     [re-frame.core :as rf]))
 
 
@@ -101,7 +102,7 @@
 (defn build-bot-dispatches
   "Convert a bot action plan into a sequence of re-frame dispatches.
    Each tap becomes [:dispatch [::activate-mana-ability obj-id color player-id]]
-   and the cast becomes [:dispatch [::bot-cast-spell player-id object-id target]].
+   and the cast becomes [:dispatch [::cast-spell {:player-id pid :object-id oid :target tid}]].
    Returns a vector of [:dispatch [...]] entries for use in :fx.
    Pure function: (action-map) -> [[:dispatch [event-id args...]]]"
   [action]
@@ -110,8 +111,10 @@
                                [:dispatch [:fizzle.events.abilities/activate-mana-ability
                                            object-id mana-color player-id]])
                              (:tap-sequence action))
-        cast-dispatch [:dispatch [:fizzle.events.game/bot-cast-spell
-                                  player-id (:object-id action) (:target action)]]]
+        cast-dispatch [:dispatch [:fizzle.events.game/cast-spell
+                                  {:player-id player-id
+                                   :object-id (:object-id action)
+                                   :target (:target action)}]]]
     (conj tap-dispatches cast-dispatch)))
 
 
@@ -125,7 +128,8 @@
     :fizzle.events.game/advance-phase
     :fizzle.events.game/start-turn
     :fizzle.events.game/cast-and-yield
-    :fizzle.events.game/play-land})
+    :fizzle.events.game/play-land
+    :fizzle.events.game/cast-spell})
 
 
 (def ^:private max-bot-actions
@@ -152,22 +156,35 @@
                            (:game/pending-selection db-after)
                            (not (bot-should-act? game-db)))
                      context
-                     (let [existing-fx (get-in context [:effects :fx] [])]
+                     (let [existing-fx (get-in context [:effects :fx] [])
+                           yield-kw :fizzle.events.game/yield
+                           cleaned-fx (into []
+                                            (remove
+                                              (fn [[effect-type arg]]
+                                                (or (and (= :dispatch effect-type)
+                                                         (sequential? arg)
+                                                         (= yield-kw (first arg)))
+                                                    (and (= :dispatch-later effect-type)
+                                                         (map? arg)
+                                                         (= yield-kw (first (:dispatch arg))))))
+                                              existing-fx))]
                        (assoc-in context [:effects :fx]
-                                 (conj existing-fx [:dispatch [::bot-decide]]))))))))))
+                                 (conj cleaned-fx [:dispatch [::bot-decide]]))))))))))
 
 
 ;; === ::bot-decide Event Handler ===
 
 (defn- find-bot-land-to-play
-  "Find a land in the bot's hand that can be played.
+  "Find a land in the bot's hand that can legally be played.
+   Uses rules/can-play-land? to enforce one-land-per-turn and phase checks.
    Returns the object-id of the land, or nil if none available.
    Pure function: (game-db, player-id) -> object-id | nil"
   [game-db player-id]
   (let [hand (queries/get-hand game-db player-id)]
     (some (fn [obj]
-            (when (contains? (set (:card/types (:object/card obj))) :land)
-              (:object/id obj)))
+            (let [oid (:object/id obj)]
+              (when (rules/can-play-land? game-db player-id oid)
+                oid)))
           hand)))
 
 
