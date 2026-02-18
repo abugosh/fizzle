@@ -4,6 +4,7 @@
   (:require
     [cljs.test :refer-macros [deftest is testing]]
     [datascript.core :as d]
+    [fizzle.bots.interceptor :as bot-interceptor]
     [fizzle.db.queries :as q]
     [fizzle.events.game :as game]
     [fizzle.history.core :as history]
@@ -13,8 +14,9 @@
     [re-frame.db :as rf-db]))
 
 
-;; Register history interceptor for dispatch-sync tests
+;; Register interceptors for dispatch-sync tests
 (interceptor/register!)
+(bot-interceptor/register!)
 
 
 (defn- setup-app-db
@@ -30,11 +32,40 @@
             {:game/db db}))))
 
 
+(defn- process-bot-action!
+  "Simulate the bot interceptor synchronously. Calls bot-decide-handler,
+   applies db changes, and dispatches non-yield fx effects synchronously.
+   When bot passes (dispatches ::yield), only applies db changes — the main
+   loop will handle the next yield. When bot acts (play land, cast), dispatches
+   the action events synchronously."
+  []
+  (let [current @rf-db/app-db
+        game-db (:game/db current)]
+    (when (and game-db
+               (not (:game/pending-selection current))
+               (bot-interceptor/bot-should-act? game-db))
+      (let [effects (bot-interceptor/bot-decide-handler current)
+            fx-entries (:fx effects)
+            is-pass? (some (fn [[fx-type payload]]
+                             (and (= :dispatch fx-type)
+                                  (= (first payload) :fizzle.events.game/yield)))
+                           fx-entries)]
+        ;; Always apply db changes
+        (when (:db effects)
+          (reset! rf-db/app-db (:db effects)))
+        ;; Only dispatch non-yield effects (yield is handled by main loop)
+        (when-not is-pass?
+          (doseq [[fx-type payload] fx-entries]
+            (when (= :dispatch fx-type)
+              (rf/dispatch-sync payload))))))))
+
+
 (defn- dispatch-yield-all
   "Dispatch ::yield-all and drain the yield cascade synchronously.
    ::yield-all sets auto-mode + step-count and dispatches ::yield via :dispatch.
    Since :dispatch is async, we drain the cascade by repeatedly calling
-   dispatch-sync [::yield] until step-count is cleared (cascade complete)."
+   dispatch-sync [::yield] until step-count is cleared (cascade complete).
+   Also processes bot actions between yields to simulate the bot interceptor."
   [app-db]
   (reset! rf-db/app-db app-db)
   (rf/dispatch-sync [::game/yield-all])
@@ -46,6 +77,7 @@
         @rf-db/app-db
         (do
           (rf/dispatch-sync [::game/yield])
+          (process-bot-action!)
           (recur (dec n)))))))
 
 

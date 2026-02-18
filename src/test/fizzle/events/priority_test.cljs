@@ -2,6 +2,7 @@
   (:require
     [cljs.test :refer-macros [deftest is testing]]
     [datascript.core :as d]
+    [fizzle.bots.interceptor :as bot-interceptor]
     [fizzle.db.queries :as q]
     [fizzle.engine.priority :as priority]
     [fizzle.engine.rules :as rules]
@@ -13,8 +14,9 @@
     [re-frame.db :as rf-db]))
 
 
-;; Register history interceptor for dispatch-sync tests
+;; Register interceptors for dispatch-sync tests
 (interceptor/register!)
+(bot-interceptor/register!)
 
 
 (defn- setup-app-db
@@ -37,11 +39,47 @@
   @rf-db/app-db)
 
 
+(defn- process-bot-action!
+  "Simulate the bot interceptor synchronously. Calls bot-decide-handler,
+   applies db changes, and dispatches non-yield fx effects synchronously.
+   When bot passes (dispatches ::yield), only applies db changes — the main
+   loop will handle the next yield. When bot acts (play land, cast), dispatches
+   the action events synchronously.
+   Returns true if a bot action was taken, false if bot passed or no bot."
+  []
+  (let [current @rf-db/app-db
+        game-db (:game/db current)]
+    (if (or (not game-db)
+            (:game/pending-selection current)
+            (not (bot-interceptor/bot-should-act? game-db)))
+      false
+      (let [effects (bot-interceptor/bot-decide-handler current)
+            fx-entries (:fx effects)
+            ;; Check if this is a pass (dispatches ::yield) or an action
+            is-pass? (some (fn [[fx-type payload]]
+                             (and (= :dispatch fx-type)
+                                  (= (first payload) :fizzle.events.game/yield)))
+                           fx-entries)]
+        ;; Always apply db changes
+        (when (:db effects)
+          (reset! rf-db/app-db (:db effects)))
+        (if is-pass?
+          ;; Bot passes — don't dispatch ::yield (main loop handles next yield)
+          false
+          ;; Bot acts — dispatch action events synchronously
+          (do
+            (doseq [[fx-type payload] fx-entries]
+              (when (= :dispatch fx-type)
+                (rf/dispatch-sync payload)))
+            true))))))
+
+
 (defn- dispatch-yield-all
   "Dispatch ::yield-all and drain the yield cascade synchronously.
    ::yield-all sets auto-mode + step-count and dispatches ::yield via :dispatch.
    Since :dispatch is async, we drain the cascade by repeatedly calling
-   dispatch-sync [::yield] until step-count is cleared (cascade complete)."
+   dispatch-sync [::yield] until step-count is cleared (cascade complete).
+   Also processes bot actions between yields to simulate the bot interceptor."
   [app-db]
   (reset! rf-db/app-db app-db)
   (rf/dispatch-sync [::game/yield-all])
@@ -53,6 +91,10 @@
         @rf-db/app-db
         (do
           (rf/dispatch-sync [::game/yield])
+          ;; After yield, process any bot action (land play, cast, etc.)
+          ;; If bot took an action (not pass), continue the loop.
+          ;; If bot passed, the next ::yield will advance the phase.
+          (process-bot-action!)
           (recur (dec n)))))))
 
 
@@ -348,6 +390,44 @@
           "Opponent should have 1 land on battlefield")
       (is (= 0 (count (q/get-hand result-db :player-2)))
           "Opponent hand should be empty after playing land"))))
+
+
+(deftest debug-goldfish-land-trace
+  (testing "DEBUG: trace goldfish land play step by step"
+    (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          [db' _] (h/add-card-to-zone db :plains :hand :player-2)
+          game-db (-> db'
+                      (game/advance-phase :player-1)
+                      (game/advance-phase :player-1))
+          app-db (merge (history/init-history) {:game/db game-db})
+          ;; Manually step through yield-all + bot actions
+          _ (reset! rf-db/app-db app-db)
+          _ (rf/dispatch-sync [::game/yield-all])
+          ;; Step through the loop manually, collecting state at each step
+          states (loop [n 20 acc []]
+                   (let [current @rf-db/app-db
+                         game-db (:game/db current)
+                         gs (when game-db (q/get-game-state game-db))
+                         state {:turn (:game/turn gs)
+                                :phase (:game/phase gs)
+                                :active (when game-db (q/get-active-player-id game-db))
+                                :bot-act? (when game-db (bot-interceptor/bot-should-act? game-db))
+                                :hand-count (when game-db (count (q/get-hand game-db :player-2)))
+                                :bf-count (when game-db (count (q/get-objects-in-zone game-db :player-2 :battlefield)))
+                                :step-count (:yield/step-count current)}]
+                     (if (or (zero? n)
+                             (:game/pending-selection current)
+                             (not (contains? current :yield/step-count)))
+                       (conj acc state)
+                       (do
+                         (rf/dispatch-sync [::game/yield])
+                         (process-bot-action!)
+                         (recur (dec n) (conj acc state))))))]
+      ;; Print the trace
+      (doseq [[i s] (map-indexed vector states)]
+        (println (str "Step " i ": " (pr-str s))))
+      (is (= 1 1) "debug test"))))
 
 
 (deftest goldfish-no-land-in-hand-passes

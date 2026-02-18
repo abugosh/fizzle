@@ -124,7 +124,8 @@
     :fizzle.events.game/resolve-top
     :fizzle.events.game/advance-phase
     :fizzle.events.game/start-turn
-    :fizzle.events.game/cast-and-yield})
+    :fizzle.events.game/cast-and-yield
+    :fizzle.events.game/play-land})
 
 
 (def ^:private max-bot-actions
@@ -158,8 +159,21 @@
 
 ;; === ::bot-decide Event Handler ===
 
+(defn- find-bot-land-to-play
+  "Find a land in the bot's hand that can be played.
+   Returns the object-id of the land, or nil if none available.
+   Pure function: (game-db, player-id) -> object-id | nil"
+  [game-db player-id]
+  (let [hand (queries/get-hand game-db player-id)]
+    (some (fn [obj]
+            (when (contains? (set (:card/types (:object/card obj))) :land)
+              (:object/id obj)))
+          hand)))
+
+
 (defn bot-decide-handler
   "Core logic for ::bot-decide. Returns re-frame effects map.
+   Checks phase actions first (play land), then priority decisions (cast/pass).
    Exposed as public for testing.
    Pure function: (app-db) -> {:db ... :fx [...]}"
   [app-db]
@@ -172,15 +186,36 @@
       ;; Not bot's turn, selection in progress, or safety limit — yield
       {:db (dissoc app-db :bot/action-count)
        :fx [[:dispatch [:fizzle.events.game/yield]]]}
-      (let [action (bot-decide-action game-db)]
-        (if (= :pass (:action action))
-          ;; Bot passes — dispatch ::yield to pass priority
-          {:db (dissoc app-db :bot/action-count)
-           :fx [[:dispatch [:fizzle.events.game/yield]]]}
-          ;; Bot wants to cast — build dispatch sequence for taps + cast
-          (let [dispatches (build-bot-dispatches action)]
+      (let [holder-eid (priority/get-priority-holder-eid game-db)
+            player-id (some (fn [pid]
+                              (when (= holder-eid (queries/get-player-eid game-db pid))
+                                pid))
+                            [:player-1 :player-2 :opponent])
+            archetype (when player-id (bot/get-bot-archetype game-db player-id))
+            ;; Check phase action first (e.g., play a land)
+            game-state (queries/get-game-state game-db)
+            current-phase (:game/phase game-state)
+            phase-action (when archetype
+                           (bot/bot-phase-action archetype current-phase game-db player-id))]
+        (cond
+          ;; Phase action: play a land
+          (and (= :play-land (:action phase-action))
+               (find-bot-land-to-play game-db player-id))
+          (let [land-id (find-bot-land-to-play game-db player-id)]
             {:db (assoc app-db :bot/action-count (inc bot-action-count))
-             :fx dispatches}))))))
+             :fx [[:dispatch [:fizzle.events.game/play-land land-id player-id]]]})
+
+          ;; Check priority decision (cast spell or pass)
+          :else
+          (let [action (bot-decide-action game-db)]
+            (if (= :pass (:action action))
+              ;; Bot passes — dispatch ::yield to pass priority
+              {:db (dissoc app-db :bot/action-count)
+               :fx [[:dispatch [:fizzle.events.game/yield]]]}
+              ;; Bot wants to cast — build dispatch sequence for taps + cast
+              (let [dispatches (build-bot-dispatches action)]
+                {:db (assoc app-db :bot/action-count (inc bot-action-count))
+                 :fx dispatches}))))))))
 
 
 (rf/reg-event-fx

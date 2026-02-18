@@ -1,6 +1,7 @@
 (ns fizzle.events.setup
   (:require
     [clojure.string :as str]
+    [fizzle.bots.protocol :as bot]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.engine.deck-parser :as deck-parser]
     [fizzle.events.game :as game]
@@ -230,9 +231,11 @@
         main-count (deck-count (or main-deck []))]
     (if (and (seq main-deck)
              (>= main-count 60))
-      (let [game-db (game/init-game-state {:main-deck main-deck
+      (let [arch (or (:setup/bot-archetype db) :goldfish)
+            game-db (game/init-game-state {:main-deck main-deck
                                            :clock-turns (:setup/clock-turns db)
-                                           :bot-archetype (:setup/bot-archetype db)
+                                           :bot-archetype arch
+                                           :bot-deck (bot/bot-deck arch)
                                            :must-contain (:setup/must-contain db)})]
         (assoc game-db :setup/stashed-config (stash-setup-config db)))
       db)))
@@ -250,9 +253,11 @@
   "Re-deal with same config. No-op if no stashed config."
   [db]
   (if-let [config (:setup/stashed-config db)]
-    (let [game-db (game/init-game-state {:main-deck (:setup/main-deck config)
+    (let [arch (get config :setup/bot-archetype :goldfish)
+          game-db (game/init-game-state {:main-deck (:setup/main-deck config)
                                          :clock-turns (:setup/clock-turns config)
-                                         :bot-archetype (get config :setup/bot-archetype :goldfish)
+                                         :bot-archetype arch
+                                         :bot-deck (bot/bot-deck arch)
                                          :must-contain (get config :setup/must-contain {})})]
       (assoc game-db :setup/stashed-config config))
     db))

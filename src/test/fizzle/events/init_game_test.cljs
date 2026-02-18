@@ -5,6 +5,7 @@
     [clojure.set]
     [datascript.core :as d]
     [datascript.db :as ds-db]
+    [fizzle.bots.protocol :as bot]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.events.game :as game]))
@@ -16,7 +17,8 @@
   "Initialize game and return the datascript db.
    Calls the init-game-state function directly with default config."
   []
-  (:game/db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)})))
+  (:game/db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)
+                                   :bot-deck (bot/bot-deck :goldfish)})))
 
 
 (defn get-library-objects

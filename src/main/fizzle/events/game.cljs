@@ -1,7 +1,6 @@
 (ns fizzle.events.game
   (:require
     [datascript.core :as d]
-    [fizzle.bots.protocol :as bot]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as queries]
     [fizzle.db.schema :refer [schema]]
@@ -144,7 +143,8 @@
 
    Returns app-db map with :game/db, :active-screen :opening-hand,
    and opening-hand state keys."
-  [{:keys [main-deck bot-archetype must-contain] :or {bot-archetype :goldfish must-contain {}}}]
+  [{:keys [main-deck bot-archetype bot-deck must-contain]
+    :or {bot-archetype :goldfish must-contain {}}}]
   (card-spec/validate-cards! cards/all-cards)
   (let [conn (d/create-conn schema)
         _ (d/transact! conn cards/all-cards)
@@ -166,7 +166,7 @@
     (d/transact! conn (objects-tx @conn hand-ids :hand player-eid hand-uuids))
     (d/transact! conn (objects-tx @conn library-ids :library player-eid
                                   (repeatedly (count library-ids) random-uuid)))
-    (d/transact! conn (opponent-deck-tx @conn opp-eid (bot/bot-deck bot-archetype)))
+    (d/transact! conn (opponent-deck-tx @conn opp-eid (or bot-deck [])))
     (d/transact! conn [{:game/id :game-1 :game/turn 1 :game/phase :main1
                         :game/active-player player-eid :game/priority player-eid
                         :game/human-player-id :player-1}])
@@ -698,27 +698,19 @@
 
 ;; === Priority System ===
 
-;; Forward declaration: execute-bot-phase-action is defined after play-land
-;; to avoid ordering issues (yield-impl -> execute-bot-phase-action -> play-land)
-(declare execute-bot-phase-action)
-
-
 (defn advance-with-stops
   "Advance phases until a stop is hit or a turn boundary is crossed.
    Handles cleanup and start-turn automatically.
    After crossing a turn boundary, returns immediately — the caller (yield-impl)
    handles continuing through the new turn via recursive ::yield dispatch.
    When ignore-stops? is true (F6 mode), skips player phase stop checks.
-   When active player is a bot, advances exactly one phase and returns —
-   yield-impl handles bot actions and re-dispatches for each phase so that
-   each gets its own history entry (ADR-004 compliant).
+   Bot-agnostic: checks stops for any player the same way.
    Returns {:app-db app-db'} with game-db at the stopped phase.
    Pure function: (app-db, ignore-stops?) -> {:app-db app-db'}"
   [app-db ignore-stops?]
   (let [game-db (:game/db app-db)
         active-player-id (queries/get-active-player-id game-db)
-        player-eid (queries/get-player-eid game-db active-player-id)
-        is-bot (boolean (bot/get-bot-archetype game-db active-player-id))]
+        player-eid (queries/get-player-eid game-db active-player-id)]
     (loop [gdb game-db]
       (let [game-state (queries/get-game-state gdb)
             current-phase (:game/phase game-state)
@@ -744,16 +736,13 @@
             (if (not (queries/stack-empty? advanced-db))
               ;; Stack triggered — stop and give priority
               {:app-db (assoc app-db :game/db advanced-db)}
-              ;; Bot turn: advance one phase and return (yield-impl handles actions + re-dispatch)
-              (if is-bot
+              ;; Check stop (skipped in F6 mode)
+              (if (and (not ignore-stops?)
+                       (priority/check-stop advanced-db player-eid nxt))
+                ;; Stop hit — pause here
                 {:app-db (assoc app-db :game/db advanced-db)}
-                ;; Human turn: check stop (skipped in F6 mode)
-                (if (and (not ignore-stops?)
-                         (priority/check-stop advanced-db player-eid nxt))
-                  ;; Stop hit — pause here
-                  {:app-db (assoc app-db :game/db advanced-db)}
-                  ;; No stop or F6 — continue advancing
-                  (recur advanced-db))))))))))
+                ;; No stop or F6 — continue advancing
+                (recur advanced-db)))))))))
 
 
 (defn- yield-resolve-stack
@@ -783,51 +772,85 @@
                        (assoc app-db :game/db resolved-db))}))))))
 
 
+(defn- player-is-bot?
+  "Check if a player entity has a bot archetype set.
+   Uses DB data only (no bot protocol calls).
+   Pure function: (db, player-eid) -> boolean"
+  [db player-eid]
+  (boolean (:player/bot-archetype (d/pull db [:player/bot-archetype] player-eid))))
+
+
+(defn- bot-turn-advance-one-phase
+  "Advance exactly one phase during a bot's turn, handling cleanup/turn boundary.
+   Returns {:app-db} with the game state after advancing one phase.
+   Pure function: (app-db) -> {:app-db app-db'}"
+  [app-db]
+  (let [game-db (:game/db app-db)
+        active-player-id (queries/get-active-player-id game-db)
+        game-state (queries/get-game-state game-db)
+        current-phase (:game/phase game-state)
+        nxt (next-phase current-phase)]
+    (if (= nxt :cleanup)
+      ;; Advancing to cleanup: advance, begin cleanup, cross turn boundary
+      (let [advanced-db (advance-phase game-db active-player-id)
+            cleanup-result (begin-cleanup advanced-db active-player-id)]
+        (if (:pending-selection cleanup-result)
+          {:app-db (-> app-db
+                       (assoc :game/db (:db cleanup-result))
+                       (assoc :game/pending-selection (:pending-selection cleanup-result)))}
+          (let [db-after-cleanup (:db cleanup-result)
+                db-after-turn (start-turn db-after-cleanup active-player-id)]
+            {:app-db (assoc app-db :game/db db-after-turn)})))
+      ;; Normal: advance one phase
+      {:app-db (assoc app-db :game/db (advance-phase game-db active-player-id))})))
+
+
 (defn- yield-advance-phase
   "Handle yield when all passed and stack is empty: advance phases.
-   For bots, advances one phase and executes bot phase action.
-   For humans, advances phases respecting stops (or ignoring in F6 mode).
+   During a bot's turn, advances one phase at a time (returning :continue-yield?)
+   so the event loop can fire the bot interceptor for actions like playing lands.
+   During a human's turn, uses advance-with-stops to batch through to the next stop.
    Returns {:app-db, :continue-yield?} or {:app-db} with pending-selection."
   [app-db]
   (let [game-db (:game/db app-db)
         auto-mode (priority/get-auto-mode game-db)
         f6? (= :f6 auto-mode)
         active-player-id (queries/get-active-player-id game-db)
-        is-bot (boolean (bot/get-bot-archetype game-db active-player-id))]
-    (if is-bot
-      ;; Bot turn: advance one phase, execute bot phase action, check stops
-      (let [result (advance-with-stops app-db false)
+        active-eid (queries/get-player-eid game-db active-player-id)
+        bot-turn? (player-is-bot? game-db active-eid)]
+    (if bot-turn?
+      ;; Bot turn: advance one phase at a time for bot interceptor
+      (let [result (bot-turn-advance-one-phase app-db)
             result-db (:game/db (:app-db result))
             new-active-id (queries/get-active-player-id result-db)
-            crossed-turn? (not= active-player-id new-active-id)]
+            crossed-turn? (not= active-player-id new-active-id)
+            new-phase (:game/phase (queries/get-game-state result-db))]
         (cond
-          ;; Pending selection (e.g., cleanup discard during bot turn)
+          ;; Pending selection (e.g., cleanup discard)
           (:game/pending-selection (:app-db result))
           result
 
-          ;; Turn boundary crossed — continue (next yield re-reads active player)
+          ;; Turn boundary crossed — continue
           crossed-turn?
-          (let [new-is-bot (boolean (bot/get-bot-archetype result-db new-active-id))]
-            (if (and (not new-is-bot) f6?)
-              ;; Crossed from bot to human turn with F6 — clear auto-mode
+          (let [human-pid (queries/get-human-player-id result-db)
+                landed-on-human? (= new-active-id human-pid)]
+            (if (and landed-on-human? f6?)
               {:app-db (update (:app-db result) :game/db priority/clear-auto-mode)
                :continue-yield? true}
               {:app-db (:app-db result)
                :continue-yield? true}))
 
-          ;; Same bot turn — execute bot phase action, check stops
+          ;; Stop hit on bot's turn (human's opponent-turn stops) — pause unless F6
+          (and (not f6?)
+               (priority/check-stop result-db active-eid new-phase))
+          {:app-db (:app-db result)}
+
+          ;; Same turn, no stop — continue (bot interceptor will fire between yields)
           :else
-          (let [current-phase (:game/phase (queries/get-game-state result-db))
-                bot-arch (bot/get-bot-archetype result-db new-active-id)
-                acted-db (execute-bot-phase-action result-db bot-arch current-phase new-active-id)
-                bot-eid (queries/get-player-eid acted-db new-active-id)
-                has-stop? (and (not auto-mode)
-                               (priority/check-stop acted-db bot-eid current-phase))]
-            (if has-stop?
-              {:app-db (assoc (:app-db result) :game/db acted-db)}
-              {:app-db (assoc (:app-db result) :game/db acted-db)
-               :continue-yield? true}))))
-      ;; Human turn: advance phases respecting stops (or ignoring in F6 mode)
+          {:app-db (:app-db result)
+           :continue-yield? true}))
+
+      ;; Human turn: batch advance to next stop
       (let [result (advance-with-stops app-db f6?)
             result-db (:game/db (:app-db result))
             new-active-id (queries/get-active-player-id result-db)
@@ -837,21 +860,19 @@
           (:game/pending-selection (:app-db result))
           result
 
-          ;; Turn boundary crossed
+          ;; Turn boundary crossed — continue (next yield re-reads active player)
           crossed-turn?
-          (let [new-is-bot (boolean (bot/get-bot-archetype result-db new-active-id))]
-            (if new-is-bot
-              ;; Bot turn — keep going (preserve F6)
-              {:app-db (:app-db result)
+          (let [human-pid (queries/get-human-player-id result-db)
+                landed-on-human? (= new-active-id human-pid)]
+            (if (and landed-on-human? f6?)
+              ;; Crossed to human turn with F6 — clear auto-mode, keep yielding to stop
+              {:app-db (update (:app-db result) :game/db priority/clear-auto-mode)
                :continue-yield? true}
-              ;; Player turn — clear F6 if active
-              (if f6?
-                {:app-db (update (:app-db result) :game/db priority/clear-auto-mode)
-                 :continue-yield? true}
-                {:app-db (:app-db result)
-                 :continue-yield? true})))
+              ;; Crossed to other player — continue cascade
+              {:app-db (:app-db result)
+               :continue-yield? true}))
 
-          ;; F6 within same turn — clear auto-mode
+          ;; F6 within same turn — clear auto-mode (stop hit)
           f6?
           (update result :app-db
                   (fn [adb] (update adb :game/db priority/clear-auto-mode)))
@@ -868,31 +889,36 @@
    When all-passed? is true, passes are reset in the returned app-db.
    When all-passed? is false, priority has been transferred to the opponent.
 
+   Bot auto-passing rules (uses DB data only, no bot protocol calls):
+   - Bot players always auto-pass (they have :player/bot-archetype set)
+   - During a bot's turn with empty stack, human opponent auto-passes too
+     (human doesn't need priority on empty stack during bot's turn)
+   - During a bot's turn with non-empty stack, human keeps priority to respond
+   - In auto-mode (:resolving, :f6), both players auto-pass regardless
+
    Pure function: (app-db) -> {:app-db app-db', :all-passed? bool}"
   [app-db]
   (let [game-db (:game/db app-db)
         auto-mode (priority/get-auto-mode game-db)
-        is-bot-turn (boolean (bot/get-bot-archetype game-db (queries/get-active-player-id game-db)))
         holder-eid (priority/get-priority-holder-eid game-db)
         ;; Step 1: current player passes
         gdb (priority/yield-priority game-db holder-eid)
-        ;; Step 2: auto-pass non-active player
         active-player-id (queries/get-active-player-id gdb)
         active-eid (queries/get-player-eid gdb active-player-id)
         opponent-player-id (queries/get-other-player-id gdb active-player-id)
-        gdb (if opponent-player-id
+        ;; Step 2: determine if opponent should auto-pass
+        should-auto-pass-opponent?
+        (when opponent-player-id
+          (let [opp-eid (queries/get-player-eid gdb opponent-player-id)]
+            (or auto-mode
+                (player-is-bot? gdb opp-eid)
+                (and (player-is-bot? gdb active-eid)
+                     (queries/stack-empty? gdb)))))
+        gdb (if should-auto-pass-opponent?
               (let [opp-eid (queries/get-player-eid gdb opponent-player-id)]
-                (if (or auto-mode (and is-bot-turn (queries/stack-empty? gdb)))
-                  ;; Auto-pass both players (bot turn with empty stack, or auto-mode)
-                  (-> gdb
-                      (priority/yield-priority active-eid)
-                      (priority/yield-priority opp-eid))
-                  (let [archetype (bot/get-bot-archetype gdb opponent-player-id)]
-                    (if (and archetype
-                             (= :pass (bot/bot-priority-decision
-                                        archetype {:db gdb :player-id opponent-player-id})))
-                      (priority/yield-priority gdb opp-eid)
-                      gdb))))
+                (-> gdb
+                    (priority/yield-priority active-eid)
+                    (priority/yield-priority opp-eid)))
               gdb)
         all-passed (or (not opponent-player-id)
                        (priority/both-passed? gdb))]
@@ -1084,26 +1110,10 @@
 
 (rf/reg-event-db
   ::play-land
-  (fn [db [_ object-id]]
-    (let [game-db (:game/db db)]
-      (assoc db :game/db (play-land game-db (queries/get-human-player-id game-db) object-id)))))
-
-
-(defn execute-bot-phase-action
-  "Execute a bot's phase action (e.g., play a land on main1).
-   Returns updated db after executing the action.
-   Pure function: (db, archetype, phase, player-id) -> db"
-  [db archetype phase player-id]
-  (let [action (bot/bot-phase-action archetype phase db player-id)]
-    (case (:action action)
-      :play-land
-      (let [hand (queries/get-hand db player-id)
-            land (first (filter #(contains? (set (:card/types (:object/card %))) :land) hand))]
-        (if land
-          (play-land db player-id (:object/id land))
-          db))
-      ;; :pass or unknown — do nothing
-      db)))
+  (fn [db [_ object-id player-id]]
+    (let [game-db (:game/db db)
+          pid (or player-id (queries/get-human-player-id game-db))]
+      (assoc db :game/db (play-land game-db pid object-id)))))
 
 
 ;; === Phase Stops ===
