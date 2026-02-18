@@ -37,6 +37,25 @@
   @rf-db/app-db)
 
 
+(defn- dispatch-yield-all
+  "Dispatch ::yield-all and drain the yield cascade synchronously.
+   ::yield-all sets auto-mode + step-count and dispatches ::yield via :dispatch.
+   Since :dispatch is async, we drain the cascade by repeatedly calling
+   dispatch-sync [::yield] until step-count is cleared (cascade complete)."
+  [app-db]
+  (reset! rf-db/app-db app-db)
+  (rf/dispatch-sync [::game/yield-all])
+  (loop [n 300]
+    (let [current @rf-db/app-db]
+      (if (or (zero? n)
+              (:game/pending-selection current)
+              (not (contains? current :yield/step-count)))
+        @rf-db/app-db
+        (do
+          (rf/dispatch-sync [::game/yield])
+          (recur (dec n)))))))
+
+
 ;; === Test 1: yield on empty stack, stops at main1+main2 ===
 
 (deftest yield-empty-stack-advances-past-combat-to-main2
@@ -77,9 +96,9 @@
                       (game/advance-phase :player-1)  ; main1 -> combat
                       (game/advance-phase :player-1)  ; combat -> main2
                       )
-          ;; Use yield-all which loops synchronously through turns
+          ;; Use yield-all which cascades through turns via event dispatch
           app-db (merge (history/init-history) {:game/db game-db})
-          result (dispatch-event app-db [::game/yield-all])
+          result (dispatch-yield-all app-db)
           result-db (:game/db result)]
       (is (= :main1 (:game/phase (q/get-game-state result-db)))
           "Should advance to main1 of next player turn")
@@ -176,7 +195,7 @@
           game-db2 (rules/cast-spell db'' :player-1 obj2)
           app-db (merge (history/init-history)
                         {:game/db game-db2})
-          result (dispatch-event app-db [::game/yield-all])]
+          result (dispatch-yield-all app-db)]
       ;; Both rituals should resolve: 2*(BBB) - 2*B spent = 4B net
       ;; Actually: cast costs 1B each, so 2B spent. Each resolves for BBB.
       ;; But storm items also on stack. Let's just check stack is empty and mana > 0
@@ -192,7 +211,7 @@
   (testing "yield-all with empty stack enters F6 mode, advances through turn and opponent turn"
     (let [app-db (merge (history/init-history)
                         (setup-app-db))
-          result (dispatch-event app-db [::game/yield-all])]
+          result (dispatch-yield-all app-db)]
       ;; F6 ignores player stops, advances through player turn, opponent turn, to next player turn
       (is (= 3 (:game/turn (q/get-game-state (:game/db result))))
           "Should advance to turn 3 (player T1 -> opponent T2 -> player T3)")
@@ -263,7 +282,7 @@
   (testing "F6 (yield-all on empty stack) advances through full turn cycle"
     (let [app-db (merge (history/init-history)
                         (setup-app-db))
-          result (dispatch-event app-db [::game/yield-all])
+          result (dispatch-yield-all app-db)
           result-db (:game/db result)]
       (is (= 3 (:game/turn (q/get-game-state result-db)))
           "Should advance to turn 3 (player T1 -> opponent T2 -> player T3)")
@@ -322,7 +341,7 @@
                       (game/advance-phase :player-1)  ; main1 -> combat
                       (game/advance-phase :player-1))  ; combat -> main2
           app-db (merge (history/init-history) {:game/db game-db})
-          result (dispatch-event app-db [::game/yield-all])
+          result (dispatch-yield-all app-db)
           result-db (:game/db result)]
       ;; After full turn cycle, opponent should have played the land
       (is (= 1 (count (q/get-objects-in-zone result-db :player-2 :battlefield)))
@@ -340,7 +359,7 @@
                       (game/advance-phase :player-1)  ; main1 -> combat
                       (game/advance-phase :player-1))  ; combat -> main2
           app-db (merge (history/init-history) {:game/db game-db})
-          result (dispatch-event app-db [::game/yield-all])
+          result (dispatch-yield-all app-db)
           result-db (:game/db result)]
       ;; Should complete turn cycle normally
       (is (= 3 (:game/turn (q/get-game-state result-db)))
@@ -360,7 +379,7 @@
                       (game/advance-phase :player-1)  ; main1 -> combat
                       (game/advance-phase :player-1))  ; combat -> main2
           app-db (merge (history/init-history) {:game/db game-db})
-          result (dispatch-event app-db [::game/yield-all])
+          result (dispatch-yield-all app-db)
           result-db (:game/db result)]
       ;; Opponent should have drawn 1 card and played it as a land
       (is (= 1 (count (q/get-objects-in-zone result-db :player-2 :battlefield)))
@@ -385,7 +404,7 @@
                       (game/advance-phase :player-1)  ; main1 -> combat
                       (game/advance-phase :player-1))  ; combat -> main2
           app-db (merge (history/init-history) {:game/db game-db})
-          result (dispatch-event app-db [::game/yield-all])
+          result (dispatch-yield-all app-db)
           entries (history/effective-entries result)]
       ;; There should be multiple entries, not just 1 for the whole cycle.
       ;; yield-all from main2 -> through opponent turn -> player turn 3 main1
@@ -403,7 +422,7 @@
                       (game/advance-phase :player-1)  ; main1 -> combat
                       (game/advance-phase :player-1))  ; combat -> main2
           app-db (merge (history/init-history) {:game/db game-db})
-          result (dispatch-event app-db [::game/yield-all])
+          result (dispatch-yield-all app-db)
           entries (history/effective-entries result)]
       ;; Bot phase advances now create entries (no more bot noise filtering)
       (let [turn-2-entries (filterv #(= 2 (:entry/turn %)) entries)]
@@ -420,7 +439,7 @@
                       (game/advance-phase :player-1)  ; main1 -> combat
                       (game/advance-phase :player-1))  ; combat -> main2
           app-db (merge (history/init-history) {:game/db game-db})
-          result (dispatch-event app-db [::game/yield-all])
+          result (dispatch-yield-all app-db)
           entries (history/effective-entries result)]
       ;; History should still have entries (human turn entries at minimum)
       (is (pos? (count entries))
@@ -440,7 +459,7 @@
                       (game/advance-phase :player-1)  ; main1 -> combat
                       (game/advance-phase :player-1))  ; combat -> main2
           app-db (merge (history/init-history) {:game/db game-db})
-          result (dispatch-event app-db [::game/yield-all])
+          result (dispatch-yield-all app-db)
           entries (history/effective-entries result)
           turn-2-entries (filterv #(= 2 (:entry/turn %)) entries)]
       ;; Bot phase advances create entries (no more filtering)
@@ -482,7 +501,7 @@
                       (game/advance-phase :player-1)) ; combat -> main2
           app-db (merge (history/init-history) {:game/db game-db})
           ;; yield-all sets F6 mode, which should skip all stops
-          result (dispatch-event app-db [::game/yield-all])
+          result (dispatch-yield-all app-db)
           result-db (:game/db result)]
       (is (= :main1 (:game/phase (q/get-game-state result-db)))
           "F6 should advance through opponent's turn to player's main1")

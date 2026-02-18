@@ -30,12 +30,23 @@
             {:game/db db}))))
 
 
-(defn- dispatch-event
-  "Dispatch an event through re-frame synchronously, return resulting app-db."
-  [app-db event]
+(defn- dispatch-yield-all
+  "Dispatch ::yield-all and drain the yield cascade synchronously.
+   ::yield-all sets auto-mode + step-count and dispatches ::yield via :dispatch.
+   Since :dispatch is async, we drain the cascade by repeatedly calling
+   dispatch-sync [::yield] until step-count is cleared (cascade complete)."
+  [app-db]
   (reset! rf-db/app-db app-db)
-  (rf/dispatch-sync event)
-  @rf-db/app-db)
+  (rf/dispatch-sync [::game/yield-all])
+  (loop [n 300]
+    (let [current @rf-db/app-db]
+      (if (or (zero? n)
+              (:game/pending-selection current)
+              (not (contains? current :yield/step-count)))
+        @rf-db/app-db
+        (do
+          (rf/dispatch-sync [::game/yield])
+          (recur (dec n)))))))
 
 
 ;; === start-turn switches active player ===
@@ -131,7 +142,7 @@
           game-db (:game/db app-db)
           [game-db' _] (h/add-cards-to-library game-db [:dark-ritual :dark-ritual :dark-ritual] :player-2)
           app-db (assoc app-db :game/db game-db')
-          result (dispatch-event app-db [::game/yield-all])
+          result (dispatch-yield-all app-db)
           result-db (:game/db result)]
       ;; F6 should advance through player's turn AND opponent's turn, landing on player's next turn
       (is (= :player-1 (q/get-active-player-id result-db))
@@ -151,7 +162,7 @@
                        (game/advance-phase :player-1)   ; main1 -> combat
                        (game/advance-phase :player-1))   ; combat -> main2
           app-db (assoc app-db :game/db game-db')
-          result (dispatch-event app-db [::game/yield-all])
+          result (dispatch-yield-all app-db)
           result-db (:game/db result)]
       ;; yield-all from main2 should go through end, cleanup, cross turn boundary to opponent,
       ;; auto-advance through opponent's full turn, cross back to player, stop at main1
@@ -175,7 +186,7 @@
                        (game/advance-phase :player-1))
           app-db (assoc app-db :game/db game-db')
           entries-before (count (history/effective-entries app-db))
-          result (dispatch-event app-db [::game/yield-all])
+          result (dispatch-yield-all app-db)
           entries-after (count (history/effective-entries result))]
       ;; Should have multiple new history entries (one per yield dispatch through opponent's turn)
       (is (> entries-after entries-before)

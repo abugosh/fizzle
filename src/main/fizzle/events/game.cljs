@@ -29,7 +29,6 @@
     [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.events.selection.zone-ops]
     [fizzle.history.core :as history]
-    [fizzle.history.descriptions :as descriptions]
     [fizzle.storage :as storage]
     [re-frame.core :as rf]))
 
@@ -884,59 +883,53 @@
       {:app-db (:app-db result)})))
 
 
+(def ^:private max-yield-steps
+  "Safety limit: maximum number of yield steps per auto-mode cascade.
+   Prevents infinite loops from bugs in phase/priority logic."
+  200)
+
+
 (rf/reg-event-fx
   ::yield
   (fn [{:keys [db]} _]
     (if (:game/pending-selection db)
       {:db db}
-      (let [result (yield-impl db)]
-        (if (:continue-yield? result)
+      (let [result (yield-impl db)
+            auto-mode (priority/get-auto-mode (:game/db (:app-db result)))
+            step-count (or (:yield/step-count (:app-db result)) 0)]
+        (cond
+          ;; Safety limit reached — stop cascade, clear auto-mode
+          (and auto-mode (:continue-yield? result) (>= step-count max-yield-steps))
+          {:db (-> (:app-db result)
+                   (update :game/db priority/clear-auto-mode)
+                   (dissoc :yield/step-count))}
+
+          ;; Continue yielding with auto-mode — animated cascade via dispatch-later
+          (and auto-mode (:continue-yield? result))
+          {:db (update (:app-db result) :yield/step-count (fnil inc 0))
+           :fx [[:dispatch-later {:ms 100 :dispatch [::yield]}]]}
+
+          ;; Continue yielding without auto-mode — immediate dispatch
+          (:continue-yield? result)
           {:db (:app-db result)
            :fx [[:dispatch [::yield]]]}
-          {:db (:app-db result)})))))
+
+          ;; Done — clear step counter
+          :else
+          {:db (dissoc (:app-db result) :yield/step-count)})))))
 
 
-(defn- yield-loop
-  "Repeatedly call yield-impl until it stops returning :continue-yield?.
-   Creates a history entry at each step where game-db changes.
-   Returns the final app-db. Safety limit of 100 iterations."
-  [app-db]
-  (loop [adb app-db
-         n 100]
-    (if (zero? n)
-      adb
-      (let [pre-db (:game/db adb)
-            result (yield-impl adb)
-            result-adb (:app-db result)
-            post-db (:game/db result-adb)
-            ;; Create history entry when game-db changed
-            result-adb (if (and post-db
-                                (not (identical? pre-db post-db)))
-                         (let [game-state (queries/get-game-state post-db)
-                               turn (or (:game/turn game-state) 0)
-                               desc (or (descriptions/describe-event
-                                          [::yield] pre-db post-db)
-                                        "Yield")
-                               entry (history/make-entry post-db ::yield desc turn)]
-                           (if (or (= -1 (:history/position result-adb))
-                                   (history/at-tip? result-adb))
-                             (history/append-entry result-adb entry)
-                             (history/auto-fork result-adb entry)))
-                         result-adb)]
-        (if (:continue-yield? result)
-          (recur result-adb (dec n))
-          result-adb)))))
-
-
-(rf/reg-event-db
+(rf/reg-event-fx
   ::yield-all
-  (fn [db _]
+  (fn [{:keys [db]} _]
     (if (:game/pending-selection db)
-      db
+      {:db db}
       (let [game-db (:game/db db)
-            mode (if (queries/stack-empty? game-db) :f6 :resolving)
-            app-db (assoc db :game/db (priority/set-auto-mode game-db mode))]
-        (yield-loop app-db)))))
+            mode (if (queries/stack-empty? game-db) :f6 :resolving)]
+        {:db (-> db
+                 (assoc :game/db (priority/set-auto-mode game-db mode))
+                 (assoc :yield/step-count 0))
+         :fx [[:dispatch [::yield]]]}))))
 
 
 (defn- resolve-one-and-stop
