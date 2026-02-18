@@ -1,5 +1,6 @@
 (ns fizzle.core
   (:require
+    [fizzle.bots.interceptor :as bot-interceptor]
     [fizzle.events.game :as events]
     [fizzle.events.opening-hand]
     [fizzle.events.selection]
@@ -105,5 +106,6 @@
 (defn init
   []
   (history-interceptor/register!)
+  (bot-interceptor/register!)
   (rf/dispatch-sync [::setup/init-setup])
   (mount-root))
