@@ -3,9 +3,9 @@
 
    Validates that:
    - Bot interceptor detects when priority holder is a bot
-   - ::bot-decide dispatches tap + cast sequence for burn bot
+   - bot-decide-action returns correct action plan with tap sequence
+   - build-bot-dispatches produces correct re-frame dispatch sequence
    - Bot casts go through can-cast? validation
-   - Restrictions like Orim's Chant prevent bot casting
    - Safety limit prevents infinite bot loops"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
@@ -13,6 +13,8 @@
     [fizzle.bots.interceptor :as interceptor]
     [fizzle.cards.lightning-bolt :as lightning-bolt]
     [fizzle.db.queries :as q]
+    [fizzle.events.abilities :as abilities]
+    [fizzle.events.game :as game]
     [fizzle.history.core :as history]
     [fizzle.test-helpers :as th]))
 
@@ -72,10 +74,10 @@
           "Should return false in single player game"))))
 
 
-;; === Bot Decide: Cast Spell ===
+;; === Bot Decide Action ===
 
 (deftest bot-decide-produces-cast-action-for-burn-bot
-  (testing "bot-decide-action returns cast sequence when burn bot has bolt + mountain"
+  (testing "bot-decide-action returns cast action when burn bot has bolt + mountain"
     (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 1})
           game-db (:game/db app-db)
           result (interceptor/bot-decide-action game-db)]
@@ -98,48 +100,119 @@
           "Should pass when no resources available"))))
 
 
-;; === Bot Cast Through Standard Events ===
-
-(deftest bot-execute-cast-taps-lands-and-casts
-  (testing "execute-bot-cast taps lands and casts spell through standard paths"
-    (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 1})
-          game-db (:game/db app-db)
-          action (interceptor/bot-decide-action game-db)
-          result-db (interceptor/execute-bot-cast game-db :player-2 action)]
-      ;; Mountain should be tapped
-      (let [battlefield (q/get-objects-in-zone result-db :player-2 :battlefield)
-            mountain (first (filter #(= :mountain (get-in % [:object/card :card/id])) battlefield))]
-        (is (true? (:object/tapped mountain))
-            "Mountain should be tapped after bot cast"))
-      ;; Bolt should be on the stack
-      (is (not (q/stack-empty? result-db))
-          "Stack should have the bolt on it")
-      ;; Mana pool should have gained red from tapping mountain
-      ;; (then spent it on bolt, so pool should be 0)
-      (let [stack-items (q/get-all-stack-items result-db)
-            bolt-item (first (filter #(= :spell (:stack-item/type %)) stack-items))]
-        (is (some? bolt-item)
-            "There should be a spell stack-item for Lightning Bolt")))))
-
-
-(deftest bot-cast-goes-through-can-cast-validation
-  (testing "bot cast respects can-cast? validation"
+(deftest bot-decide-passes-when-cant-afford
+  (testing "bot-decide-action returns :pass when bot has bolt but no mountains"
     (let [app-db (setup-burn-bot-app-db {:mountains 0 :bolts 1})
           game-db (:game/db app-db)
-          ;; Bot has bolt but no mountains — can't cast
           action (interceptor/bot-decide-action game-db)]
-      ;; Bot should pass since it can't actually cast
       (is (= :pass (:action action))
           "Bot should pass when it can't afford to cast"))))
 
 
+;; === Build Bot Dispatches ===
+
+(deftest build-bot-dispatches-produces-tap-then-cast-sequence
+  (testing "build-bot-dispatches returns activate-mana + cast-spell dispatches"
+    (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 1})
+          game-db (:game/db app-db)
+          action (interceptor/bot-decide-action game-db)
+          dispatches (interceptor/build-bot-dispatches action)]
+      ;; Should have 2 dispatches: 1 tap + 1 cast
+      (is (= 2 (count dispatches))
+          "Should have 2 dispatches (1 tap + 1 cast)")
+      ;; First dispatch should be activate-mana-ability
+      (let [[tap-event] dispatches]
+        (is (= ::abilities/activate-mana-ability (first (second tap-event)))
+            "First dispatch should be ::activate-mana-ability"))
+      ;; Last dispatch should be bot-cast-spell with target
+      (let [[_ cast-args] (last dispatches)]
+        (is (= ::game/bot-cast-spell (first cast-args))
+            "Last dispatch should be ::bot-cast-spell")
+        (is (= :player-2 (second cast-args))
+            "Cast dispatch should include bot player-id")))))
+
+
+(deftest build-bot-dispatches-includes-player-id-in-tap
+  (testing "tap dispatches include the bot's player-id"
+    (let [app-db (setup-burn-bot-app-db {:mountains 2 :bolts 1})
+          game-db (:game/db app-db)
+          action (interceptor/bot-decide-action game-db)
+          dispatches (interceptor/build-bot-dispatches action)
+          ;; First dispatch is a tap
+          [_ tap-args] (first dispatches)]
+      ;; tap dispatch format: [::activate-mana-ability object-id mana-color player-id]
+      (is (= :player-2 (nth tap-args 3))
+          "Tap dispatch should include bot player-id"))))
+
+
+;; === Bot Cast Spell Event (through standard path) ===
+
+(deftest bot-cast-spell-event-puts-bolt-on-stack
+  (testing "::bot-cast-spell casts through rules/cast-spell-mode and puts bolt on stack"
+    (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 1})
+          game-db (:game/db app-db)
+          ;; First tap the mountain manually (simulating the tap dispatch)
+          battlefield (q/get-objects-in-zone game-db :player-2 :battlefield)
+          mountain (first (filter #(= :mountain (get-in % [:object/card :card/id])) battlefield))
+          game-db (abilities/activate-mana-ability game-db :player-2 (:object/id mountain) :red)
+          ;; Now find the bolt
+          hand (q/get-objects-in-zone game-db :player-2 :hand)
+          bolt (first (filter #(= :lightning-bolt (get-in % [:object/card :card/id])) hand))
+          ;; Call the handler directly with target (opponent = :player-1)
+          app-db (assoc app-db :game/db game-db)
+          result-db (game/bot-cast-spell-handler app-db :player-2 (:object/id bolt) :player-1)
+          result-game-db (:game/db result-db)]
+      (is (not (q/stack-empty? result-game-db))
+          "Stack should have the bolt on it")
+      (let [stack-items (q/get-all-stack-items result-game-db)
+            spell-items (filter #(= :spell (:stack-item/type %)) stack-items)]
+        (is (= 1 (count spell-items))
+            "There should be exactly 1 spell stack-item")
+        ;; Verify target is stored on the stack-item
+        (is (= {:target :player-1}
+               (:stack-item/targets (first spell-items)))
+            "Stack-item should have stored target :player-1")))))
+
+
+(deftest bot-cast-spell-respects-can-cast-validation
+  (testing "::bot-cast-spell returns unchanged db when can-cast? fails"
+    (let [app-db (setup-burn-bot-app-db {:mountains 0 :bolts 1})
+          game-db (:game/db app-db)
+          ;; Bot has bolt but no mana (didn't tap)
+          hand (q/get-objects-in-zone game-db :player-2 :hand)
+          bolt (first (filter #(= :lightning-bolt (get-in % [:object/card :card/id])) hand))
+          result-db (game/bot-cast-spell-handler app-db :player-2 (:object/id bolt) :player-1)
+          result-game-db (:game/db result-db)]
+      (is (q/stack-empty? result-game-db)
+          "Stack should be empty when bot can't cast"))))
+
+
+;; === Activate Mana Ability with Player ID ===
+
+(deftest activate-mana-ability-accepts-player-id
+  (testing "activate-mana-ability works with explicit player-id for bot"
+    (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 0})
+          game-db (:game/db app-db)
+          battlefield (q/get-objects-in-zone game-db :player-2 :battlefield)
+          mountain (first (filter #(= :mountain (get-in % [:object/card :card/id])) battlefield))
+          result-db (abilities/activate-mana-ability game-db :player-2 (:object/id mountain) :red)]
+      (is (true? (:object/tapped (q/get-object result-db (:object/id mountain))))
+          "Mountain should be tapped")
+      (is (= 1 (:red (q/get-mana-pool result-db :player-2)))
+          "Bot should have 1 red mana in pool"))))
+
+
 ;; === Safety Limit ===
 
-(deftest bot-action-loop-has-safety-limit
-  (testing "bot action loop stops after safety limit"
+(deftest bot-decide-handler-respects-safety-limit
+  (testing "::bot-decide handler checks action count and yields when limit reached"
     (let [app-db (setup-burn-bot-app-db {:mountains 3 :bolts 3})
-          game-db (:game/db app-db)]
-      ;; Execute multiple bot actions — should not exceed limit
-      (let [results (interceptor/execute-bot-actions game-db :player-2 20)]
-        (is (<= (count results) 20)
-            "Should not exceed safety limit of 20 actions")))))
+          ;; Simulate action count at limit
+          app-db (assoc app-db :bot/action-count 20)
+          result (interceptor/bot-decide-handler app-db)]
+      ;; Should dispatch ::yield (pass) rather than another cast
+      (is (some? (:fx result))
+          "Should have dispatches")
+      (let [dispatches (mapv second (:fx result))]
+        (is (some #(= ::game/yield (first %)) dispatches)
+            "Should dispatch ::yield when safety limit reached")))))

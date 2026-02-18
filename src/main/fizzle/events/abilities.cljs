@@ -119,9 +119,10 @@
 
 (rf/reg-event-db
   ::activate-mana-ability
-  (fn [db [_ object-id mana-color]]
-    (let [game-db (:game/db db)]
-      (assoc db :game/db (activate-mana-ability game-db (queries/get-human-player-id game-db) object-id mana-color)))))
+  (fn [db [_ object-id mana-color player-id]]
+    (let [game-db (:game/db db)
+          pid (or player-id (queries/get-human-player-id game-db))]
+      (assoc db :game/db (activate-mana-ability game-db pid object-id mana-color)))))
 
 
 ;; === Activate Non-Mana Ability ===

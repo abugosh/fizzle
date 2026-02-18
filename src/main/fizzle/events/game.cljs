@@ -334,6 +334,53 @@
     (cast-spell-handler db)))
 
 
+(defn bot-cast-spell-handler
+  "Handle bot cast: validate and cast a spell for a given player.
+   Uses rules/cast-spell-mode (same as human after selections complete).
+   If the spell has targeting, stores the pre-determined target on the stack-item.
+   Pure function: (app-db, player-id, object-id, target) -> app-db"
+  [app-db player-id object-id target]
+  (let [game-db (:game/db app-db)]
+    (if-not (rules/can-cast? game-db player-id object-id)
+      app-db
+      (let [modes (rules/get-casting-modes game-db player-id object-id)
+            castable-modes (filterv #(rules/can-cast-mode? game-db player-id object-id %) modes)]
+        (if (empty? castable-modes)
+          app-db
+          (let [mode (first castable-modes)
+                db-after-cast (rules/cast-spell-mode game-db player-id object-id mode)
+                ;; Store target on stack-item if spell has targeting
+                obj (queries/get-object game-db object-id)
+                card (:object/card obj)
+                targeting-reqs (targeting/get-targeting-requirements card)
+                db-after-targets
+                (if (and target (seq targeting-reqs))
+                  (let [target-req (first targeting-reqs)
+                        target-id (:target/id target-req)
+                        ;; Find the stack-item for this spell
+                        obj-eid (d/q '[:find ?e .
+                                       :in $ ?oid
+                                       :where [?e :object/id ?oid]]
+                                     db-after-cast object-id)
+                        stack-item-eid (when obj-eid
+                                         (d/q '[:find ?e .
+                                                :in $ ?obj-eid
+                                                :where [?e :stack-item/object-ref ?obj-eid]]
+                                              db-after-cast obj-eid))]
+                    (if stack-item-eid
+                      (d/db-with db-after-cast
+                                 [[:db/add stack-item-eid :stack-item/targets {target-id target}]])
+                      db-after-cast))
+                  db-after-cast)]
+            (assoc app-db :game/db db-after-targets)))))))
+
+
+(rf/reg-event-db
+  ::bot-cast-spell
+  (fn [db [_ player-id object-id target]]
+    (bot-cast-spell-handler db player-id object-id target)))
+
+
 (defn- get-source-id
   "Get the source object-id for a stack-item (for selection building)."
   [game-db stack-item]
