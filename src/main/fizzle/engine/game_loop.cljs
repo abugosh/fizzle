@@ -59,7 +59,8 @@
                   (priority/yield-priority gdb opp-eid)
                   (let [archetype (bot/get-bot-archetype gdb opponent-player-id)]
                     (if (and archetype
-                             (= :pass (bot/bot-priority-decision archetype {})))
+                             (= :pass (bot/bot-priority-decision
+                                        archetype {:db gdb :player-id opponent-player-id})))
                       (priority/yield-priority gdb opp-eid)
                       gdb))))
               gdb)

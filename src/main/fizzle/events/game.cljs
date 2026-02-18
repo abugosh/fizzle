@@ -1,6 +1,7 @@
 (ns fizzle.events.game
   (:require
     [datascript.core :as d]
+    [fizzle.bots.actions :as bot-actions]
     [fizzle.bots.protocol :as bot]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as queries]
@@ -718,21 +719,35 @@
      :continue-yield? — true if ::yield should re-dispatch (more stack items or bot turn)
 
    Thin orchestrator that delegates to game-loop module:
+   0. Check if active player is a bot with a priority action (cast spell)
    1. Negotiate priority (game-loop/negotiate-priority)
    2. If all passed: derive state and dispatch to handler
    3. If not all passed: return (priority transferred)"
   [app-db]
-  (let [result (game-loop/negotiate-priority app-db)]
-    (if (:all-passed? result)
-      (let [negotiated-app-db (:app-db result)
-            game-db (:game/db negotiated-app-db)
-            state (game-loop/derive-loop-state game-db)]
-        (game-loop/handle-loop-state state negotiated-app-db
-                                     {:resolve-one-item resolve-one-item
-                                      :advance-with-stops advance-with-stops
-                                      :execute-bot-phase-action execute-bot-phase-action
-                                      :maybe-continue-cleanup maybe-continue-cleanup}))
-      {:app-db (:app-db result)})))
+  (let [game-db (:game/db app-db)
+        active-player-id (queries/get-active-player-id game-db)
+        archetype (bot/get-bot-archetype game-db active-player-id)
+        ;; Check bot priority decision before negotiate-priority
+        bot-decision (when archetype
+                       (bot/bot-priority-decision archetype
+                                                  {:db game-db :player-id active-player-id}))]
+    (if (and (map? bot-decision) (= :cast-spell (:action bot-decision)))
+      ;; Bot wants to cast — execute action and continue yield loop
+      (let [acted-db (bot-actions/execute-bot-priority-action game-db bot-decision)]
+        {:app-db (assoc app-db :game/db acted-db)
+         :continue-yield? true})
+      ;; Bot passes or no bot — proceed with normal priority negotiation
+      (let [result (game-loop/negotiate-priority app-db)]
+        (if (:all-passed? result)
+          (let [negotiated-app-db (:app-db result)
+                game-db (:game/db negotiated-app-db)
+                state (game-loop/derive-loop-state game-db)]
+            (game-loop/handle-loop-state state negotiated-app-db
+                                         {:resolve-one-item resolve-one-item
+                                          :advance-with-stops advance-with-stops
+                                          :execute-bot-phase-action execute-bot-phase-action
+                                          :maybe-continue-cleanup maybe-continue-cleanup}))
+          {:app-db (:app-db result)})))))
 
 
 (rf/reg-event-fx
