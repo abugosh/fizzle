@@ -147,14 +147,14 @@
 
    Returns app-db map with :game/db, :active-screen :opening-hand,
    and opening-hand state keys."
-  [{:keys [main-deck must-contain] :or {must-contain {}}}]
+  [{:keys [main-deck bot-archetype must-contain] :or {bot-archetype :goldfish must-contain {}}}]
   (card-spec/validate-cards! cards/all-cards)
   (let [conn (d/create-conn schema)
         _ (d/transact! conn cards/all-cards)
         _ (d/transact! conn (player-tx :player-1 "Player" 20 1 {:player/max-hand-size 7}))
         _ (d/transact! conn (player-tx :opponent "Opponent" 20 0
                                        {:player/is-opponent true
-                                        :player/bot-archetype :goldfish}))
+                                        :player/bot-archetype bot-archetype}))
         db @conn
         player-eid (get-player-eid db :player-1)
         opp-eid (get-player-eid db :opponent)
@@ -169,7 +169,7 @@
     (d/transact! conn (objects-tx @conn hand-ids :hand player-eid hand-uuids))
     (d/transact! conn (objects-tx @conn library-ids :library player-eid
                                   (repeatedly (count library-ids) random-uuid)))
-    (d/transact! conn (opponent-deck-tx @conn opp-eid (bot/bot-deck :goldfish)))
+    (d/transact! conn (opponent-deck-tx @conn opp-eid (bot/bot-deck bot-archetype)))
     (d/transact! conn [{:game/id :game-1 :game/turn 1 :game/phase :main1
                         :game/active-player player-eid :game/priority player-eid
                         :game/human-player-id :player-1}])

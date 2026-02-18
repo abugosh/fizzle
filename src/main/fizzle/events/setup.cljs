@@ -46,6 +46,7 @@
      :setup/main-deck (:deck/main cards/iggy-pop-decklist)
      :setup/sideboard (:deck/side cards/iggy-pop-decklist)
      :setup/clock-turns 4
+     :setup/bot-archetype :goldfish
      :setup/must-contain {}
      :setup/presets presets
      :setup/last-preset last-preset
@@ -120,6 +121,12 @@
   (assoc db :setup/clock-turns (max 1 (min 20 n))))
 
 
+(defn set-bot-archetype-handler
+  "Set the opponent bot archetype."
+  [db archetype]
+  (assoc db :setup/bot-archetype archetype))
+
+
 (defn save-preset-handler
   "Save current setup config as a named preset. No-op if name is blank."
   [db name]
@@ -128,6 +135,7 @@
     (let [config {:main-deck (:setup/main-deck db)
                   :sideboard (:setup/sideboard db)
                   :clock-turns (:setup/clock-turns db)
+                  :bot-archetype (:setup/bot-archetype db)
                   :selected-deck (:setup/selected-deck db)
                   :must-contain (:setup/must-contain db)}
           presets (assoc (:setup/presets db) name config)]
@@ -146,6 +154,7 @@
            :setup/main-deck (:main-deck config)
            :setup/sideboard (:sideboard config)
            :setup/clock-turns (:clock-turns config)
+           :setup/bot-archetype (get config :bot-archetype :goldfish)
            :setup/selected-deck (:selected-deck config)
            :setup/must-contain (get config :must-contain {})
            :setup/last-preset name)
@@ -206,6 +215,7 @@
    :setup/main-deck (:setup/main-deck db)
    :setup/sideboard (:setup/sideboard db)
    :setup/clock-turns (:setup/clock-turns db)
+   :setup/bot-archetype (:setup/bot-archetype db)
    :setup/must-contain (:setup/must-contain db)
    :setup/presets (:setup/presets db)
    :setup/last-preset (:setup/last-preset db)
@@ -222,6 +232,7 @@
              (>= main-count 60))
       (let [game-db (game/init-game-state {:main-deck main-deck
                                            :clock-turns (:setup/clock-turns db)
+                                           :bot-archetype (:setup/bot-archetype db)
                                            :must-contain (:setup/must-contain db)})]
         (assoc game-db :setup/stashed-config (stash-setup-config db)))
       db)))
@@ -380,6 +391,12 @@
   ::set-clock-turns
   (fn [db [_ n]]
     (set-clock-turns-handler db n)))
+
+
+(rf/reg-event-db
+  ::set-bot-archetype
+  (fn [db [_ archetype]]
+    (set-bot-archetype-handler db archetype)))
 
 
 (rf/reg-event-db

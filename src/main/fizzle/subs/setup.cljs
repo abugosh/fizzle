@@ -66,6 +66,10 @@
             (fn [db _] (:setup/clock-turns db)))
 
 
+(rf/reg-sub ::bot-archetype
+            (fn [db _] (:setup/bot-archetype db)))
+
+
 (rf/reg-sub ::last-preset
             (fn [db _] (:setup/last-preset db)))
 
