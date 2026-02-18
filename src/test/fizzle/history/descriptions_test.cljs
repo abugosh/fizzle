@@ -759,51 +759,11 @@
 
 
 ;; ============================================================
-;; Bot yield description tests (active-is-bot? parameter)
+;; Yield description uses standard format for all players
 ;; ============================================================
 
-(deftest test-bot-cast-description
-  (testing "yield with bot context describes cast when stack goes empty->non-empty"
-    (let [pre-db (make-db)
-          [post-db card-eid] (add-card pre-db test-instant)
-          [post-db obj-id] (add-object post-db card-eid :stack)
-          player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] post-db)
-          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] post-db obj-id)
-          post-db (stack/create-stack-item post-db {:stack-item/type :spell
-                                                    :stack-item/controller player-eid
-                                                    :stack-item/source obj-id
-                                                    :stack-item/object-ref obj-eid
-                                                    :stack-item/effects [{:effect/type :add-mana}]
-                                                    :stack-item/description "Dark Ritual"})]
-      (is (= "Cast Dark Ritual"
-             (descriptions/describe-event
-               [:fizzle.events.game/yield] pre-db post-db nil nil true))
-          "Bot yield with empty->non-empty stack should produce Cast description"))))
-
-
-(deftest test-bot-resolve-description
-  (testing "yield with bot context describes resolve when stack goes non-empty->empty"
-    (let [db (make-db)
-          [db card-eid] (add-card db test-instant)
-          [db obj-id] (add-object db card-eid :stack)
-          player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] db)
-          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
-          pre-db (stack/create-stack-item db {:stack-item/type :spell
-                                              :stack-item/controller player-eid
-                                              :stack-item/source obj-id
-                                              :stack-item/object-ref obj-eid
-                                              :stack-item/effects [{:effect/type :add-mana}]
-                                              :stack-item/description "Dark Ritual"})
-          ;; Post-db: stack is empty (spell resolved)
-          post-db (make-db)]
-      (is (= "Resolve Dark Ritual"
-             (descriptions/describe-event
-               [:fizzle.events.game/yield] pre-db post-db nil nil true))
-          "Bot yield with non-empty->empty stack should produce Resolve description"))))
-
-
-(deftest test-human-yield-not-affected
-  (testing "yield without bot context still uses standard Yield format"
+(deftest test-yield-uses-standard-format-for-all-players
+  (testing "yield always uses standard Yield format (no bot-specific descriptions)"
     (let [db (make-db)
           [db card-eid] (add-card db test-instant)
           [db obj-id] (add-object db card-eid :stack)
@@ -816,15 +776,10 @@
                                               :stack-item/effects [{:effect/type :add-mana}]
                                               :stack-item/description "Dark Ritual"})
           post-db (make-db)]
-      ;; Human yield includes phase name: "Yield: Dark Ritual -> Main 1"
       (is (= "Yield: Dark Ritual \u2192 Main 1"
              (descriptions/describe-event
-               [:fizzle.events.game/yield] pre-db post-db nil nil false))
-          "Human yield should still use standard Yield format")
-      (is (= "Yield: Dark Ritual \u2192 Main 1"
-             (descriptions/describe-event
-               [:fizzle.events.game/yield] pre-db post-db nil nil nil))
-          "Nil active-is-bot? should produce standard Yield format")
+               [:fizzle.events.game/yield] pre-db post-db))
+          "Yield should use standard format")
       (is (= "Yield: Dark Ritual \u2192 Main 1"
              (descriptions/describe-event
                [:fizzle.events.game/yield] pre-db post-db nil nil))

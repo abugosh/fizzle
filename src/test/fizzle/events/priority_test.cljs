@@ -394,8 +394,8 @@
           "Should have multiple history entries for the turn cycle"))))
 
 
-(deftest bot-turn-history-filters-phase-advance-entries
-  (testing "Bot phase advances are filtered — minimal entries for bot turn"
+(deftest bot-turn-history-includes-phase-advance-entries
+  (testing "Bot phase advances create history entries (same as human)"
     (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
                  (h/add-opponent {:bot-archetype :goldfish}))
           [db' _] (h/add-cards-to-library db [:plains :island :swamp] :player-2)
@@ -405,12 +405,10 @@
           app-db (merge (history/init-history) {:game/db game-db})
           result (dispatch-event app-db [::game/yield-all])
           entries (history/effective-entries result)]
-      ;; Bot phase advances (draw, land play, phase transitions) are filtered.
-      ;; Only the turn boundary entry (untap for turn 2) should appear.
+      ;; Bot phase advances now create entries (no more bot noise filtering)
       (let [turn-2-entries (filterv #(= 2 (:entry/turn %)) entries)]
-        (is (<= (count turn-2-entries) 1)
-            (str "Bot turn should have at most 1 entry (turn boundary), got: "
-                 (count turn-2-entries) " — " (mapv :entry/description turn-2-entries)))))))
+        (is (pos? (count turn-2-entries))
+            "Bot turn should have history entries for phase advances")))))
 
 
 (deftest bot-turn-history-replay-works-with-filtered-entries
@@ -433,8 +431,8 @@
             "Each entry should have a snapshot for replay")))))
 
 
-(deftest bot-turn-no-actions-produces-minimal-entries
-  (testing "Bot turn without actions produces minimal history entries"
+(deftest bot-turn-no-actions-produces-entries
+  (testing "Bot turn without actions still produces phase-advance history entries"
     (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
                  (h/add-opponent {:bot-archetype :goldfish}))
           ;; No cards in opponent library or hand — bot has nothing to do
@@ -445,10 +443,9 @@
           result (dispatch-event app-db [::game/yield-all])
           entries (history/effective-entries result)
           turn-2-entries (filterv #(= 2 (:entry/turn %)) entries)]
-      ;; Bot phase advances are filtered, so minimal entries for bot turn
-      (is (<= (count turn-2-entries) 1)
-          (str "Empty bot turn should have at most 1 entry, got: "
-               (count turn-2-entries))))))
+      ;; Bot phase advances create entries (no more filtering)
+      (is (pos? (count turn-2-entries))
+          "Bot turn should have history entries"))))
 
 
 ;; === Human stops during opponent (bot) turn ===

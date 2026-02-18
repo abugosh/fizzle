@@ -1,16 +1,11 @@
 (ns fizzle.bots.actions
   "Bot action execution.
 
-   Handles executing bot priority actions (e.g., casting spells).
    Pure functions: takes game-db, returns game-db.
 
-   auto-tap-for-cost: taps untapped lands to pay a mana cost
-   execute-bot-priority-action: dispatches on action type"
+   auto-tap-for-cost: taps untapped lands to pay a mana cost"
   (:require
-    [datascript.core :as d]
     [fizzle.db.queries :as queries]
-    [fizzle.engine.rules :as rules]
-    [fizzle.engine.stack :as stack]
     [fizzle.events.abilities :as abilities]))
 
 
@@ -55,49 +50,3 @@
                      (rest lands))))))
       db
       mana-cost)))
-
-
-(defn execute-bot-priority-action
-  "Execute a bot's priority action (e.g., cast a spell).
-   Returns updated game-db.
-   Pure function: (db, action) -> db
-
-   Supported actions:
-     {:action :cast-spell :object-id oid :target player-id}
-       - Auto-taps lands to pay mana cost
-       - Casts spell via rules/cast-spell-mode
-       - Stores target on stack-item"
-  [db action]
-  (case (:action action)
-    :cast-spell
-    (let [object-id (:object-id action)
-          target (:target action)
-          obj (queries/get-object db object-id)
-          card (:object/card obj)
-          controller-eid (:db/id (:object/controller obj))
-          player-id (:player/id (d/pull db [:player/id] controller-eid))
-          mana-cost (:card/mana-cost card)
-          ;; Auto-tap lands to pay cost
-          db-tapped (auto-tap-for-cost db player-id mana-cost)
-          ;; Get casting mode
-          modes (rules/get-casting-modes db-tapped player-id object-id)
-          mode (or (first (filter #(= :primary (:mode/id %)) modes))
-                   (first modes))]
-      (if (and mode (rules/can-cast-mode? db-tapped player-id object-id mode))
-        (let [;; Cast spell (pays mana, moves to stack, increments storm)
-              db-cast (rules/cast-spell-mode db-tapped player-id object-id mode)
-              ;; Store target on stack-item
-              obj-eid (d/q '[:find ?e .
-                             :in $ ?oid
-                             :where [?e :object/id ?oid]]
-                           db-cast object-id)
-              stack-item (stack/get-stack-item-by-object-ref db-cast obj-eid)
-              target-id (-> card :card/targeting first :target/id)]
-          (if (:db/id stack-item)
-            (d/db-with db-cast
-                       [[:db/add (:db/id stack-item) :stack-item/targets {target-id target}]])
-            db-cast))
-        ;; Can't cast — return unchanged
-        db))
-    ;; Unknown action — return unchanged
-    db))

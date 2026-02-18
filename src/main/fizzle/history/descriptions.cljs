@@ -183,28 +183,9 @@
 
 
 (defn- describe-yield
-  "Describe a yield event: what resolved and/or where we ended up.
-   When active-is-bot? is true, uses Cast/Resolve format instead of Yield."
-  [pre-game-db game-db-after active-is-bot?]
-  (if active-is-bot?
-    (let [pre-stack-empty (or (nil? pre-game-db)
-                              (nil? (get-stack-top-info pre-game-db)))
-          post-stack-empty (or (nil? game-db-after)
-                               (nil? (get-stack-top-info game-db-after)))]
-      (cond
-        ;; Bot cast: stack went empty -> non-empty
-        (and pre-stack-empty (not post-stack-empty))
-        (describe-cast-spell game-db-after)
-
-        ;; Bot resolve: stack went non-empty -> empty
-        (and (not pre-stack-empty) post-stack-empty)
-        (describe-resolve-top pre-game-db)
-
-        ;; Fallback to standard yield format
-        :else
-        (format-yield-description pre-game-db game-db-after)))
-    ;; Human yield: standard format
-    (format-yield-description pre-game-db game-db-after)))
+  "Describe a yield event: what resolved and/or where we ended up."
+  [pre-game-db game-db-after]
+  (format-yield-description pre-game-db game-db-after))
 
 
 (defn- describe-yield-all
@@ -278,17 +259,14 @@
 (defn describe-event
   "Generate a human-readable description for a re-frame event.
    Takes event vector [event-id & args], optional game-db snapshots,
-   optional selection-type, optional casting-spell-id, and optional active-is-bot?.
-   When active-is-bot? is true, yield events produce Cast/Resolve descriptions.
+   optional selection-type, and optional casting-spell-id.
    Returns string or nil.
    Only priority-action events need descriptions (the interceptor filters others)."
   ([[event-id & _args] pre-game-db game-db-after]
-   (describe-event (into [event-id] _args) pre-game-db game-db-after nil nil nil))
+   (describe-event (into [event-id] _args) pre-game-db game-db-after nil nil))
   ([[event-id & _args] pre-game-db game-db-after selection-type]
-   (describe-event (into [event-id] _args) pre-game-db game-db-after selection-type nil nil))
+   (describe-event (into [event-id] _args) pre-game-db game-db-after selection-type nil))
   ([[event-id & _args] pre-game-db game-db-after selection-type casting-spell-id]
-   (describe-event (into [event-id] _args) pre-game-db game-db-after selection-type casting-spell-id nil))
-  ([[event-id & _args] pre-game-db game-db-after selection-type casting-spell-id active-is-bot?]
    (case event-id
      :fizzle.events.game/init-game
      "Game started"
@@ -300,7 +278,7 @@
      (describe-cast-and-yield pre-game-db game-db-after casting-spell-id)
 
      :fizzle.events.game/yield
-     (describe-yield pre-game-db game-db-after active-is-bot?)
+     (describe-yield pre-game-db game-db-after)
 
      :fizzle.events.game/yield-all
      (describe-yield-all pre-game-db game-db-after)
@@ -337,4 +315,4 @@
      nil))
   ;; Backward-compatible 1-arity: no game-dbs available
   ([event]
-   (describe-event event nil nil nil nil nil)))
+   (describe-event event nil nil nil nil)))

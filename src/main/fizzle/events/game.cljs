@@ -1,7 +1,6 @@
 (ns fizzle.events.game
   (:require
     [datascript.core :as d]
-    [fizzle.bots.actions :as bot-actions]
     [fizzle.bots.protocol :as bot]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as queries]
@@ -646,11 +645,8 @@
               db-after-turn (start-turn game-db active-player-id)
               game-state (queries/get-game-state db-after-turn)
               turn (:game/turn game-state)
-              new-active-pid (queries/get-active-player-id db-after-turn)
-              new-is-bot? (boolean (bot/get-bot-archetype db-after-turn new-active-pid))
               entry (history/make-entry db-after-turn ::start-turn
-                                        (str "Start Turn " turn) turn
-                                        new-active-pid new-is-bot?)]
+                                        (str "Start Turn " turn) turn)]
           (-> (apply-history-entries db [entry])
               (assoc :game/db db-after-turn)))))))
 
@@ -738,7 +734,6 @@
                                      {:resolve-one-item resolve-one-item
                                       :advance-with-stops advance-with-stops
                                       :execute-bot-phase-action execute-bot-phase-action
-                                      :execute-bot-priority-action bot-actions/execute-bot-priority-action
                                       :maybe-continue-cleanup maybe-continue-cleanup}))
       {:app-db (:app-db result)})))
 
@@ -757,9 +752,7 @@
 
 (defn- yield-loop
   "Repeatedly call yield-impl until it stops returning :continue-yield?.
-   Creates a history entry at each step where game-db changes, filtering
-   out bot phase advances (bot active, stack empty, same turn) to reduce
-   history noise.
+   Creates a history entry at each step where game-db changes.
    Returns the final app-db. Safety limit of 100 iterations."
   [app-db]
   (loop [adb app-db
@@ -770,18 +763,15 @@
             result (yield-impl adb)
             result-adb (:app-db result)
             post-db (:game/db result-adb)
-            ;; Create history entry when game-db changed and not a filtered bot phase
+            ;; Create history entry when game-db changed
             result-adb (if (and post-db
-                                (not (identical? pre-db post-db))
-                                (game-loop/should-create-history-entry? pre-db post-db))
+                                (not (identical? pre-db post-db)))
                          (let [game-state (queries/get-game-state post-db)
                                turn (or (:game/turn game-state) 0)
-                               active-pid (queries/get-active-player-id post-db)
-                               active-is-bot? (boolean (bot/get-bot-archetype post-db active-pid))
                                desc (or (descriptions/describe-event
-                                          [::yield] pre-db post-db nil nil active-is-bot?)
+                                          [::yield] pre-db post-db)
                                         "Yield")
-                               entry (history/make-entry post-db ::yield desc turn active-pid active-is-bot?)]
+                               entry (history/make-entry post-db ::yield desc turn)]
                            (if (or (= -1 (:history/position result-adb))
                                    (history/at-tip? result-adb))
                              (history/append-entry result-adb entry)
