@@ -94,7 +94,7 @@
           _ (is (= :stack (:object/zone (q/get-object db-cast int-id)))
                 "Precondition: Intuition on stack")
           ;; Resolve - should create tutor selection with available cards
-          result (game/resolve-one-item db-cast :player-1)
+          result (game/resolve-one-item db-cast)
           sel (:pending-selection result)]
       ;; Should have pending selection (tutor)
       (is (= :tutor (:selection/type sel))

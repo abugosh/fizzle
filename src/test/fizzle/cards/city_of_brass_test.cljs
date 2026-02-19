@@ -110,7 +110,7 @@
           db-tapped (ability-events/activate-mana-ability db-played :player-1 obj-id :blue)
           _ (is (= 20 (q/get-life-total db-tapped :player-1))
                 "Life unchanged before resolve")
-          db-resolved (:db (game/resolve-one-item db-tapped :player-1))]
+          db-resolved (:db (game/resolve-one-item db-tapped))]
       (is (= 19 (q/get-life-total db-resolved :player-1))
           "Player should lose 1 life after trigger resolves")
       (is (= 0 (count (q/get-all-stack-items db-resolved)))
@@ -124,7 +124,7 @@
           db-played (game/play-land db' :player-1 obj-id)
           ;; First tap
           db-tap1 (ability-events/activate-mana-ability db-played :player-1 obj-id :black)
-          db-resolve1 (:db (game/resolve-one-item db-tap1 :player-1))
+          db-resolve1 (:db (game/resolve-one-item db-tap1))
           _ (is (= 19 (q/get-life-total db-resolve1 :player-1))
                 "19 life after first trigger")
           ;; Manually untap for second activation
@@ -133,7 +133,7 @@
           db-untapped (d/db-with db-resolve1 [[:db/add obj-eid :object/tapped false]])
           ;; Second tap
           db-tap2 (ability-events/activate-mana-ability db-untapped :player-1 obj-id :red)
-          db-resolve2 (:db (game/resolve-one-item db-tap2 :player-1))]
+          db-resolve2 (:db (game/resolve-one-item db-tap2))]
       (is (= 18 (q/get-life-total db-resolve2 :player-1))
           "Player at 18 life after both triggers resolved"))))
 

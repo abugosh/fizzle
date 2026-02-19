@@ -155,7 +155,7 @@
                            :selection/selected #{sorcery-id})
           db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
           ;; Resolve Recoup via production path
-          resolve-result (game/resolve-one-item db-cast :player-1)
+          resolve-result (game/resolve-one-item db-cast)
           db-resolved (:db resolve-result)
           ;; Check grants on target
           flashback-grants (grants/get-grants-by-type db-resolved sorcery-id :alternate-cost)]
@@ -178,7 +178,7 @@
                            :selection/selected #{sorcery-id})
           db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
           ;; Resolve via production path
-          resolve-result (game/resolve-one-item db-cast :player-1)
+          resolve-result (game/resolve-one-item db-cast)
           db-resolved (:db resolve-result)
           ;; Get the granted flashback
           flashback-grants (grants/get-grants-by-type db-resolved sorcery-id :alternate-cost)
@@ -200,7 +200,7 @@
                            :selection/selected #{sorcery-id})
           db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
           ;; Resolve via production path
-          resolve-result (game/resolve-one-item db-cast :player-1)
+          resolve-result (game/resolve-one-item db-cast)
           db-resolved (:db resolve-result)]
       ;; Check grant has exile on resolve
       (let [flashback-grants (grants/get-grants-by-type db-resolved sorcery-id :alternate-cost)
@@ -221,7 +221,7 @@
                            :selection/selected #{sorcery-id})
           db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
           ;; Resolve via production path
-          resolve-result (game/resolve-one-item db-cast :player-1)
+          resolve-result (game/resolve-one-item db-cast)
           db-recoup-resolved (:db resolve-result)
           ;; Verify sorcery has granted flashback
           _ (is (= 1 (count (grants/get-grants-by-type db-recoup-resolved sorcery-id :alternate-cost)))
@@ -255,7 +255,7 @@
           ;; Remove the target before resolution (simulate Tormod's Crypt)
           db-target-exiled (zones/move-to-zone db-cast sorcery-id :exile)
           ;; Try to resolve Recoup (target no longer legal)
-          resolve-result (game/resolve-one-item db-target-exiled :player-1)
+          resolve-result (game/resolve-one-item db-target-exiled)
           db-resolved (:db resolve-result)]
       ;; Recoup should be in graveyard (fizzled, not flashback cast)
       (is (= :graveyard (th/get-object-zone db-resolved recoup-id))
@@ -281,7 +281,7 @@
           ;; Remove sorcery1 (even though sorcery2 still exists)
           db-target-exiled (zones/move-to-zone db-cast sorcery1-id :exile)
           ;; Resolve - should fizzle
-          resolve-result (game/resolve-one-item db-target-exiled :player-1)
+          resolve-result (game/resolve-one-item db-target-exiled)
           db-resolved (:db resolve-result)]
       ;; Recoup fizzles (target invalid)
       (is (= :graveyard (th/get-object-zone db-resolved recoup-id))
@@ -305,7 +305,7 @@
                            :selection/selected #{sorcery-id})
           db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
           ;; Resolve via production path
-          resolve-result (game/resolve-one-item db-cast :player-1)
+          resolve-result (game/resolve-one-item db-cast)
           db-resolved (:db resolve-result)
           ;; Verify grant exists
           _ (is (= 1 (count (q/get-grants db-resolved sorcery-id)))
@@ -329,7 +329,7 @@
                            :selection/selected #{sorcery-id})
           db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
           ;; Resolve via production path
-          resolve-result (game/resolve-one-item db-cast :player-1)
+          resolve-result (game/resolve-one-item db-cast)
           db-resolved (:db resolve-result)
           ;; Try to expire at main1 phase (before cleanup)
           db-not-expired (grants/expire-grants db-resolved 1 :main1)]
@@ -370,7 +370,7 @@
           _ (is (= :flashback (:mode/id (:object/cast-mode (q/get-object db-cast recoup-id))))
                 "Cast mode should be flashback")
           ;; Resolve via production path
-          resolve-result (game/resolve-one-item db-cast :player-1)
+          resolve-result (game/resolve-one-item db-cast)
           db-resolved (:db resolve-result)]
       (is (= :exile (th/get-object-zone db-resolved recoup-id))
           "Flashback Recoup should exile after resolution"))))
@@ -388,7 +388,7 @@
                            :selection/selected #{sorcery-id})
           db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
           ;; Resolve via production path
-          resolve-result (game/resolve-one-item db-cast :player-1)
+          resolve-result (game/resolve-one-item db-cast)
           db-resolved (:db resolve-result)
           ;; Check target got flashback
           flashback-grants (grants/get-grants-by-type db-resolved sorcery-id :alternate-cost)]
@@ -412,7 +412,7 @@
                            :selection/selected #{sorcery-id})
           db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
           ;; Step 2: Resolve Recoup via production path
-          resolve-result (game/resolve-one-item db-cast :player-1)
+          resolve-result (game/resolve-one-item db-cast)
           db-resolved (:db resolve-result)
           ;; Verify Recoup in graveyard, Careful Study has flashback
           _ (is (= :graveyard (th/get-object-zone db-resolved recoup-id))

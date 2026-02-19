@@ -99,7 +99,7 @@
       (is (= :stack (:object/zone (q/get-object db-cast obj-id)))
           "Lightning Bolt should be on stack after casting")
       ;; Resolve via production path
-      (let [result (game/resolve-one-item db-cast :player-1)
+      (let [result (game/resolve-one-item db-cast)
             db-resolved (:db result)]
         ;; Spell should be in graveyard after resolution
         (is (= :graveyard (:object/zone (q/get-object db-resolved obj-id)))
@@ -130,7 +130,7 @@
                      :selection/target-requirement target-req
                      :selection/selected #{:player-1}}
           db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)
-          result (game/resolve-one-item db-cast :player-1)
+          result (game/resolve-one-item db-cast)
           db-resolved (:db result)]
       (is (= :graveyard (:object/zone (q/get-object db-resolved obj-id)))
           "Lightning Bolt should be in graveyard after resolution")
@@ -258,7 +258,7 @@
                      :selection/target-requirement target-req
                      :selection/selected #{:player-2}}
           db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)
-          result (game/resolve-one-item db-cast :player-1)
+          result (game/resolve-one-item db-cast)
           db-resolved (:db result)]
       (is (= 0 (q/get-life-total db-resolved :player-2))
           "Opponent life should be 0")
@@ -284,7 +284,7 @@
                      :selection/target-requirement target-req
                      :selection/selected #{:player-2}}
           db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)
-          result (game/resolve-one-item db-cast :player-1)
+          result (game/resolve-one-item db-cast)
           db-resolved (:db result)]
       (is (= -2 (q/get-life-total db-resolved :player-2))
           "Opponent life should be -2 (no clamping)")
@@ -310,7 +310,7 @@
                      :selection/target-requirement target-req
                      :selection/selected #{:player-2}}
           db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)
-          result (game/resolve-one-item db-cast :player-1)
+          result (game/resolve-one-item db-cast)
           db-resolved (:db result)]
       (is (= -3 (q/get-life-total db-resolved :player-2))
           "Opponent life should be -3 (still deals damage)")

@@ -25,7 +25,7 @@
           spell-items (filter #(:stack-item/object-ref %) (queries/get-all-stack-items db))
           stack-item (first spell-items)
           ;; Resolve via multimethod
-          result (resolution/resolve-stack-item db :player-1 stack-item)]
+          result (resolution/resolve-stack-item db stack-item)]
       ;; Should complete without needing selection
       (is (nil? (:needs-selection result))
           "Dark Ritual should not need selection")
@@ -53,7 +53,7 @@
           db (d/db-with db [[:db/add si-eid :stack-item/targets {:player :player-2}]])
           ;; Re-fetch stack-item with targets
           stack-item (stack/get-stack-item-by-object-ref db obj-eid)
-          result (resolution/resolve-stack-item db :player-1 stack-item)]
+          result (resolution/resolve-stack-item db stack-item)]
       ;; Should complete without selection
       (is (nil? (:needs-selection result))
           "Targeted Orim's Chant should not need selection when targets stored")
@@ -73,7 +73,7 @@
           ;; Find the spell stack-item
           spell-items (filter #(:stack-item/object-ref %) (queries/get-all-stack-items db))
           stack-item (first spell-items)
-          result (resolution/resolve-stack-item db :player-1 stack-item)]
+          result (resolution/resolve-stack-item db stack-item)]
       ;; Should pause for selection
       (is (some? (:needs-selection result))
           "Tutor spell should need selection")
@@ -111,7 +111,7 @@
                                        :stack-item/object-ref copy-eid
                                        :stack-item/is-copy true})
           stack-item (stack/get-top-stack-item db)
-          result (resolution/resolve-stack-item db :player-1 stack-item)]
+          result (resolution/resolve-stack-item db stack-item)]
       ;; Copy should be removed from db
       (is (nil? (queries/get-object (:db result) copy-id))
           "Storm copy should cease to exist after resolution"))))
@@ -131,7 +131,7 @@
           ;; Find the spell stack-item
           spell-items (filter #(:stack-item/object-ref %) (queries/get-all-stack-items db))
           stack-item (first spell-items)
-          result (resolution/resolve-stack-item db :player-1 stack-item)]
+          result (resolution/resolve-stack-item db stack-item)]
       ;; Spell should be in exile
       (is (= :exile (:object/zone (queries/get-object (:db result) obj-id)))
           "Flashback spell should exile after resolution"))))
@@ -147,7 +147,7 @@
           ;; Find the spell stack-item
           spell-items (filter #(:stack-item/object-ref %) (queries/get-all-stack-items db))
           stack-item (first spell-items)
-          result (resolution/resolve-stack-item db :player-1 stack-item)]
+          result (resolution/resolve-stack-item db stack-item)]
       ;; Spell should still be in graveyard
       (is (= :graveyard (:object/zone (queries/get-object (:db result) obj-id)))
           "Spell should move to graveyard even if conditional effects don't match"))))
@@ -167,7 +167,7 @@
                                        :stack-item/source obj-id
                                        :stack-item/object-ref obj-eid})
           stack-item (stack/get-top-stack-item db)
-          result (resolution/resolve-stack-item db :player-1 stack-item)]
+          result (resolution/resolve-stack-item db stack-item)]
       ;; Object should still be in hand (no-op)
       (is (= :hand (:object/zone (queries/get-object (:db result) obj-id)))
           "Object in hand should not be affected"))))
@@ -189,7 +189,7 @@
                         (if (or (nil? (stack/get-top-stack-item d))
                                 (> iterations 5))
                           d
-                          (let [result (game/resolve-one-item d :player-1)]
+                          (let [result (game/resolve-one-item d)]
                             (recur (:db result) (inc iterations)))))]
       ;; Spell should be in graveyard
       (is (= :graveyard (:object/zone (queries/get-object result-loop obj-id)))
@@ -199,11 +199,36 @@
           "Stack should be empty"))))
 
 
+(deftest test-spell-uses-controller-not-active-player
+  (testing "Spell cast by player-1 on opponent's turn resolves for player-1"
+    (let [db (-> (th/create-test-db {:mana {:black 3}})
+                 th/add-opponent)
+          ;; Make opponent the active player (it's their turn)
+          opp-eid (queries/get-player-eid db :player-2)
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]])
+          ;; Player-1 casts Dark Ritual on opponent's turn
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          db (rules/cast-spell db :player-1 obj-id)
+          ;; Find the spell stack-item
+          spell-items (filter #(:stack-item/object-ref %) (queries/get-all-stack-items db))
+          stack-item (first spell-items)
+          ;; Resolve — multimethod reads controller from stack-item, not a parameter
+          result (resolution/resolve-stack-item db stack-item)]
+      ;; Mana should go to player-1 (the controller), NOT player-2 (active player)
+      (let [p1-pool (queries/get-mana-pool (:db result) :player-1)]
+        (is (= 5 (:black p1-pool))
+            "Dark Ritual mana should go to controller (player-1), not active player"))
+      (let [p2-pool (queries/get-mana-pool (:db result) :player-2)]
+        (is (= 0 (:black p2-pool))
+            "Opponent should NOT receive Dark Ritual mana")))))
+
+
 (deftest test-default-defmethod-returns-db-unchanged
   (testing ":default defmethod returns {:db db} for unknown types"
     (let [db (th/create-test-db)
           stack-item {:stack-item/type :unknown-type
                       :stack-item/controller :player-1}
-          result (resolution/resolve-stack-item db :player-1 stack-item)]
+          result (resolution/resolve-stack-item db stack-item)]
       (is (= db (:db result))
           "Default defmethod should return db unchanged"))))

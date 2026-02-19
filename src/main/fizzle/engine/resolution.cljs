@@ -25,19 +25,22 @@
 (defmulti resolve-stack-item
   "Resolve a stack-item by type.
 
+   Controller identity comes from :stack-item/controller on the stack-item
+   itself — never from a parameter. This prevents the footgun where the
+   active player is passed instead of the caster.
+
    Arguments:
-     db        - Datascript database value
-     player-id - Player resolving the item
-     stack-item - Stack-item entity map
+     db         - Datascript database value
+     stack-item - Stack-item entity map (must have :stack-item/controller)
 
    Returns:
      {:db db'} - Resolution complete
      {:db db' :needs-selection effect :remaining-effects [...]} - Paused for selection"
-  (fn [_db _player-id stack-item] (:stack-item/type stack-item)))
+  (fn [_db stack-item] (:stack-item/type stack-item)))
 
 
 (defmethod resolve-stack-item :default
-  [db _player-id stack-item]
+  [db stack-item]
   (let [controller (:stack-item/controller stack-item)
         source-id (:stack-item/source stack-item)
         effects-list (or (:stack-item/effects stack-item) [])
@@ -122,6 +125,8 @@
 (defn- resolve-spell-effects
   "Resolve effects for a spell/storm-copy stack-item.
 
+   Controller identity comes from :stack-item/controller on the stack-item.
+
    1. Gets active effects from card definition
    2. Reads targets from :stack-item/targets (single source of truth)
    3. Checks target legality if targets exist
@@ -130,9 +135,10 @@
 
    Returns {:db db'} or {:db db' :needs-selection effect :remaining-effects [...]}.
    If targets are illegal, skips effects and returns {:db db :fizzled? true}."
-  [db player-id stack-item object-id obj]
-  (let [card (:object/card obj)
-        effects-list (or (rules/get-active-effects db player-id card object-id) [])
+  [db stack-item object-id obj]
+  (let [controller (:stack-item/controller stack-item)
+        card (:object/card obj)
+        effects-list (or (rules/get-active-effects db controller card object-id) [])
         stored-targets (:stack-item/targets stack-item)
         ;; Check target legality
         requirements (targeting/get-targeting-requirements card)
@@ -144,9 +150,9 @@
       ;; Effects that handle :self/:opponent internally (e.g., discard-hand) break
       ;; if we pre-resolve :self to an object-id.
       (let [resolved-effects (if (seq stored-targets)
-                               (pre-resolve-targets effects-list object-id player-id stored-targets)
+                               (pre-resolve-targets effects-list object-id controller stored-targets)
                                effects-list)]
-        (effects/reduce-effects db player-id resolved-effects object-id)))))
+        (effects/reduce-effects db controller resolved-effects object-id)))))
 
 
 ;; =====================================================
@@ -161,7 +167,7 @@
    3. Resolves effects via resolve-spell-effects
    4. If needs-selection, returns paused result
    5. Otherwise, moves spell to destination zone"
-  [db player-id stack-item]
+  [db stack-item]
   (let [obj-ref-raw (:stack-item/object-ref stack-item)
         obj-ref (if (map? obj-ref-raw) (:db/id obj-ref-raw) obj-ref-raw)
         obj (when obj-ref
@@ -173,20 +179,20 @@
       (let [object-id (:object/id obj)]
         (if (not= :stack (:object/zone obj))
           {:db db}
-          (let [result (resolve-spell-effects db player-id stack-item object-id obj)]
+          (let [result (resolve-spell-effects db stack-item object-id obj)]
             (if (:needs-selection result)
               result
               {:db (move-resolved-spell (:db result) object-id obj)})))))))
 
 
 (defmethod resolve-stack-item :spell
-  [db player-id stack-item]
-  (resolve-spell-type db player-id stack-item))
+  [db stack-item]
+  (resolve-spell-type db stack-item))
 
 
 (defmethod resolve-stack-item :storm-copy
-  [db player-id stack-item]
-  (resolve-spell-type db player-id stack-item))
+  [db stack-item]
+  (resolve-spell-type db stack-item))
 
 
 ;; =====================================================
@@ -212,7 +218,7 @@
 
 
 (defmethod resolve-stack-item :activated-ability
-  [db _player-id stack-item]
+  [db stack-item]
   (let [controller (:stack-item/controller stack-item)
         source-id (:stack-item/source stack-item)
         effects-list (or (:stack-item/effects stack-item) [])
@@ -249,7 +255,7 @@
 ;; =====================================================
 
 (defmethod resolve-stack-item :storm
-  [db _player-id stack-item]
+  [db stack-item]
   (let [controller (:stack-item/controller stack-item)
         source-id (:stack-item/source stack-item)
         source-obj (queries/get-object db source-id)

@@ -425,7 +425,7 @@
           db2m (mana/add-mana db2 :player-1 {:blue 1 :colorless 1})
           db2c (cast-brain-freeze-with-target db2m :player-1 bf-id :opponent)
           ;; Storm SI is on top, source spell has :card/targeting
-          result (game/resolve-one-item db2c :player-1)]
+          result (game/resolve-one-item db2c)]
       (is (some? (:pending-selection result))
           "Should return pending storm-split selection")
       (when-let [sel (:pending-selection result)]
@@ -449,7 +449,7 @@
                                                   :stack-item/source source-id
                                                   :stack-item/effects [{:effect/type :storm-copies
                                                                         :effect/count 2}]})
-          result (game/resolve-one-item db-with-storm :player-1)]
+          result (game/resolve-one-item db-with-storm)]
       (is (nil? (:pending-selection result))
           "Should NOT return selection for non-targeted storm")
       (let [stack-objects (q/get-objects-in-zone (:db result) :player-1 :stack)

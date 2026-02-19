@@ -44,12 +44,12 @@
 (defn resolve-brain-freeze
   "Resolve Brain Freeze through the engine resolution multimethod.
    Returns updated db with spell moved to graveyard/removed."
-  [db player-id object-id]
+  [db _player-id object-id]
   (let [obj-eid (d/q '[:find ?e . :in $ ?oid
                        :where [?e :object/id ?oid]]
                      db object-id)
         stack-item (stack/get-stack-item-by-object-ref db obj-eid)
-        result (engine-resolution/resolve-stack-item db player-id stack-item)
+        result (engine-resolution/resolve-stack-item db stack-item)
         stack-item-eid (:db/id stack-item)]
     (stack/remove-stack-item (:db result) stack-item-eid)))
 
@@ -210,7 +210,7 @@
           db3m (mana/add-mana db3 :player-1 {:blue 1 :colorless 1})
           db3c (cast-brain-freeze-with-target db3m :player-1 bf-id :player-2)
           ;; Resolve storm stack-item via storm-split selection
-          storm-result (game/resolve-one-item db3c :player-1)
+          storm-result (game/resolve-one-item db3c)
           storm-sel (:pending-selection storm-result)
           ;; Confirm storm-split (all copies to opponent)
           confirm-result (sel-core/execute-confirmed-selection (:db storm-result) storm-sel)
@@ -256,7 +256,7 @@
           db2m (mana/add-mana db2 :player-1 {:blue 1 :colorless 1})
           db2c (cast-brain-freeze-with-target db2m :player-1 bf-id :player-1)
           ;; Resolve storm stack-item via storm-split selection
-          storm-result (game/resolve-one-item db2c :player-1)
+          storm-result (game/resolve-one-item db2c)
           storm-sel (:pending-selection storm-result)
           ;; Confirm storm-split (all copies to self)
           storm-sel (assoc storm-sel :selection/allocation
@@ -298,7 +298,7 @@
       (is (= 0 (get-in storm-trigger [:stack-item/effects 0 :effect/count]))
           "Storm trigger count should be 0 (no previous spells)")
       ;; Resolve storm stack-item (creates 0 copies) then resolve original
-      (let [db-after-trigger (:db (game/resolve-one-item db-cast :player-1))
+      (let [db-after-trigger (:db (game/resolve-one-item db-cast))
             stack-objects (q/get-objects-in-zone db-after-trigger :player-1 :stack)
             copies (filter :object/is-copy stack-objects)]
         (is (= 0 (count copies))

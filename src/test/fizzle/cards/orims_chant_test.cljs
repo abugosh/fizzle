@@ -174,7 +174,7 @@
           _ (is (= :stack (:object/zone (q/get-object db-cast obj-id)))
                 "Precondition: Orim's Chant on stack")
           ;; Resolve via production path (resolve-one-item)
-          result (game/resolve-one-item db-cast :player-1)
+          result (game/resolve-one-item db-cast)
           db-resolved (:db result)]
       ;; Spell should be in graveyard after resolution
       (is (= :graveyard (:object/zone (q/get-object db-resolved obj-id)))
@@ -277,7 +277,7 @@
                      :selection/selected #{:player-2}}
           db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)
           ;; Resolve via production path
-          result (game/resolve-one-item db-cast :player-1)]
+          result (game/resolve-one-item db-cast)]
       ;; Spell should be resolved (in graveyard)
       (is (= :graveyard (:object/zone (q/get-object (:db result) obj-id)))
           "Orim's Chant should be in graveyard after resolution")

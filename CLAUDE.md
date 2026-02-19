@@ -97,6 +97,8 @@ src/
 
 5. **Make protocols explicit** - If the engine and event layer must agree on something (e.g., which effects need player interaction), encode that agreement in data or types, not in comments and conventions. Implicit protocols drift apart silently.
 
+6. **No footguns** - Don't design APIs where a caller can accidentally pass the wrong value and silently get wrong behavior. If identity, context, or configuration is already available on the data being passed, read it from there — don't accept it as a separate parameter that can diverge. Prefer APIs that are impossible to misuse over APIs that are merely documented.
+
 ### Effect System
 
 Cards define effects as EDN data structures that the engine interprets:

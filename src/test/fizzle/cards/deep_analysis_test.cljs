@@ -242,7 +242,7 @@
           [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :hand)
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
           db-cast (rules/cast-spell db :player-1 obj-id)
-          result (events/resolve-one-item db-cast :player-1)]
+          result (events/resolve-one-item db-cast)]
       (is (= :player-target (:selection/type (:pending-selection result)))
           "Selection type should be :player-target")
       (is (= obj-id (:selection/spell-id (:pending-selection result)))
@@ -263,7 +263,7 @@
           [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :hand)
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
           db-cast (rules/cast-spell db :player-1 obj-id)
-          result (events/resolve-one-item db-cast :player-1)
+          result (events/resolve-one-item db-cast)
           selection (:pending-selection result)]
       (is (= :player-1 (:selection/player-id selection))
           "Caster should be tracked")
@@ -294,7 +294,7 @@
           [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :hand)
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
           db-cast (rules/cast-spell db :player-1 obj-id)
-          result (events/resolve-one-item db-cast :player-1)
+          result (events/resolve-one-item db-cast)
           selection (:pending-selection result)
           target-effect (:selection/target-effect selection)]
       ;; The stored effect should have :any-player target (to be replaced on confirm)
@@ -339,7 +339,7 @@
           [obj-id db] (add-card-to-zone db :player-1 deep-analysis/deep-analysis :graveyard)
           db (mana/add-mana db :player-1 {:colorless 1 :blue 1})
           db-cast (rules/cast-spell db :player-1 obj-id)
-          result (events/resolve-one-item db-cast :player-1)
+          result (events/resolve-one-item db-cast)
           ;; Confirm with player target
           selection (assoc (:pending-selection result) :selection/selected #{:player-1})
           app-db {:game/db (:db result)
@@ -458,7 +458,7 @@
           ;; Count cards before resolution
           initial-hand-count (count (q/get-hand db-cast :player-1))
           ;; Resolve the spell - should use stored target, not prompt
-          resolve-result (events/resolve-one-item db-cast :player-1)]
+          resolve-result (events/resolve-one-item db-cast)]
       ;; Should NOT have pending selection (target already chosen at cast time)
       (is (nil? (:pending-selection resolve-result))
           "Should not prompt for target when :stack-item/targets is present")

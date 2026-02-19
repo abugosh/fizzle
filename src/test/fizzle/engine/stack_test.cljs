@@ -408,7 +408,7 @@
           _ (is (some? (stack/get-stack-item-by-object-ref db' obj-eid))
                 "Stack-item exists before resolution")
           ;; Resolve via resolve-top-of-stack
-          db-resolved (:db (game/resolve-one-item db' :player-1))]
+          db-resolved (:db (game/resolve-one-item db'))]
       (is (nil? (stack/get-stack-item-by-object-ref db-resolved obj-eid))
           "Stack-item removed after resolution"))))
 
@@ -446,7 +446,7 @@
       (is (> (:stack-item/position ability-item) (:stack-item/position spell-item))
           "Ability stack-item should be on top of stack")
       ;; Resolve top - should resolve the ability, not the spell
-      (let [db-after (:db (game/resolve-one-item db'' :player-1))
+      (let [db-after (:db (game/resolve-one-item db''))
             remaining-items (queries/get-all-stack-items db-after)]
         ;; Ability stack-item should be gone
         (is (empty? (filter #(= :activated-ability (:stack-item/type %)) remaining-items))
@@ -613,7 +613,7 @@
           top (stack/get-top-stack-item db-with-item)]
       (is (some? top) "Stack-item should exist before resolution")
       ;; Resolve via resolve-top-of-stack
-      (let [db-after (:db (game/resolve-one-item db-with-item :player-1))]
+      (let [db-after (:db (game/resolve-one-item db-with-item))]
         ;; Stack-item should be removed
         (is (nil? (stack/get-top-stack-item db-after))
             "Stack-item should be removed after resolution")
@@ -635,7 +635,7 @@
                                                                        :effect/amount 1
                                                                        :effect/target :controller}]})]
       ;; Resolve via resolve-top-of-stack
-      (let [db-after (:db (game/resolve-one-item db-with-item :player-1))
+      (let [db-after (:db (game/resolve-one-item db-with-item))
             life-after (queries/get-life-total db-after :player-1)]
         ;; Player should have lost 1 life (effect resolved :controller → :player-1)
         (is (= 19 life-after)

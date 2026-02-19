@@ -388,20 +388,22 @@
 
 
 (defn resolve-one-item
-  "Resolve the topmost stack-item. Returns {:db} or {:db :pending-selection}."
-  [game-db player-id]
+  "Resolve the topmost stack-item. Returns {:db} or {:db :pending-selection}.
+   Controller identity comes from the stack-item itself — no player-id parameter."
+  [game-db]
   (let [top (stack/get-top-stack-item game-db)]
     (if-not top
       {:db game-db}
-      (let [result (engine-resolution/resolve-stack-item game-db player-id top)]
+      (let [controller (:stack-item/controller top)
+            result (engine-resolution/resolve-stack-item game-db top)]
         (cond
           (:needs-storm-split result)
-          (if-let [sel (sel-storm/build-storm-split-selection game-db player-id top)]
+          (if-let [sel (sel-storm/build-storm-split-selection game-db controller top)]
             {:db game-db :pending-selection sel}
             {:db (stack/remove-stack-item game-db (:db/id top))})
 
           (:needs-selection result)
-          (build-selection-from-result game-db player-id top result)
+          (build-selection-from-result game-db controller top result)
 
           :else
           {:db (stack/remove-stack-item (:db result) (:db/id top))})))))
@@ -507,7 +509,7 @@
 (rf/reg-event-db
   ::resolve-top
   (fn [db _]
-    (let [result (resolve-one-item (:game/db db) (queries/get-human-player-id (:game/db db)))]
+    (let [result (resolve-one-item (:game/db db))]
       (if (:pending-selection result)
         (-> db
             (assoc :game/db (:db result))
@@ -526,7 +528,7 @@
         {:db db}
         (let [top (stack/get-top-stack-item game-db)]
           (if (and top (contains? initial-ids (:db/id top)))
-            (let [result (resolve-one-item game-db (queries/get-human-player-id game-db))]
+            (let [result (resolve-one-item game-db)]
               (if (:pending-selection result)
                 {:db (-> db
                          (assoc :game/db (:db result))
@@ -724,8 +726,7 @@
   [app-db]
   (let [game-db (:game/db app-db)
         auto-mode (priority/get-auto-mode game-db)
-        active-player-id (queries/get-active-player-id game-db)
-        result (resolve-one-item game-db active-player-id)]
+        result (resolve-one-item game-db)]
     (if (:pending-selection result)
       ;; Selection needed — clear auto-mode, return selection
       {:app-db (-> app-db

@@ -421,7 +421,7 @@
           top-item (stack/get-top-stack-item db-after-confirm)
           _ (is (some? top-item) "Should have stack-item on stack")
           ;; Resolve the stack item ability (pass full entity, not eid)
-          resolve-result (game/resolve-one-item db-after-confirm :player-1)]
+          resolve-result (game/resolve-one-item db-after-confirm)]
       ;; After resolution, player should have drawn 3 cards
       (is (= 3 (th/get-hand-count (:db resolve-result) :player-1))
           "Player should have drawn 3 cards from threshold ability")

@@ -120,7 +120,7 @@
             ;; Spell should be in graveyard
             (is (= :graveyard (:object/zone (queries/get-object db object-id)))
                 "Dark Ritual should be in graveyard after resolution"))
-          (let [result (game/resolve-one-item db :player-1)]
+          (let [result (game/resolve-one-item db)]
             (is (nil? (:pending-selection result)) "Dark Ritual should not need selection")
             (recur (:db result) (inc iterations))))))))
 
@@ -139,7 +139,7 @@
           top (stack/get-top-stack-item db')]
       (is (some? top) "Stack-item should exist")
       ;; Resolve via resolve-one-item
-      (let [result (game/resolve-one-item db' :player-1)]
+      (let [result (game/resolve-one-item db')]
         (is (nil? (:pending-selection result)) "Simple ability should not need selection")
         ;; Stack-item should be removed
         (is (nil? (stack/get-top-stack-item (:db result)))
@@ -163,7 +163,7 @@
           top (stack/get-top-stack-item db')]
       (is (some? top) "Stack-item should exist")
       ;; Resolve via resolve-one-item
-      (let [result (game/resolve-one-item db' :player-1)]
+      (let [result (game/resolve-one-item db')]
         (is (nil? (:pending-selection result)) "Trigger should not need selection")
         ;; Stack-item should be removed
         (is (nil? (stack/get-top-stack-item (:db result)))
@@ -179,7 +179,7 @@
       ;; No stack-items
       (is (nil? (stack/get-top-stack-item db)) "Stack should be empty")
       ;; Resolve via resolve-one-item
-      (let [result (game/resolve-one-item db :player-1)]
+      (let [result (game/resolve-one-item db)]
         (is (nil? (:pending-selection result)) "Should not have pending selection")
         ;; DB should be unchanged
         (is (= db (:db result)) "DB should be unchanged for empty stack")))))
@@ -201,7 +201,7 @@
           spell-items (filter #(:stack-item/object-ref %) (queries/get-all-stack-items db-cast))]
       (is (seq spell-items) "Spell should be on stack")
       ;; Resolve - should trigger tutor selection
-      (let [result (game/resolve-one-item db-cast :player-1)]
+      (let [result (game/resolve-one-item db-cast)]
         (is (some? (:pending-selection result))
             "Tutor spell should create pending selection")))))
 
@@ -223,7 +223,7 @@
       ;; Should have 1 stack-item (the storm meta-item)
       (is (= 1 (count items-before)) "Should have 1 stack-item before resolution")
       ;; Resolve the storm item
-      (let [result (game/resolve-one-item db' :player-1)
+      (let [result (game/resolve-one-item db')
             items-after (queries/get-all-stack-items (:db result))]
         (is (nil? (:pending-selection result)) "Storm should not need selection")
         ;; Storm meta-item should be removed, but copies created
