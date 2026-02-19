@@ -18,6 +18,13 @@
 (rf/reg-sub ::history-collapsed (fn [db _] (:ui/history-collapsed db)))
 
 
+(rf/reg-sub
+  ::human-player-id
+  :<- [::game-db]
+  (fn [game-db _]
+    (when game-db (queries/get-human-player-id game-db))))
+
+
 ;; Layer 3: derived subscriptions
 (rf/reg-sub
   ::hand
@@ -46,8 +53,7 @@
   :<- [::game-db]
   (fn [game-db _]
     (when game-db
-      (let [human-pid (queries/get-human-player-id game-db)
-            stack-items (queries/get-all-stack-items game-db)
+      (let [stack-items (queries/get-all-stack-items game-db)
             ;; Exclude stack-items with object-refs (spells/copies) — the game object already represents them
             non-spell-items (remove :stack-item/object-ref stack-items)
             ;; Enrich with source card name for display
@@ -59,7 +65,10 @@
                                        si)
                                      si))
                                  non-spell-items)
-            spells (queries/get-objects-in-zone game-db human-pid :stack)
+            ;; Stack is shared — show ALL players' spells, not just human's
+            spells (d/q '[:find [(pull ?obj [* {:object/card [*]}]) ...]
+                          :where [?obj :object/zone :stack]]
+                        game-db)
             order-key (fn [item]
                         (or (:stack-item/position item)
                             (:object/position item)

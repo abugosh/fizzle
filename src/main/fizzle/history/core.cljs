@@ -10,11 +10,14 @@
 
 
 (defn make-entry
-  [game-db event-type description turn]
-  {:entry/snapshot game-db
-   :entry/event-type event-type
-   :entry/description description
-   :entry/turn turn})
+  ([game-db event-type description turn]
+   (make-entry game-db event-type description turn nil))
+  ([game-db event-type description turn principal]
+   (cond-> {:entry/snapshot game-db
+            :entry/event-type event-type
+            :entry/description description
+            :entry/turn turn}
+     principal (assoc :entry/principal principal))))
 
 
 (defn get-fork

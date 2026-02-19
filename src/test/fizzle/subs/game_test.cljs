@@ -497,3 +497,18 @@
           human-pid (q/get-human-player-id game-db)]
       (is (= :player-1 human-pid)
           "human-player-id should be :player-1"))))
+
+
+;; === ::human-player-id subscription tests ===
+
+(deftest test-human-player-id-subscription
+  (testing "::human-player-id returns correct human player-id from game-db"
+    (let [game-db (make-game-db)
+          result (sub-value {:game/db game-db} [::subs/human-player-id])]
+      (is (= :player-1 result)))))
+
+
+(deftest test-human-player-id-nil-when-no-game-db
+  (testing "::human-player-id returns nil when game-db is nil"
+    (let [result (sub-value {} [::subs/human-player-id])]
+      (is (nil? result)))))

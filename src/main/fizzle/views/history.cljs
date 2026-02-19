@@ -1,6 +1,7 @@
 (ns fizzle.views.history
   (:require
     [fizzle.history.events :as events]
+    [fizzle.subs.game :as game-subs]
     [fizzle.subs.history :as subs]
     [re-frame.core :as rf]
     [reagent.core :as r]))
@@ -42,6 +43,7 @@
     (fn []
       (let [groups @(rf/subscribe [::subs/entries-by-turn])
             position @(rf/subscribe [::subs/position])
+            human-pid @(rf/subscribe [::game-subs/human-player-id])
             collapsed-set @collapsed]
         (if (seq groups)
           (let [indexed-groups (second
@@ -75,7 +77,11 @@
                                              "text-perm-text-tapped opacity-40 border-l-transparent"
                                              "text-text border-l-transparent")))
                              :on-click #(rf/dispatch [::events/jump-to abs-idx])}
-                       (:entry/description entry)])))])])
+                       (let [principal (:entry/principal entry)
+                             is-opponent (and principal human-pid
+                                              (not= principal human-pid))]
+                         (str (when is-opponent "Opp: ")
+                              (:entry/description entry)))])))])])
           [:div {:class "text-border text-xs px-2 py-1"}
            "No actions yet"])))))
 

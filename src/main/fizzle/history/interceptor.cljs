@@ -1,6 +1,7 @@
 (ns fizzle.history.interceptor
   (:require
     [fizzle.db.queries :as queries]
+    [fizzle.engine.priority :as priority]
     [fizzle.history.core :as history]
     [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
@@ -25,6 +26,56 @@
   "Selection types that create history entries when confirmed via ::confirm-selection.
    These are pre-cast/ability confirmations (not mid-resolution choices)."
   #{:cast-time-targeting :x-mana-cost :exile-cards-cost :ability-targeting})
+
+
+(defn- get-priority-holder-pid
+  "Get the :player/id keyword of the player currently holding priority.
+   Returns nil if no priority holder."
+  [game-db]
+  (when-let [holder-eid (priority/get-priority-holder-eid game-db)]
+    (queries/get-player-id game-db holder-eid)))
+
+
+(defn- determine-principal
+  "Determine which player caused this event. Returns player-id keyword or nil.
+   System events (init-game, start-turn) return nil.
+   Returns nil gracefully if game-db is not a real Datascript db."
+  [event game-db]
+  (try
+    (let [event-id (first event)
+          args (rest event)]
+      (case event-id
+        ;; Cast with optional opts map
+        :fizzle.events.game/cast-spell
+        (let [opts (first args)]
+          (or (:player-id opts) (queries/get-human-player-id game-db)))
+
+        ;; Always human-initiated
+        (:fizzle.events.game/cast-and-yield
+          :fizzle.events.abilities/activate-ability)
+        (queries/get-human-player-id game-db)
+
+        ;; Explicit player-id in args: [_ object-id player-id]
+        :fizzle.events.game/play-land
+        (or (second args) (queries/get-human-player-id game-db))
+
+        ;; Explicit player-id: [_ object-id color player-id]
+        :fizzle.events.abilities/activate-mana-ability
+        (or (nth args 2 nil) (queries/get-human-player-id game-db))
+
+        ;; Priority holder is the actor
+        (:fizzle.events.game/yield
+          :fizzle.events.game/yield-all)
+        (get-priority-holder-pid game-db)
+
+        ;; Confirm selection: handled separately via pending-selection
+        :fizzle.events.selection/confirm-selection
+        nil
+
+        ;; System events: no principal
+        nil))
+    (catch :default _
+      nil)))
 
 
 (defn- get-turn
@@ -60,15 +111,19 @@
     :before (fn [context]
               (let [db (get-in context [:coeffects :db])
                     game-db (:game/db db)
+                    event (get-in context [:coeffects :event])
                     selection-type (get-in db [:game/pending-selection :selection/type])
                     had-pending? (some? (:game/pending-selection db))
                     casting-spell-id (or (get-in db [:game/pending-selection :selection/spell-id])
-                                         (:game/selected-card db))]
+                                         (:game/selected-card db))
+                    principal (or (determine-principal event game-db)
+                                  (get-in db [:game/pending-selection :selection/player-id]))]
                 (-> context
                     (assoc-in [:coeffects :history/pre-game-db] game-db)
                     (assoc-in [:coeffects :history/selection-type] selection-type)
                     (assoc-in [:coeffects :history/had-pending?] had-pending?)
-                    (assoc-in [:coeffects :history/casting-spell-id] casting-spell-id))))
+                    (assoc-in [:coeffects :history/casting-spell-id] casting-spell-id)
+                    (assoc-in [:coeffects :history/principal] principal))))
     :after (fn [context]
              (let [event (get-in context [:coeffects :event])
                    event-id (first event)
@@ -103,7 +158,8 @@
                            ;; (selection-created case), since that's the meaningful state
                            snapshot-db (if game-db-changed game-db-after pre-game-db)
                            turn (get-turn snapshot-db)
-                           entry (history/make-entry snapshot-db event-id description turn)]
+                           principal (get-in context [:coeffects :history/principal])
+                           entry (history/make-entry snapshot-db event-id description turn principal)]
                        (if (or (= -1 (:history/position db-after))
                                (history/at-tip? db-after))
                          (assoc-in context [:effects :db] (history/append-entry db-after entry))

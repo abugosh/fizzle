@@ -163,6 +163,16 @@
            (mapv first)))))  ; extract just object-ids
 
 
+(defn get-player-id
+  "Get the :player/id keyword for a player entity ID.
+   Returns nil if entity is not a player."
+  [db eid]
+  (d/q '[:find ?pid .
+         :in $ ?e
+         :where [?e :player/id ?pid]]
+       db eid))
+
+
 (defn get-human-player-id
   "Get the :player/id keyword of the human player.
    Returns the stored :game/human-player-id from game state.
