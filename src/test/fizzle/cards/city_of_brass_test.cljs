@@ -14,7 +14,7 @@
     [datascript.core :as d]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
-    [fizzle.events.abilities :as ability-events]
+    [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.events.game :as game]
     [fizzle.test-helpers :as th]))
 
@@ -76,7 +76,7 @@
             initial-pool (q/get-mana-pool db-played :player-1)
             _ (is (= 0 (get initial-pool color))
                   (str "Precondition: " (name color) " mana is 0"))
-            db-tapped (ability-events/activate-mana-ability db-played :player-1 obj-id color)]
+            db-tapped (engine-mana/activate-mana-ability db-played :player-1 obj-id color)]
         (is (= 1 (get (q/get-mana-pool db-tapped :player-1) color))
             (str (name color) " mana should be added to pool"))))))
 
@@ -90,7 +90,7 @@
           db-played (game/play-land db' :player-1 obj-id)
           initial-life (q/get-life-total db-played :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
-          db-tapped (ability-events/activate-mana-ability db-played :player-1 obj-id :black)]
+          db-tapped (engine-mana/activate-mana-ability db-played :player-1 obj-id :black)]
       ;; Mana is added immediately (mana ability doesn't use stack)
       (is (= 1 (:black (q/get-mana-pool db-tapped :player-1)))
           "Black mana should be added immediately")
@@ -107,7 +107,7 @@
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
           db-played (game/play-land db' :player-1 obj-id)
-          db-tapped (ability-events/activate-mana-ability db-played :player-1 obj-id :blue)
+          db-tapped (engine-mana/activate-mana-ability db-played :player-1 obj-id :blue)
           _ (is (= 20 (q/get-life-total db-tapped :player-1))
                 "Life unchanged before resolve")
           db-resolved (:db (game/resolve-one-item db-tapped))]
@@ -123,7 +123,7 @@
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
           db-played (game/play-land db' :player-1 obj-id)
           ;; First tap
-          db-tap1 (ability-events/activate-mana-ability db-played :player-1 obj-id :black)
+          db-tap1 (engine-mana/activate-mana-ability db-played :player-1 obj-id :black)
           db-resolve1 (:db (game/resolve-one-item db-tap1))
           _ (is (= 19 (q/get-life-total db-resolve1 :player-1))
                 "19 life after first trigger")
@@ -132,7 +132,7 @@
                        db-resolve1 obj-id)
           db-untapped (d/db-with db-resolve1 [[:db/add obj-eid :object/tapped false]])
           ;; Second tap
-          db-tap2 (ability-events/activate-mana-ability db-untapped :player-1 obj-id :red)
+          db-tap2 (engine-mana/activate-mana-ability db-untapped :player-1 obj-id :red)
           db-resolve2 (:db (game/resolve-one-item db-tap2))]
       (is (= 18 (q/get-life-total db-resolve2 :player-1))
           "Player at 18 life after both triggers resolved"))))
@@ -146,7 +146,7 @@
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :graveyard :player-1)
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :black)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id :black)]
       (is (= 0 (:black (q/get-mana-pool db'' :player-1)))
           "Mana should NOT be added (card in graveyard)")
       (is (= :graveyard (th/get-object-zone db'' obj-id))
@@ -159,7 +159,7 @@
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:green initial-pool)) "Precondition: green mana is 0")
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :green)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id :green)]
       (is (= 0 (:green (q/get-mana-pool db'' :player-1)))
           "Mana should NOT be added (card not on battlefield)")
       (is (= :hand (th/get-object-zone db'' obj-id))
@@ -172,11 +172,11 @@
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
           db-played (game/play-land db' :player-1 obj-id)
           ;; First tap succeeds
-          db-tap1 (ability-events/activate-mana-ability db-played :player-1 obj-id :black)
+          db-tap1 (engine-mana/activate-mana-ability db-played :player-1 obj-id :black)
           _ (is (= 1 (:black (q/get-mana-pool db-tap1 :player-1)))
                 "Precondition: first tap adds mana")
           ;; Second tap (still tapped) should fail
-          db-tap2 (ability-events/activate-mana-ability db-tap1 :player-1 obj-id :blue)]
+          db-tap2 (engine-mana/activate-mana-ability db-tap1 :player-1 obj-id :blue)]
       (is (= 1 (:black (q/get-mana-pool db-tap2 :player-1)))
           "Black mana unchanged after failed second tap")
       (is (= 0 (:blue (q/get-mana-pool db-tap2 :player-1)))
@@ -191,7 +191,7 @@
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
           db-played (game/play-land db' :player-1 obj-id)
           ;; Tap to verify trigger fires (proof trigger was registered)
-          db-tapped (ability-events/activate-mana-ability db-played :player-1 obj-id :black)]
+          db-tapped (engine-mana/activate-mana-ability db-played :player-1 obj-id :black)]
       (is (= 1 (count (q/get-all-stack-items db-tapped)))
           "Trigger should fire — proves ETB registered the trigger"))))
 
@@ -201,7 +201,7 @@
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
           ;; Tap — no trigger registration because we bypassed play-land
-          db-tapped (ability-events/activate-mana-ability db' :player-1 obj-id :black)]
+          db-tapped (engine-mana/activate-mana-ability db' :player-1 obj-id :black)]
       ;; Mana should still be produced
       (is (= 1 (:black (q/get-mana-pool db-tapped :player-1)))
           "Mana should be added regardless of trigger registration")

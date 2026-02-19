@@ -1,4 +1,4 @@
-(ns fizzle.storage
+(ns fizzle.db.storage
   (:require
     [cljs.reader :as reader]))
 

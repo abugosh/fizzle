@@ -3,9 +3,9 @@
     [clojure.string :as str]
     [fizzle.bots.protocol :as bot]
     [fizzle.cards.iggy-pop :as cards]
+    [fizzle.db.storage :as storage]
     [fizzle.engine.deck-parser :as deck-parser]
     [fizzle.events.game :as game]
-    [fizzle.storage :as storage]
     [re-frame.core :as rf]))
 
 

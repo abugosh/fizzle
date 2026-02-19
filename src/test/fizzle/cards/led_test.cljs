@@ -5,7 +5,7 @@
     [datascript.core :as d]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
-    [fizzle.events.abilities :as ability-events]
+    [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.test-helpers :as th]))
 
 
@@ -30,7 +30,7 @@
             initial-pool (q/get-mana-pool db'''' :player-1)
             _ (is (= 0 (get initial-pool color))
                   (str "Precondition: " (name color) " mana is 0"))
-            db-after (ability-events/activate-mana-ability db'''' :player-1 led-id color)]
+            db-after (engine-mana/activate-mana-ability db'''' :player-1 led-id color)]
         (is (= :graveyard (th/get-object-zone db-after led-id))
             (str "LED should be in graveyard after sacrifice for " (name color)))
         (is (= 3 (get (q/get-mana-pool db-after :player-1) color))
@@ -51,7 +51,7 @@
                 "Precondition: hand is empty")
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:red initial-pool)) "Precondition: red mana is 0")
-          db-after (ability-events/activate-mana-ability db' :player-1 led-id :red)]
+          db-after (engine-mana/activate-mana-ability db' :player-1 led-id :red)]
       (is (= :graveyard (th/get-object-zone db-after led-id))
           "LED should be in graveyard after sacrifice")
       (is (= 3 (:red (q/get-mana-pool db-after :player-1)))
@@ -66,7 +66,7 @@
                 "Precondition: LED is in graveyard")
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
-          db-after (ability-events/activate-mana-ability db' :player-1 led-id :black)]
+          db-after (engine-mana/activate-mana-ability db' :player-1 led-id :black)]
       (is (= 0 (:black (q/get-mana-pool db-after :player-1)))
           "Mana should NOT be added (card in graveyard)")
       (is (= :graveyard (th/get-object-zone db-after led-id))
@@ -81,7 +81,7 @@
                 "Precondition: LED is in hand")
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
-          db-after (ability-events/activate-mana-ability db' :player-1 led-id :black)]
+          db-after (engine-mana/activate-mana-ability db' :player-1 led-id :black)]
       (is (= 0 (:black (q/get-mana-pool db-after :player-1)))
           "Mana should NOT be added (card not on battlefield)")
       (is (= :hand (th/get-object-zone db-after led-id))
@@ -132,7 +132,7 @@
                 "Precondition: LED is tapped")
           initial-pool (q/get-mana-pool db-tapped :player-1)
           _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
-          db-after (ability-events/activate-mana-ability db-tapped :player-1 led-id :black)]
+          db-after (engine-mana/activate-mana-ability db-tapped :player-1 led-id :black)]
       (is (= 0 (:black (q/get-mana-pool db-after :player-1)))
           "Mana should NOT be added (LED already tapped)")
       (is (= :battlefield (th/get-object-zone db-after led-id))

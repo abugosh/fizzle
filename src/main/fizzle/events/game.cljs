@@ -4,6 +4,7 @@
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as queries]
     [fizzle.db.schema :refer [schema]]
+    [fizzle.db.storage :as storage]
     [fizzle.engine.card-spec :as card-spec]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.events :as game-events]
@@ -27,7 +28,6 @@
     [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.events.selection.zone-ops]
     [fizzle.history.core :as history]
-    [fizzle.storage :as storage]
     [re-frame.core :as rf]))
 
 

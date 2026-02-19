@@ -6,7 +6,7 @@
    auto-tap-for-cost: taps untapped lands to pay a mana cost"
   (:require
     [fizzle.db.queries :as queries]
-    [fizzle.events.abilities :as abilities]))
+    [fizzle.engine.mana-activation :as engine-mana]))
 
 
 (defn auto-tap-for-cost
@@ -46,7 +46,7 @@
             (if (or (<= remaining 0) (empty? lands))
               current-db
               (recur (dec remaining)
-                     (abilities/activate-mana-ability current-db player-id (first lands) produces-key)
+                     (engine-mana/activate-mana-ability current-db player-id (first lands) produces-key)
                      (rest lands))))))
       db
       mana-cost)))

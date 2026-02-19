@@ -8,7 +8,7 @@
     [datascript.core :as d]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
-    [fizzle.events.abilities :as ability-events]
+    [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.events.game :as game]
     [fizzle.test-helpers :as th]))
 
@@ -78,7 +78,7 @@
             initial-pool (q/get-mana-pool db-with-counters :player-1)
             _ (is (= 0 (get initial-pool color))
                   (str "Precondition: " (name color) " mana is 0"))
-            db'' (ability-events/activate-mana-ability db-with-counters :player-1 obj-id color)]
+            db'' (engine-mana/activate-mana-ability db-with-counters :player-1 obj-id color)]
         (is (= 1 (get (q/get-mana-pool db'' :player-1) color))
             (str (name color) " mana should be added to pool"))
         (is (= {:mining 2} (:object/counters (q/get-object db'' obj-id)))
@@ -97,7 +97,7 @@
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]]
                        db' obj-id)
           _ (d/transact! conn [[:db/add obj-eid :object/counters {:mining 3}]])
-          db'' (ability-events/activate-mana-ability @conn :player-1 obj-id :black)]
+          db'' (engine-mana/activate-mana-ability @conn :player-1 obj-id :black)]
       (is (= {:mining 2} (:object/counters (q/get-object db'' obj-id)))
           "Should have 2 mining counters after activation")
       (is (= :battlefield (th/get-object-zone db'' obj-id))
@@ -110,7 +110,7 @@
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]]
                        db' obj-id)
           _ (d/transact! conn [[:db/add obj-eid :object/counters {:mining 2}]])
-          db'' (ability-events/activate-mana-ability @conn :player-1 obj-id :blue)]
+          db'' (engine-mana/activate-mana-ability @conn :player-1 obj-id :blue)]
       (is (= {:mining 1} (:object/counters (q/get-object db'' obj-id)))
           "Should have 1 mining counter after activation")
       (is (= :battlefield (th/get-object-zone db'' obj-id))
@@ -123,7 +123,7 @@
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]]
                        db' obj-id)
           _ (d/transact! conn [[:db/add obj-eid :object/counters {:mining 1}]])
-          db'' (ability-events/activate-mana-ability @conn :player-1 obj-id :green)]
+          db'' (engine-mana/activate-mana-ability @conn :player-1 obj-id :green)]
       (is (= :graveyard (th/get-object-zone db'' obj-id))
           "Should be in graveyard after last counter removed")
       (is (= 1 (:green (q/get-mana-pool db'' :player-1)))
@@ -138,7 +138,7 @@
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]]
                        db' obj-id)
           _ (d/transact! conn [[:db/add obj-eid :object/counters {:mining 2}]])
-          db'' (ability-events/activate-mana-ability @conn :player-1 obj-id :black)]
+          db'' (engine-mana/activate-mana-ability @conn :player-1 obj-id :black)]
       (is (= :battlefield (th/get-object-zone db'' obj-id))
           "Should remain on battlefield with counters remaining")
       (is (= {:mining 1} (:object/counters (q/get-object db'' obj-id)))
@@ -154,7 +154,7 @@
                        db' obj-id)
           ;; Start with 1 counter (final activation)
           _ (d/transact! conn [[:db/add obj-eid :object/counters {:mining 1}]])
-          db-tap (ability-events/activate-mana-ability @conn :player-1 obj-id :red)]
+          db-tap (engine-mana/activate-mana-ability @conn :player-1 obj-id :red)]
       (is (= 1 (:red (q/get-mana-pool db-tap :player-1)))
           "Red mana should be produced before sacrifice")
       (is (= :graveyard (th/get-object-zone db-tap obj-id))
@@ -171,7 +171,7 @@
                 "Precondition: Gemstone Mine is in graveyard")
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :black)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id :black)]
       (is (= 0 (:black (q/get-mana-pool db'' :player-1)))
           "Mana should NOT be added (card in graveyard)")
       (is (= :graveyard (th/get-object-zone db'' obj-id))
@@ -186,7 +186,7 @@
                 "Precondition: Gemstone Mine is in hand")
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:green initial-pool)) "Precondition: green mana is 0")
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :green)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id :green)]
       (is (= 0 (:green (q/get-mana-pool db'' :player-1)))
           "Mana should NOT be added (card not on battlefield)")
       (is (= :hand (th/get-object-zone db'' obj-id))
@@ -202,11 +202,11 @@
                        db' obj-id)
           _ (d/transact! conn [[:db/add obj-eid :object/counters {:mining 3}]])
           ;; First tap succeeds
-          db-tap1 (ability-events/activate-mana-ability @conn :player-1 obj-id :black)
+          db-tap1 (engine-mana/activate-mana-ability @conn :player-1 obj-id :black)
           _ (is (= 1 (:black (q/get-mana-pool db-tap1 :player-1)))
                 "Precondition: first tap adds mana")
           ;; Second tap (still tapped) should fail
-          db-tap2 (ability-events/activate-mana-ability db-tap1 :player-1 obj-id :blue)]
+          db-tap2 (engine-mana/activate-mana-ability db-tap1 :player-1 obj-id :blue)]
       (is (= 1 (:black (q/get-mana-pool db-tap2 :player-1)))
           "Black mana unchanged after failed second tap")
       (is (= 0 (:blue (q/get-mana-pool db-tap2 :player-1)))
@@ -238,6 +238,6 @@
           _ (d/transact! conn [[:db/add obj-eid :object/counters {:mining 3}]])
           initial-life (q/get-life-total @conn :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
-          db'' (ability-events/activate-mana-ability @conn :player-1 obj-id :green)]
+          db'' (engine-mana/activate-mana-ability @conn :player-1 obj-id :green)]
       (is (= 20 (q/get-life-total db'' :player-1))
           "Player should NOT lose life when tapping Gemstone Mine"))))

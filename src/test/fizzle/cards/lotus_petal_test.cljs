@@ -4,7 +4,7 @@
     [cljs.test :refer-macros [deftest testing is]]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
-    [fizzle.events.abilities :as ability-events]
+    [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.test-helpers :as th]))
 
 
@@ -21,7 +21,7 @@
             initial-pool (q/get-mana-pool db' :player-1)
             _ (is (= 0 (get initial-pool color))
                   (str "Precondition: " (name color) " mana is 0"))
-            db'' (ability-events/activate-mana-ability db' :player-1 obj-id color)]
+            db'' (engine-mana/activate-mana-ability db' :player-1 obj-id color)]
         (is (= :graveyard (th/get-object-zone db'' obj-id))
             (str "Lotus Petal should be in graveyard after sacrifice for " (name color)))
         (is (= 1 (get (q/get-mana-pool db'' :player-1) color))
@@ -39,7 +39,7 @@
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
           ;; Attempt to activate mana ability from graveyard
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :black)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id :black)]
       (is (= 0 (:black (q/get-mana-pool db'' :player-1)))
           "Mana should NOT be added (card in graveyard)")
       (is (= :graveyard (th/get-object-zone db'' obj-id))
@@ -55,7 +55,7 @@
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
           ;; Attempt to activate mana ability from hand
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :black)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id :black)]
       (is (= 0 (:black (q/get-mana-pool db'' :player-1)))
           "Mana should NOT be added (card not on battlefield)")
       (is (= :hand (th/get-object-zone db'' obj-id))

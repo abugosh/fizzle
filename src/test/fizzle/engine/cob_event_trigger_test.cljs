@@ -13,11 +13,11 @@
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.events :as game-events]
+    [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.engine.zones :as zones]
-    [fizzle.events.abilities :as ability-events]
     [fizzle.events.game :as game]
     [fizzle.test-helpers :as th]))
 
@@ -104,7 +104,7 @@
           ;; Register trigger in Datascript
           db-with-trigger (register-cob-trigger db' obj-id :player-1)
           ;; Activate mana ability (should dispatch event via dispatch-event)
-          db-after-tap (ability-events/activate-mana-ability db-with-trigger :player-1 obj-id :black)]
+          db-after-tap (engine-mana/activate-mana-ability db-with-trigger :player-1 obj-id :black)]
       ;; Verify stack-item is on the stack
       (is (= 1 (count (q/get-all-stack-items db-after-tap)))
           "One stack-item should be on the stack after tapping CoB")
@@ -122,7 +122,7 @@
           ;; Register trigger in Datascript
           db-with-trigger (register-cob-trigger db' obj-id :player-1)
           ;; Activate mana ability (trigger goes on stack)
-          db-after-tap (ability-events/activate-mana-ability db-with-trigger :player-1 obj-id :black)
+          db-after-tap (engine-mana/activate-mana-ability db-with-trigger :player-1 obj-id :black)
           _ (is (= 20 (q/get-life-total db-after-tap :player-1))
                 "Life unchanged before trigger resolves")
           ;; Resolve the trigger
@@ -138,7 +138,7 @@
           ;; Register trigger in Datascript
           db-with-trigger (register-cob-trigger db' obj-id :player-1)
           ;; First tap
-          db-after-first-tap (ability-events/activate-mana-ability db-with-trigger :player-1 obj-id :black)
+          db-after-first-tap (engine-mana/activate-mana-ability db-with-trigger :player-1 obj-id :black)
           _ (is (= 1 (count (q/get-all-stack-items db-after-first-tap)))
                 "One trigger on stack after first tap")
           ;; Resolve first trigger
@@ -153,7 +153,7 @@
           db-untapped (d/db-with db-after-first-resolve
                                  [[:db/add obj-eid :object/tapped false]])
           ;; Second tap
-          db-after-second-tap (ability-events/activate-mana-ability db-untapped :player-1 obj-id :blue)
+          db-after-second-tap (engine-mana/activate-mana-ability db-untapped :player-1 obj-id :blue)
           _ (is (= 1 (count (q/get-all-stack-items db-after-second-tap)))
                 "One trigger on stack after second tap")
           ;; Resolve second trigger
@@ -178,7 +178,7 @@
           _ (is (= 2 (count cob-triggers))
                 "Two CoB triggers registered")
           ;; Tap only the first CoB
-          db-after-tap (ability-events/activate-mana-ability db-with-t2 :player-1 obj-id-1 :black)]
+          db-after-tap (engine-mana/activate-mana-ability db-with-t2 :player-1 obj-id-1 :black)]
       ;; Only one trigger should fire (the tapped CoB's trigger)
       (is (= 1 (count (q/get-all-stack-items db-after-tap)))
           "Only one trigger should be on stack (the tapped CoB's trigger)"))))
@@ -193,7 +193,7 @@
           ;; Register trigger in Datascript
           db-with-trigger (register-cob-trigger db' obj-id :player-1)
           ;; Tap to create trigger on stack
-          db-after-tap (ability-events/activate-mana-ability db-with-trigger :player-1 obj-id :black)
+          db-after-tap (engine-mana/activate-mana-ability db-with-trigger :player-1 obj-id :black)
           _ (is (= 1 (count (q/get-all-stack-items db-after-tap)))
                 "Trigger on stack")
           ;; Sacrifice CoB with trigger on stack (unregisters future triggers)

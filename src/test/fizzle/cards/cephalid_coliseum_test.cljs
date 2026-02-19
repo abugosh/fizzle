@@ -20,6 +20,7 @@
     [fizzle.cards.cephalid-coliseum :as coliseum]
     [fizzle.db.queries :as q]
     [fizzle.engine.abilities :as abilities]
+    [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.abilities :as ability-events]
@@ -60,7 +61,7 @@
                 "Precondition: Coliseum starts on battlefield")
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:blue initial-pool)) "Precondition: blue mana is 0")
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id nil)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id nil)]
       (is (= 1 (:blue (q/get-mana-pool db'' :player-1)))
           "Blue mana should be added to pool"))))
 
@@ -71,7 +72,7 @@
           [db' obj-id] (th/add-card-to-zone db :cephalid-coliseum :battlefield :player-1)
           initial-life (q/get-life-total db' :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id nil)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id nil)]
       (is (= 19 (q/get-life-total db'' :player-1))
           "Player should have taken 1 damage from Coliseum"))))
 
@@ -84,7 +85,7 @@
           initial-life (q/get-life-total db' :player-1)
           _ (is (= 0 (:blue initial-pool)) "Precondition: blue mana is 0")
           _ (is (= 20 initial-life) "Precondition: life is 20")
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id nil)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id nil)]
       ;; Both should happen from single activation
       (is (= 1 (:blue (q/get-mana-pool db'' :player-1)))
           "Blue mana should be added")
@@ -107,7 +108,7 @@
           initial-pool (q/get-mana-pool db-tapped :player-1)
           _ (is (= 0 (:blue initial-pool)) "Precondition: blue mana is 0")
           ;; Try to activate mana ability on tapped land
-          db'' (ability-events/activate-mana-ability db-tapped :player-1 obj-id nil)]
+          db'' (engine-mana/activate-mana-ability db-tapped :player-1 obj-id nil)]
       (is (= 0 (:blue (q/get-mana-pool db'' :player-1)))
           "Mana should NOT be added (land was already tapped)"))))
 
@@ -274,7 +275,7 @@
           initial-pool (q/get-mana-pool db' :player-1)
           initial-life (q/get-life-total db' :player-1)
           ;; Try to activate mana ability from graveyard
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id nil)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id nil)]
       ;; Nothing should happen
       (is (= (:blue initial-pool) (:blue (q/get-mana-pool db'' :player-1)))
           "Mana should NOT be added from graveyard")

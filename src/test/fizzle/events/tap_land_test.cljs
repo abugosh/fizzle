@@ -3,11 +3,11 @@
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.db.queries :as q]
+    [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.state-based :as state-based]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.turn-based :as turn-based]
-    [fizzle.events.abilities :as ability-events]
     [fizzle.events.game :as game]
     [fizzle.test-helpers :as th]))
 
@@ -81,7 +81,7 @@
           [db' obj-id] (add-land-to-battlefield db :city-of-brass :player-1)
           initial-pool (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :black)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id :black)]
       (is (true? (get-object-tapped db'' obj-id))
           "Land should be tapped after activating mana ability")
       (is (= 1 (:black (q/get-mana-pool db'' :player-1)))
@@ -92,7 +92,7 @@
   (testing "activate-mana-ability adds any color from 5-color land"
     (let [db (create-tap-test-db)
           [db' obj-id] (add-land-to-battlefield db :city-of-brass :player-1)
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :blue)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id :blue)]
       (is (= 1 (:blue (q/get-mana-pool db'' :player-1)))
           "Blue mana should be added to pool"))))
 
@@ -104,13 +104,13 @@
     (let [db (create-tap-test-db)
           [db' obj-id] (add-land-to-battlefield db :city-of-brass :player-1)
           ;; First tap produces mana
-          db-after-first-tap (ability-events/activate-mana-ability db' :player-1 obj-id :black)
+          db-after-first-tap (engine-mana/activate-mana-ability db' :player-1 obj-id :black)
           _ (is (= 1 (:black (q/get-mana-pool db-after-first-tap :player-1)))
                 "Precondition: first tap adds mana")
           _ (is (true? (get-object-tapped db-after-first-tap obj-id))
                 "Precondition: land is tapped")
           ;; Second tap should fail (no additional mana)
-          db-after-second-tap (ability-events/activate-mana-ability db-after-first-tap :player-1 obj-id :black)]
+          db-after-second-tap (engine-mana/activate-mana-ability db-after-first-tap :player-1 obj-id :black)]
       (is (= 1 (:black (q/get-mana-pool db-after-second-tap :player-1)))
           "Second tap should NOT add more mana")
       (is (true? (get-object-tapped db-after-second-tap obj-id))
@@ -126,7 +126,7 @@
           initial-life (q/get-life-total db' :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
           ;; Tap for mana - trigger goes on stack
-          db-after-tap (ability-events/activate-mana-ability db' :player-1 obj-id :black)
+          db-after-tap (engine-mana/activate-mana-ability db' :player-1 obj-id :black)
           _ (is (= 20 (q/get-life-total db-after-tap :player-1))
                 "Life unchanged before trigger resolves (trigger on stack)")
           _ (is (= 1 (count (q/get-all-stack-items db-after-tap)))
@@ -146,8 +146,8 @@
           initial-life (q/get-life-total db'' :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
           ;; Tap both lands - both triggers go on stack
-          db-after-first-tap (ability-events/activate-mana-ability db'' :player-1 obj-id1 :black)
-          db-after-second-tap (ability-events/activate-mana-ability db-after-first-tap :player-1 obj-id2 :blue)
+          db-after-first-tap (engine-mana/activate-mana-ability db'' :player-1 obj-id1 :black)
+          db-after-second-tap (engine-mana/activate-mana-ability db-after-first-tap :player-1 obj-id2 :blue)
           _ (is (= 20 (q/get-life-total db-after-second-tap :player-1))
                 "Life unchanged before triggers resolve")
           _ (is (= 2 (count (q/get-all-stack-items db-after-second-tap)))
@@ -165,7 +165,7 @@
           [db' obj-id] (add-land-to-battlefield db :gemstone-mine :player-1)
           initial-life (q/get-life-total db' :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :green)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id :green)]
       (is (= 20 (q/get-life-total db'' :player-1))
           "Player should NOT lose life when tapping Gemstone Mine"))))
 
@@ -212,7 +212,7 @@
           initial-life (q/get-life-total db' :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
           ;; Activate mana ability - trigger goes on stack
-          db-after-tap (ability-events/activate-mana-ability db' :player-1 obj-id :black)]
+          db-after-tap (engine-mana/activate-mana-ability db' :player-1 obj-id :black)]
       ;; Verify trigger is on stack (damage not yet applied)
       (is (= 20 (q/get-life-total db-after-tap :player-1))
           "Life unchanged - trigger is on stack, can respond before damage")
@@ -273,7 +273,7 @@
                           :object/tapped false
                           :object/counters {:mining 3}}])
       ;; Activate mana ability
-      (let [db' (ability-events/activate-mana-ability @conn :player-1 obj-id :blue)]
+      (let [db' (engine-mana/activate-mana-ability @conn :player-1 obj-id :blue)]
         ;; Verify mana was added
         (is (= 1 (:blue (q/get-mana-pool db' :player-1)))
             "Blue mana should be added to pool")
@@ -301,7 +301,7 @@
                           :object/tapped false
                           :object/counters {:mining 1}}])
       ;; Activate mana ability (should deplete final counter)
-      (let [db' (ability-events/activate-mana-ability @conn :player-1 obj-id :green)]
+      (let [db' (engine-mana/activate-mana-ability @conn :player-1 obj-id :green)]
         ;; Verify mana was added
         (is (= 1 (:green (q/get-mana-pool db' :player-1)))
             "Green mana should be added to pool")
@@ -340,7 +340,7 @@
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
 
           ;; Step 1: Tap City of Brass for black mana - trigger goes on stack
-          db-after-tap (ability-events/activate-mana-ability db-with-ritual :player-1 cob-id :black)
+          db-after-tap (engine-mana/activate-mana-ability db-with-ritual :player-1 cob-id :black)
           _ (is (= 1 (:black (q/get-mana-pool db-after-tap :player-1)))
                 "Should have 1 black mana from City of Brass")
           _ (is (= 1 (count (q/get-all-stack-items db-after-tap)))
@@ -432,7 +432,7 @@
                           :object/tapped false
                           :object/counters {:mining 1}}])
       ;; Activate mana ability (removes last counter AND should sacrifice)
-      (let [db' (ability-events/activate-mana-ability @conn :player-1 obj-id :green)]
+      (let [db' (engine-mana/activate-mana-ability @conn :player-1 obj-id :green)]
         ;; Mana should be added
         (is (= 1 (:green (q/get-mana-pool db' :player-1)))
             "Green mana should be added to pool")
@@ -471,7 +471,7 @@
                           :object/tapped false}])
       (let [initial-life (q/get-life-total @conn :player-1)
             _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
-            db' (ability-events/activate-mana-ability @conn :player-1 obj-id :green)]
+            db' (engine-mana/activate-mana-ability @conn :player-1 obj-id :green)]
         ;; Mana should be added
         (is (= 1 (:green (q/get-mana-pool db' :player-1)))
             "Green mana should be added to pool")
@@ -492,7 +492,7 @@
           _ (is (= 0 (:black initial-pool)) "Precondition: black mana is 0")
           _ (is (= 0 (:blue initial-pool)) "Precondition: blue mana is 0")
           ;; Request blue from a Swamp (which only produces black)
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :blue)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id :blue)]
       ;; Swamp should produce black, not blue (ignores color request for fixed mana)
       (is (= 1 (:black (q/get-mana-pool db'' :player-1)))
           "Swamp produces black even when blue requested")
@@ -512,7 +512,7 @@
           _ (is (= 0 (:blue initial-pool)) "Precondition: blue mana is 0")
           _ (is (= 0 (:colorless initial-pool)) "Precondition: colorless mana is 0")
           ;; Request colorless from an Island (which only produces blue)
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :colorless)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id :colorless)]
       ;; Island should produce blue, not colorless
       (is (= 1 (:blue (q/get-mana-pool db'' :player-1)))
           "Island produces blue even when colorless requested")
@@ -551,7 +551,7 @@
                           :object/tapped false
                           :object/counters {:mining 1}}])
       ;; Activate - this pays tap+counter cost, produces mana, THEN sacrifices
-      (let [db' (ability-events/activate-mana-ability @conn :player-1 obj-id :red)]
+      (let [db' (engine-mana/activate-mana-ability @conn :player-1 obj-id :red)]
         ;; Mana was produced (ability worked before sacrifice)
         (is (= 1 (:red (q/get-mana-pool db' :player-1)))
             "Red mana produced before sacrifice")

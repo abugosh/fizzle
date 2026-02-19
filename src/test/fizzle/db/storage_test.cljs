@@ -1,7 +1,7 @@
-(ns fizzle.storage-test
+(ns fizzle.db.storage-test
   (:require
     [cljs.test :refer-macros [deftest testing is use-fixtures]]
-    [fizzle.storage :as storage]))
+    [fizzle.db.storage :as storage]))
 
 
 ;; Mock localStorage for Node.js tests
@@ -22,9 +22,12 @@
 (set! js/localStorage (create-mock-storage))
 
 
-;; Clear storage before each test
+;; Clear storage before each test; re-set js/localStorage to our mock
+;; in case another test namespace overwrote the global
 (use-fixtures :each
-  {:before (fn [] (reset! mock-storage {}))
+  {:before (fn []
+             (set! js/localStorage (create-mock-storage))
+             (reset! mock-storage {}))
    :after (fn [] (reset! mock-storage {}))})
 
 

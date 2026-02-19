@@ -5,7 +5,7 @@
     [cljs.test :refer-macros [deftest testing is]]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
-    [fizzle.events.abilities :as ability-events]
+    [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.test-helpers :as th]))
 
 
@@ -51,7 +51,7 @@
   (testing "Tapping for colorless mana does not deal damage"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :underground-river :battlefield :player-1)
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :colorless)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id :colorless)]
       (is (= 1 (:colorless (q/get-mana-pool db'' :player-1)))
           "Should produce 1 colorless mana")
       (is (= 20 (q/get-life-total db'' :player-1))
@@ -64,7 +64,7 @@
   (testing "Tapping for blue mana deals 1 damage to controller"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :underground-river :battlefield :player-1)
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :blue)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id :blue)]
       (is (= 1 (:blue (q/get-mana-pool db'' :player-1)))
           "Should produce 1 blue mana")
       (is (= 19 (q/get-life-total db'' :player-1))
@@ -77,7 +77,7 @@
   (testing "Tapping for black mana deals 1 damage to controller"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :underground-river :battlefield :player-1)
-          db'' (ability-events/activate-mana-ability db' :player-1 obj-id :black)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id :black)]
       (is (= 1 (:black (q/get-mana-pool db'' :player-1)))
           "Should produce 1 black mana")
       (is (= 19 (q/get-life-total db'' :player-1))
@@ -91,11 +91,11 @@
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :underground-river :battlefield :player-1)
           ;; First activation succeeds
-          db-first (ability-events/activate-mana-ability db' :player-1 obj-id :colorless)
+          db-first (engine-mana/activate-mana-ability db' :player-1 obj-id :colorless)
           _ (is (true? (get-object-tapped db-first obj-id))
                 "Precondition: land is tapped after first activation")
           ;; Second activation should fail (return unchanged db)
-          db-second (ability-events/activate-mana-ability db-first :player-1 obj-id :blue)
+          db-second (engine-mana/activate-mana-ability db-first :player-1 obj-id :blue)
           pool (q/get-mana-pool db-second :player-1)]
       (is (= 1 (:colorless pool))
           "Colorless mana unchanged (first activation)")

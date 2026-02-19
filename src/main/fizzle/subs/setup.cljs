@@ -1,13 +1,8 @@
 (ns fizzle.subs.setup
   (:require
     [clojure.string :as str]
-    [fizzle.cards.iggy-pop :as cards]
+    [fizzle.engine.cards :as cards]
     [re-frame.core :as rf]))
-
-
-;; Card type lookup: card-id -> card definition
-(def ^:private card-lookup
-  (into {} (map (juxt :card/id identity) cards/all-cards)))
 
 
 ;; Layer 2: extraction subscriptions
@@ -87,7 +82,7 @@
             (fn [main-deck _]
               (when main-deck
                 (let [entries (map (fn [{:keys [card/id count]}]
-                                     (let [card-def (get card-lookup id)]
+                                     (let [card-def (get cards/card-by-id id)]
                                        {:card/id id
                                         :card/name (:card/name card-def)
                                         :count count
@@ -110,7 +105,7 @@
             (fn [side-deck _]
               (when side-deck
                 (mapv (fn [{:keys [card/id count]}]
-                        (let [card-def (get card-lookup id)]
+                        (let [card-def (get cards/card-by-id id)]
                           {:card/id id
                            :card/name (:card/name card-def)
                            :count count}))
@@ -141,7 +136,7 @@
             (fn [[must-contain main-deck] _]
               (let [main-by-id (into {} (map (juxt :card/id identity) main-deck))]
                 (mapv (fn [[card-id cnt]]
-                        (let [card-def (get card-lookup card-id)
+                        (let [card-def (get cards/card-by-id card-id)
                               main-entry (get main-by-id card-id)]
                           {:card/id card-id
                            :card/name (:card/name card-def)

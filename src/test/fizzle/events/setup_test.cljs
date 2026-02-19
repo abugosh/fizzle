@@ -4,8 +4,8 @@
     [cljs.test :refer-macros [deftest testing is use-fixtures]]
     [fizzle.bots.protocol :as bot]
     [fizzle.cards.iggy-pop :as cards]
-    [fizzle.events.setup :as setup]
-    [fizzle.storage :as storage]))
+    [fizzle.db.storage :as storage]
+    [fizzle.events.setup :as setup]))
 
 
 ;; Mock localStorage for Node.js tests

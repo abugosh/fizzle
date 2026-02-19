@@ -13,6 +13,7 @@
     [fizzle.bots.interceptor :as interceptor]
     [fizzle.cards.lightning-bolt :as lightning-bolt]
     [fizzle.db.queries :as q]
+    [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.events.abilities :as abilities]
     [fizzle.events.game :as game]
     [fizzle.history.core :as history]
@@ -154,7 +155,7 @@
           ;; First tap the mountain manually (simulating the tap dispatch)
           battlefield (q/get-objects-in-zone game-db :player-2 :battlefield)
           mountain (first (filter #(= :mountain (get-in % [:object/card :card/id])) battlefield))
-          game-db (abilities/activate-mana-ability game-db :player-2 (:object/id mountain) :red)
+          game-db (engine-mana/activate-mana-ability game-db :player-2 (:object/id mountain) :red)
           ;; Now find the bolt
           hand (q/get-objects-in-zone game-db :player-2 :hand)
           bolt (first (filter #(= :lightning-bolt (get-in % [:object/card :card/id])) hand))
@@ -199,7 +200,7 @@
           game-db (:game/db app-db)
           battlefield (q/get-objects-in-zone game-db :player-2 :battlefield)
           mountain (first (filter #(= :mountain (get-in % [:object/card :card/id])) battlefield))
-          result-db (abilities/activate-mana-ability game-db :player-2 (:object/id mountain) :red)]
+          result-db (engine-mana/activate-mana-ability game-db :player-2 (:object/id mountain) :red)]
       (is (true? (:object/tapped (q/get-object result-db (:object/id mountain))))
           "Mountain should be tapped")
       (is (= 1 (:red (q/get-mana-pool result-db :player-2)))

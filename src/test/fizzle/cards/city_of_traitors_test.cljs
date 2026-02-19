@@ -16,9 +16,9 @@
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.db.queries :as q]
+    [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.zones :as zones]
-    [fizzle.events.abilities :as ability-events]
     [fizzle.events.game :as game]
     [fizzle.test-helpers :as th]))
 
@@ -33,7 +33,7 @@
           initial-mana (q/get-mana-pool db' :player-1)
           _ (is (= 0 (:colorless initial-mana)) "Precondition: 0 colorless mana")
           ;; Activate mana ability (color param ignored for colorless)
-          db-after-tap (ability-events/activate-mana-ability db' :player-1 obj-id :colorless)
+          db-after-tap (engine-mana/activate-mana-ability db' :player-1 obj-id :colorless)
           final-mana (q/get-mana-pool db-after-tap :player-1)]
       (is (= 2 (:colorless final-mana))
           "City of Traitors should produce 2 colorless mana"))))
@@ -140,7 +140,7 @@
       (is (= :battlefield (:object/zone (q/get-object db-after-island cot-id)))
           "CoT should still be on battlefield with trigger on stack")
       ;; Can tap for mana before trigger resolves
-      (let [db-after-tap (ability-events/activate-mana-ability db-after-island :player-1 cot-id :colorless)
+      (let [db-after-tap (engine-mana/activate-mana-ability db-after-island :player-1 cot-id :colorless)
             final-mana (q/get-mana-pool db-after-tap :player-1)]
         (is (= 2 (:colorless final-mana))
             "Can tap CoT for mana with trigger on stack")))))

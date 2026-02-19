@@ -16,6 +16,7 @@
     [datascript.core :as d]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
+    [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.engine.stack :as stack]
     [fizzle.events.abilities :as ability-events]
     [fizzle.events.game :as game]
@@ -351,7 +352,7 @@
       (is (false? (q/stack-empty? db-after-activate))
           "Stack-item should be on stack")
       ;; Can still tap City of Brass for mana (responding to ability on stack)
-      (let [db-after-tap (ability-events/activate-mana-ability db-after-activate :player-1 cob-id :blue)
+      (let [db-after-tap (engine-mana/activate-mana-ability db-after-activate :player-1 cob-id :blue)
             mana-pool (q/get-mana-pool db-after-tap :player-1)]
         (is (= 1 (:blue mana-pool))
             "Should be able to tap City of Brass while ability is on stack")
