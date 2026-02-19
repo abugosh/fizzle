@@ -583,6 +583,27 @@
           "Should be opponent's turn (turn 2)"))))
 
 
+(deftest human-yield-at-opponent-stop-advances-to-next-stop
+  (testing "Human yielding from an opponent-turn stop advances to next stop, not one phase"
+    (let [db (-> (h/create-test-db {:stops #{:main1}})
+                 (h/add-opponent {:bot-archetype :goldfish :stops #{:draw :end}}))
+          ;; Set up: bot's turn at draw phase, human holds priority (stopped at draw)
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          human-eid (q/get-player-eid db :player-1)
+          opp-eid (q/get-player-eid db :player-2)
+          game-db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]
+                                 [:db/add game-eid :game/priority human-eid]
+                                 [:db/add game-eid :game/phase :draw]
+                                 [:db/add game-eid :game/turn 2]])
+          app-db {:game/db game-db}
+          result (game/yield-impl app-db)
+          result-db (:game/db (:app-db result))]
+      (is (= :end (:game/phase (q/get-game-state result-db)))
+          "Should advance to next opponent stop (:end), not just one phase (:main1)")
+      (is (= 2 (:game/turn (q/get-game-state result-db)))
+          "Should still be opponent's turn"))))
+
+
 (deftest bot-turn-f6-ignores-opponent-stops
   (testing "F6 mode advances through opponent's turn ignoring human stops"
     (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})

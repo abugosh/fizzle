@@ -235,6 +235,7 @@
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db)
           opp-eid (q/get-player-eid game-db :player-2)
           game-db (d/db-with game-db [[:db/add game-eid :game/active-player opp-eid]
+                                      [:db/add game-eid :game/priority opp-eid]
                                       [:db/add game-eid :game/phase :main1]])
           app-db (assoc app-db :game/db game-db)
           ;; Single yield-impl should advance one phase and NOT signal continue

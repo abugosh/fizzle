@@ -794,9 +794,11 @@
         f6? (= :f6 auto-mode)
         active-player-id (queries/get-active-player-id game-db)
         active-eid (queries/get-player-eid game-db active-player-id)
-        bot-turn? (player-is-bot? game-db active-eid)]
-    (if bot-turn?
-      ;; Bot turn: advance one phase at a time for bot interceptor
+        bot-turn? (player-is-bot? game-db active-eid)
+        priority-holder-eid (priority/get-priority-holder-eid game-db)
+        bot-driving? (and bot-turn? (player-is-bot? game-db priority-holder-eid))]
+    (if bot-driving?
+      ;; Bot interceptor driving during bot's turn: one phase at a time
       (let [result (bot-turn-advance-one-phase app-db)
             result-db (:game/db (:app-db result))
             new-active-id (queries/get-active-player-id result-db)
@@ -891,7 +893,9 @@
           (let [opp-eid (queries/get-player-eid gdb opponent-player-id)]
             (or auto-mode
                 (and (not (player-is-bot? gdb holder-eid))
-                     (player-is-bot? gdb opp-eid))
+                     (or (player-is-bot? gdb opp-eid)
+                         (and (player-is-bot? gdb active-eid)
+                              (queries/stack-empty? gdb))))
                 (and (player-is-bot? gdb active-eid)
                      (queries/stack-empty? gdb)
                      (not (priority/check-stop gdb active-eid
