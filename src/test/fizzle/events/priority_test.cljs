@@ -2,6 +2,7 @@
   (:require
     [cljs.test :refer-macros [deftest is testing]]
     [datascript.core :as d]
+    [fizzle.bots.definitions :as definitions]
     [fizzle.bots.interceptor :as bot-interceptor]
     [fizzle.db.queries :as q]
     [fizzle.engine.priority :as priority]
@@ -843,3 +844,115 @@
           result-db (:game/db (:app-db result))]
       (is (q/stack-empty? result-db)
           "Bot phase should not put anything on stack"))))
+
+
+;; === Reactive bot priority tests ===
+;; Tests for negotiate-priority consulting bot protocol before auto-passing.
+
+(def ^:private reactive-test-spec
+  "Test-only bot spec with a reactive priority rule.
+   Responds to opponent spells on stack by casting lightning-bolt."
+  {:bot/name "Reactive Test"
+   :bot/priority-rules
+   [{:rule/mode :auto
+     :rule/conditions [{:check :stack-has :type :spell :owner :opponent}]
+     :rule/action {:action :cast-spell :card-id :lightning-bolt :target :opponent}}]})
+
+
+(defn- with-reactive-spec
+  "Execute body with :reactive-test temporarily registered in the bot spec registry."
+  [f]
+  (let [original-get-spec definitions/get-spec]
+    (with-redefs [definitions/get-spec
+                  (fn [arch]
+                    (if (= :reactive-test arch)
+                      reactive-test-spec
+                      (original-get-spec arch)))]
+      (f))))
+
+
+(deftest negotiate-priority-reactive-bot-gets-priority
+  (testing "reactive bot with matching conditions gets priority (not auto-passed)"
+    (with-reactive-spec
+      (fn []
+        (let [db (-> (h/create-test-db {:mana {:black 1} :stops #{:main1}})
+                     (h/add-opponent {:bot-archetype :reactive-test}))
+              [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
+              ;; Add a bolt + mountain in opponent hand/battlefield for resolve-action
+              [db' _] (h/add-card-to-zone db' :lightning-bolt :hand :player-2)
+              [db' _] (h/add-card-to-zone db' :mountain :battlefield :player-2)
+              game-db (rules/cast-spell db' :player-1 obj-id)
+              app-db {:game/db game-db}
+              result (game/negotiate-priority app-db)]
+          (is (false? (:all-passed? result))
+              "Reactive bot should get priority when opponent spell on stack"))))))
+
+
+(deftest negotiate-priority-goldfish-still-auto-passed
+  (testing "goldfish bot (empty rules) is still auto-passed with spell on stack"
+    (let [db (-> (h/create-test-db {:mana {:black 1} :stops #{:main1}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
+          game-db (rules/cast-spell db' :player-1 obj-id)
+          app-db {:game/db game-db}
+          result (game/negotiate-priority app-db)]
+      (is (true? (:all-passed? result))
+          "Goldfish should be auto-passed (empty priority rules -> :pass)"))))
+
+
+(deftest negotiate-priority-burn-non-matching-auto-passed
+  (testing "burn bot with non-matching conditions auto-passed (stack not empty)"
+    (let [db (-> (h/create-test-db {:mana {:black 1} :stops #{:main1}})
+                 (h/add-opponent {:bot-archetype :burn}))
+          [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
+          ;; Stack is NOT empty after cast — burn's :stack-empty condition won't match
+          game-db (rules/cast-spell db' :player-1 obj-id)
+          app-db {:game/db game-db}
+          result (game/negotiate-priority app-db)]
+      (is (true? (:all-passed? result))
+          "Burn bot should be auto-passed (stack-empty condition doesn't match)"))))
+
+
+(deftest negotiate-priority-reactive-bot-empty-stack-auto-passed
+  (testing "reactive bot auto-passed when stack is empty (conditions don't match)"
+    (with-reactive-spec
+      (fn []
+        (let [db (-> (h/create-test-db {:stops #{:main1}})
+                     (h/add-opponent {:bot-archetype :reactive-test}))
+              ;; Stack is empty — :stack-has condition won't match
+              app-db {:game/db db}
+              result (game/negotiate-priority app-db)]
+          (is (true? (:all-passed? result))
+              "Reactive bot should be auto-passed when stack is empty"))))))
+
+
+(deftest negotiate-priority-auto-mode-bypasses-bot-protocol
+  (testing "auto-mode (:resolving) bypasses bot protocol check"
+    (with-reactive-spec
+      (fn []
+        (let [db (-> (h/create-test-db {:mana {:black 1} :stops #{:main1}})
+                     (h/add-opponent {:bot-archetype :reactive-test}))
+              [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
+              [db' _] (h/add-card-to-zone db' :lightning-bolt :hand :player-2)
+              [db' _] (h/add-card-to-zone db' :mountain :battlefield :player-2)
+              game-db (-> (rules/cast-spell db' :player-1 obj-id)
+                          (priority/set-auto-mode :resolving))
+              app-db {:game/db game-db}
+              result (game/negotiate-priority app-db)]
+          (is (true? (:all-passed? result))
+              "Auto-mode should bypass bot protocol and auto-pass"))))))
+
+
+(deftest negotiate-priority-reactive-bot-card-not-in-hand-auto-passed
+  (testing "reactive bot auto-passed when conditions match but card not in hand"
+    (with-reactive-spec
+      (fn []
+        (let [db (-> (h/create-test-db {:mana {:black 1} :stops #{:main1}})
+                     (h/add-opponent {:bot-archetype :reactive-test}))
+              [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
+              ;; No bolt in hand, but :stack-has condition matches
+              game-db (rules/cast-spell db' :player-1 obj-id)
+              app-db {:game/db game-db}
+              result (game/negotiate-priority app-db)]
+          (is (true? (:all-passed? result))
+              "Reactive bot should be auto-passed when card not in hand"))))))

@@ -9,7 +9,8 @@
    - bot-action-interceptor: re-frame interceptor that queues ::bot-decide
    - ::bot-decide: event handler that dispatches standard events for bot actions
 
-   All game events (::cast-spell, ::yield, etc.) remain bot-unaware.
+   Most game events (::cast-spell, ::yield, etc.) remain bot-unaware.
+   Exception: negotiate-priority consults bot protocol to decide auto-pass vs transfer.
    The interceptor bridges between bot protocol decisions and standard events.
    Bot taps dispatch ::activate-mana-ability. Bot casts dispatch ::cast-spell with opts.
    Each dispatch goes through the full event pipeline (history, validation)."

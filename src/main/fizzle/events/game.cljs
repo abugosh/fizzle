@@ -1,6 +1,7 @@
 (ns fizzle.events.game
   (:require
     [datascript.core :as d]
+    [fizzle.bots.protocol :as bot-protocol]
     [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as queries]
     [fizzle.db.schema :refer [schema]]
@@ -758,6 +759,18 @@
   (boolean (:player/bot-archetype (d/pull db [:player/bot-archetype] player-eid))))
 
 
+(defn- bot-would-pass?
+  "Check if bot player would pass priority in current game state.
+   Returns true if bot has no action to take (should auto-pass).
+   Pure function: (game-db, opponent-player-id) -> boolean"
+  [game-db opponent-player-id]
+  (let [archetype (bot-protocol/get-bot-archetype game-db opponent-player-id)]
+    (if archetype
+      (= :pass (bot-protocol/bot-priority-decision
+                 archetype {:db game-db :player-id opponent-player-id}))
+      true)))
+
+
 (defn- bot-turn-advance-one-phase
   "Advance exactly one phase during a bot's turn, handling cleanup/turn boundary.
    Returns {:app-db} with the game state after advancing one phase.
@@ -868,9 +881,9 @@
    When all-passed? is true, passes are reset in the returned app-db.
    When all-passed? is false, priority has been transferred to the opponent.
 
-   Bot auto-passing rules (uses DB data only, no bot protocol calls):
-   - Bot players always auto-pass when a human yields
-     (they have :player/bot-archetype set; decisions via interceptor)
+   Bot auto-passing rules:
+   - Bot players auto-pass when a human yields AND bot protocol returns :pass
+     (consults bot-priority-decision to allow reactive archetypes to hold priority)
    - When a bot yields, the human is NEVER auto-passed
      (human must get priority to respond to bot actions)
    - During a bot's turn with empty stack, human opponent auto-passes too
@@ -894,7 +907,8 @@
           (let [opp-eid (queries/get-player-eid gdb opponent-player-id)]
             (or auto-mode
                 (and (not (player-is-bot? gdb holder-eid))
-                     (or (player-is-bot? gdb opp-eid)
+                     (or (and (player-is-bot? gdb opp-eid)
+                              (bot-would-pass? gdb opponent-player-id))
                          (and (player-is-bot? gdb active-eid)
                               (queries/stack-empty? gdb))))
                 (and (player-is-bot? gdb active-eid)

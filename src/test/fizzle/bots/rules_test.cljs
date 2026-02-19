@@ -163,9 +163,8 @@
 
 (deftest stack-has-true-when-own-trigger-on-stack
   (let [db (th/create-test-db)
-        player-eid (q/get-player-eid db :player-1)
         db (stack/create-stack-item db {:stack-item/type :permanent-tapped
-                                        :stack-item/controller player-eid
+                                        :stack-item/controller :player-1
                                         :stack-item/description "trigger"})
         ctx {:db db :player-id :player-1}]
     (is (true? (rules/evaluate-condition
@@ -175,9 +174,8 @@
 
 (deftest stack-has-false-when-wrong-type
   (let [db (th/create-test-db)
-        player-eid (q/get-player-eid db :player-1)
         db (stack/create-stack-item db {:stack-item/type :spell
-                                        :stack-item/controller player-eid
+                                        :stack-item/controller :player-1
                                         :stack-item/description "spell"})
         ctx {:db db :player-id :player-1}]
     (is (false? (rules/evaluate-condition
@@ -188,9 +186,8 @@
 (deftest stack-has-resolves-opponent
   (let [db (-> (th/create-test-db)
                (th/add-opponent))
-        opp-eid (q/get-player-eid db :player-2)
         db (stack/create-stack-item db {:stack-item/type :spell
-                                        :stack-item/controller opp-eid
+                                        :stack-item/controller :player-2
                                         :stack-item/description "opponent spell"})
         ctx {:db db :player-id :player-1}]
     (is (true? (rules/evaluate-condition
@@ -435,9 +432,8 @@
 (deftest stack-has-finds-opponent-spell-in-spec-scenario
   (let [db (-> (th/create-test-db)
                (th/add-opponent))
-        opp-eid (q/get-player-eid db :player-2)
         db (stack/create-stack-item db {:stack-item/type :spell
-                                        :stack-item/controller opp-eid
+                                        :stack-item/controller :player-2
                                         :stack-item/description "opponent spell"})
         ctx {:db db :player-id :player-1}]
     (is (true? (rules/evaluate-condition

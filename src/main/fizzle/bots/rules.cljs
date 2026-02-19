@@ -94,13 +94,12 @@
   [condition context]
   (let [db (:db context)
         owner-id (resolve-player (:owner condition) context)
-        owner-eid (queries/get-player-eid db owner-id)
         target-type (:type condition)
         stack-items (queries/get-all-stack-items db)]
     (boolean
       (some (fn [item]
               (and (= target-type (:stack-item/type item))
-                   (= owner-eid (:stack-item/controller item))))
+                   (= owner-id (:stack-item/controller item))))
             stack-items))))
 
 
