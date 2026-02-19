@@ -867,7 +867,10 @@
    When all-passed? is false, priority has been transferred to the opponent.
 
    Bot auto-passing rules (uses DB data only, no bot protocol calls):
-   - Bot players always auto-pass (they have :player/bot-archetype set)
+   - Bot players always auto-pass when a human yields
+     (they have :player/bot-archetype set; decisions via interceptor)
+   - When a bot yields, the human is NEVER auto-passed
+     (human must get priority to respond to bot actions)
    - During a bot's turn with empty stack, human opponent auto-passes too
      (human doesn't need priority on empty stack during bot's turn)
    - During a bot's turn with non-empty stack, human keeps priority to respond
@@ -888,7 +891,8 @@
         (when opponent-player-id
           (let [opp-eid (queries/get-player-eid gdb opponent-player-id)]
             (or auto-mode
-                (player-is-bot? gdb opp-eid)
+                (and (not (player-is-bot? gdb holder-eid))
+                     (player-is-bot? gdb opp-eid))
                 (and (player-is-bot? gdb active-eid)
                      (queries/stack-empty? gdb)
                      (not (priority/check-stop gdb active-eid

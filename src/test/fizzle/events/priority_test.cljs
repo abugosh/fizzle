@@ -701,6 +701,23 @@
           "Auto-mode (F6/resolving) should still auto-pass even with stack non-empty"))))
 
 
+(deftest negotiate-priority-human-not-auto-passed-when-bot-holds-priority-on-human-turn
+  (testing "human is NOT auto-passed when bot holds priority during human turn with non-empty stack"
+    (let [db (-> (h/create-test-db {:mana {:black 1} :stops #{:main1}})
+                 (h/add-opponent {:bot-archetype :burn}))
+          [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
+          game-db (rules/cast-spell db' :player-1 obj-id)
+          ;; Human is active player (default) — it's the human's turn
+          ;; Transfer priority to the bot (simulating bot received priority and cast)
+          opp-eid (q/get-player-eid game-db :player-2)
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db)
+          game-db (d/db-with game-db [[:db/add game-eid :game/priority opp-eid]])
+          app-db {:game/db game-db}
+          result (game/negotiate-priority app-db)]
+      (is (false? (:all-passed? result))
+          "Human should get priority to respond when bot passes during human turn with stack"))))
+
+
 ;; === Unique yield-impl tests (moved from game_loop_test) ===
 
 (deftest yield-impl-clears-resolving-auto-mode-when-stack-empties
