@@ -734,9 +734,13 @@
       ;; Resolved one item
       (let [resolved-db (:db result)]
         (if (not (queries/stack-empty? resolved-db))
-          ;; More items on stack — continue
-          {:app-db (assoc app-db :game/db resolved-db)
-           :continue-yield? true}
+          ;; More items on stack — only cascade in auto-mode.
+          ;; Without auto-mode (manual yield), stop after one resolution
+          ;; so the player gets priority to respond to remaining items.
+          (if auto-mode
+            {:app-db (assoc app-db :game/db resolved-db)
+             :continue-yield? true}
+            {:app-db (assoc app-db :game/db resolved-db)})
           ;; Stack empty — clear :resolving auto-mode if active
           (let [resolved-db (if (= :resolving auto-mode)
                               (priority/clear-auto-mode resolved-db)

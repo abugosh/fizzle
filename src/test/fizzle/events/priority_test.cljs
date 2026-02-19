@@ -207,10 +207,10 @@
           "Should stop at untap (turn boundary) when no stops set"))))
 
 
-;; === Test 8: yield continues resolving multiple stack items ===
+;; === Test 8: manual yield resolves one stack item and stops ===
 
-(deftest yield-with-continue-resolves-one-at-a-time
-  (testing "yield returns :continue-yield? when more items on stack"
+(deftest yield-resolves-one-and-stops-without-auto-mode
+  (testing "Manual yield resolves one stack item and stops (no cascade without auto-mode)"
     (let [db (-> (h/create-test-db {:mana {:black 2} :stops #{:main1 :main2}})
                  (h/add-opponent {:bot-archetype :goldfish}))
           ;; Cast two Dark Rituals
@@ -220,9 +220,10 @@
           game-db2 (rules/cast-spell db'' :player-1 obj2)
           app-db {:game/db game-db2}
           result (game/yield-impl app-db)]
-      ;; First yield should resolve one item and signal to continue
-      (is (true? (:continue-yield? result))
-          "Should signal to continue yielding with more stack items"))))
+      ;; Without auto-mode, yield resolves one item and stops
+      ;; This gives the player priority to respond to remaining stack items
+      (is (not (:continue-yield? result))
+          "Manual yield should not cascade when stack has more items"))))
 
 
 ;; === yield-all tests ===
