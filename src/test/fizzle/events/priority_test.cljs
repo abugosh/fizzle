@@ -559,13 +559,23 @@
                       (game/advance-phase :player-1)  ; main1 -> combat
                       (game/advance-phase :player-1)) ; combat -> main2
           app-db {:game/db game-db}
-          ;; Loop yield-impl until it stops (simulates ::yield chain)
+          ;; Loop yield-impl + bot-decide until it stops
+          ;; When yield pauses (no continue-yield?), simulate bot interceptor
+          ;; by calling bot-decide-handler which dispatches ::yield to continue
           final (loop [adb app-db n 50]
                   (if (zero? n) adb
                       (let [result (game/yield-impl adb)]
                         (if (:continue-yield? result)
                           (recur (:app-db result) (dec n))
-                          (:app-db result)))))
+                          ;; No continue — check if bot should act (interceptor sim)
+                          (let [result-adb (:app-db result)
+                                gdb (:game/db result-adb)]
+                            (if (and gdb (bot-interceptor/bot-should-act? gdb))
+                              ;; Bot decides: if pass, continue yield loop
+                              (let [effects (bot-interceptor/bot-decide-handler result-adb)
+                                    new-adb (or (:db effects) result-adb)]
+                                (recur new-adb (dec n)))
+                              result-adb))))))
           result-db (:game/db final)]
       (is (= :draw (:game/phase (q/get-game-state result-db)))
           "Should stop at draw phase on opponent's turn")
@@ -734,18 +744,21 @@
 
 
 (deftest yield-impl-bot-turn-advances-single-phase
-  (testing "yield-impl during bot turn processes one phase at a time"
+  (testing "yield-impl during bot turn advances one phase and pauses for bot interceptor"
     (let [db (-> (h/create-test-db {:stops #{}})
                  (h/add-opponent {:bot-archetype :goldfish}))
-          ;; Switch active player to bot
+          ;; Switch active player to bot (default phase is main1)
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
           opp-eid (q/get-player-eid db :player-2)
           game-db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]
                                  [:db/add game-eid :game/priority opp-eid]])
           app-db {:game/db game-db}
-          result (game/yield-impl app-db)]
-      (is (true? (:continue-yield? result))
-          "Bot turn should signal continue for phase-by-phase advancement"))))
+          result (game/yield-impl app-db)
+          result-db (:game/db (:app-db result))]
+      (is (= :combat (:game/phase (q/get-game-state result-db)))
+          "Should have advanced from main1 to combat")
+      (is (not (:continue-yield? result))
+          "Bot turn should pause for bot interceptor to dispatch ::bot-decide"))))
 
 
 (deftest yield-impl-cleanup-discard-returns-pending-selection
@@ -770,6 +783,29 @@
           result (game/yield-impl app-db)]
       (is (some? (:game/pending-selection (:app-db result)))
           "Should return pending-selection for cleanup discard"))))
+
+
+(deftest yield-impl-bot-turn-pauses-at-priority-phases
+  (testing "yield-impl during bot turn stops at priority-granting phases for bot interceptor"
+    (let [db (-> (h/create-test-db {:stops #{}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          ;; Switch to bot's turn at untap phase
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          opp-eid (q/get-player-eid db :player-2)
+          game-db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]
+                                 [:db/add game-eid :game/priority opp-eid]
+                                 [:db/add game-eid :game/phase :untap]])
+          app-db {:game/db game-db}
+          ;; First yield should advance through untap (non-priority) with continue
+          result-1 (game/yield-impl app-db)
+          phase-after-1 (:game/phase (q/get-game-state (:game/db (:app-db result-1))))]
+      ;; Should have advanced from untap to upkeep
+      (is (= :upkeep phase-after-1)
+          "Should advance from untap to upkeep")
+      ;; At upkeep (priority-granting phase), should NOT continue-yield
+      ;; so the bot interceptor gets a chance to dispatch ::bot-decide
+      (is (not (:continue-yield? result-1))
+          "Should not continue-yield at priority-granting phase (upkeep)"))))
 
 
 (deftest yield-impl-bot-phase-does-not-cast-spells

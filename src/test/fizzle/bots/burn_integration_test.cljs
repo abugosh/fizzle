@@ -5,6 +5,7 @@
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
+    [fizzle.bots.interceptor :as bot-interceptor]
     [fizzle.bots.protocol :as bot]
     [fizzle.cards.lightning-bolt :as lightning-bolt]
     [fizzle.db.queries :as q]
@@ -124,6 +125,7 @@
                  (priority/set-auto-mode :f6))
           app-db (merge (history/init-history) {:game/db db})
           ;; Run yield-impl in a loop — F6 means resolve everything.
+          ;; When yield pauses (no continue-yield?), simulate bot interceptor.
           ;; Stop when turn >= 3 (human->bot->human) or loop limit.
           final-adb (loop [adb app-db
                            n 200]
@@ -134,7 +136,13 @@
                                 result-adb (:app-db result)]
                             (if (:continue-yield? result)
                               (recur result-adb (dec n))
-                              result-adb)))))
+                              ;; No continue — simulate bot interceptor
+                              (let [gdb (:game/db result-adb)]
+                                (if (and gdb (bot-interceptor/bot-should-act? gdb))
+                                  (let [effects (bot-interceptor/bot-decide-handler result-adb)
+                                        new-adb (or (:db effects) result-adb)]
+                                    (recur new-adb (dec n)))
+                                  result-adb)))))))
           result-db (:game/db final-adb)]
       (is (>= (:game/turn (q/get-game-state result-db)) 3)
           "Should reach at least turn 3 (human->bot->human)")

@@ -228,7 +228,7 @@
 ;; === Bot auto-advance: each phase is separate yield ===
 
 (deftest bot-turn-uses-recursive-yield
-  (testing "bot's turn advances via recursive ::yield dispatch, not batched"
+  (testing "bot's turn advances one phase and pauses for bot interceptor"
     (let [app-db (setup-app-db {:stops #{:main1 :main2}})
           game-db (:game/db app-db)
           ;; Set active player to opponent (simulate start of bot's turn)
@@ -237,7 +237,8 @@
           game-db (d/db-with game-db [[:db/add game-eid :game/active-player opp-eid]
                                       [:db/add game-eid :game/phase :main1]])
           app-db (assoc app-db :game/db game-db)
-          ;; Single yield-impl should advance one phase and signal continue
+          ;; Single yield-impl should advance one phase and NOT signal continue
+          ;; (bot interceptor dispatches ::bot-decide instead of cascading)
           result (game/yield-impl app-db)]
-      (is (true? (:continue-yield? result))
-          "yield-impl should signal continue during bot's turn"))))
+      (is (not (:continue-yield? result))
+          "yield-impl should pause for bot interceptor at priority-granting phases"))))

@@ -822,10 +822,9 @@
                (priority/check-stop result-db active-eid new-phase))
           {:app-db (:app-db result)}
 
-          ;; Same turn, no stop — continue (bot interceptor will fire between yields)
+          ;; Same turn, no stop — pause for bot interceptor to dispatch ::bot-decide
           :else
-          {:app-db (:app-db result)
-           :continue-yield? true}))
+          {:app-db (:app-db result)}))
 
       ;; Human turn: batch advance to next stop
       (let [result (advance-with-stops app-db f6?)
@@ -963,6 +962,11 @@
           (:continue-yield? result)
           {:db (:app-db result)
            :fx [[:dispatch [::yield]]]}
+
+          ;; Auto-mode active but paused (bot turn at priority phase) — keep
+          ;; step counter so cascade resumes after bot interceptor fires
+          auto-mode
+          {:db (update (:app-db result) :yield/step-count (fnil inc 0))}
 
           ;; Done — clear step counter
           :else
