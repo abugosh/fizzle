@@ -3,6 +3,7 @@
     [fizzle.db.queries :as queries]
     [fizzle.engine.abilities :as abilities]
     [fizzle.engine.mana-activation :as engine-mana]
+    [fizzle.engine.priority :as priority]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.selection.core :as selection-core]
@@ -186,19 +187,21 @@
 
    Returns {:db db :pending-selection selection-state-or-nil}"
   [db player-id object-id ability-index]
-  (let [obj (queries/get-object db object-id)
-        player-eid (queries/get-player-eid db player-id)]
-    (if-not (and obj
-                 player-eid
-                 (= (:object/zone obj) :battlefield)
-                 (= (:db/id (:object/controller obj)) player-eid))
-      {:db db :pending-selection nil}
-      (let [ability (nth (:card/abilities (:object/card obj)) ability-index nil)]
-        (if-not (and ability
-                     (= :activated (:ability/type ability))
-                     (abilities/can-activate? db object-id ability))
-          {:db db :pending-selection nil}
-          (activate-validated-ability db player-id object-id ability-index ability))))))
+  (if-not (priority/in-priority-phase? (:game/phase (queries/get-game-state db)))
+    {:db db :pending-selection nil}
+    (let [obj (queries/get-object db object-id)
+          player-eid (queries/get-player-eid db player-id)]
+      (if-not (and obj
+                   player-eid
+                   (= (:object/zone obj) :battlefield)
+                   (= (:db/id (:object/controller obj)) player-eid))
+        {:db db :pending-selection nil}
+        (let [ability (nth (:card/abilities (:object/card obj)) ability-index nil)]
+          (if-not (and ability
+                       (= :activated (:ability/type ability))
+                       (abilities/can-activate? db object-id ability))
+            {:db db :pending-selection nil}
+            (activate-validated-ability db player-id object-id ability-index ability)))))))
 
 
 (rf/reg-event-db

@@ -11,6 +11,7 @@
     [fizzle.engine.effects :as effects]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
+    [fizzle.engine.priority :as priority]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.zones :as zones]))
@@ -213,19 +214,22 @@
 
    Returns false if object doesn't exist or no modes are castable."
   [db player-id object-id]
-  ;; Check player restrictions FIRST (before any other checks)
-  (if (has-restriction? db player-id :cannot-cast-spells)
+  ;; Check priority phase FIRST (no actions during untap/cleanup)
+  (if-not (priority/in-priority-phase? (:game/phase (q/get-game-state db)))
     false
-    (if-let [obj (q/get-object db object-id)]
-      (let [card (:object/card obj)
-            ;; Check timing: non-instant cards require sorcery speed
-            timing-ok (or (instant-speed? card)
-                          (sorcery-speed-ok? db))
-            modes (get-casting-modes db player-id object-id)
-            has-mode (boolean (some #(can-cast-mode? db player-id object-id %) modes))
-            has-targets (targeting/has-valid-targets? db player-id card)]
-        (and timing-ok has-mode has-targets))
-      false)))
+    ;; Check player restrictions (before any other checks)
+    (if (has-restriction? db player-id :cannot-cast-spells)
+      false
+      (if-let [obj (q/get-object db object-id)]
+        (let [card (:object/card obj)
+              ;; Check timing: non-instant cards require sorcery speed
+              timing-ok (or (instant-speed? card)
+                            (sorcery-speed-ok? db))
+              modes (get-casting-modes db player-id object-id)
+              has-mode (boolean (some #(can-cast-mode? db player-id object-id %) modes))
+              has-targets (targeting/has-valid-targets? db player-id card)]
+          (and timing-ok has-mode has-targets))
+        false))))
 
 
 (defn get-castable-cards

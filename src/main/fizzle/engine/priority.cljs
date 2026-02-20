@@ -14,6 +14,13 @@
   #{:upkeep :draw :main1 :combat :main2 :end})
 
 
+(defn in-priority-phase?
+  "Check if the given phase grants priority to players.
+   Returns false for :untap, :cleanup, nil, and unknown phases."
+  [phase]
+  (boolean (contains? priority-phases phase)))
+
+
 (defn get-priority-holder-eid
   "Get the entity ID of the player who currently holds priority."
   [db]
