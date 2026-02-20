@@ -200,22 +200,27 @@
 
 
 (deftest test-pay-mana-without-can-pay
-  (testing "pay-mana when pool is insufficient: documents current behavior"
+  (testing "pay-mana when pool is insufficient: documents caller-responsibility contract"
     ;; Corner case: calling pay-mana without checking can-pay? first.
     ;; Current behavior: pool goes negative (no validation in pay-mana).
     ;; This is documented in the docstring as caller responsibility.
     ;; Bug it catches: documents behavior so callers know to use can-pay?.
     (let [db (init-game-state)
-          ;; Pool starts at 0 for all colors
-          _ (is (= 0 (:black (q/get-mana-pool db :player-1))))
-          ;; Call pay-mana without having the mana (violates contract)
-          db' (mana/pay-mana db :player-1 {:black 3})]
-      ;; Document current behavior: pool goes negative
-      (is (= -3 (:black (q/get-mana-pool db' :player-1)))
-          "Current behavior: pay-mana allows negative pool (no internal validation)")
-      ;; This is why callers MUST use can-pay? before pay-mana
+          initial-pool (q/get-mana-pool db :player-1)]
+      ;; Precondition: pool starts at 0 for all colors
+      (is (= 0 (:black initial-pool))
+          "Precondition: black mana should be 0")
       (is (false? (mana/can-pay? db :player-1 {:black 3}))
-          "can-pay? correctly returns false for insufficient mana"))))
+          "can-pay? correctly returns false for insufficient mana")
+      ;; Call pay-mana without having the mana (violates contract)
+      (let [db' (mana/pay-mana db :player-1 {:black 3})
+            final-pool (q/get-mana-pool db' :player-1)]
+        ;; Document current behavior: pool goes negative
+        (is (= -3 (:black final-pool))
+            "Current behavior: pay-mana allows negative pool (no internal validation)")
+        ;; Other colors should be unaffected
+        (is (= (:blue initial-pool) (:blue final-pool))
+            "Other colors should be unchanged by pay-mana contract violation")))))
 
 
 ;; === X cost tests ===
@@ -419,12 +424,21 @@
 (deftest pay-allocated-without-can-pay-goes-negative-test
   (testing "pay-mana-with-allocation without can-pay? allows negative pool"
     (let [db (init-game-state)
-          ;; Pool is 0. Violating contract by not checking can-pay?.
-          db' (mana/pay-mana-with-allocation db :player-1
-                                             {:colorless 2}
-                                             {:black 2})]
-      (is (= -2 (:black (q/get-mana-pool db' :player-1)))
-          "Documents caller-responsibility contract: no internal validation"))))
+          initial-pool (q/get-mana-pool db :player-1)]
+      ;; Precondition: pool starts at 0 for all colors
+      (is (= 0 (:black initial-pool))
+          "Precondition: black mana should be 0")
+      (is (false? (mana/can-pay? db :player-1 {:colorless 2}))
+          "can-pay? correctly returns false for insufficient mana")
+      ;; Violating contract by not checking can-pay?
+      (let [db' (mana/pay-mana-with-allocation db :player-1
+                                               {:colorless 2}
+                                               {:black 2})
+            final-pool (q/get-mana-pool db' :player-1)]
+        (is (= -2 (:black final-pool))
+            "Documents caller-responsibility contract: no internal validation")
+        (is (= (:blue initial-pool) (:blue final-pool))
+            "Other colors should be unchanged by contract violation")))))
 
 
 ;; === Property-based invariant tests ===

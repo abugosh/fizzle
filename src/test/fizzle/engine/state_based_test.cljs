@@ -65,10 +65,14 @@
   (testing "registered check-sba defmethod is discovered by check-all-sbas"
     (let [sentinel {:sba/type :test-custom :sba/target :player-1}]
       (defmethod sba/check-sba :test-custom-sba [_db _type] [sentinel])
-      (let [results (sba/check-all-sbas (init-game-state))]
+      (let [results (vec (sba/check-all-sbas (init-game-state)))]
         (remove-method sba/check-sba :test-custom-sba)
-        (is (some #(= sentinel %) results)
-            "check-all-sbas should include results from registered defmethod")))))
+        (is (= 1 (count (filter #(= sentinel %) results)))
+            "check-all-sbas should include exactly one result from registered defmethod")
+        (is (= :test-custom (:sba/type (first (filter #(= sentinel %) results))))
+            "Discovered SBA should have the correct :sba/type")
+        (is (= :player-1 (:sba/target (first (filter #(= sentinel %) results))))
+            "Discovered SBA should have the correct :sba/target")))))
 
 
 ;; === check-all-sbas tests ===
@@ -134,7 +138,8 @@
     ;; We register two SBAs that cascade:
     ;; SBA-A fires first iteration, removes itself, but creates condition for SBA-B
     ;; SBA-B fires second iteration
-    (let [iteration-counter (atom 0)
+    ;; No production SBAs exist yet, so runtime defmethod registration is required.
+    (let [execution-order (atom [])
           ;; Track which SBAs have fired to prevent infinite loops
           a-fired (atom false)
           b-fired (atom false)]
@@ -150,19 +155,23 @@
       ;; Register SBA executors
       (defmethod sba/execute-sba :test-cascade-a [db _sba]
         (reset! a-fired true)
-        (swap! iteration-counter inc)
+        (swap! execution-order conj :a)
         db)
       (defmethod sba/execute-sba :test-cascade-b [db _sba]
         (reset! b-fired true)
-        (swap! iteration-counter inc)
+        (swap! execution-order conj :b)
         db)
       ;; Execute cascading SBAs
-      (let [db (init-game-state)]
-        (sba/check-and-execute-sbas db)
+      (let [db (init-game-state)
+            db' (sba/check-and-execute-sbas db)]
         ;; Both SBAs should have fired
         (is (true? @a-fired) "SBA-A should have fired")
         (is (true? @b-fired) "SBA-B should have fired (cascading)")
-        (is (= 2 @iteration-counter) "Should have executed 2 SBAs across iterations"))
+        (is (= 2 (count @execution-order)) "Should have executed exactly 2 SBAs")
+        (is (= :a (first @execution-order)) "SBA-A should fire first")
+        (is (= :b (second @execution-order)) "SBA-B should fire second (cascading)")
+        ;; Function should return a valid db (not nil)
+        (is (some? db') "Should return a valid db after cascading SBAs"))
       ;; Clean up
       (remove-method sba/check-sba :test-cascade-a-check)
       (remove-method sba/check-sba :test-cascade-b-check)

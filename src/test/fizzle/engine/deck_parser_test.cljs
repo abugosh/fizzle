@@ -291,42 +291,65 @@
                 :deck/main [{:card/id :dark-ritual :count 4}
                             {:card/id :island :count 3}]}
           text (parser/deck->text deck)]
-      (is (string? text))
-      (is (str/includes? text "Dark Ritual"))
-      (is (str/includes? text "Island"))
-      (is (str/includes? text "4 Dark Ritual"))
-      (is (str/includes? text "3 Island")))))
+      (is (str/starts-with? text "// Test Deck - Main Deck (7)\n//")
+          "Header should contain deck name and total card count")
+      (is (str/includes? text "4 Dark Ritual")
+          "Should include Dark Ritual with count")
+      (is (str/includes? text "3 Island")
+          "Should include Island with count")
+      (is (str/includes? text "// Instants (4)")
+          "Should have Instants section header with count")
+      (is (str/includes? text "// Lands (3)")
+          "Should have Lands section header with count"))))
 
 
 (deftest deck->text-groups-by-type-test
-  (testing "groups cards by type with section headers"
+  (testing "groups cards by type with section headers and counts"
     (let [deck {:deck/name "Test Deck"
                 :deck/main [{:card/id :dark-ritual :count 4}
                             {:card/id :island :count 3}
                             {:card/id :lotus-petal :count 4}]}
           text (parser/deck->text deck)]
-      (is (str/includes? text "// Instants"))
-      (is (str/includes? text "// Lands"))
-      (is (str/includes? text "// Artifacts")))))
+      (is (str/includes? text "// Instants (4)")
+          "Instants section should show count of 4")
+      (is (str/includes? text "// Lands (3)")
+          "Lands section should show count of 3")
+      (is (str/includes? text "// Artifacts (4)")
+          "Artifacts section should show count of 4")
+      ;; Verify card lines appear under correct sections
+      (let [lands-idx (str/index-of text "// Lands")
+            instants-idx (str/index-of text "// Instants")
+            ritual-idx (str/index-of text "4 Dark Ritual")]
+        (is (< lands-idx instants-idx)
+            "Lands section should appear before Instants section")
+        (is (< instants-idx ritual-idx)
+            "Dark Ritual should appear after Instants header")))))
 
 
 (deftest deck->text-includes-header-test
-  (testing "includes deck name and total count in header"
+  (testing "includes deck name and total count in exact header format"
     (let [deck {:deck/name "My Storm Deck"
                 :deck/main [{:card/id :dark-ritual :count 4}]}
-          text (parser/deck->text deck)]
-      (is (str/includes? text "My Storm Deck"))
-      (is (str/includes? text "Main Deck")))))
+          text (parser/deck->text deck)
+          first-line (first (str/split-lines text))]
+      (is (= "// My Storm Deck - Main Deck (4)" first-line)
+          "First line should be exact header with deck name and total count")
+      (is (= "//" (second (str/split-lines text)))
+          "Second line should be a separator comment"))))
 
 
 (deftest deck->text-includes-sideboard-test
-  (testing "includes sideboard section when present"
+  (testing "includes sideboard section with count header when present"
     (let [deck {:deck/name "Test"
                 :deck/main [{:card/id :dark-ritual :count 4}]
                 :deck/side [{:card/id :merchant-scroll :count 2}]}
           text (parser/deck->text deck)]
-      (is (str/includes? text "Sideboard"))
-      (is (str/includes? text "2 Merchant Scroll")))))
+      (is (str/includes? text "\n\nSideboard\n")
+          "Sideboard should be separated by blank line")
+      (is (str/includes? text "// 2 cards")
+          "Sideboard should have card count header")
+      (is (str/includes? text "2 Merchant Scroll")
+          "Sideboard should list cards with counts"))))
 
 
 (deftest deck->text-no-sideboard-when-empty-test
@@ -335,7 +358,12 @@
                 :deck/main [{:card/id :dark-ritual :count 4}]
                 :deck/side []}
           text (parser/deck->text deck)]
-      (is (not (str/includes? text "Sideboard"))))))
+      (is (not (str/includes? text "Sideboard"))
+          "Should not contain Sideboard section")
+      (is (str/includes? text "4 Dark Ritual")
+          "Should still contain main deck cards")
+      (is (str/starts-with? text "// Test - Main Deck (4)")
+          "Should still have proper header"))))
 
 
 (deftest deck->text-type-order-test

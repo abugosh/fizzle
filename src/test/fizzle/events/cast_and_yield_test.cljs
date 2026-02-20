@@ -138,8 +138,13 @@
                          :game/selected-card obj-id})
           result (dispatch-cast-and-yield app-db)]
       ;; Should have pending mode selection (not auto-yielded)
-      (is (some? (:game/pending-mode-selection result))
-          "Should show mode selector for multi-mode spell")
+      (let [mode-sel (:game/pending-mode-selection result)]
+        (is (some? mode-sel)
+            "Should show mode selector for multi-mode spell")
+        (is (= obj-id (:object-id mode-sel))
+            "Mode selection should reference the cast object")
+        (is (= 2 (count (:modes mode-sel)))
+            "Should have 2 castable modes (normal + alternate)"))
       ;; Stack should NOT have the spell (mode selector is pre-cast)
       (is (nil? (:game/pending-selection result))
           "Should not have pending selection (mode selection is different)"))))
@@ -156,7 +161,8 @@
                          :game/selected-card obj-id})
           result (dispatch-cast-and-yield app-db)]
       ;; Should have pending selection (targeting)
-      (is (some? (:game/pending-selection result))
+      (is (= :cast-time-targeting
+             (:selection/type (:game/pending-selection result)))
           "Should show targeting selection for targeted spell")
       ;; Stack should be empty (spell not cast yet, targeting is pre-cast)
       (is (empty? (queries/get-all-stack-items (:game/db result)))
@@ -251,9 +257,10 @@
                         {:game/db db
                          :game/selected-card obj-id})
           result (dispatch-cast-and-yield app-db)]
-      ;; Should have pending selection (mana allocation or targeting)
-      (is (some? (:game/pending-selection result))
-          "Should show selection for spell with generic/targeting requirements")
+      ;; Should have pending selection (mana allocation)
+      (is (= :mana-allocation
+             (:selection/type (:game/pending-selection result)))
+          "Should show mana allocation selection for spell with generic cost")
       ;; Spell should NOT be resolved
       (is (empty? (queries/get-all-stack-items (:game/db result)))
           "Spell should not be on stack yet (selection is pre-cast)"))))

@@ -47,8 +47,8 @@
     (let [db (init-game-state)
           effect {:effect/type :unknown-effect}
           db' (fx/execute-effect db :player-1 effect)]
-      (is (= (q/get-mana-pool db :player-1)
-             (q/get-mana-pool db' :player-1))))))
+      (is (= db db')
+          "Entire db should be identical when effect type is unknown"))))
 
 
 (deftest execute-effect-nil-type-test
@@ -56,8 +56,8 @@
     (let [db (init-game-state)
           effect {}  ; no :effect/type key
           db' (fx/execute-effect db :player-1 effect)]
-      (is (= (q/get-mana-pool db :player-1)
-             (q/get-mana-pool db' :player-1))))))
+      (is (= db db')
+          "Entire db should be identical when effect type is nil"))))
 
 
 ;; === Test helpers for mill ===
