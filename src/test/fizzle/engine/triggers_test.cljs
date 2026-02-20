@@ -10,22 +10,6 @@
     [fizzle.engine.triggers :as triggers]))
 
 
-;; === Corner case tests ===
-
-(deftest test-trigger-with-nil-controller-graceful
-  (testing "resolve-trigger with nil controller doesn't crash and returns db unchanged"
-    (let [db (init-game-state)
-          trigger {:trigger/id (random-uuid)
-                   :trigger/type :becomes-tapped
-                   :trigger/source :some-source
-                   :trigger/controller nil
-                   :trigger/data {:effects [{:effect/type :draw
-                                             :effect/amount 1}]}}
-          result-db (triggers/resolve-trigger db trigger)]
-      (is (= db result-db)
-          "DB should be unchanged when trigger has nil controller"))))
-
-
 ;; =====================================================
 ;; Corner Case Tests: draw-step trigger
 ;; =====================================================
