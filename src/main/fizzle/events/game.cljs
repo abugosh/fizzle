@@ -28,7 +28,6 @@
     [fizzle.events.selection.storm :as sel-storm]
     [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.events.selection.zone-ops]
-    [fizzle.history.core :as history]
     [re-frame.core :as rf]))
 
 
@@ -181,7 +180,8 @@
             :ui/stack-collapsed false
             :ui/gy-collapsed false
             :ui/history-collapsed false}
-           (history/init-history))))
+           {:history/main [] :history/forks {}
+            :history/current-branch nil :history/position -1})))
 
 
 (rf/reg-event-db
@@ -491,20 +491,6 @@
       app-db)))
 
 
-(defn- apply-history-entries
-  "Apply a sequence of history entries to app-db.
-   First entry auto-forks if not at history tip; remaining entries append normally."
-  [app-db entries]
-  (if (empty? entries)
-    app-db
-    (let [first-entry (first entries)
-          db-with-first (if (or (= -1 (:history/position app-db))
-                                (history/at-tip? app-db))
-                          (history/append-entry app-db first-entry)
-                          (history/auto-fork app-db first-entry))]
-      (reduce history/append-entry db-with-first (rest entries)))))
-
-
 (rf/reg-event-db
   ::resolve-top
   (fn [db _]
@@ -660,14 +646,8 @@
       ;; Block start-turn if pending selection exists (e.g., cleanup discard)
       (if (:game/pending-selection db)
         db
-        (let [active-player-id (queries/get-active-player-id game-db)
-              db-after-turn (start-turn game-db active-player-id)
-              game-state (queries/get-game-state db-after-turn)
-              turn (:game/turn game-state)
-              entry (history/make-entry db-after-turn ::start-turn
-                                        (str "Start Turn " turn) turn)]
-          (-> (apply-history-entries db [entry])
-              (assoc :game/db db-after-turn)))))))
+        (let [active-player-id (queries/get-active-player-id game-db)]
+          (assoc db :game/db (start-turn game-db active-player-id)))))))
 
 
 ;; === Priority System ===

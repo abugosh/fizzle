@@ -16,7 +16,7 @@
     :fizzle.events.game/cast-and-yield
     :fizzle.events.game/yield
     :fizzle.events.game/yield-all
-    ;; start-turn creates its own history entries (opponent draw + turn start)
+    :fizzle.events.game/start-turn
     :fizzle.events.game/play-land
     :fizzle.events.abilities/activate-mana-ability
     :fizzle.events.abilities/activate-ability})
