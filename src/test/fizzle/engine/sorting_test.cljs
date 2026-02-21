@@ -1,7 +1,10 @@
 (ns fizzle.engine.sorting-test
   (:require
     [cljs.test :refer-macros [deftest is testing]]
-    [fizzle.engine.sorting :as sorting]))
+    [fizzle.cards.iggy-pop :as cards]
+    [fizzle.db.queries :as q]
+    [fizzle.engine.sorting :as sorting]
+    [fizzle.events.game :as game]))
 
 
 (defn- make-obj
@@ -90,6 +93,36 @@
               "Brain Freeze" "Cabal Ritual"
               "Ill-Gotten Gains"]
              (mapv #(get-in % [:object/card :card/name]) result))))))
+
+
+(deftest test-sort-lands-before-zero-cmc-datascript
+  (testing "lands sort before 0-cost spells with actual Datascript entities"
+    (let [game-db (:game/db (game/init-game-state
+                              {:main-deck (:deck/main cards/iggy-pop-decklist)}))
+          ;; Get hand from real Datascript db
+          hand (q/get-hand game-db (q/get-human-player-id game-db))
+          ;; Also get library objects to have a bigger sample
+          lib (q/get-objects-in-zone game-db :player-1 :library)
+          all-objs (concat hand lib)
+          ;; Filter to CMC 0 objects
+          cmc-zero (filter #(= 0 (get-in % [:object/card :card/cmc] 0)) all-objs)
+          sorted (sorting/sort-cards cmc-zero)
+          names (mapv #(get-in % [:object/card :card/name]) sorted)
+          ;; Find the index ranges: all lands should come before all non-lands
+          land-names #{"Cephalid Coliseum" "City of Brass" "Gemstone Mine"
+                       "Island" "Polluted Delta" "Swamp" "Underground River"}
+          land-indices (keep-indexed (fn [i obj]
+                                       (when (land-names (get-in obj [:object/card :card/name]))
+                                         i))
+                                     sorted)
+          non-land-indices (keep-indexed (fn [i obj]
+                                           (when (not (land-names (get-in obj [:object/card :card/name])))
+                                             i))
+                                         sorted)]
+      ;; All land indices should be less than all non-land indices
+      (when (and (seq land-indices) (seq non-land-indices))
+        (is (< (apply max land-indices) (apply min non-land-indices))
+            (str "All lands should sort before non-lands. Got: " names))))))
 
 
 ;; === Battlefield grouping tests ===
