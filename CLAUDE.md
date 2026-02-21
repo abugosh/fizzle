@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Fizzle is a ClojureScript-based Magic: The Gathering combo deck practice tool with fork/replay capabilities. It's designed for storm combo players to get efficient practice reps, with features like hand sculpting, simplified opponent AI, and tactics training (saving positions as puzzles).
+Fizzle is a ClojureScript-based Magic: The Gathering combo deck practice tool with fork/replay capabilities. It's designed for storm combo players to get efficient practice reps, with features like hand sculpting, configurable opponent scenarios, and tactics training (saving positions as puzzles).
 
 **Target Format:** Premodern combo decks
 
@@ -77,9 +77,8 @@ src/
     ├── subs/               # re-frame subscriptions
     ├── engine/             # Game rules, mana, stack, effects, zones
     ├── cards/              # Card definitions as EDN data
-    ├── bots/               # Simplified opponent AI (goldfish, burn, control, discard)
+    ├── bots/               # Opponent AI: protocol, definitions (goldfish, burn), rules, interceptor
     ├── history/            # Fork/replay system
-    ├── tactics/            # Puzzle save/load
     └── views/              # Reagent components
 ```
 
@@ -120,7 +119,7 @@ Every game action is an event. Game state is a pure reduction over event history
 
 ### Bot System
 
-Bots implement the `IBot` protocol with methods: `get-archetype`, `get-clock`, `should-act?`, `choose-action`, `get-deck`. Available archetypes: goldfish, burn, control, discard.
+Bots implement the `IBot` multimethod protocol (`bots/protocol.cljs`) dispatching on archetype. The bot interceptor (`bots/interceptor.cljs`) drives bot turns automatically via re-frame — bots dispatch the same events as human players through the full engine path. Available archetypes: goldfish (passes on everything), burn (20 Mountain + 40 Lightning Bolt, bolts face). The priority system (`engine/priority.cljs`) handles yield/yield-all/hold-priority for both players.
 
 ## Architecture Decision Records
 

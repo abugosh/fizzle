@@ -31,11 +31,10 @@ Goldfish a storm deck to completion.
 
 ### Phase 2: Iggy Pop Complete
 
-All Iggy Pop maindeck and sideboard cards implemented and playable.
+Core Iggy Pop maindeck and sideboard cards implemented and playable.
 
 - Intuition with pile selection UI
 - Ill-Gotten Gains with card selection (both players)
-- Cunning Wish with wishboard
 - Threshold tracking
 - Recoup with flashback granting
 - Full game UI with graveyard, action log, stack display
@@ -64,133 +63,154 @@ Configure starting conditions.
 
 **Milestone:** Start game with LED + IGG + Ritual in hand
 
+### Phase 5: Priority System & Bots
+
+Real MTG priority passing and opponent automation.
+
+- **Priority System** — Yield/yield-all replaces "next phase" button, hold priority for LED timing, phase stops for untap/cleanup, goldfish auto-passes
+- **Bot Protocol + Goldfish Bot** — IBot multimethod protocol, opponent turn cycle with active-player switching, goldfish bot plays land per turn and passes priority
+- **Heuristic Burn Bot** — 20 Mountains + 40 Lightning Bolts, bot casts through full engine path (cast-spell → stack → resolve → deal-damage), auto-taps lands for mana
+- **No-Priority Phase Enforcement** — Untap and cleanup phases block player actions, enforced at the event handler level
+
+**Milestone:** Bot opponent casts Lightning Bolt at your face during its main phase, you lose to burn pressure if you don't combo fast enough
+
 ### Infrastructure Work
 
 Completed alongside the phases above:
 
 - **Unified Stack System** — Single stack-item entity type for spells, copies, triggers, and abilities
 - **Data-Driven Ability System** — Activated abilities defined as EDN data, interpreted by engine
-- **Test Quality Improvement** — Multiple rounds: engine coverage, card/event corner cases, tautological test removal
+- **Test Quality Improvement** — Multiple rounds: engine coverage, card/event corner cases, tautological test removal, precise assertion enforcement
 - **Selection System Unification** — Unified data model, toggle handlers, confirm multimethod, auto-confirm for single-select
-- **Selection Decomposition** — Extracted domain modules: core, resolution, library, targeting, costs, zone_ops
-- **Interactive Effects Predicate** — Single source of truth (`interactive-effect?`) for effect interactivity
+- **Selection Decomposition** — Extracted domain modules: core, storm, library, targeting, costs, zone_ops (~1700 lines across 6 files)
+- **Tagged Effect Returns** — Interactive effects return `{:db :needs-selection}` instead of bare db; `reduce-effects` pauses at interactive effects with `:remaining-effects`
 - **Unified Target Storage** — Targets stored on stack-items instead of objects; storm copy inheritance
 - **Manual Mana Allocation** — MTGO-style interactive mana payment for generic costs
 - **Trigger Registry Migration** — Moved from atom into Datascript for immutability
 - **Unified Stack Resolution** — Single multimethod dispatch with target threading, eliminating duplicate resolve paths
 - **Core Architecture Hardening** — SBA multimethod, tagged effect returns, unified targeting/cost/condition multimethods, cljs.spec card validation
-- **Test Infrastructure & Strategy** — Shared test helpers, property-based tests, card testing strategy documentation
+- **Test Infrastructure & Strategy** — Shared test helpers, card testing strategy documentation, mandatory test categories per card type
 
 ---
 
 ## Share-Ready Milestone
 
-**Vision:** A Premodern combo practice tool where you can learn Iggy Pop, practice beating Gaea's Blessing, share tactical puzzles with the community, and goldfish multiple combo decks.
+**Vision:** A Premodern combo practice tool where you can goldfish multiple combo decks, test against specific hate cards and disruption scenarios, and share tactical puzzles with the community.
 
 **Three pillars:**
-1. **The practice story** — "I need reps beating Gaea's Blessing" is a concrete, compelling pitch
-2. **Tactics puzzles** — Shareable board-state puzzles that market themselves in the community
-3. **Multi-deck support** — Broader appeal across Premodern combo players
+1. **The practice story** — Efficient combo reps with fork/replay, hand sculpting, and configurable opponents
+2. **Test against cards** — Configure specific hate pieces and disruption the bot plays, so you practice beating the cards that matter in your matchups
+3. **Multi-deck support** — Broad Premodern combo card coverage for the community
 
-### Step 1: UI Polish
+### Step 1: UX Polish
 
-Work down the open backlog to make the tool presentable for sharing.
+Make the tool presentable for sharing.
 
-**Completed (share-blocking):**
-- ~~Win detection and lethal announcement~~
-- ~~Consistent card sorting and grouping across zones and dialogs~~
-- ~~Quick undo (pop last action without creating fork)~~
-- ~~Always-visible graveyard and library card counts~~
-- ~~Yield All (resolve entire stack in one action)~~
-- ~~Enriched history entries with spell/land names and phase details~~
+**Completed:**
+- Win detection and lethal announcement
+- Consistent card sorting and grouping across zones and dialogs
+- Quick undo (pop last action without creating fork)
+- Always-visible graveyard and library card counts
+- Yield All (resolve entire stack in one action)
+- Enriched history entries with spell/land names and phase details
+- Consolidated controls: unified Play + Yield instead of Cast/Play Land/Resolve
+- Remove confirm step from selection dialogs (accept choice immediately)
+- Manual mana allocation for generic costs
+- Show top stack item inline near Yield button
+- Flash of Insight: control order of cards placed on bottom of library
+- Brain Freeze: storm copy target splitting
+- Battlefield UX redesign: 6-row mirrored layout, opponent zone, phase bar with life totals
+- Visual card styling: type border colors and MTG color identity background tints across all views
+- Auto-resolve toggle (play defaults to play + yield)
 
-**Completed (quality of life):**
-- ~~Consolidate controls: unified Play + Yield instead of Cast/Play Land/Resolve~~
-- ~~Remove confirm step from selection dialogs (accept choice immediately)~~
-- ~~Manual mana allocation for generic costs~~
-- ~~Show top stack item inline near Yield button~~
-- ~~Flash of Insight: control order of cards placed on bottom of library~~
-- ~~Brain Freeze: storm copy target splitting~~
+**Remaining:**
+- Keyboard shortcuts for core actions (Play, Yield, Undo)
+- Layout refinements (stack placement, selection view improvements)
+- Minor sort fixes (lands before 0-cost spells in hand)
 
-**Completed (quality of life, continued):**
-- ~~Battlefield UX redesign: 6-row mirrored layout, opponent zone, phase bar with life totals~~
-- ~~Visual card styling: type border colors and MTG color identity background tints across all views~~
+### Step 2: Bot Scenarios
 
-**Remaining (nice to have):**
-- Keyboard shortcuts for core actions
-- Session statistics (win rate, avg kill turn, fizzle tracking)
-- Auto-resolve toggle
+Configure specific cards and disruption the opponent plays. The bot system is not about simulating a real opponent deck — it's about putting specific hate cards and pressure in front of you so you practice beating the cards that matter.
 
-### Step 2: Tactics System
+**Completed:**
+- Priority system with yield/yield-all and phase stops
+- Bot protocol (IBot multimethod) with goldfish and burn archetypes
+- Bot turn cycle with active-player switching
+- Burn bot: casts through full engine path, auto-taps lands
+- Setup screen: opponent archetype selector (Goldfish/Burn) with clock turns config
 
-Save, load, and share puzzles — the viral community hook.
+**Remaining:**
+- **Bot configuration UX** — Specify cards in the opponent's deck, configure starting hand, set behavior rules. The engine supports robust rule-based bot behavior; the open design question is how to expose this to the player without dumping raw EDN. This needs its own brainstorm session.
+- **Hate piece scenarios** — Bot starts with specific permanents (Seal of Cleansing, Chalice of the Void, Sphere of Resistance). Player must use real cards to interact (Chain of Vapor, Hurkyl's Recall).
+- **Counterspell scenarios** — Bot holds up countermagic, player practices forcing through disruption.
+- **Creature clock scenarios** — Bot plays fast creatures (e.g., Phyrexian Dreadnought) as a clock. Requires creatures and combat (see Future Work).
+- **Preset scenarios** — Named out-of-the-box configurations: "Goldfish", "Burn Clock", "Hate Pieces", "Dreadnought Clock"
+
+**Milestone:** Configure opponent to start with Seal of Cleansing on the battlefield. Practice comboing through it with Chain of Vapor.
+
+### Step 3: Card Expansion (~100-200 cards)
+
+Broaden from Iggy Pop to support the broader Premodern combo metagame. Many cards share existing engine infrastructure (rituals, cantrips, tutors). Focus on engine capabilities that unlock whole categories of cards.
+
+**Engine capabilities needed:**
+- Token creation (Hunting Pack, Empty the Warrens)
+- Bounce effects (Chain of Vapor, Hurkyl's Recall)
+- Counterspells (Counterspell, Force of Will — alternate costs)
+- Reanimation (Reanimate, Exhume, Animate Dead — enchantment-based)
+- Untap effects (Snap, Turnabout, Cloud of Faeries)
+- Mana doubling (High Tide)
+- Enchantment-based continuous effects (Aluren, Necropotence)
+- Token creatures with stats and combat
+- Delayed triggers (Urza's Bauble — draw next upkeep)
+- Name-a-card effects (Cabal Therapy, Meddling Mage)
+- Skip turn (Meditate)
+
+**Card categories (rough priority):**
+- Format staples that appear across many decks (Force of Will, Brainstorm, Ponder, Duress)
+- Combo engines (Mind's Desire, High Tide, Aluren, Worldgorger Dragon)
+- Interaction and answers (counterspells, bounce, discard, hate pieces)
+- Missing Iggy Pop cards (Cunning Wish, Cabal Therapy, Urza's Bauble, etc.)
+
+**Milestone:** Goldfish a Desire Storm deck to completion. Import a Reanimator list and practice the combo.
+
+### Step 4: Tactics System
+
+Save, load, and share puzzles — the community engagement hook.
 
 - Puzzle data structure (game state snapshot with metadata)
 - Save current game position as named puzzle with tags
 - Puzzle browser UI with filtering
 - EDN export/import for sharing puzzles
 - Success tracking per puzzle
-- PWA setup for offline support
 
 **Milestone:** Create puzzle, close browser, reload, solve puzzle. Share puzzle EDN with another player.
-
-### Step 3: Card Expansion (~100 cards)
-
-Broaden from Iggy Pop to 4-5 Premodern combo decks. Many cards share existing infrastructure (rituals, cantrips, tutors already implemented).
-
-**Target decks:**
-- **Desire Storm** — Mind's Desire, Snap, Turnabout, High Tide, Cloud of Faeries
-- **Trix** — Illusions of Grandeur, Donate, Necropotence, Force of Will
-- **Devourer** — Phyrexian Devourer, Triskelion, Buried Alive, Worldgorger Dragon
-- **Reanimator** — Entomb, Reanimate, Exhume, Animate Dead, reanimation targets
-- **Aluren** — Aluren, Cavern Harpy, Wirewood Savage, Raven Familiar
-
-Each deck requires its own decklist definition and import-ready text format. New engine capabilities may be needed (e.g., enchantment-based effects for Aluren, replacement effects for Necropotence).
-
-### Step 4: Hate Pieces
-
-Static opponent permanents that affect gameplay — the core "practice against disruption" story.
-
-- Gaea's Blessing (mill trigger — the Brain Freeze interaction, see design doc Appendix D)
-- Chalice of the Void, Sphere of Resistance, Null Rod, Trinisphere, Ensnaring Bridge
-- Setup screen allows selecting hate piece(s) for opponent's starting battlefield
-- Player must use real cards to interact (Chain of Vapor, Hurkyl's Recall, Tormod's Crypt)
-- No opponent AI — goldfish with static permanents only
-
-**Milestone:** Practice winning through Gaea's Blessing with Tormod's Crypt timing.
 
 ---
 
 ## Future Work
 
-### Full Bot System
+### Creatures and Combat
 
-Active opponents with decision-making AI. Builds on the hate pieces foundation.
+Add creature support and a combat system. Opens up creature-based win conditions (Hunting Pack tokens, Xantid Swarm) and creature clock bot scenarios (Phyrexian Dreadnought).
 
-- Bot protocol (IBot: get-archetype, get-clock, should-act?, choose-action, get-deck)
-- Burn bot (20 Mountain + 40 Lightning Bolt, configurable aggression)
-- Control bot (Counterspells with configurable counter-targets and priority threshold)
-- Discard bot (Duress effects with configurable priority card list)
-- Manual override mode (approve/reject/redirect bot decisions)
-- Bot action UI integration
-
-**Milestone:** Win through 2 Duress effects from discard bot.
-
-See design doc Section 7 for full bot system specification.
+- Creatures with power/toughness
+- Declare attackers, combat damage
+- Blocking (simplified — opponent's creatures always attack, player decides blocks)
+- Creature-based triggers (attack triggers, combat damage triggers)
 
 ### Additional Polish
 
-- Hypergeometric calculator panel (grid slot already reserved)
+- Hypergeometric calculator panel
 - Timed mode with chess-clock style game timer
-- Mobile/tablet responsive layout
 - Scryfall card image integration
+- Mobile/tablet responsive layout
+- Session statistics (win rate, avg kill turn, fizzle tracking)
 
 ### Cloud Sync
 
-- Supabase integration (see design doc Appendix C for analysis)
+- Supabase integration (see design doc Appendix C)
 - User authentication
 - Public puzzle library with search/filter
-- Puzzle upload/download
 - Community features (upvoting, daily puzzle, collections)
 
 ---
@@ -199,23 +219,28 @@ See design doc Section 7 for full bot system specification.
 
 Tracked in beads. Run `bd ready` for current available work.
 
-**Features:**
+**UX Polish:**
 
 | ID | Priority | Description |
 |----|----------|-------------|
 | fizzle-txiw | P2 | Keyboard shortcuts for core actions (Play, Yield, Undo) |
-| fizzle-ngg7 | P3 | Auto-resolve toggle |
-| fizzle-pt23 | P3 | Session statistics: win rate, avg kill turn |
-| fizzle-ze66 | P3 | Hypergeometric Calculator Panel (epic) |
-| fizzle-n99x | P4 | Timed mode with chess-clock |
-| fizzle-6o7g | P4 | Goldfish with Hate Pieces (epic) |
+| fizzle-t5ux | P3 | Rearrange game layout: stack between battlefields, phase bar above controls |
+| fizzle-ny51 | P3 | Mana-cost piled layout for card selection views |
+| fizzle-ofsq | P3 | Sort lands before 0-cost spells in hand display |
 
-**Refactoring:**
+**Features:**
 
 | ID | Priority | Description |
 |----|----------|-------------|
-| fizzle-gvs7 | P3 | Refactor opponent turn: model as real turn with active-player switching |
-| fizzle-72xq | P3 | Extract selection-valid? subscription to eliminate view validation duplication |
+| fizzle-ze66 | P3 | Hypergeometric Calculator Panel (epic) |
+| fizzle-n99x | P4 | Timed mode with chess-clock |
+| fizzle-u07p | P4 | Creatures and Combat (epic) |
+
+**Cleanup:**
+
+| ID | Priority | Description |
+|----|----------|-------------|
+| fizzle-jweu | P3 | Remove clock-turns concept from codebase |
 | fizzle-lr5i | P4 | Extract shared get-object-eid query helper |
 
 ---

@@ -4,7 +4,7 @@
 
 A ClojureScript-based Magic: The Gathering combo deck practice tool with fork/replay capabilities, simplified opponent AI, and tactics training.
 
-**Version:** 0.3.0
+**Version:** 0.4.0
 **Last Updated:** February 2026
 **Target Format:** Premodern combo decks
 
@@ -30,10 +30,10 @@ A ClojureScript-based Magic: The Gathering combo deck practice tool with fork/re
 4. [Data Models](#4-data-models)
 5. [Game Engine](#5-game-engine)
 6. [Card Effect System](#6-card-effect-system)
-7. [Bot System](#7-bot-system) *(not yet implemented)*
+7. [Bot System](#7-bot-system)
 8. [Fork/Replay System](#8-forkreplay-system)
 9. [UI Components](#9-ui-components)
-10. [Future: Persistence & Sharing](#10-future-persistence--sharing) *(not yet implemented)*
+10. [Future: Persistence & Sharing](#10-future-persistence--sharing)
 11. [Starter Deck: Iggy Pop](#11-starter-deck-iggy-pop)
 12. [Testing Strategy](#12-testing-strategy)
 13. [Design Retrospective](#13-design-retrospective) *(new)*
@@ -109,14 +109,15 @@ As a player drilling specific scenarios, I want to:
 - Track my success rate on specific puzzles
 ```
 
-### Simplified Opponents
+### Test Against Specific Cards
 
 ```
 As a player practicing against disruption, I want to:
-- Face a "burn" opponent (20 lands, 40 Lightning Bolts)
-- Face a "control" opponent (counterspells on a clock)
-- Face a "discard" opponent (Duress effects)
-- Either manually trigger opponent actions or use simple heuristics
+- Configure which hate cards the opponent has (Seal of Cleansing, Chalice, etc.)
+- Specify the opponent's starting hand for deterministic scenarios
+- Face a burn clock (20 Mountains + 40 Lightning Bolts) for time pressure
+- Practice forcing through countermagic
+- Set up and share specific test scenarios with preset configurations
 ```
 
 ---
@@ -469,9 +470,14 @@ The stack uses a single `:stack-item` entity type for all entries, with a `:stac
 ;; Storm creates stack-items on cast with {:effect/type :storm-copies}
 ;; Copies have :stack-item/is-copy true and don't re-trigger storm
 
+;; Priority system is implemented:
+;; - Yield: resolve one, pass priority
+;; - Yield-all: resolve entire stack
+;; - Phase stops for untap/cleanup (no player actions)
+;; - Bots auto-pass or act based on heuristics
+;;
 ;; We still skip:
 ;; - Split second
-;; - Full priority system (player decides when to resolve)
 ;; - Replacement effects
 ;; - Layers / continuous effects
 ```
@@ -490,7 +496,7 @@ Zones:
 
 ### Core Engine Functions
 
-The engine is split across 17 files in `engine/`. Key patterns:
+The engine is split across 24 files in `engine/` (~4000 lines). Key patterns:
 
 ```clojure
 ;; engine/rules.cljs — Casting system
@@ -633,220 +639,60 @@ Player choices (Intuition piles, IGG returns, LED color, tutor targets) are hand
 
 ## 7. Bot System
 
-> **Status: Not yet implemented.** The bot system is planned for a future phase. The current goldfish mode uses a clock-based opponent (opponent "wins" after N turns) configured in the setup screen. Interactive bot decision-making (countering spells, casting Duress, etc.) has not been built. The designs below remain aspirational.
+> **Status: Partially implemented.** The bot protocol, goldfish bot, and burn bot are built and working. Priority system with yield/yield-all is complete. The remaining work is configurable bot scenarios (custom decks, starting hands, behavior rules) and the UX for configuring them.
 
-### Bot Protocol
+### Design Philosophy: Test Against Cards, Not Decks
 
-```clojure
-(ns fizzle.bots.protocol)
+The bot system is not about simulating a real opponent deck. It's about putting specific hate cards and pressure in front of you so you practice beating the cards that matter in your matchups.
 
-(defprotocol IBot
-  (get-archetype [this])
-  (get-clock [this db])
-  (should-act? [this db trigger])
-  (choose-action [this db available-actions])
-  (get-deck [this]))
+A storm player doesn't need to play against a full control deck. They need to practice forcing through a Counterspell. They don't need a full aggro matchup — they need to practice winning with a Phyrexian Dreadnought clock bearing down on them. The bot is a delivery mechanism for test scenarios.
 
-;; Triggers that bots respond to:
-;; :on-spell-cast - opportunity to counter
-;; :on-turn-start - discard, play threats
-;; :on-main-phase - play lands, develop
-;; :on-priority   - any instant-speed action
+### What's Built
+
+**Priority System:** Real MTG priority passing. Both players must pass priority for phases to advance. Yield resolves one stack item and passes. Yield-all resolves the entire stack. Phase stops prevent player actions during untap and cleanup.
+
+**Bot Protocol:** `IBot` multimethod protocol with archetype dispatch. Bots integrate with the priority system — they get priority passes during their turns and make decisions using the full engine (cast-spell, resolve, etc.). No special bot-only code paths.
+
+**Goldfish Bot:** Simplest possible opponent. Plays a land per turn, passes priority on everything. Pure combo practice with no interaction.
+
+**Burn Bot:** 20 Mountains + 40 Lightning Bolts. Casts through the full engine path: `rules/cast-spell` creates stack-item, resolution dispatches `deal-damage` effect, life total decrements, loss condition triggers at 0 life. Creates real clock pressure.
+
+**Bot Turn Cycle:** Opponent turns are real turns with active-player switching. The bot draws, gets a main phase, plays lands, casts spells — all using the same events as the human player.
+
+### Implementation
+
+```
+bots/
+  protocol.cljs     ; IBot multimethod (get-archetype, should-act?, choose-action, etc.)
+  definitions.cljs  ; Archetype definitions (goldfish, burn)
+  rules.cljs        ; Decision heuristics (play land, bolt face, pass priority)
+  interceptor.cljs  ; re-frame interceptor that drives bot turns automatically
 ```
 
-### Goldfish Bot
+The bot interceptor fires after priority passes and phase transitions. When the bot has priority, it evaluates `should-act?` and `choose-action` against the current game state, then dispatches the appropriate re-frame event. The human player sees the bot's actions appear in the history log and can respond normally.
 
-```clojure
-(ns fizzle.bots.goldfish)
+### Remaining Work: Configurable Scenarios
 
-(defrecord GoldfishBot [clock-turns]
-  IBot
-  (get-archetype [_] :goldfish)
-  (get-clock [_ db] 
-    ;; Opponent "wins" on turn N
-    (let [current-turn (get-turn db)]
-      (- clock-turns current-turn)))
-  (should-act? [_ _ _] false)
-  (choose-action [_ _ _] nil)
-  (get-deck [_] nil))
+The next step is making bot scenarios configurable rather than hardcoded. The vision:
 
-;; Usage: pure goldfish, win by turn 4
-(def fast-goldfish (->GoldfishBot 4))
-```
+**Scenario configuration:**
+- **Deck** — Specify which cards the opponent has (like deck building for the bot)
+- **Starting hand** — Sculpt the opponent's opening hand (like hand sculpting for the player)
+- **Behavior rules** — How the bot plays its cards (play lands, cast spells on curve, bolt face, hold up countermagic, etc.)
 
-### Burn Bot
+**Target scenarios:**
+- **Goldfish** — No interaction, pure combo practice (built)
+- **Burn clock** — Lightning Bolt pressure, practice winning under a life total clock (built)
+- **Hate pieces** — Opponent starts with Seal of Cleansing, Chalice of the Void, Sphere of Resistance on the battlefield. Player must use real cards to interact (Chain of Vapor, Hurkyl's Recall)
+- **Countermagic** — Opponent holds up Counterspell. Player practices forcing through disruption
+- **Creature clock** — Fast creatures (e.g., Phyrexian Dreadnought) as a kill clock. Requires creatures and combat (see roadmap)
+- **Named presets** — Out-of-the-box configurations bundling deck + hand + behavior rules
 
-```clojure
-(ns fizzle.bots.burn)
+**Open design question:** The engine supports robust rule-based bot behavior. The challenge is how to expose behavior configuration to the player without dumping raw EDN. This needs its own design session. Options range from simple presets to a per-card behavior config UI.
 
-;; Decklist: 20 Mountain, 40 Lightning Bolt
-(def burn-deck
-  (concat
-    (repeat 20 {:card/name "Mountain" :card/types #{:land} :card/subtypes #{:mountain}})
-    (repeat 40 {:card/name "Lightning Bolt" 
-                :card/cmc 1 
-                :card/colors #{:red}
-                :card/types #{:instant}
-                :card/effects [{:effect/type :damage
-                                :effect/amount 3
-                                :effect/target :any}]})))
+### Player-Directed Interaction
 
-(defrecord BurnBot [aggression]  ; 0.0-1.0, higher = bolts face more
-  IBot
-  (get-archetype [_] :burn)
-  
-  (get-clock [_ db]
-    ;; Calculate turns to kill based on lands + bolts in hand
-    (let [player (get-opponent db)
-          lands (count-lands-in-play db player)
-          bolts-in-hand (count-cards-in-hand db player)]
-      (estimate-burn-clock lands bolts-in-hand)))
-  
-  (should-act? [this db trigger]
-    (case trigger
-      :on-main-phase true  ; Always plays lands
-      :on-priority (and (has-mana? db (get-opponent db) {:red 1})
-                        (has-bolt-in-hand? db))
-      false))
-  
-  (choose-action [this db actions]
-    (cond
-      ;; Always play land if possible
-      (contains-action? actions :play-land)
-      {:action :play-land :card (first-land-in-hand db)}
-      
-      ;; Bolt logic
-      (contains-action? actions :cast-spell)
-      (if (> (rand) (- 1 aggression))
-        {:action :cast-spell :card :lightning-bolt :target :player}
-        {:action :pass})
-      
-      :else {:action :pass})))
-```
-
-### Control Bot
-
-```clojure
-(ns fizzle.bots.control)
-
-;; Configurable counterspell density
-(defn control-deck [counterspell-count]
-  (concat
-    (repeat 24 {:card/name "Island" :card/types #{:land} :card/subtypes #{:island}})
-    (repeat counterspell-count 
-            {:card/name "Counterspell"
-             :card/cmc 2
-             :card/colors #{:blue}
-             :card/types #{:instant}
-             :card/effects [{:effect/type :counter-spell
-                             :effect/target :spell-on-stack}]})
-    (repeat (- 36 counterspell-count)
-            {:card/name "Air Elemental"
-             :card/cmc 5
-             :card/colors #{:blue}
-             :card/types #{:creature}
-             :card/power 4
-             :card/toughness 4
-             :card/keywords #{:flying}})))
-
-(defrecord ControlBot [counter-targets priority-threshold]
-  ;; counter-targets: set of card types/names to always counter
-  ;; priority-threshold: mana cost above which to counter
-  IBot
-  
-  (should-act? [this db trigger]
-    (and (= trigger :on-spell-cast)
-         (has-mana? db (get-opponent db) {:blue 2})
-         (has-counterspell? db)))
-  
-  (choose-action [this db actions]
-    (let [spell-on-stack (peek-stack db)
-          card (get-card db spell-on-stack)]
-      (cond
-        ;; Always counter high-priority targets
-        (contains? counter-targets (:card/name card))
-        {:action :cast-spell :card :counterspell :target spell-on-stack}
-        
-        ;; Counter expensive spells
-        (>= (:card/cmc card) priority-threshold)
-        {:action :cast-spell :card :counterspell :target spell-on-stack}
-        
-        :else {:action :pass}))))
-
-;; Example: Counter IGG, Intuition, and anything CMC 4+
-(def anti-storm-control 
-  (->ControlBot 
-    #{"Ill-Gotten Gains" "Intuition" "Cunning Wish"}
-    4))
-```
-
-### Discard Bot
-
-```clojure
-(ns fizzle.bots.discard)
-
-(defn discard-deck [duress-count]
-  (concat
-    (repeat 24 {:card/name "Swamp" :card/types #{:land} :card/subtypes #{:swamp}})
-    (repeat duress-count
-            {:card/name "Duress"
-             :card/cmc 1
-             :card/colors #{:black}
-             :card/types #{:sorcery}
-             :card/effects [{:effect/type :targeted-discard
-                             :effect/target :opponent
-                             :effect/card-type :nonland-noncreature}]})
-    (repeat (- 36 duress-count)
-            {:card/name "Hypnotic Specter"
-             :card/cmc 3
-             :card/colors #{:black}
-             :card/types #{:creature}
-             :card/power 2
-             :card/toughness 2
-             :card/keywords #{:flying}
-             :card/abilities [{:ability/type :triggered
-                               :ability/trigger :deals-combat-damage
-                               :ability/effects [{:effect/type :random-discard
-                                                  :effect/target :opponent}]}]})))
-
-(defrecord DiscardBot [priority-cards]
-  ;; priority-cards: ordered list of cards to take with Duress
-  IBot
-  
-  (choose-action [this db actions]
-    (cond
-      (contains-action? actions :play-land)
-      {:action :play-land :card (first-land-in-hand db)}
-      
-      ;; Cast Duress turn 1 if possible
-      (and (contains-action? actions :cast-spell)
-           (has-mana? db (get-opponent db) {:black 1})
-           (has-duress-in-hand? db))
-      {:action :cast-spell :card :duress}
-      
-      :else {:action :pass}))
-  
-  ;; When resolving Duress, pick from priority list
-  (resolve-duress [this db hand]
-    (or (first (filter #(contains? (set priority-cards) (:card/name %)) hand))
-        (first (filter #(ritual? %) hand))
-        (first (filter #(tutor? %) hand))
-        (first hand))))
-
-;; Example: Prioritize taking LED, IGG, rituals
-(def storm-hate-discard
-  (->DiscardBot 
-    ["Lion's Eye Diamond" "Ill-Gotten Gains" "Dark Ritual" "Cabal Ritual"]))
-```
-
-### Manual Override Mode
-
-For any bot, the player can choose to manually make decisions:
-
-```clojure
-;; In UI, toggle "Manual Bot Control"
-;; When bot would act, instead show:
-;; "Bot wants to [action]. Allow? [Yes] [No] [Choose different]"
+For permanents like Seal of Cleansing, the interaction model is player-directed: the bot *has* the permanent on its battlefield, but the *player* decides when and how to interact with it. The player activates their own Chain of Vapor targeting the Seal, or the player can activate the Seal on the opponent's behalf to test timing scenarios. The bot doesn't make strategic decisions about when to crack the Seal — that's not the point. The point is that the Seal is there, affecting the game state, and the player needs to deal with it.
 
 ;; This enables:
 ;; - Testing specific disruption patterns
@@ -1174,7 +1020,7 @@ Based on the specific needs of storm practice, here are the UX patterns for comp
 
 ## 10. Future: Persistence & Sharing
 
-> **Status: Not yet implemented.** The tactics/puzzle system (save positions, share EDN) has not been built. The fork/replay system handles most "rewind to interesting position" use cases for now. localStorage persistence for presets and imported decks is implemented in the setup system, but puzzle save/load is future work.
+> **Status: Not yet implemented.** The tactics/puzzle system (save positions, share EDN) has not been built. The fork/replay system handles most "rewind to interesting position" use cases for now. localStorage persistence for presets and imported decks is implemented in the setup system. Puzzle save/load is planned after the bot scenario system and card expansion (see roadmap Step 4).
 
 ### Phase 1: Local Storage (v1)
 
@@ -1294,16 +1140,16 @@ Sideboard (15):
 
 ### Implementation Status
 
-58 cards implemented across `cards/iggy_pop.cljs` (core cards + opponent deck cards) and 8 individual card files. All 60 maindeck + 15 sideboard cards in the Iggy Pop list are playable, plus additional utility cards:
+32 unique cards implemented across 11 card files (`cards/iggy_pop.cljs` for core deck cards, plus 10 individual card files). The core Iggy Pop combo is fully playable — the unimplemented cards are mostly sideboard and utility cards that represent engine capabilities not yet built (tokens, bounce, delayed triggers).
 
 | Status | Cards |
 |--------|-------|
-| **Implemented (maindeck)** | Dark Ritual, Cabal Ritual, Lotus Petal, Lion's Eye Diamond, Careful Study, Mental Note, Brain Freeze, Polluted Delta, Gemstone Mine, City of Brass, City of Traitors, Island, Swamp, Merchant Scroll, Opt |
-| **Implemented (individual files)** | Ill-Gotten Gains, Deep Analysis, Intuition, Recoup, Orim's Chant, Flash of Insight, Cephalid Coliseum, Ray of Revelation, Seal of Cleansing |
-| **Implemented (extra)** | Underground River, Gaea's Blessing, Counterspell, Duress, Lightning Bolt (opponent deck cards) |
+| **Implemented (iggy_pop.cljs)** | Dark Ritual, Cabal Ritual, Lotus Petal, Lion's Eye Diamond, Careful Study, Mental Note, Brain Freeze, Polluted Delta, Gemstone Mine, City of Brass, City of Traitors, Island, Swamp, Underground River, Merchant Scroll, Opt, Intuition |
+| **Implemented (individual files)** | Ill-Gotten Gains, Deep Analysis, Recoup, Orim's Chant, Flash of Insight, Cephalid Coliseum, Ray of Revelation, Seal of Cleansing |
+| **Implemented (extra)** | Lightning Bolt (burn bot), Plains, Mountain, Forest (basic lands) |
 | **Not yet implemented** | Cunning Wish, Vision Charm, Urza's Bauble, Meditate, Chain of Vapor, Hurkyl's Recall, Hunting Pack, Tormod's Crypt, Abeyance, Cabal Therapy, Xantid Swarm |
 
-Cards marked "not yet implemented" are in the decklist but have no card definition yet. The game can still load these decklists — unimplemented cards are treated as vanilla cards with no effects.
+Unimplemented cards represent engine capabilities needed for card expansion: token creation (Hunting Pack), bounce effects (Chain of Vapor, Hurkyl's Recall), delayed triggers (Urza's Bauble), skip-turn (Meditate), name-a-card (Cabal Therapy), creature triggers (Xantid Swarm), and wish/sideboard access (Cunning Wish). These gaps will be filled naturally during the broader Premodern card expansion phase.
 
 ### Card Definition Examples
 
@@ -1923,19 +1769,20 @@ The fork/replay system is core functionality. Test it explicitly:
 
 | Metric | Value |
 |--------|-------|
-| Test files | 69 |
-| Tests | 1148 |
-| Assertions | 2605 |
+| Test files | 104 |
+| Tests | 1779 |
+| Assertions | 4429 |
 
 | Area | Files | Coverage |
 |------|-------|----------|
-| `cards/` | 22 | Per-card scenario tests |
-| `engine/` | 22 | Mana, effects, stack, costs, grants, targeting, triggers, SBAs |
-| `events/` | 16 | Game events, selection flows, abilities |
-| `history/` | 5 | Fork tree, branch operations, step navigation |
+| `cards/` | 25 | Per-card scenario tests (every implemented card) |
+| `engine/` | 25 | Mana, effects, stack, costs, grants, targeting, triggers, SBAs, priority, resolution |
+| `events/` | 28 | Game events, selection flows (6 domain modules), abilities |
+| `bots/` | 5 | Bot protocol, decision rules, integration tests |
+| `history/` | 6 | Fork tree, branch operations, step navigation |
 | `subs/` | 4 | Subscription derivations |
-| `views/` | 3 | Battlefield, mana pool, opponent display |
-| `db/` | 2 | Schema validation, queries |
+| `views/` | 6 | Battlefield, mana pool, opponent display, zone counts |
+| `db/` | 3 | Schema validation, queries |
 
 | Tool | Purpose |
 |------|---------|
@@ -1948,49 +1795,51 @@ The fork/replay system is core functionality. Test it explicitly:
 
 ### Property-Based Tests
 
-The original design proposed `test.check` for property-based testing. This has **not been implemented** — all tests are example-based. The invariants listed (zone exclusivity, mana non-negative, storm monotonic, card conservation) are tested via targeted unit tests rather than generative testing. Revisiting property-based tests could add value for edge case discovery but hasn't been a priority.
+The original design proposed `test.check` for property-based testing. This has **not been implemented** — all 1779 tests are example-based. The invariants listed (zone exclusivity, mana non-negative, storm monotonic, card conservation) are tested via targeted unit tests rather than generative testing. Revisiting property-based tests could add value for edge case discovery but hasn't been a priority.
 
 ---
 
 ## 13. Design Retrospective
 
-This section reflects on design choices after implementing the core system (~3000 lines of engine, ~2600 lines of events, 58 cards, 69 test files). What worked, what didn't, what we'd reconsider.
+This section reflects on design choices after implementing the system (~4000 lines of engine, ~3100 lines of events, ~520 lines of bot logic, 32 cards, 104 test files, 1779 tests). What worked, what didn't, what we'd reconsider.
 
 ### Validated Choices
 
-**re-frame event sourcing — Excellent fit.** The event model gave us fork/replay almost for free, exactly as predicted. The interceptor system was perfect for auto-capturing history entries. Subscriptions cleanly compute derived state (castable cards, threshold status, flashback availability). This was the best decision in the original design.
+**re-frame event sourcing — Excellent fit.** The event model gave us fork/replay almost for free, exactly as predicted. The interceptor system was perfect for auto-capturing history entries *and* for driving bot turns automatically. Subscriptions cleanly compute derived state (castable cards, threshold status, flashback availability). This was the best decision in the original design, and it scaled well to the bot system — bots dispatch the same events as human players.
 
-**Datascript for game state — Good, with caveats.** Entity refs make card→object→player relationships clean. Datalog queries are expressive for "find all objects in zone X owned by player Y with type Z." However, Datascript adds cognitive overhead for simple operations — updating a counter or moving a card between zones requires understanding entity IDs, transactions, and pull syntax. A plain nested map might have been simpler for 80% of operations, but Datascript's query power pays off for the complex 20% (targeting validation, flashback detection, etc.). **Keep it.**
+**Datascript for game state — Good, with caveats.** Entity refs make card-object-player relationships clean. Datalog queries are expressive for "find all objects in zone X owned by player Y with type Z." However, Datascript adds cognitive overhead for simple operations — updating a counter or moving a card between zones requires understanding entity IDs, transactions, and pull syntax. A plain nested map might have been simpler for 80% of operations, but Datascript's query power pays off for the complex 20% (targeting validation, flashback detection, etc.). **Keep it.** The trigger migration from atoms into Datascript further validated this — having triggers as queryable entities simplified registration and cleanup.
 
-**Data-driven cards — Validated.** Cards as EDN data with a multimethod effect interpreter was the right call. Adding a new card means defining data and maybe a new effect type, not writing card-specific engine code. The 20+ effect types cover a wide range of MTG effects.
+**Data-driven cards — Validated.** Cards as EDN data with a multimethod effect interpreter was the right call. Adding a new card means defining data and maybe a new effect type, not writing card-specific engine code. The 20+ effect types cover a wide range of MTG effects. The burn bot's Lightning Bolt works through the exact same engine path as a player-cast spell.
 
 **Immutability for fork — Validated.** Structural sharing means keeping history snapshots is cheap. The fork tree works exactly as hoped.
+
+**Bots use the same engine as players — Validated.** The decision to have bots dispatch re-frame events through the full engine path (not a separate "bot resolution" shortcut) was critical. Bot spells go on the stack, get resolved by the same multimethod, trigger the same state-based actions. This means any card that works for the player automatically works for the bot. The bot interceptor is ~250 lines of coordination, not a parallel game engine.
 
 ### Intentional Deviations
 
 **Snapshot-based history instead of event replay.** The design proposed reducing events 0..N to reconstruct state. We store full Datascript db values at each step instead. Tradeoff: more memory, but instant state access. For a practice tool where you frequently rewind, this was clearly correct. Event replay would require deterministic reduction (tricky with random elements like library shuffling) and would be slow for deep rewinds.
 
-**Unified stack-item entity instead of separate types.** The design had separate stack entry types (spell, ability, trigger). We use a single `:stack-item/*` entity with a `:stack-item/type` discriminator. This simplified queries, schema, and the resolution loop significantly. One `get-top-stack-item` function handles everything.
+**Unified stack-item entity instead of separate types.** The design had separate stack entry types (spell, ability, trigger). We use a single `:stack-item/*` entity with a `:stack-item/type` discriminator. This simplified queries, schema, and the resolution loop significantly. One `get-top-stack-item` function handles everything. The unified resolution multimethod (`engine/resolution.cljs`) dispatches on `:stack-item/type` with 5 defmethods.
 
-**Three event namespaces instead of four.** Design: `core`, `game`, `ui`, `tactics`. Actual: `game`, `selection`, `abilities` (plus `setup`, `opening_hand`). The split by interaction pattern (game actions vs player choices vs ability activation) works better than the domain-based split. `selection.cljs` is large (~1540 lines) but cohesive — every function deals with the "player is making a choice" concern.
+**Selection decomposition instead of monolithic file.** The original `selection.cljs` was ~1540 lines. Rather than splitting by selection type (tutor.cljs, discard.cljs), we decomposed by domain concern: `core.cljs` (builders/toggle/confirm), `library.cljs` (tutor/scry/peek), `targeting.cljs` (player/object targets), `costs.cljs` (mana allocation/exile), `zone_ops.cljs` (graveyard return/discard), `storm.cljs` (storm copy targeting). The thin `selection.cljs` dispatches to these modules. This preserved the overview of how selections interact while making each file focused.
 
-**Grants system (emergent).** Not in the original design. Emerged from needing temporary effects: flashback grants alternate costs, Orim's Chant grants casting restrictions, Recoup grants flashback to graveyard cards. The grants system (`engine/grants.cljs`) handles all of these with turn/phase-based expiration. This is the biggest architectural addition not foreseen by the design.
+**Grants system (emergent).** Not in the original design. Emerged from needing temporary effects: flashback grants alternate costs, Orim's Chant grants casting restrictions, Recoup grants flashback to graveyard cards. The grants system (`engine/grants.cljs`) handles all of these with turn/phase-based expiration.
 
-**Trigger registry (emergent).** The design sketched triggers for Gaea's Blessing but didn't design a general system. The implementation has a dynamic atom-based trigger registry (`engine/trigger_registry.cljs`) with event dispatch routing (`engine/trigger_dispatch.cljs`). Triggers register when permanents enter the battlefield, unregister when they leave. This is more complex than the design anticipated but necessary for cards like City of Brass, City of Traitors, and Cephalid Coliseum.
+**Trigger registry in Datascript (evolved).** The design sketched triggers for Gaea's Blessing but didn't design a general system. The first implementation used an atom-based registry. This was later migrated into Datascript (`engine/trigger_db.cljs`) for immutability — triggers are now queryable entities that participate in snapshots, so fork/replay correctly captures trigger state. Event dispatch routing in `engine/trigger_dispatch.cljs` handles the coordination.
+
+**Priority system with bot integration.** The design originally said "skip priority." Implementing bots required a real priority system — both players must pass for phases to advance. The priority engine (`engine/priority.cljs`) handles yield, yield-all, hold priority, and phase stops. Goldfish auto-passes everything. The burn bot checks for available spells during its priority windows.
 
 ### Choices to Revisit
 
-**selection.cljs size.** At ~1540 lines, it's the largest file in the project. Every selection type (tutor, discard, scry, pile-choice, graveyard-return, peek-select, exile-cost, x-mana, player-target, object-target) has its own builder/confirm pair. The pattern is consistent but the file is big. Consider splitting into `selection/tutor.cljs`, `selection/discard.cljs`, etc. if it grows further. The risk of splitting is losing the overview of how selections interact with each other.
-
-**No property-based tests.** The design proposed `test.check` for invariants like zone exclusivity and card conservation. We have 872+ example-based tests instead. Property-based tests could catch edge cases we haven't thought of, particularly around mana payment with X costs, zone transitions during complex effect chains, and stack interactions. Worth adding for the engine core.
+**No property-based tests.** The design proposed `test.check` for invariants like zone exclusivity and card conservation. We have 1779 example-based tests instead. Property-based tests could catch edge cases we haven't thought of, particularly around mana payment with X costs, zone transitions during complex effect chains, and stack interactions. Worth adding for the engine core.
 
 **Scryfall images — still absent.** The design included Scryfall integration for card images. Cards are text-only in the UI. This is fine for experienced players (the target audience knows what Dark Ritual does) but would improve the experience significantly. Low implementation effort; should probably just do it.
 
 **PWA/offline — still absent.** The design specified Workbox for service worker support. Not implemented and probably not needed yet — the app works fine as a regular web page. Revisit if users want to install it as an app.
 
-**Bot system — still absent.** Interactive opponents (burn, control, discard) remain unbuilt. The goldfish clock covers the primary use case (solo storm practice). Bots would add value for practicing against disruption but represent significant work (decision-making AI, priority system, interactive stack). Consider whether simpler approaches (e.g., "opponent has Duress — manually choose what they take") could provide 80% of the value at 20% of the cost.
+**Bot configuration UX — open question.** The bot engine supports robust rule-based behavior, but the current setup UI is a simple Goldfish/Burn dropdown. The vision is configurable scenarios: specify opponent deck, starting hand, and behavior rules. The challenge is exposing this power without overwhelming the user. Needs its own design session before the card expansion phase.
 
-**Combat — intentionally minimal.** The phase exists for the turn structure but there's no creature combat. This is fine for storm (you rarely attack with creatures). If adding creature-based win conditions (Hunting Pack tokens, Xantid Swarm), basic combat would be needed.
+**Combat — intentionally minimal.** The phase exists for the turn structure but there's no creature combat. This is fine for storm (you rarely attack with creatures). When adding creature-based bot scenarios (Phyrexian Dreadnought clock, Xantid Swarm), basic combat will be needed. This is tracked as a separate epic (fizzle-u07p).
 
 ---
 
