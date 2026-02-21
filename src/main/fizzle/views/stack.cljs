@@ -15,7 +15,7 @@
                 desc desc
                 :else (when-let [t (:stack-item/type item)]
                         (str "Stack: " (name t))))]
-    [:div {:class "border border-perm-border-tapped rounded py-1.5 px-2.5 mb-1 bg-surface-raised text-perm-text text-[13px]"}
+    [:div {:class "border border-perm-border-tapped rounded py-1.5 px-2.5 bg-surface-raised text-perm-text text-[13px] whitespace-nowrap flex-shrink-0"}
      label]))
 
 
@@ -24,9 +24,9 @@
   (let [stack @(rf/subscribe [::subs/stack])]
     [:div {:class "mb-4"}
      [:div {:class "text-text-label mb-1.5 text-xs"} "STACK"]
-     (if (seq stack)
-       [:div
+     [:div {:class "flex items-center gap-2 overflow-x-auto min-h-[44px]"}
+      (if (seq stack)
         (for [[idx item] (map-indexed vector stack)]
           ^{:key idx}
-          [stack-item-view item])]
-       [:div {:class "text-border text-[13px]"} "Empty"])]))
+          [stack-item-view item])
+        [:div {:class "text-border text-[13px]"} "Empty"])]]))

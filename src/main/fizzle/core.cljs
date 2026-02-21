@@ -54,7 +54,8 @@
   [:div {:class "game-grid"}
    ;; Left column: primary interaction zones
    [:div {:class "p-4 overflow-y-auto min-w-[400px]"}
-    [battlefield/battlefield-view]  ; Now includes phase bar and life totals
+    [battlefield/battlefield-view]  ; Includes phase bar and life totals
+    [stack/stack-view]
     [hand/hand-view]
     [controls/controls-view]
     [:div {:class "flex gap-8"}
@@ -62,7 +63,6 @@
      [mana-pool/storm-count-view]]
     [zone-counts/zone-counts-view]]
    ;; Right columns: reference panels
-   [collapsible-right-column "Stack" ::subs/stack-collapsed ::events/toggle-stack-collapsed [stack/stack-view]]
    [collapsible-right-column "Graveyard" ::subs/gy-collapsed ::events/toggle-gy-collapsed [graveyard/graveyard-view]]
    [collapsible-right-column "History" ::subs/history-collapsed ::events/toggle-history-collapsed [history/history-sidebar]]
    ;; Bottom: reserved for calculator panel
