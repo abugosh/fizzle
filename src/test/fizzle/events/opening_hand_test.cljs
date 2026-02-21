@@ -128,6 +128,17 @@
           "Phase should remain :viewing"))))
 
 
+(deftest test-consecutive-mulligans-produce-different-hands
+  (testing "second mulligan draws different cards than first (respects shuffle)"
+    (let [app-db (create-opening-hand-app-db)
+          after-1 (opening-hand/mulligan-handler app-db)
+          hand-1 (set (map :object/id (hand-objects after-1)))
+          after-2 (opening-hand/mulligan-handler after-1)
+          hand-2 (set (map :object/id (hand-objects after-2)))]
+      (is (not= hand-1 hand-2)
+          "Consecutive mulligans should produce different hands"))))
+
+
 ;; === Keep handler tests ===
 
 (deftest test-keep-zero-mulligans-transitions-to-game

@@ -24,7 +24,7 @@
         ;; Shuffle library
         db-shuffled (zones/shuffle-library db-after-return human-pid)
         ;; Get all library objects grouped by card-id
-        lib-objs (queries/get-objects-in-zone db-shuffled human-pid :library)
+        lib-objs (sort-by :object/position (queries/get-objects-in-zone db-shuffled human-pid :library))
         ;; Extract sculpted cards from library
         [sculpted-objs remaining-lib] (if (empty? must-contain)
                                         [[] lib-objs]
