@@ -42,8 +42,6 @@
           "Should load iggy-pop main deck")
       (is (= (:deck/side cards/iggy-pop-decklist) (:setup/sideboard db))
           "Should load iggy-pop sideboard")
-      (is (= 4 (:setup/clock-turns db))
-          "Should default clock-turns to 4")
       (is (= :setup (:active-screen db))
           "Should set active screen to setup"))))
 
@@ -132,26 +130,6 @@
           "New main entry should have count 1"))))
 
 
-;; === Set Clock Turns ===
-
-(deftest test-set-clock-turns
-  (testing "set-clock-turns updates stored value"
-    (let [db (-> (setup/init-setup-handler {})
-                 (setup/set-clock-turns-handler 6))]
-      (is (= 6 (:setup/clock-turns db))))))
-
-
-(deftest test-set-clock-turns-clamps-to-range
-  (testing "set-clock-turns clamps value to 1-20"
-    (let [db (setup/init-setup-handler {})]
-      (is (= 1 (:setup/clock-turns (setup/set-clock-turns-handler db 0)))
-          "Should clamp 0 to 1")
-      (is (= 1 (:setup/clock-turns (setup/set-clock-turns-handler db -5)))
-          "Should clamp negative to 1")
-      (is (= 20 (:setup/clock-turns (setup/set-clock-turns-handler db 25)))
-          "Should clamp 25 to 20"))))
-
-
 ;; === Save Preset ===
 
 (deftest test-save-preset-stores-config
@@ -181,21 +159,21 @@
 (deftest test-load-preset-restores-config
   (testing "load-preset restores saved config"
     (let [db (-> (setup/init-setup-handler {})
-                 (setup/set-clock-turns-handler 8)
+                 (setup/set-bot-archetype-handler :burn)
                  (setup/save-preset-handler "Custom"))
-          ;; Change clock turns after saving
-          db-changed (setup/set-clock-turns-handler db 3)
-          ;; Load preset should restore clock turns to 8
+          ;; Change bot archetype after saving
+          db-changed (setup/set-bot-archetype-handler db :goldfish)
+          ;; Load preset should restore bot archetype to :burn
           db-loaded (setup/load-preset-handler db-changed "Custom")]
-      (is (= 8 (:setup/clock-turns db-loaded))
-          "Clock turns should be restored from preset"))))
+      (is (= :burn (:setup/bot-archetype db-loaded))
+          "Bot archetype should be restored from preset"))))
 
 
 (deftest test-load-preset-unknown-name-noop
   (testing "load-preset with unknown name is no-op"
     (let [db (setup/init-setup-handler {})
           db-after (setup/load-preset-handler db "NonExistent")]
-      (is (= (:setup/clock-turns db) (:setup/clock-turns db-after))
+      (is (= (:setup/bot-archetype db) (:setup/bot-archetype db-after))
           "State should be unchanged for unknown preset"))))
 
 
@@ -272,7 +250,6 @@
     (let [db {:setup/selected-deck :iggy-pop
               :setup/main-deck (:deck/main cards/iggy-pop-decklist)
               :setup/sideboard (:deck/side cards/iggy-pop-decklist)
-              :setup/clock-turns 4
               :setup/presets {}
               :setup/last-preset nil
               :active-screen :setup}
@@ -286,7 +263,6 @@
     (let [db {:setup/selected-deck :iggy-pop
               :setup/main-deck (:deck/main cards/iggy-pop-decklist)
               :setup/sideboard (:deck/side cards/iggy-pop-decklist)
-              :setup/clock-turns 4
               :setup/presets {}
               :setup/last-preset "Deleted Preset"
               :active-screen :setup}
@@ -311,8 +287,8 @@
           "Main deck should match pre-game config")
       (is (= (:setup/sideboard setup-db) (:setup/sideboard restored))
           "Sideboard should match pre-game config")
-      (is (= (:setup/clock-turns setup-db) (:setup/clock-turns restored))
-          "Clock turns should match pre-game config"))))
+      (is (= (:setup/bot-archetype setup-db) (:setup/bot-archetype restored))
+          "Bot archetype should match pre-game config"))))
 
 
 (deftest test-restore-setup-without-stash-falls-back
@@ -509,7 +485,6 @@
                  (assoc-in [:setup/presets "Old Preset"]
                            {:main-deck (:deck/main cards/iggy-pop-decklist)
                             :sideboard (:deck/side cards/iggy-pop-decklist)
-                            :clock-turns 4
                             :selected-deck :iggy-pop}))
           db-loaded (setup/load-preset-handler db "Old Preset")]
       (is (= {} (:setup/must-contain db-loaded))

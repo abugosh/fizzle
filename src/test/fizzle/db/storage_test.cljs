@@ -35,7 +35,6 @@
   (testing "save-presets! and load-presets round-trip correctly"
     (let [presets {"Test" {:main-deck [{:card/id :dark-ritual :count 4}]
                            :sideboard []
-                           :clock-turns 4
                            :selected-deck :iggy-pop}}]
       (storage/save-presets! presets)
       (is (= presets (storage/load-presets))

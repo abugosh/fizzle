@@ -46,7 +46,6 @@
     {:setup/selected-deck :iggy-pop
      :setup/main-deck (:deck/main cards/iggy-pop-decklist)
      :setup/sideboard (:deck/side cards/iggy-pop-decklist)
-     :setup/clock-turns 4
      :setup/bot-archetype :goldfish
      :setup/must-contain {}
      :setup/presets presets
@@ -116,12 +115,6 @@
       db)))
 
 
-(defn set-clock-turns-handler
-  "Set clock turns, clamped to range 1-20."
-  [db n]
-  (assoc db :setup/clock-turns (max 1 (min 20 n))))
-
-
 (defn set-bot-archetype-handler
   "Set the opponent bot archetype."
   [db archetype]
@@ -135,7 +128,6 @@
     db
     (let [config {:main-deck (:setup/main-deck db)
                   :sideboard (:setup/sideboard db)
-                  :clock-turns (:setup/clock-turns db)
                   :bot-archetype (:setup/bot-archetype db)
                   :selected-deck (:setup/selected-deck db)
                   :must-contain (:setup/must-contain db)}
@@ -154,7 +146,6 @@
     (assoc db
            :setup/main-deck (:main-deck config)
            :setup/sideboard (:sideboard config)
-           :setup/clock-turns (:clock-turns config)
            :setup/bot-archetype (get config :bot-archetype :goldfish)
            :setup/selected-deck (:selected-deck config)
            :setup/must-contain (get config :must-contain {})
@@ -215,7 +206,6 @@
   {:setup/selected-deck (:setup/selected-deck db)
    :setup/main-deck (:setup/main-deck db)
    :setup/sideboard (:setup/sideboard db)
-   :setup/clock-turns (:setup/clock-turns db)
    :setup/bot-archetype (:setup/bot-archetype db)
    :setup/must-contain (:setup/must-contain db)
    :setup/presets (:setup/presets db)
@@ -233,7 +223,6 @@
              (>= main-count 60))
       (let [arch (or (:setup/bot-archetype db) :goldfish)
             game-db (game/init-game-state {:main-deck main-deck
-                                           :clock-turns (:setup/clock-turns db)
                                            :bot-archetype arch
                                            :bot-deck (bot/bot-deck arch)
                                            :must-contain (:setup/must-contain db)})]
@@ -255,7 +244,6 @@
   (if-let [config (:setup/stashed-config db)]
     (let [arch (get config :setup/bot-archetype :goldfish)
           game-db (game/init-game-state {:main-deck (:setup/main-deck config)
-                                         :clock-turns (:setup/clock-turns config)
                                          :bot-archetype arch
                                          :bot-deck (bot/bot-deck arch)
                                          :must-contain (get config :setup/must-contain {})})]
@@ -391,12 +379,6 @@
   ::move-to-main
   (fn [db [_ card-id]]
     (move-to-main-handler db card-id)))
-
-
-(rf/reg-event-db
-  ::set-clock-turns
-  (fn [db [_ n]]
-    (set-clock-turns-handler db n)))
 
 
 (rf/reg-event-db

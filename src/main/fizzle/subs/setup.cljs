@@ -10,7 +10,7 @@
 (rf/reg-sub ::setup-config
             (fn [db _]
               (select-keys db [:setup/selected-deck :setup/main-deck :setup/sideboard
-                               :setup/clock-turns :setup/must-contain
+                               :setup/must-contain
                                :setup/presets :setup/last-preset])))
 
 
@@ -55,10 +55,6 @@
 (rf/reg-sub ::saved-presets
             (fn [db _]
               (keys (:setup/presets db))))
-
-
-(rf/reg-sub ::clock-turns
-            (fn [db _] (:setup/clock-turns db)))
 
 
 (rf/reg-sub ::bot-archetype

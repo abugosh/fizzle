@@ -38,8 +38,7 @@
 (deftest test-game-rule-triggers-in-datascript-after-init
   (testing "Game-rule triggers (draw, untap) exist in Datascript after game init"
     (let [app-db (game/init-game-state
-                   {:main-deck (:deck/main cards/iggy-pop-decklist)
-                    :clock-turns 4})
+                   {:main-deck (:deck/main cards/iggy-pop-decklist)})
           game-db (:game/db app-db)
           triggers (trigger-db/get-all-triggers game-db)
           always-active (filter :trigger/always-active? triggers)]

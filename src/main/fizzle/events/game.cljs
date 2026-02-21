@@ -139,7 +139,6 @@
   "Initialize a fresh game state from config.
    Config keys:
      :main-deck     - vec of {:card/id :count} maps (required)
-     :clock-turns   - integer turns until opponent wins (default 4)
      :must-contain  - map of {card-id count} for sculpted opening hand (default {})
 
    Returns app-db map with :game/db, :active-screen :opening-hand,
@@ -188,8 +187,7 @@
 (rf/reg-event-db
   ::init-game
   (fn [_ [_ config]]
-    (init-game-state (or config {:main-deck (:deck/main cards/iggy-pop-decklist)
-                                 :clock-turns 4}))))
+    (init-game-state (or config {:main-deck (:deck/main cards/iggy-pop-decklist)}))))
 
 
 (defn set-active-screen-handler

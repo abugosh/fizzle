@@ -133,8 +133,7 @@
 
 (defn- opponent-config
   []
-  (let [clock-turns @(rf/subscribe [::setup-subs/clock-turns])
-        bot-archetype @(rf/subscribe [::setup-subs/bot-archetype])]
+  (let [bot-archetype @(rf/subscribe [::setup-subs/bot-archetype])]
     [:div {:class "flex items-center gap-4"}
      [:div {:class "flex items-center gap-2"}
       [:label {:class "text-text-label text-xs font-bold uppercase tracking-wider"}
@@ -143,18 +142,7 @@
                 :value (name (or bot-archetype :goldfish))
                 :on-change #(rf/dispatch [::setup/set-bot-archetype (keyword (.. % -target -value))])}
        [:option {:value "goldfish"} "Goldfish"]
-       [:option {:value "burn"} "Burn"]]]
-     [:div {:class "flex items-center gap-2"}
-      [:label {:class "text-text-label text-xs font-bold uppercase tracking-wider"}
-       "Clock (turns)"]
-      [:input {:class "bg-surface-raised border border-border rounded px-2 py-1 text-sm text-text w-16"
-               :type "number"
-               :min 1
-               :max 20
-               :value (or clock-turns 4)
-               :on-change #(let [n (js/parseInt (.. % -target -value))]
-                             (when-not (js/isNaN n)
-                               (rf/dispatch [::setup/set-clock-turns n])))}]]]))
+       [:option {:value "burn"} "Burn"]]]]))
 
 
 (defn- must-contain-picker
