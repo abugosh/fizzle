@@ -115,6 +115,33 @@
       (is (= db db')))))
 
 
+(deftest test-step-to-clears-pending-selection
+  (testing "step-to clears stale :game/pending-selection"
+    (let [db (-> (build-3-entry-db)
+                 (assoc :game/pending-selection {:selection/type :mana-allocation}))
+          db' (history/step-to db 0)]
+      (is (nil? (:game/pending-selection db'))
+          "Pending selection should be cleared after step-to"))))
+
+
+(deftest test-step-to-clears-selected-card
+  (testing "step-to clears stale :game/selected-card"
+    (let [db (-> (build-3-entry-db)
+                 (assoc :game/selected-card :some-card-id))
+          db' (history/step-to db 0)]
+      (is (nil? (:game/selected-card db'))
+          "Selected card should be cleared after step-to"))))
+
+
+(deftest test-step-to-clears-pending-mode-selection
+  (testing "step-to clears stale :game/pending-mode-selection"
+    (let [db (-> (build-3-entry-db)
+                 (assoc :game/pending-mode-selection {:some :mode}))
+          db' (history/step-to db 0)]
+      (is (nil? (:game/pending-mode-selection db'))
+          "Pending mode selection should be cleared after step-to"))))
+
+
 (deftest test-can-step-back
   (testing "can-step-back? false at 0, true at > 0"
     (let [db (build-3-entry-db)]

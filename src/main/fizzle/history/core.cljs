@@ -67,12 +67,20 @@
     db))
 
 
+(defn- clear-stale-ui-state
+  "Clear app-db keys that refer to game state which is no longer valid
+   after a history navigation (undo, redo, jump, branch switch)."
+  [db]
+  (dissoc db :game/pending-selection :game/selected-card :game/pending-mode-selection))
+
+
 (defn step-to
   [db position]
   (let [entries (effective-entries db)
         cnt (count entries)]
     (if (and (>= position 0) (< position cnt))
       (-> db
+          clear-stale-ui-state
           (assoc :history/position position)
           (assoc :game/db (:entry/snapshot (nth entries position))))
       db)))
@@ -121,7 +129,9 @@
 (defn switch-branch
   [db fork-id]
   (if (or (nil? fork-id) (get-fork db fork-id))
-    (let [db' (assoc db :history/current-branch fork-id)
+    (let [db' (-> db
+                  clear-stale-ui-state
+                  (assoc :history/current-branch fork-id))
           entries (effective-entries db')
           tip (dec (count entries))]
       (-> db'
@@ -163,6 +173,7 @@
         (let [main (:history/main db')
               tip (dec (count main))]
           (-> db'
+              clear-stale-ui-state
               (assoc :history/current-branch nil)
               (assoc :history/position (if (neg? tip) -1 tip))
               (cond-> (>= tip 0)
@@ -220,7 +231,7 @@
           branch (:history/current-branch db)
           ;; Cascade-delete child forks branching from the entry being popped
           db (reduce (fn [d fid] (delete-fork d fid))
-                     db
+                     (clear-stale-ui-state db)
                      (find-child-forks-at db position))]
       (if (nil? branch)
         ;; On main: pop last entry, decrement position, restore snapshot
