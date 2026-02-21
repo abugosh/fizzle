@@ -2,10 +2,12 @@
 
 
 (defn sort-cards
-  "Sort game objects by CMC ascending, then card name alphabetically.
+  "Sort game objects by CMC ascending, lands before non-lands within same CMC,
+   then card name alphabetically.
    Returns a sorted vector. Handles nil CMC (defaults to 0) and nil name (defaults to empty string)."
   [objects]
   (vec (sort-by (juxt #(get-in % [:object/card :card/cmc] 0)
+                      #(if (contains? (get-in % [:object/card :card/types]) :land) 0 1)
                       #(get-in % [:object/card :card/name] ""))
                 objects)))
 

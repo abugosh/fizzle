@@ -34,13 +34,13 @@
              (mapv #(get-in % [:object/card :card/name]) result))))))
 
 
-(deftest test-lands-sort-with-zero-cmc
-  (testing "lands (CMC 0) sort among other zero-cost cards by name"
+(deftest test-lands-sort-before-zero-cmc-spells
+  (testing "lands sort before 0-cost spells within CMC 0 group"
     (let [swamp (make-obj "Swamp" 0 #{:land})
           led (make-obj "Lion's Eye Diamond" 0)
           lotus (make-obj "Lotus Petal" 0)
           result (sorting/sort-cards [swamp led lotus])]
-      (is (= ["Lion's Eye Diamond" "Lotus Petal" "Swamp"]
+      (is (= ["Swamp" "Lion's Eye Diamond" "Lotus Petal"]
              (mapv #(get-in % [:object/card :card/name]) result))))))
 
 
@@ -84,8 +84,8 @@
       ;; Verify CMC ordering
       (is (= [0 0 0 1 2 2 4]
              (mapv #(get-in % [:object/card :card/cmc] 0) result)))
-      ;; Verify name ordering within CMC groups
-      (is (= ["Lion's Eye Diamond" "Lotus Petal" "Swamp"
+      ;; Verify ordering: lands first within CMC group, then name
+      (is (= ["Swamp" "Lion's Eye Diamond" "Lotus Petal"
               "Dark Ritual"
               "Brain Freeze" "Cabal Ritual"
               "Ill-Gotten Gains"]
