@@ -8,21 +8,11 @@
     [fizzle.db.queries :as q]))
 
 
-(defn get-object-eid
-  "Get the entity ID for an object by its UUID.
-   Returns nil if object doesn't exist."
-  [db object-id]
-  (d/q '[:find ?e .
-         :in $ ?oid
-         :where [?e :object/id ?oid]]
-       db object-id))
-
-
 (defn get-controller-eid
   "Get the controller entity ID for an object.
    Returns nil if object doesn't exist."
   [db object-id]
-  (when-let [obj-eid (get-object-eid db object-id)]
+  (when-let [obj-eid (q/get-object-eid db object-id)]
     (d/q '[:find ?c .
            :in $ ?e
            :where [?e :object/controller ?c]]
@@ -76,7 +66,7 @@
   ;; Can pay tap cost if:
   ;; 1. Object exists
   ;; 2. Object is not already tapped
-  (if-let [obj-eid (get-object-eid db object-id)]
+  (if-let [obj-eid (q/get-object-eid db object-id)]
     (let [tapped (d/q '[:find ?tapped .
                         :in $ ?e
                         :where [?e :object/tapped ?tapped]]
@@ -88,7 +78,7 @@
 (defmethod pay-cost :tap [db object-id cost]
   ;; Guard: check can pay first
   (when (can-pay? db object-id cost)
-    (let [obj-eid (get-object-eid db object-id)]
+    (let [obj-eid (q/get-object-eid db object-id)]
       (d/db-with db [[:db/add obj-eid :object/tapped true]]))))
 
 
@@ -98,7 +88,7 @@
   ;; Can pay remove-counter if:
   ;; 1. Object exists
   ;; 2. Object has sufficient counters of required type(s)
-  (if-let [obj-eid (get-object-eid db object-id)]
+  (if-let [obj-eid (q/get-object-eid db object-id)]
     (let [required (:remove-counter cost)
           current (or (d/q '[:find ?c .
                              :in $ ?e
@@ -114,7 +104,7 @@
 (defmethod pay-cost :remove-counter [db object-id cost]
   ;; Guard: check can pay first
   (when (can-pay? db object-id cost)
-    (let [obj-eid (get-object-eid db object-id)
+    (let [obj-eid (q/get-object-eid db object-id)
           required (:remove-counter cost)
           current (or (d/q '[:find ?c .
                              :in $ ?e
@@ -131,7 +121,7 @@
   ;; Can pay sacrifice-self if:
   ;; 1. Object exists
   ;; 2. Object is on the battlefield
-  (if-let [obj-eid (get-object-eid db object-id)]
+  (if-let [obj-eid (q/get-object-eid db object-id)]
     (= :battlefield (d/q '[:find ?z .
                            :in $ ?e
                            :where [?e :object/zone ?z]]
@@ -142,7 +132,7 @@
 (defmethod pay-cost :sacrifice-self [db object-id cost]
   ;; Guard: check can pay first
   (when (can-pay? db object-id cost)
-    (let [obj-eid (get-object-eid db object-id)]
+    (let [obj-eid (q/get-object-eid db object-id)]
       (d/db-with db [[:db/add obj-eid :object/zone :graveyard]]))))
 
 
@@ -153,7 +143,7 @@
   ;; 1. Object exists
   ;; 2. Object is on the battlefield
   ;; Note: Can always discard hand (even if empty)
-  (if-let [obj-eid (get-object-eid db object-id)]
+  (if-let [obj-eid (q/get-object-eid db object-id)]
     (= :battlefield (d/q '[:find ?z .
                            :in $ ?e
                            :where [?e :object/zone ?z]]
@@ -167,7 +157,7 @@
   ;; can-activate? has already verified all costs are payable.
   ;; The object may have been sacrificed by a prior cost (:sacrifice-self),
   ;; so we can't re-check zone. We just need the controller reference.
-  (if-let [obj-eid (get-object-eid db object-id)]
+  (if-let [obj-eid (q/get-object-eid db object-id)]
     (let [controller-eid (d/q '[:find ?c .
                                 :in $ ?e
                                 :where [?e :object/controller ?c]]
@@ -193,7 +183,7 @@
   ;; 1. Object exists
   ;; 2. Controller has life >= required amount
   ;; Note: Can pay life even if it would reduce to 0 (MTG rules)
-  (if-let [obj-eid (get-object-eid db object-id)]
+  (if-let [obj-eid (q/get-object-eid db object-id)]
     (let [controller-eid (d/q '[:find ?c .
                                 :in $ ?e
                                 :where [?e :object/controller ?c]]
@@ -213,7 +203,7 @@
   ;; can-activate? has already verified all costs are payable.
   ;; The object may have been sacrificed by a prior cost (:sacrifice-self),
   ;; so we can't re-check zone. We just need the controller reference.
-  (if-let [obj-eid (get-object-eid db object-id)]
+  (if-let [obj-eid (q/get-object-eid db object-id)]
     (let [controller-eid (d/q '[:find ?c .
                                 :in $ ?e
                                 :where [?e :object/controller ?c]]
@@ -236,7 +226,7 @@
   ;; 2. Controller has sufficient mana for each colored cost
   ;; 3. Remaining mana covers generic (:colorless) portion
   ;; The :colorless key is treated as generic mana (payable by any color).
-  (if-let [obj-eid (get-object-eid db object-id)]
+  (if-let [obj-eid (q/get-object-eid db object-id)]
     (let [controller-eid (d/q '[:find ?c .
                                 :in $ ?e
                                 :where [?e :object/controller ?c]]
@@ -262,7 +252,7 @@
   ;; Deduct mana from controller's pool.
   ;; NOTE: No can-pay? guard here - by the time pay-cost is called,
   ;; can-activate? has already verified all costs are payable.
-  (if-let [obj-eid (get-object-eid db object-id)]
+  (if-let [obj-eid (q/get-object-eid db object-id)]
     (let [controller-eid (d/q '[:find ?c .
                                 :in $ ?e
                                 :where [?e :object/controller ?c]]

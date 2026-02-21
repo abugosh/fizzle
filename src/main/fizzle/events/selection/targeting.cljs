@@ -133,10 +133,7 @@
       (let [;; Cast via rules/cast-spell-mode (pays costs, moves to stack)
             db-after-cast (rules/cast-spell-mode game-db player-id object-id mode)
             ;; Find object EID to locate stack-item
-            obj-eid (d/q '[:find ?e .
-                           :in $ ?oid
-                           :where [?e :object/id ?oid]]
-                         db-after-cast object-id)
+            obj-eid (queries/get-object-eid db-after-cast object-id)
             ;; Find the stack-item by object reference
             stack-item (when obj-eid
                          (d/q '[:find (pull ?e [:db/id]) .

@@ -4,6 +4,7 @@
    Provides can-activate?, pay-all-costs, and activate-ability functions
    that work with any ability defined as data."
   (:require
+    [fizzle.db.queries :as q]
     [fizzle.engine.conditions :as conditions]
     [fizzle.engine.costs :as costs]
     [fizzle.engine.effects :as effects]))
@@ -26,7 +27,7 @@
      Boolean - true if all costs can be paid AND condition is met."
   ([db object-id ability]
    ;; Default to checking controller's conditions
-   (let [obj (costs/get-object-eid db object-id)]
+   (let [obj (q/get-object-eid db object-id)]
      (if obj
        (let [controller-eid (costs/get-controller-eid db object-id)
              player-id (when controller-eid

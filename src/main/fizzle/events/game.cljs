@@ -1072,10 +1072,7 @@
           card (:object/card obj-after)
           etb-effects (:card/etb-effects card)
           db-after-triggers (if (seq (:card/triggers card))
-                              (let [obj-eid (d/q '[:find ?e .
-                                                   :in $ ?oid
-                                                   :where [?e :object/id ?oid]]
-                                                 db-after-move object-id)
+                              (let [obj-eid (queries/get-object-eid db-after-move object-id)
                                     tx (trigger-db/create-triggers-for-card-tx
                                          db-after-move obj-eid player-eid (:card/triggers card))]
                                 (d/db-with db-after-move tx))
@@ -1133,10 +1130,7 @@
   [db object-id]
   (let [obj (queries/get-object db object-id)]
     (if obj
-      (let [obj-eid (d/q '[:find ?e .
-                           :in $ ?oid
-                           :where [?e :object/id ?oid]]
-                         db object-id)]
+      (let [obj-eid (queries/get-object-eid db object-id)]
         (d/db-with db [[:db/add obj-eid :object/tapped true]]))
       db)))
 

@@ -17,6 +17,16 @@
        db player-id))
 
 
+(defn get-object-eid
+  "Get the Datascript entity ID for a game object by its UUID.
+   Returns nil if object doesn't exist."
+  [db object-id]
+  (d/q '[:find ?e .
+         :in $ ?oid
+         :where [?e :object/id ?oid]]
+       db object-id))
+
+
 (defn get-mana-pool
   "Get the mana pool for a player.
    Returns nil if player doesn't exist."

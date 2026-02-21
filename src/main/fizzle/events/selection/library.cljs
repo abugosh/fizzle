@@ -281,10 +281,7 @@
             ;; If entering battlefield tapped, set tapped state for all moved cards
             db-after-tapped (if enters-tapped?
                               (reduce (fn [d card-id]
-                                        (let [obj-eid (d/q '[:find ?e .
-                                                             :in $ ?oid
-                                                             :where [?e :object/id ?oid]]
-                                                           d card-id)]
+                                        (let [obj-eid (queries/get-object-eid d card-id)]
                                           (d/db-with d [[:db/add obj-eid :object/tapped true]])))
                                       db-after-moves
                                       selected)
@@ -338,10 +335,7 @@
         ;; Assign new positions to remainder cards starting after max-pos
         db-after-remainder (reduce-kv
                              (fn [d idx card-id]
-                               (let [obj-eid (d/q '[:find ?e .
-                                                    :in $ ?oid
-                                                    :where [?e :object/id ?oid]]
-                                                  d card-id)
+                               (let [obj-eid (queries/get-object-eid d card-id)
                                      new-pos (+ max-pos 1 idx)]
                                  (d/db-with d [[:db/add obj-eid :object/position new-pos]])))
                              db-after-selected
@@ -373,10 +367,7 @@
                   -1)]
     (reduce-kv
       (fn [d idx card-id]
-        (let [obj-eid (d/q '[:find ?e .
-                             :in $ ?oid
-                             :where [?e :object/id ?oid]]
-                           d card-id)
+        (let [obj-eid (queries/get-object-eid d card-id)
               new-pos (+ max-pos 1 idx)]
           (d/db-with d [[:db/add obj-eid :object/position new-pos]])))
       game-db
@@ -448,10 +439,7 @@
         ;; Build position update transactions
         position-txs (map-indexed
                        (fn [idx obj-id]
-                         (let [obj-eid (d/q '[:find ?e .
-                                              :in $ ?oid
-                                              :where [?e :object/id ?oid]]
-                                            game-db obj-id)]
+                         (let [obj-eid (queries/get-object-eid game-db obj-id)]
                            (when obj-eid
                              [:db/add obj-eid :object/position idx])))
                        new-order)]

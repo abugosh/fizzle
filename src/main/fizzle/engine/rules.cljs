@@ -285,10 +285,7 @@
   "Create a stack-item for a spell being cast.
    Also sets object/position to the same value for backward compatibility."
   [db player-id object-id]
-  (let [obj-eid (d/q '[:find ?e .
-                       :in $ ?oid
-                       :where [?e :object/id ?oid]]
-                     db object-id)
+  (let [obj-eid (q/get-object-eid db object-id)
         db-with-item (stack/create-stack-item db
                                               {:stack-item/type :spell
                                                :stack-item/controller player-id
@@ -304,10 +301,7 @@
 (defn- set-cast-mode
   "Store the casting mode on an object for use during resolution."
   [db object-id mode]
-  (let [obj-eid (d/q '[:find ?e .
-                       :in $ ?oid
-                       :where [?e :object/id ?oid]]
-                     db object-id)]
+  (let [obj-eid (q/get-object-eid db object-id)]
     (d/db-with db [[:db/add obj-eid :object/cast-mode mode]])))
 
 

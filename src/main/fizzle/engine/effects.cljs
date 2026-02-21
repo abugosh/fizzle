@@ -284,10 +284,7 @@
   [db _player-id effect _object-id]
   (let [target-id (:effect/target effect)
         counters-to-add (:effect/counters effect)]
-    (if-let [obj-eid (d/q '[:find ?e .
-                            :in $ ?oid
-                            :where [?e :object/id ?oid]]
-                          db target-id)]
+    (if-let [obj-eid (q/get-object-eid db target-id)]
       (let [existing (or (d/q '[:find ?c .
                                 :in $ ?e
                                 :where [?e :object/counters ?c]]
@@ -355,10 +352,7 @@
   [db _player-id _effect object-id]
   (if-not object-id
     db  ; No source object - no-op
-    (if (d/q '[:find ?e .
-               :in $ ?oid
-               :where [?e :object/id ?oid]]
-             db object-id)
+    (if (q/get-object-eid db object-id)
       (zones/move-to-zone db object-id :exile)
       db)))  ; Object doesn't exist - no-op
 
@@ -439,10 +433,7 @@
   ;;   - Object not on battlefield: still moves to graveyard (zones handles it)
   [db _player-id effect _object-id]
   (let [target-id (:effect/target effect)]
-    (if (d/q '[:find ?e .
-               :in $ ?oid
-               :where [?e :object/id ?oid]]
-             db target-id)
+    (if (q/get-object-eid db target-id)
       (zones/move-to-zone db target-id :graveyard)
       ;; Invalid target: no-op
       db)))

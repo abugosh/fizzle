@@ -172,10 +172,7 @@
                                  (zones/move-to-zone d card-id :exile))
                                game-db
                                selected)
-        obj-eid (d/q '[:find ?e .
-                       :in $ ?oid
-                       :where [?e :object/id ?oid]]
-                     db-after-exile object-id)
+        obj-eid (queries/get-object-eid db-after-exile object-id)
         db-with-x (d/db-with db-after-exile
                              [[:db/add obj-eid :object/x-value selected-count]])
         db-after-cast (rules/cast-spell-mode db-with-x player-id object-id mode)]
@@ -188,10 +185,7 @@
         player-id (:selection/player-id selection)
         object-id (:selection/spell-id selection)
         mode (:selection/mode selection)
-        obj-eid (d/q '[:find ?e .
-                       :in $ ?oid
-                       :where [?e :object/id ?oid]]
-                     game-db object-id)
+        obj-eid (queries/get-object-eid game-db object-id)
         db-with-x (d/db-with game-db
                              [[:db/add obj-eid :object/x-value x-value]])
         resolved-mana-cost (mana/resolve-x-cost (:mode/mana-cost mode) x-value)
@@ -222,10 +216,7 @@
         db-after-cast (rules/cast-spell-mode-with-allocation
                         game-db player-id object-id mode allocation)
         db-final (if pending-targets
-                   (let [obj-eid (d/q '[:find ?e .
-                                        :in $ ?oid
-                                        :where [?e :object/id ?oid]]
-                                      db-after-cast object-id)
+                   (let [obj-eid (queries/get-object-eid db-after-cast object-id)
                          stack-item-eid (when obj-eid
                                           (d/q '[:find ?e .
                                                  :in $ ?obj-eid

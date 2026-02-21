@@ -46,10 +46,7 @@
       :no-counters
       (let [target-id (:condition/target condition)
             counter-type (:condition/counter-type condition)]
-        (if-let [obj-eid (d/q '[:find ?e .
-                                :in $ ?oid
-                                :where [?e :object/id ?oid]]
-                              db target-id)]
+        (if-let [obj-eid (q/get-object-eid db target-id)]
           (let [counters (or (d/q '[:find ?c .
                                     :in $ ?e
                                     :where [?e :object/counters ?c]]

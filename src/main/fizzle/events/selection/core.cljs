@@ -6,7 +6,6 @@
    selection types. Domain modules register methods on the multimethods
    defined here."
   (:require
-    [datascript.core :as d]
     [fizzle.db.queries :as queries]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.stack :as stack]
@@ -88,10 +87,7 @@
    Looks up the stack-item by the spell's object EID and removes it.
    Returns updated db. Safe to call when no stack-item exists."
   [game-db spell-id]
-  (let [obj-eid (d/q '[:find ?e .
-                       :in $ ?oid
-                       :where [?e :object/id ?oid]]
-                     game-db spell-id)]
+  (let [obj-eid (queries/get-object-eid game-db spell-id)]
     (if-let [si (when obj-eid (stack/get-stack-item-by-object-ref game-db obj-eid))]
       (stack/remove-stack-item game-db (:db/id si))
       game-db)))

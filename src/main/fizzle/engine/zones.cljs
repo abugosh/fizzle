@@ -52,10 +52,7 @@
   (let [current-zone (:object/zone (q/get-object db object-id))]
     (if (= current-zone new-zone)
       db
-      (let [obj-eid (d/q '[:find ?e .
-                           :in $ ?oid
-                           :where [?e :object/id ?oid]]
-                         db object-id)
+      (let [obj-eid (q/get-object-eid db object-id)
             ;; Retract Datascript trigger entities when leaving battlefield
             trigger-retract-txs
             (when (= current-zone :battlefield)
@@ -83,9 +80,6 @@
 
    Returns db unchanged if object doesn't exist."
   [db object-id]
-  (if-let [obj-eid (d/q '[:find ?e .
-                          :in $ ?oid
-                          :where [?e :object/id ?oid]]
-                        db object-id)]
+  (if-let [obj-eid (q/get-object-eid db object-id)]
     (d/db-with db [[:db.fn/retractEntity obj-eid]])
     db))

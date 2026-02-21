@@ -7,6 +7,7 @@
    All triggers are Datascript entities. Dispatch queries Datascript directly."
   (:require
     [datascript.core :as d]
+    [fizzle.db.queries :as q]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.triggers :as triggers]))
@@ -47,10 +48,7 @@
   (cond-> event
     (:event/object-id event)
     (assoc :event/object-id
-           (d/q '[:find ?e .
-                  :in $ ?oid
-                  :where [?e :object/id ?oid]]
-                db (:event/object-id event)))))
+           (q/get-object-eid db (:event/object-id event)))))
 
 
 (defn- datascript-trigger->dispatch-format

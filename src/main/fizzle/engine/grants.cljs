@@ -32,10 +32,7 @@
   "Add a grant to an object. Returns updated db.
    Does not check for duplicates - caller should ensure grant IDs are unique."
   [db object-id grant]
-  (let [obj-eid (d/q '[:find ?e .
-                       :in $ ?oid
-                       :where [?e :object/id ?oid]]
-                     db object-id)
+  (let [obj-eid (q/get-object-eid db object-id)
         current-grants (q/get-grants db object-id)
         new-grants (conj current-grants grant)]
     (d/db-with db [[:db/add obj-eid :object/grants new-grants]])))
@@ -45,10 +42,7 @@
   "Remove a specific grant by ID from an object. Returns updated db.
    No-op if grant doesn't exist."
   [db object-id grant-id]
-  (let [obj-eid (d/q '[:find ?e .
-                       :in $ ?oid
-                       :where [?e :object/id ?oid]]
-                     db object-id)
+  (let [obj-eid (q/get-object-eid db object-id)
         current-grants (q/get-grants db object-id)
         new-grants (filterv #(not= grant-id (:grant/id %)) current-grants)]
     (if (= (count current-grants) (count new-grants))

@@ -66,10 +66,7 @@
                                         :object/tapped false
                                         :object/is-copy true}])
            ;; Get the copy's EID for stack-item ref
-           copy-eid (d/q '[:find ?e .
-                           :in $ ?oid
-                           :where [?e :object/id ?oid]]
-                         db-with-copy copy-id)
+           copy-eid (q/get-object-eid db-with-copy copy-id)
            ;; Resolve targets: use override if provided, else inherit from original
            targets (or target-override
                        (let [original-si (d/q '[:find (pull ?e [:stack-item/targets]) .
