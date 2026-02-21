@@ -109,9 +109,20 @@
 /* Game layout grid */
 .game-grid {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: auto 1fr auto;
   grid-template-rows: 1fr auto;
   flex: 1;
+}
+
+/* Left column states */
+.left-col-collapsed {
+  width: 2rem;
+  overflow: hidden;
+}
+
+.left-col-expanded {
+  width: 250px;
+  min-width: 200px;
 }
 
 /* Right column states */

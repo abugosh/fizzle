@@ -166,7 +166,7 @@
    [stop-dot phase player-stops :player]])
 
 
-(defn- phase-bar-section
+(defn phase-bar-section
   "Phase bar with life totals flanking it."
   []
   (let [current-phase (or @(rf/subscribe [::subs/current-phase]) :main1)
@@ -203,7 +203,7 @@
 
 
 (defn battlefield-view
-  "6-row mirrored battlefield: opponent (lands/other/creatures) → phase bar → player (creatures/other/lands)"
+  "6-row mirrored battlefield: opponent (lands/other/creatures) + player (creatures/other/lands)"
   []
   (let [opponent-bf @(rf/subscribe [::subs/opponent-battlefield])
         player-bf @(rf/subscribe [::subs/battlefield])]
@@ -213,8 +213,6 @@
      [permanent-row (:lands opponent-bf) "Lands" false]
      [permanent-row (:other opponent-bf) "Other" false]
      [permanent-row (:creatures opponent-bf) "Creatures" false]
-     ;; Phase bar (center)
-     [phase-bar-section]
      ;; Player battlefield (bottom 3 rows)
      [:div {:class "text-text-label mb-1.5 text-xs"} "YOUR BATTLEFIELD"]
      [permanent-row (:creatures player-bf) "Creatures" true]

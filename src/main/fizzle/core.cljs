@@ -41,6 +41,20 @@
        (into [:div {:class "p-2"}] children))]))
 
 
+(defn- collapsible-left-column
+  [title sub-key toggle-event & children]
+  (let [collapsed? @(rf/subscribe [sub-key])]
+    [:div {:class (str "border-r border-border bg-surface-raised overflow-y-auto "
+                       (if collapsed? "left-col-collapsed" "left-col-expanded"))}
+     [:div {:class "flex items-center cursor-pointer select-none gap-2 p-2 border-b border-border"
+            :on-click #(rf/dispatch [toggle-event])}
+      [:span {:class "text-text-label text-xs font-bold uppercase tracking-wider"} title]
+      [:span {:class "text-text-dim text-xs"}
+       (if collapsed? "\u25B6" "\u25BC")]]
+     (when-not collapsed?
+       (into [:div {:class "p-2"}] children))]))
+
+
 (defn- nav-btn-class
   [active?]
   (str "px-3 py-1 text-sm rounded cursor-pointer "
@@ -52,18 +66,20 @@
 (defn- game-screen
   []
   [:div {:class "game-grid"}
-   ;; Left column: primary interaction zones
+   ;; Left sidebar: graveyard
+   [collapsible-left-column "Graveyard" ::subs/gy-collapsed ::events/toggle-gy-collapsed [graveyard/graveyard-view]]
+   ;; Center column: primary interaction zones
    [:div {:class "p-4 overflow-y-auto min-w-[400px]"}
-    [battlefield/battlefield-view]  ; Includes phase bar and life totals
+    [battlefield/battlefield-view]
     [stack/stack-view]
+    [battlefield/phase-bar-section]
     [hand/hand-view]
     [controls/controls-view]
     [:div {:class "flex gap-8"}
      [mana-pool/mana-pool-view]
      [mana-pool/storm-count-view]]
     [zone-counts/zone-counts-view]]
-   ;; Right columns: reference panels
-   [collapsible-right-column "Graveyard" ::subs/gy-collapsed ::events/toggle-gy-collapsed [graveyard/graveyard-view]]
+   ;; Right sidebar: history
    [collapsible-right-column "History" ::subs/history-collapsed ::events/toggle-history-collapsed [history/history-sidebar]]
    ;; Bottom: reserved for calculator panel
    [:div {:class "col-span-full"}]
