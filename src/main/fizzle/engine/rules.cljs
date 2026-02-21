@@ -36,7 +36,7 @@
    :mode/zone :hand
    :mode/mana-cost (or (:card/mana-cost card) {})
    :mode/additional-costs []
-   :mode/on-resolve (if (some #{:instant :sorcery} (:card/types card))
+   :mode/on-resolve (if (some #{:instant :sorcery} (set (:card/types card)))
                       :graveyard
                       :battlefield)})
 
@@ -51,7 +51,7 @@
      :mode/mana-cost (merge-mana-costs (:card/mana-cost card) (:card/kicker card))
      :mode/additional-costs []
      :mode/effects (or (:card/kicked-effects card) [])
-     :mode/on-resolve (if (some #{:instant :sorcery} (:card/types card))
+     :mode/on-resolve (if (some #{:instant :sorcery} (set (:card/types card)))
                         :graveyard
                         :battlefield)}))
 

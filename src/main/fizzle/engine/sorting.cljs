@@ -17,7 +17,7 @@
    An object is a land if its :card/types set contains :land."
   [objects]
   (let [{lands true non-lands false}
-        (group-by #(contains? (get-in % [:object/card :card/types]) :land) objects)]
+        (group-by #(contains? (set (get-in % [:object/card :card/types])) :land) objects)]
     {:lands (vec (or lands []))
      :non-lands (vec (or non-lands []))}))
 
