@@ -47,7 +47,7 @@
         [:span {:class "ml-2 py-0.5 px-1.5 bg-flashback-badge-bg rounded text-[10px] text-text"}
          "THRESHOLD"])]
      (if (pos? card-count)
-       [:div {:class "flex flex-col gap-0.5 max-h-[200px] overflow-y-auto"}
+       [:div {:class "flex flex-col gap-0.5"}
         (when (seq castable)
           (for [obj castable]
             ^{:key (:object/id obj)}

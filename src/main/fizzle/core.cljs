@@ -65,7 +65,7 @@
 
 (defn- game-screen
   []
-  [:div {:class "game-grid"}
+  [:div {:class "game-grid min-h-0"}
    ;; Left sidebar: graveyard
    [collapsible-left-column "Graveyard" ::subs/gy-collapsed ::events/toggle-gy-collapsed [graveyard/graveyard-view]]
    ;; Center column: primary interaction zones
@@ -92,7 +92,7 @@
 (defn app
   []
   (let [screen @(rf/subscribe [::subs/active-screen])]
-    [:div {:class "min-h-screen bg-surface font-mono text-text"}
+    [:div {:class "h-screen flex flex-col bg-surface font-mono text-text overflow-hidden"}
      ;; Header with nav
      [:div {:class "flex items-center gap-4 px-4 py-2 border-b border-border bg-surface-raised"}
       [:h1 {:class "text-text font-bold text-lg"} "Fizzle"]
