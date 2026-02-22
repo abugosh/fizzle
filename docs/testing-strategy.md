@@ -12,14 +12,18 @@ This guide defines the testing standards for card implementations in Fizzle. Eve
 
 ## Test File Structure
 
+Test files mirror the card source path:
 ```
-src/test/fizzle/cards/<card_name>_test.cljs
+src/main/fizzle/cards/{color}/{card_name}.cljs      (card definition)
+src/test/fizzle/cards/{color}/{card_name}_test.cljs  (card tests)
 ```
+
+Color-identity subdirectories: `black/`, `blue/`, `white/`, `red/`, `green/`, `multicolor/`, `lands/`, `artifacts/`
 
 Every card test file follows this structure:
 
 ```clojure
-(ns fizzle.cards.<card-name>-test
+(ns fizzle.cards.{color}.{card-name}-test
   "Tests for <Card Name> — <brief description>.
    <What this file tests:>
    - Card definition
@@ -27,7 +31,7 @@ Every card test file follows this structure:
    - ..."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
-    [fizzle.cards.iggy-pop :as cards]     ; or specific card ns
+    [fizzle.cards.{color}.{card-name} :as {card-name}]  ; import specific card ns
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
     [fizzle.test-helpers :as th]))
@@ -160,7 +164,7 @@ Test the full selection flow:
 2. Player toggles choices
 3. Confirmation executes the selection
 
-See: `src/test/fizzle/cards/careful_study_test.cljs` — tests draw-then-discard selection flow through real event dispatch.
+See: `src/test/fizzle/cards/blue/careful_study_test.cljs` — tests draw-then-discard selection flow through real event dispatch.
 
 ### Category F: Targeting Tests
 
@@ -171,7 +175,7 @@ Test:
 - Effect resolves against chosen target
 - Spell fizzles when target becomes invalid before resolution
 
-See: `src/test/fizzle/cards/recoup_test.cljs` — tests cast-time targeting, fizzle on target removal, and targeting restrictions (sorceries only, own graveyard only).
+See: `src/test/fizzle/cards/red/recoup_test.cljs` — tests cast-time targeting, fizzle on target removal, and targeting restrictions (sorceries only, own graveyard only).
 
 ### Category G: Edge Cases
 
@@ -185,7 +189,7 @@ Common edge cases:
 - **Tapped state** — mana ability cannot activate when already tapped
 - **No-op conditions** — effect does nothing when condition not met
 
-See: `src/test/fizzle/cards/gemstone_mine_test.cljs` — tests cannot-activate from graveyard, hand, and when tapped. Also tests mana produced even on sacrifice tap.
+See: `src/test/fizzle/cards/lands/gemstone_mine_test.cljs` — tests cannot-activate from graveyard, hand, and when tapped. Also tests mana produced even on sacrifice tap.
 
 ### Category H: Flashback Tests
 
@@ -196,7 +200,7 @@ Test:
 - Card exiles after flashback resolution
 - Card NOT castable from exile via flashback
 
-See: `src/test/fizzle/cards/recoup_test.cljs` — tests flashback from graveyard, exile on resolve, and zone restriction (exile blocks flashback).
+See: `src/test/fizzle/cards/red/recoup_test.cljs` — tests flashback from graveyard, exile on resolve, and zone restriction (exile blocks flashback).
 
 ### Category I: Trigger/Ability Tests
 
@@ -207,7 +211,7 @@ Test:
 - Ability costs are paid (tap, sacrifice, counter removal)
 - Triggers fire at correct time
 
-See: `src/test/fizzle/cards/gemstone_mine_test.cljs` — tests mana ability activation, counter depletion per tap, sacrifice on last counter.
+See: `src/test/fizzle/cards/lands/gemstone_mine_test.cljs` — tests mana ability activation, counter depletion per tap, sacrifice on last counter.
 
 ## Minimum Test Counts
 
@@ -272,7 +276,7 @@ Keep tests separate when they have meaningfully different setup, assertions, or 
   ...)
 ```
 
-See: `src/test/fizzle/cards/careful_study_test.cljs` — the rewritten version tests through `rules/cast-spell` and `game/resolve-one-item`.
+See: `src/test/fizzle/cards/blue/careful_study_test.cljs` — the rewritten version tests through `rules/cast-spell` and `game/resolve-one-item`.
 
 ### 2. Copy-pasted test variants
 
@@ -332,10 +336,10 @@ These files demonstrate the testing patterns described above:
 
 | File | Demonstrates |
 |------|-------------|
-| `cards/brain_freeze_test.cljs` | Full storm pipeline, targeting, parameterized copy tests, edge cases |
-| `cards/recoup_test.cljs` | Targeting, flashback, fizzle behavior, grant expiration, zone restrictions |
-| `cards/gemstone_mine_test.cljs` | Land ability testing, counter depletion, parameterized colors, zone guards |
-| `cards/lotus_petal_test.cljs` | Mana ability, `doseq` parameterization, zone restrictions |
-| `cards/led_test.cljs` | Sacrifice + discard combo, `doseq` parameterization, tapped state guard |
-| `cards/careful_study_test.cljs` | Selection/modal flow, draw-then-discard integration |
+| `cards/blue/brain_freeze_test.cljs` | Full storm pipeline, targeting, parameterized copy tests, edge cases |
+| `cards/red/recoup_test.cljs` | Targeting, flashback, fizzle behavior, grant expiration, zone restrictions |
+| `cards/lands/gemstone_mine_test.cljs` | Land ability testing, counter depletion, parameterized colors, zone guards |
+| `cards/artifacts/lotus_petal_test.cljs` | Mana ability, `doseq` parameterization, zone restrictions |
+| `cards/artifacts/led_test.cljs` | Sacrifice + discard combo, `doseq` parameterization, tapped state guard |
+| `cards/blue/careful_study_test.cljs` | Selection/modal flow, draw-then-discard integration |
 | `engine/effects_test.cljs` | Engine-level effect testing with thorough corner cases |

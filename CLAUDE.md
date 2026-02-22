@@ -76,11 +76,23 @@ src/
     ├── events/             # re-frame events (game actions, UI, tactics)
     ├── subs/               # re-frame subscriptions
     ├── engine/             # Game rules, mana, stack, effects, zones
-    ├── cards/              # Card definitions as EDN data
+    ├── cards/              # Card definitions (per-card files in color-identity subdirs)
+    │   ├── black/          # Black cards (e.g., dark_ritual.cljs)
+    │   ├── blue/           # Blue cards (e.g., brain_freeze.cljs)
+    │   ├── white/          # White cards
+    │   ├── red/            # Red cards
+    │   ├── green/          # Green cards
+    │   ├── multicolor/     # Multicolor cards
+    │   ├── lands/          # Lands (e.g., city_of_brass.cljs, basic_lands.cljs)
+    │   ├── artifacts/      # Colorless artifacts (e.g., lotus_petal.cljs)
+    │   ├── registry.cljs   # Requires all card namespaces, exports all-cards
+    │   └── iggy_pop.cljs   # Iggy Pop decklist definition (no card defs)
     ├── bots/               # Opponent AI: protocol, definitions (goldfish, burn), rules, interceptor
     ├── history/            # Fork/replay system
     └── views/              # Reagent components
 ```
+
+Each card file exports a `def` named `card` (or `cards` as a vector for cycles like basic lands). The registry requires all card namespaces explicitly and `engine/cards.cljs` imports only from the registry (ADR-010).
 
 ### Key Design Principles
 

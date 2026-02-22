@@ -19,7 +19,8 @@ Prevent rule hallucination and attribute errors by:
 
 - **DSL Reference:** [docs/card-dsl.md](../../../docs/card-dsl.md) - All effect, ability, cost, trigger, and condition types
 - **Comprehensive Rules:** [MTG Comprehensive Rules](https://media.wizards.com/2026/downloads/MagicCompRules%2020260116.txt)
-- **Card Definitions:** `src/main/fizzle/cards/iggy_pop.cljs`
+- **Card Definitions:** `src/main/fizzle/cards/{color}/` — per-card files in color-identity subdirectories
+- **Card Registry:** `src/main/fizzle/cards/registry.cljs` — single require point for all cards
 
 ---
 
@@ -138,29 +139,63 @@ Parse Scryfall type line into types, subtypes, and supertypes:
 "Creature — Human Wizard" → :types #{:creature}, :subtypes #{:human :wizard}
 ```
 
-### Step 2.4: Generate Skeleton
+### Step 2.4: Determine Color Identity Subdirectory
 
-Generate card definition with Scryfall verification comments:
+Place the card file in the appropriate color-identity subdirectory:
+
+| Color Identity | Directory |
+|----------------|-----------|
+| Black only | `cards/black/` |
+| Blue only | `cards/blue/` |
+| White only | `cards/white/` |
+| Red only | `cards/red/` |
+| Green only | `cards/green/` |
+| Multicolor | `cards/multicolor/` |
+| Colorless non-land | `cards/artifacts/` |
+| Land | `cards/lands/` |
+
+**File naming:** Use snake_case matching the card name (e.g., `dark_ritual.cljs`, `lions_eye_diamond.cljs`).
+
+### Step 2.5: Generate Skeleton
+
+Create file at `src/main/fizzle/cards/{color}/{card_name}.cljs`.
+
+Each card file exports a single `def` named `card`:
 
 ```clojure
-;; [CARD_NAME] - [TYPE_LINE]
-;; Oracle: [ORACLE_TEXT]
-;; Scryfall verified: [TODAY'S DATE]
-(def card-name-kebab
-  {:card/id :card-name-kebab  ;; Scryfall: {name}
-   :card/name "[NAME]"  ;; Scryfall: {name}
-   :card/cmc [CMC]  ;; Scryfall: {cmc}
-   :card/mana-cost [CONVERTED_MANA]  ;; Scryfall: {mana_cost}
-   :card/colors #{[COLORS]}  ;; Scryfall: {colors}
-   :card/types #{[TYPES]}  ;; Scryfall: {type_line}
+(ns fizzle.cards.{color}.{card-name-kebab}
+  "Card Name card definition.
+
+   Card Name: Type Line
+   Oracle text here.")
+
+
+(def card
+  {:card/id :card-name-kebab
+   :card/name "[NAME]"
+   :card/cmc [CMC]
+   :card/mana-cost [CONVERTED_MANA]
+   :card/colors #{[COLORS]}
+   :card/types #{[TYPES]}
    ;; :card/subtypes #{} - Add if applicable
    ;; :card/supertypes #{} - Add if applicable
-   :card/text "[ORACLE_TEXT]"  ;; Scryfall: {oracle_text}
+   :card/text "[ORACLE_TEXT]"
    ;; TODO: Add effects based on oracle text
    :card/effects []})
 ```
 
 **Card ID:** Use kebab-case version of card name (e.g., `Dark Ritual` → `:dark-ritual`)
+
+### Step 2.6: Register in Registry
+
+Add the new card to `src/main/fizzle/cards/registry.cljs`:
+
+1. Add a require in the `:require` block (alphabetical within color group):
+   ```clojure
+   [fizzle.cards.{color}.{card-name-kebab} :as {card-name-kebab}]
+   ```
+
+2. Add `{card-name-kebab}/card` to the `all-cards` vector.
 
 ---
 
@@ -170,7 +205,8 @@ Generate card definition with Scryfall verification comments:
 
 ### Step 3.1: Create Test File
 
-Create test file at: `src/test/fizzle/cards/[card_name]_test.cljs`
+Create test file mirroring the card file path:
+`src/test/fizzle/cards/{color}/{card_name}_test.cljs`
 
 Use existing test files as reference for structure.
 
@@ -346,7 +382,9 @@ This runs lint, format check, and tests. All must pass.
 Once verification complete:
 
 ```bash
-git add src/main/fizzle/cards/[file].cljs src/test/fizzle/cards/[file]_test.cljs
+git add src/main/fizzle/cards/{color}/{card_name}.cljs \
+       src/main/fizzle/cards/registry.cljs \
+       src/test/fizzle/cards/{color}/{card_name}_test.cljs
 git commit -m "Add [Card Name] implementation with tests
 
 - Scryfall verified attributes
@@ -368,9 +406,12 @@ Rulings: (use rulings_uri from card response)
 ### File Locations
 
 ```
-Card definitions: src/main/fizzle/cards/iggy_pop.cljs
-Card tests: src/test/fizzle/cards/[card_name]_test.cljs
-DSL reference: docs/card-dsl.md
+Card definitions: src/main/fizzle/cards/{color}/{card_name}.cljs
+Card registry:    src/main/fizzle/cards/registry.cljs
+Card tests:       src/test/fizzle/cards/{color}/{card_name}_test.cljs
+DSL reference:    docs/card-dsl.md
+
+Color directories: black/, blue/, white/, red/, green/, multicolor/, lands/, artifacts/
 ```
 
 ### Commands
