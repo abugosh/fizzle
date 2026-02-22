@@ -8,8 +8,8 @@
    - Game state set up"
   (:require
     [datascript.core :as d]
-    [fizzle.cards.black.dark-ritual :as dark-ritual]
-    [fizzle.db.schema :refer [schema]]))
+    [fizzle.db.schema :refer [schema]]
+    [fizzle.engine.cards :as cards]))
 
 
 (def empty-mana-pool
@@ -36,7 +36,7 @@
   []
   (let [conn (d/create-conn schema)]
     ;; 1. Transact card definitions
-    (d/transact! conn [dark-ritual/card])
+    (d/transact! conn [(cards/card-by-id :dark-ritual)])
 
     ;; 2. Transact player
     (d/transact! conn [{:player/id :player-1
