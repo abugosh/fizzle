@@ -3,7 +3,6 @@
   (:require
     [cljs.test :refer-macros [deftest testing is use-fixtures]]
     [fizzle.bots.protocol :as bot]
-    [fizzle.cards.iggy-pop :as iggy-pop]
     [fizzle.db.storage :as storage]
     [fizzle.events.setup :as setup]))
 
@@ -38,9 +37,9 @@
     (let [db (setup/init-setup-handler {})]
       (is (= :iggy-pop (:setup/selected-deck db))
           "Should default to iggy-pop deck")
-      (is (= (:deck/main iggy-pop/iggy-pop-decklist) (:setup/main-deck db))
+      (is (= (:deck/main setup/iggy-pop-decklist) (:setup/main-deck db))
           "Should load iggy-pop main deck")
-      (is (= (:deck/side iggy-pop/iggy-pop-decklist) (:setup/sideboard db))
+      (is (= (:deck/side setup/iggy-pop-decklist) (:setup/sideboard db))
           "Should load iggy-pop sideboard")
       (is (= :setup (:active-screen db))
           "Should set active screen to setup"))))
@@ -53,8 +52,8 @@
     (let [db (-> (setup/init-setup-handler {})
                  (setup/select-deck-handler :iggy-pop))]
       (is (= :iggy-pop (:setup/selected-deck db)))
-      (is (= (:deck/main iggy-pop/iggy-pop-decklist) (:setup/main-deck db)))
-      (is (= (:deck/side iggy-pop/iggy-pop-decklist) (:setup/sideboard db))))))
+      (is (= (:deck/main setup/iggy-pop-decklist) (:setup/main-deck db)))
+      (is (= (:deck/side setup/iggy-pop-decklist) (:setup/sideboard db))))))
 
 
 ;; === Move to Side ===
@@ -248,8 +247,8 @@
 (deftest test-quick-start-without-preset-noop
   (testing "quick-start is no-op when no MRU preset"
     (let [db {:setup/selected-deck :iggy-pop
-              :setup/main-deck (:deck/main iggy-pop/iggy-pop-decklist)
-              :setup/sideboard (:deck/side iggy-pop/iggy-pop-decklist)
+              :setup/main-deck (:deck/main setup/iggy-pop-decklist)
+              :setup/sideboard (:deck/side setup/iggy-pop-decklist)
               :setup/presets {}
               :setup/last-preset nil
               :active-screen :setup}
@@ -261,8 +260,8 @@
 (deftest test-quick-start-with-stale-preset-noop
   (testing "quick-start is no-op when MRU preset no longer exists"
     (let [db {:setup/selected-deck :iggy-pop
-              :setup/main-deck (:deck/main iggy-pop/iggy-pop-decklist)
-              :setup/sideboard (:deck/side iggy-pop/iggy-pop-decklist)
+              :setup/main-deck (:deck/main setup/iggy-pop-decklist)
+              :setup/sideboard (:deck/side setup/iggy-pop-decklist)
               :setup/presets {}
               :setup/last-preset "Deleted Preset"
               :active-screen :setup}
@@ -483,8 +482,8 @@
     (let [db (-> (setup/init-setup-handler {})
                  ;; Manually inject an old-style preset without must-contain key
                  (assoc-in [:setup/presets "Old Preset"]
-                           {:main-deck (:deck/main iggy-pop/iggy-pop-decklist)
-                            :sideboard (:deck/side iggy-pop/iggy-pop-decklist)
+                           {:main-deck (:deck/main setup/iggy-pop-decklist)
+                            :sideboard (:deck/side setup/iggy-pop-decklist)
                             :selected-deck :iggy-pop}))
           db-loaded (setup/load-preset-handler db "Old Preset")]
       (is (= {} (:setup/must-contain db-loaded))

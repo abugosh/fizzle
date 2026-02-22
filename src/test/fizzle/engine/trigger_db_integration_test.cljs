@@ -4,12 +4,12 @@
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
-    [fizzle.cards.iggy-pop :as iggy-pop]
     [fizzle.db.queries :as q]
     [fizzle.engine.events :as game-events]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.events.game :as game]
+    [fizzle.events.setup :as setup]
     [fizzle.test-helpers :as th]))
 
 
@@ -38,7 +38,7 @@
 (deftest test-game-rule-triggers-in-datascript-after-init
   (testing "Game-rule triggers (draw, untap) exist in Datascript after game init"
     (let [app-db (game/init-game-state
-                   {:main-deck (:deck/main iggy-pop/iggy-pop-decklist)})
+                   {:main-deck (:deck/main setup/iggy-pop-decklist)})
           game-db (:game/db app-db)
           triggers (trigger-db/get-all-triggers game-db)
           always-active (filter :trigger/always-active? triggers)]

@@ -2,10 +2,10 @@
   "Tests for opening hand events: mulligan, keep, bottom-card selection."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
-    [fizzle.cards.iggy-pop :as iggy-pop]
     [fizzle.db.queries :as q]
     [fizzle.events.game :as game]
-    [fizzle.events.opening-hand :as opening-hand]))
+    [fizzle.events.opening-hand :as opening-hand]
+    [fizzle.events.setup :as setup]))
 
 
 ;; === Test helpers ===
@@ -15,7 +15,7 @@
    Optionally accepts :must-contain map."
   ([] (create-opening-hand-app-db {}))
   ([must-contain]
-   (game/init-game-state {:main-deck (:deck/main iggy-pop/iggy-pop-decklist)
+   (game/init-game-state {:main-deck (:deck/main setup/iggy-pop-decklist)
                           :must-contain must-contain})))
 
 

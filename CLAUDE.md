@@ -85,8 +85,7 @@ src/
     │   ├── multicolor/     # Multicolor cards
     │   ├── lands/          # Lands (e.g., city_of_brass.cljs, basic_lands.cljs)
     │   ├── artifacts/      # Colorless artifacts (e.g., lotus_petal.cljs)
-    │   ├── registry.cljs   # Requires all card namespaces, exports all-cards
-    │   └── iggy_pop.cljs   # Iggy Pop decklist definition (no card defs)
+    │   └── registry.cljs   # Requires all card namespaces, exports all-cards
     ├── bots/               # Opponent AI: protocol, definitions (goldfish, burn), rules, interceptor
     ├── history/            # Fork/replay system
     └── views/              # Reagent components

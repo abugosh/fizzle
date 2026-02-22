@@ -16,7 +16,6 @@
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.cards.blue.deep-analysis :as deep-analysis]
-    [fizzle.cards.iggy-pop :as iggy-pop]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
     [fizzle.engine.effects :as effects]
@@ -26,7 +25,8 @@
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.zones :as zones]
     [fizzle.events.game :as events]
-    [fizzle.events.selection.targeting :as sel-targeting]))
+    [fizzle.events.selection.targeting :as sel-targeting]
+    [fizzle.events.setup :as setup]))
 
 
 ;; === Test helpers ===
@@ -276,7 +276,7 @@
 (deftest deep-analysis-draw-effect-with-resolved-target-test
   (testing "Draw effect executes correctly when target is resolved player"
     (let [;; Use full game init which has a proper library
-          db (:game/db (events/init-game-state {:main-deck (:deck/main iggy-pop/iggy-pop-decklist)}))
+          db (:game/db (events/init-game-state {:main-deck (:deck/main setup/iggy-pop-decklist)}))
           initial-hand-count (count (q/get-hand db :player-1))
           ;; Execute draw effect with resolved target (simulating confirmed selection)
           db-after (effects/execute-effect db :player-1
@@ -445,7 +445,7 @@
 (deftest deep-analysis-resolution-uses-stored-target-test
   (testing "Resolution uses stored :stack-item/targets when present"
     (let [;; Use full game init which has a proper library
-          db (:game/db (events/init-game-state {:main-deck (:deck/main iggy-pop/iggy-pop-decklist)}))
+          db (:game/db (events/init-game-state {:main-deck (:deck/main setup/iggy-pop-decklist)}))
           ;; Add Deep Analysis to hand
           [obj-id db] (add-card-to-zone db :player-1 deep-analysis/card :hand)
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})

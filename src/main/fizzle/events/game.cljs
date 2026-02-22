@@ -2,7 +2,6 @@
   (:require
     [datascript.core :as d]
     [fizzle.bots.protocol :as bot-protocol]
-    [fizzle.cards.iggy-pop :as iggy-pop]
     [fizzle.db.queries :as queries]
     [fizzle.db.schema :refer [schema]]
     [fizzle.db.storage :as storage]
@@ -188,7 +187,7 @@
 (rf/reg-event-db
   ::init-game
   (fn [_ [_ config]]
-    (init-game-state (or config {:main-deck (:deck/main iggy-pop/iggy-pop-decklist)}))))
+    (init-game-state config)))
 
 
 (defn set-active-screen-handler

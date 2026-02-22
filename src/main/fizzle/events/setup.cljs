@@ -2,7 +2,6 @@
   (:require
     [clojure.string :as str]
     [fizzle.bots.protocol :as bot]
-    [fizzle.cards.iggy-pop :as iggy-pop]
     [fizzle.db.storage :as storage]
     [fizzle.engine.deck-parser :as deck-parser]
     [fizzle.events.game :as game]
@@ -35,6 +34,46 @@
         deck))))
 
 
+;; Iggy Pop decklist — bootstrap default for the setup screen.
+;; Uses :card/id keywords only; no var references to card definitions.
+(def iggy-pop-decklist
+  {:deck/id :iggy-pop
+   :deck/name "Iggy Pop"
+   :deck/main [{:card/id :dark-ritual :count 4}
+               {:card/id :cabal-ritual :count 4}
+               {:card/id :brain-freeze :count 4}
+               {:card/id :city-of-brass :count 3}
+               {:card/id :gemstone-mine :count 4}
+               {:card/id :polluted-delta :count 3}
+               {:card/id :underground-river :count 1}
+               {:card/id :cephalid-coliseum :count 2}
+               {:card/id :island :count 2}
+               {:card/id :swamp :count 1}
+               {:card/id :lotus-petal :count 4}
+               {:card/id :lions-eye-diamond :count 4}
+               {:card/id :careful-study :count 2}
+               {:card/id :mental-note :count 3}
+               {:card/id :opt :count 4}
+               {:card/id :intuition :count 4}
+               {:card/id :deep-analysis :count 3}
+               {:card/id :recoup :count 1}
+               {:card/id :ill-gotten-gains :count 4}
+               {:card/id :orims-chant :count 1}
+               {:card/id :ray-of-revelation :count 1}
+               {:card/id :flash-of-insight :count 1}]
+   :deck/side [{:card/id :merchant-scroll :count 2}
+               {:card/id :seal-of-cleansing :count 2}
+               {:card/id :city-of-traitors :count 2}
+               {:card/id :careful-study :count 2}
+               {:card/id :deep-analysis :count 1}
+               {:card/id :mental-note :count 1}
+               {:card/id :opt :count 1}
+               {:card/id :orims-chant :count 1}
+               {:card/id :flash-of-insight :count 1}
+               {:card/id :ray-of-revelation :count 1}
+               {:card/id :cephalid-coliseum :count 1}]})
+
+
 ;; === Handler Functions (pure, testable) ===
 
 (defn init-setup-handler
@@ -44,8 +83,8 @@
         last-preset (storage/load-last-preset)
         imported-decks (storage/load-imported-decks)]
     {:setup/selected-deck :iggy-pop
-     :setup/main-deck (:deck/main iggy-pop/iggy-pop-decklist)
-     :setup/sideboard (:deck/side iggy-pop/iggy-pop-decklist)
+     :setup/main-deck (:deck/main iggy-pop-decklist)
+     :setup/sideboard (:deck/side iggy-pop-decklist)
      :setup/bot-archetype :goldfish
      :setup/must-contain {}
      :setup/presets presets
@@ -61,8 +100,8 @@
     :iggy-pop
     (assoc db
            :setup/selected-deck :iggy-pop
-           :setup/main-deck (:deck/main iggy-pop/iggy-pop-decklist)
-           :setup/sideboard (:deck/side iggy-pop/iggy-pop-decklist)
+           :setup/main-deck (:deck/main iggy-pop-decklist)
+           :setup/sideboard (:deck/side iggy-pop-decklist)
            :setup/must-contain {})
     ;; Check imported decks
     (if-let [imported (get (:setup/imported-decks db) deck-id)]
