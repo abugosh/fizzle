@@ -1,9 +1,8 @@
 (ns fizzle.cards.lands.basic-lands
   "Basic land card definitions.
 
-   Plains, Mountain, Forest — basic lands not already in individual files.
-   Each taps for one mana of its color.
-   Island and Swamp are in their own files.")
+   All five basic lands: Plains, Island, Swamp, Mountain, Forest.
+   Each taps for one mana of its color.")
 
 
 (def plains
@@ -19,6 +18,36 @@
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
                      :ability/produces {:white 1}}]})
+
+
+(def island
+  {:card/id :island
+   :card/name "Island"
+   :card/cmc 0
+   :card/mana-cost {}
+   :card/colors #{}
+   :card/types #{:land}
+   :card/subtypes #{:island}
+   :card/supertypes #{:basic}
+   :card/text "{T}: Add {U}."
+   :card/abilities [{:ability/type :mana
+                     :ability/cost {:tap true}
+                     :ability/produces {:blue 1}}]})
+
+
+(def swamp
+  {:card/id :swamp
+   :card/name "Swamp"
+   :card/cmc 0
+   :card/mana-cost {}
+   :card/colors #{}
+   :card/types #{:land}
+   :card/subtypes #{:swamp}
+   :card/supertypes #{:basic}
+   :card/text "{T}: Add {B}."
+   :card/abilities [{:ability/type :mana
+                     :ability/cost {:tap true}
+                     :ability/produces {:black 1}}]})
 
 
 (def mountain
@@ -52,5 +81,5 @@
 
 
 (def cards
-  "All basic lands in this file as a vector."
-  [plains mountain forest])
+  "All five basic lands as a vector."
+  [plains island swamp mountain forest])

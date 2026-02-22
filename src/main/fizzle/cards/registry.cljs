@@ -22,9 +22,7 @@
     [fizzle.cards.lands.city-of-brass :as city-of-brass]
     [fizzle.cards.lands.city-of-traitors :as city-of-traitors]
     [fizzle.cards.lands.gemstone-mine :as gemstone-mine]
-    [fizzle.cards.lands.island :as island]
     [fizzle.cards.lands.polluted-delta :as polluted-delta]
-    [fizzle.cards.lands.swamp :as swamp]
     [fizzle.cards.lands.underground-river :as underground-river]
     [fizzle.cards.red.lightning-bolt :as lightning-bolt]
     [fizzle.cards.red.recoup :as recoup]
@@ -57,12 +55,10 @@
        city-of-brass/card
        city-of-traitors/card
        gemstone-mine/card
-       island/card
-       swamp/card
        underground-river/card
        polluted-delta/card
        cephalid-coliseum/card
        lotus-petal/card
        lions-eye-diamond/card]
-      ;; Cycle cards (basic lands: plains, mountain, forest)
+      ;; Cycle cards (basic lands: all 5)
       basic-lands/cards)))

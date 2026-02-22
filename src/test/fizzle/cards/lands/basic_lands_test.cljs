@@ -4,8 +4,6 @@
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.cards.lands.basic-lands :as basic-lands]
-    [fizzle.cards.lands.island :as island]
-    [fizzle.cards.lands.swamp :as swamp]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.events.game :as game]
@@ -50,7 +48,7 @@
 
 (deftest test-island-card-definition
   (testing "Island has correct card fields"
-    (let [card island/card]
+    (let [card basic-lands/island]
       (is (= :island (:card/id card)))
       (is (= "Island" (:card/name card)))
       (is (= #{:land} (:card/types card)))
@@ -61,7 +59,7 @@
 
 (deftest test-swamp-card-definition
   (testing "Swamp has correct card fields"
-    (let [card swamp/card]
+    (let [card basic-lands/swamp]
       (is (= :swamp (:card/id card)))
       (is (= "Swamp" (:card/name card)))
       (is (= #{:land} (:card/types card)))
