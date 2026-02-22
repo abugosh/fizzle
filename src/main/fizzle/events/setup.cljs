@@ -2,7 +2,7 @@
   (:require
     [clojure.string :as str]
     [fizzle.bots.protocol :as bot]
-    [fizzle.cards.iggy-pop :as cards]
+    [fizzle.cards.iggy-pop :as iggy-pop]
     [fizzle.db.storage :as storage]
     [fizzle.engine.deck-parser :as deck-parser]
     [fizzle.events.game :as game]
@@ -44,8 +44,8 @@
         last-preset (storage/load-last-preset)
         imported-decks (storage/load-imported-decks)]
     {:setup/selected-deck :iggy-pop
-     :setup/main-deck (:deck/main cards/iggy-pop-decklist)
-     :setup/sideboard (:deck/side cards/iggy-pop-decklist)
+     :setup/main-deck (:deck/main iggy-pop/iggy-pop-decklist)
+     :setup/sideboard (:deck/side iggy-pop/iggy-pop-decklist)
      :setup/bot-archetype :goldfish
      :setup/must-contain {}
      :setup/presets presets
@@ -61,8 +61,8 @@
     :iggy-pop
     (assoc db
            :setup/selected-deck :iggy-pop
-           :setup/main-deck (:deck/main cards/iggy-pop-decklist)
-           :setup/sideboard (:deck/side cards/iggy-pop-decklist)
+           :setup/main-deck (:deck/main iggy-pop/iggy-pop-decklist)
+           :setup/sideboard (:deck/side iggy-pop/iggy-pop-decklist)
            :setup/must-contain {})
     ;; Check imported decks
     (if-let [imported (get (:setup/imported-decks db) deck-id)]

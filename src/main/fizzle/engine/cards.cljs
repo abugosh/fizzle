@@ -4,12 +4,12 @@
    Routes card data through the Interpretation Core (engine layer) so that
    consumers (subs, events) don't import card pool namespaces directly."
   (:require
-    [fizzle.cards.iggy-pop :as iggy-pop]))
+    [fizzle.cards.registry :as registry]))
 
 
 (def all-cards
   "All card definitions available in the card pool."
-  iggy-pop/all-cards)
+  registry/all-cards)
 
 
 (def card-by-id

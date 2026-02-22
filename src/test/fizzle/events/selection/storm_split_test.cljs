@@ -5,7 +5,7 @@
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
-    [fizzle.cards.iggy-pop :as cards]
+    [fizzle.cards.blue.brain-freeze :as brain-freeze]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
@@ -62,7 +62,7 @@
 (defn cast-brain-freeze-with-target
   "Cast Brain Freeze selecting the given target player. Returns updated db."
   [db player-id object-id target-player-id]
-  (let [card cards/brain-freeze
+  (let [card brain-freeze/card
         target-req (first (:card/targeting card))
         modes (rules/get-casting-modes db player-id object-id)
         mode (first (filter #(= :primary (:mode/id %)) modes))

@@ -6,10 +6,10 @@
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
-    [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
+    [fizzle.engine.cards :as cards]
     [fizzle.engine.stack :as stack]
     [fizzle.test-helpers :as th]))
 

@@ -11,7 +11,7 @@
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.bots.interceptor :as interceptor]
-    [fizzle.cards.lightning-bolt :as lightning-bolt]
+    [fizzle.cards.red.lightning-bolt :as lightning-bolt]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.events.abilities :as abilities]
@@ -28,7 +28,7 @@
   [{:keys [mountains bolts]}]
   (let [db (th/create-test-db {:stops #{:main1 :main2}})
         conn (d/conn-from-db db)
-        _ (d/transact! conn [lightning-bolt/lightning-bolt])
+        _ (d/transact! conn [lightning-bolt/card])
         db (th/add-opponent @conn {:bot-archetype :burn})]
     ;; Add Mountains to battlefield
     (let [[db _] (reduce (fn [[db' _] _]

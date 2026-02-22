@@ -2,7 +2,7 @@
   (:require
     [cljs.test :refer-macros [deftest is testing]]
     [datascript.core :as d]
-    [fizzle.cards.deep-analysis :refer [deep-analysis]]
+    [fizzle.cards.blue.deep-analysis :as deep-analysis-card]
     [fizzle.db.init :as init]
     [fizzle.db.queries :as q]
     [fizzle.engine.grants :as grants]
@@ -105,7 +105,7 @@
 
 (deftest test-graveyard-entry-mode-no-partition
   (testing "entry mode returns all cards in :remainder, no :castable partition"
-    (let [game-db (add-card-def (make-game-db) deep-analysis)
+    (let [game-db (add-card-def (make-game-db) deep-analysis-card/card)
           [db1 _] (add-card-to-graveyard game-db :dark-ritual)
           [db2 _] (add-card-to-graveyard db1 :deep-analysis)
           app-db {:game/db db2}
@@ -116,7 +116,7 @@
 
 (deftest test-graveyard-sorted-mode-partitions-flashback-to-top
   (testing "sorted mode puts flashback cards in :castable even without mana"
-    (let [game-db (add-card-def (make-game-db) deep-analysis)
+    (let [game-db (add-card-def (make-game-db) deep-analysis-card/card)
           [game-db' _] (add-card-to-graveyard game-db :deep-analysis)
           app-db {:game/db game-db'
                   :graveyard/sort-mode :sorted}
@@ -129,7 +129,7 @@
 
 (deftest test-graveyard-sorted-mode-mixed-flashback-and-non-flashback
   (testing "sorted mode: flashback to :castable, others to :remainder"
-    (let [game-db (add-card-def (make-game-db) deep-analysis)
+    (let [game-db (add-card-def (make-game-db) deep-analysis-card/card)
           [db1 _] (add-card-to-graveyard game-db :dark-ritual)
           [db2 _] (add-card-to-graveyard db1 :deep-analysis)
           app-db {:game/db db2
@@ -195,7 +195,7 @@
 
 (deftest test-graveyard-castable-sorted-in-sorted-mode
   (testing "castable partition is sorted by CMC+name in sorted mode"
-    (let [game-db (add-card-def (make-game-db) deep-analysis)
+    (let [game-db (add-card-def (make-game-db) deep-analysis-card/card)
           [game-db' _] (add-card-to-graveyard game-db :deep-analysis)
           app-db {:game/db game-db'
                   :graveyard/sort-mode :sorted}

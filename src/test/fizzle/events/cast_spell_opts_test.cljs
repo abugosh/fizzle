@@ -7,7 +7,7 @@
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
-    [fizzle.cards.lightning-bolt :as lightning-bolt]
+    [fizzle.cards.red.lightning-bolt :as lightning-bolt]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
     [fizzle.events.game :as game]
@@ -23,7 +23,7 @@
   []
   (let [db (th/create-test-db {:mana {:red 1}})
         conn (d/conn-from-db db)
-        _ (d/transact! conn [lightning-bolt/lightning-bolt])
+        _ (d/transact! conn [lightning-bolt/card])
         db (th/add-opponent @conn)
         [db bolt-id] (th/add-card-to-zone db :lightning-bolt :hand :player-1)
         app-db (merge (history/init-history)
@@ -37,7 +37,7 @@
   []
   (let [db (th/create-test-db {:mana {:red 1}})
         conn (d/conn-from-db db)
-        _ (d/transact! conn [lightning-bolt/lightning-bolt])
+        _ (d/transact! conn [lightning-bolt/card])
         db (th/add-opponent @conn {:bot-archetype :burn})
         ;; Add mana to player-2
         db (mana/add-mana db :player-2 {:red 1})

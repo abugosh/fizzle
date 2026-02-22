@@ -6,7 +6,7 @@
     [datascript.core :as d]
     [datascript.db :as ds-db]
     [fizzle.bots.protocol :as bot]
-    [fizzle.cards.iggy-pop :as cards]
+    [fizzle.cards.iggy-pop :as iggy-pop]
     [fizzle.db.queries :as q]
     [fizzle.events.game :as game]))
 
@@ -17,7 +17,7 @@
   "Initialize game and return the datascript db.
    Calls the init-game-state function directly with default config."
   []
-  (:game/db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)
+  (:game/db (game/init-game-state {:main-deck (:deck/main iggy-pop/iggy-pop-decklist)
                                    :bot-deck (bot/bot-deck :goldfish)})))
 
 
@@ -135,7 +135,7 @@
 (deftest test-init-game-state-returns-non-nil-db
   ;; Bug caught: Crash on nil db when game state not properly initialized
   (testing "init-game-state returns valid, non-nil game db"
-    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)})
+    (let [app-db (game/init-game-state {:main-deck (:deck/main iggy-pop/iggy-pop-decklist)})
           game-db (:game/db app-db)]
       ;; The game db must be a datascript db
       (is (instance? ds-db/DB game-db)
@@ -180,7 +180,7 @@
 
 (deftest test-init-game-state-includes-active-screen
   (testing "init-game-state returns :active-screen :opening-hand"
-    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)})]
+    (let [app-db (game/init-game-state {:main-deck (:deck/main iggy-pop/iggy-pop-decklist)})]
       (is (= :opening-hand (:active-screen app-db))
           "Active screen should be :opening-hand"))))
 
@@ -189,7 +189,7 @@
 
 (deftest test-iggy-pop-decklist-main-has-60-cards
   (testing "iggy-pop-decklist main deck sums to exactly 60 cards"
-    (let [main (:deck/main cards/iggy-pop-decklist)
+    (let [main (:deck/main iggy-pop/iggy-pop-decklist)
           total (reduce + (map :count main))]
       (is (= 60 total)
           "Main deck should have exactly 60 cards"))))
@@ -197,7 +197,7 @@
 
 (deftest test-iggy-pop-decklist-side-has-15-cards
   (testing "iggy-pop-decklist sideboard sums to exactly 15 cards"
-    (let [side (:deck/side cards/iggy-pop-decklist)
+    (let [side (:deck/side iggy-pop/iggy-pop-decklist)
           total (reduce + (map :count side))]
       (is (= 15 total)
           "Sideboard should have exactly 15 cards"))))
@@ -221,7 +221,7 @@
 
 (deftest test-init-empty-must-contain-returns-opening-hand
   (testing "init-game-state with empty must-contain returns :opening-hand"
-    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)
+    (let [app-db (game/init-game-state {:main-deck (:deck/main iggy-pop/iggy-pop-decklist)
                                         :must-contain {}})]
       (is (= :opening-hand (:active-screen app-db))
           "Should return :opening-hand screen")
@@ -233,7 +233,7 @@
 
 (deftest test-init-must-contain-places-sculpted-cards
   (testing "init-game-state with :must-contain {:dark-ritual 2} places 2 dark-rituals in hand"
-    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)
+    (let [app-db (game/init-game-state {:main-deck (:deck/main iggy-pop/iggy-pop-decklist)
                                         :must-contain {:dark-ritual 2}})
           db (:game/db app-db)
           hand (get-hand-objects db :player-1)
@@ -249,7 +249,7 @@
 
 (deftest test-init-must-contain-all-seven-sculpted
   (testing "init-game-state with must-contain totaling 7 places all sculpted, 0 random"
-    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)
+    (let [app-db (game/init-game-state {:main-deck (:deck/main iggy-pop/iggy-pop-decklist)
                                         :must-contain {:dark-ritual 4 :cabal-ritual 3}})
           db (:game/db app-db)
           hand (get-hand-objects db :player-1)
@@ -266,7 +266,7 @@
 
 (deftest test-init-must-contain-single-copy-card
   (testing "init-game-state with :must-contain {:orims-chant 1} places 1 in hand"
-    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)
+    (let [app-db (game/init-game-state {:main-deck (:deck/main iggy-pop/iggy-pop-decklist)
                                         :must-contain {:orims-chant 1}})
           db (:game/db app-db)
           hand (get-hand-objects db :player-1)
@@ -280,21 +280,21 @@
 
 (deftest test-init-opening-hand-mulligan-count-starts-at-zero
   (testing ":opening-hand/mulligan-count initialized to 0"
-    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)})]
+    (let [app-db (game/init-game-state {:main-deck (:deck/main iggy-pop/iggy-pop-decklist)})]
       (is (= 0 (:opening-hand/mulligan-count app-db))
           "Mulligan count should start at 0"))))
 
 
 (deftest test-init-opening-hand-phase-starts-at-viewing
   (testing ":opening-hand/phase initialized to :viewing"
-    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)})]
+    (let [app-db (game/init-game-state {:main-deck (:deck/main iggy-pop/iggy-pop-decklist)})]
       (is (= :viewing (:opening-hand/phase app-db))
           "Opening hand phase should start at :viewing"))))
 
 
 (deftest test-init-opening-hand-sculpted-ids-empty-when-no-must-contain
   (testing ":opening-hand/sculpted-ids is empty set when no must-contain"
-    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)
+    (let [app-db (game/init-game-state {:main-deck (:deck/main iggy-pop/iggy-pop-decklist)
                                         :must-contain {}})]
       (is (= #{} (:opening-hand/sculpted-ids app-db))
           "Sculpted IDs should be empty set"))))
@@ -302,7 +302,7 @@
 
 (deftest test-init-opening-hand-sculpted-ids-match-sculpted-objects
   (testing ":opening-hand/sculpted-ids contains UUIDs of sculpted hand objects"
-    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)
+    (let [app-db (game/init-game-state {:main-deck (:deck/main iggy-pop/iggy-pop-decklist)
                                         :must-contain {:dark-ritual 2}})
           db (:game/db app-db)
           sculpted-ids (:opening-hand/sculpted-ids app-db)
@@ -319,7 +319,7 @@
 
 (deftest test-init-sculpted-cards-not-in-library
   (testing "sculpted cards are not present in library"
-    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)
+    (let [app-db (game/init-game-state {:main-deck (:deck/main iggy-pop/iggy-pop-decklist)
                                         :must-contain {:dark-ritual 2}})
           db (:game/db app-db)
           sculpted-ids (:opening-hand/sculpted-ids app-db)
@@ -332,7 +332,7 @@
 (deftest test-init-opening-hand-must-contain-stored
   (testing ":opening-hand/must-contain stored in app-db matching input"
     (let [mc {:dark-ritual 2 :lions-eye-diamond 1}
-          app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)
+          app-db (game/init-game-state {:main-deck (:deck/main iggy-pop/iggy-pop-decklist)
                                         :must-contain mc})]
       (is (= mc (:opening-hand/must-contain app-db))
           "Must-contain config should be stored in app-db"))))
@@ -340,7 +340,7 @@
 
 (deftest test-init-opening-hand-must-contain-empty
   (testing ":opening-hand/must-contain stored as {} when not specified"
-    (let [app-db (game/init-game-state {:main-deck (:deck/main cards/iggy-pop-decklist)})]
+    (let [app-db (game/init-game-state {:main-deck (:deck/main iggy-pop/iggy-pop-decklist)})]
       (is (= {} (:opening-hand/must-contain app-db))
           "Must-contain should default to empty map"))))
 

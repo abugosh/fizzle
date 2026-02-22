@@ -2,11 +2,12 @@
   (:require
     [datascript.core :as d]
     [fizzle.bots.protocol :as bot-protocol]
-    [fizzle.cards.iggy-pop :as cards]
+    [fizzle.cards.iggy-pop :as iggy-pop]
     [fizzle.db.queries :as queries]
     [fizzle.db.schema :refer [schema]]
     [fizzle.db.storage :as storage]
     [fizzle.engine.card-spec :as card-spec]
+    [fizzle.engine.cards :as cards]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.events :as game-events]
     [fizzle.engine.grants :as grants]
@@ -187,7 +188,7 @@
 (rf/reg-event-db
   ::init-game
   (fn [_ [_ config]]
-    (init-game-state (or config {:main-deck (:deck/main cards/iggy-pop-decklist)}))))
+    (init-game-state (or config {:main-deck (:deck/main iggy-pop/iggy-pop-decklist)}))))
 
 
 (defn set-active-screen-handler

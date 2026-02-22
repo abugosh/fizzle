@@ -2,7 +2,7 @@
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
-    [fizzle.cards.iggy-pop :refer [dark-ritual]]
+    [fizzle.cards.black.dark-ritual :as dark-ritual]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.events :as game-events]
@@ -23,7 +23,7 @@
   []
   (let [conn (d/create-conn schema)]
     ;; Card definition
-    (d/transact! conn [dark-ritual])
+    (d/transact! conn [dark-ritual/card])
     ;; Player
     (d/transact! conn [{:player/id :player-1
                         :player/name "Player"
@@ -271,7 +271,7 @@
 (deftest test-untap-step-only-untaps-controlled-permanents
   (testing "untap step only untaps permanents controlled by active player"
     (let [conn (d/create-conn schema)
-          _ (d/transact! conn [dark-ritual])
+          _ (d/transact! conn [dark-ritual/card])
           _ (d/transact! conn [{:player/id :player-1
                                 :player/name "Player"
                                 :player/life 20

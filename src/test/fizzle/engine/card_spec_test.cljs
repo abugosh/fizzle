@@ -1,8 +1,8 @@
 (ns fizzle.engine.card-spec-test
   (:require
     [cljs.test :refer [deftest is testing]]
-    [fizzle.cards.iggy-pop :as cards]
-    [fizzle.engine.card-spec :as card-spec]))
+    [fizzle.engine.card-spec :as card-spec]
+    [fizzle.engine.cards :as cards]))
 
 
 (deftest test-valid-card-passes

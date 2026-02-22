@@ -5,9 +5,9 @@
    Return convention: [db result] tuples (db first)."
   (:require
     [datascript.core :as d]
-    [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
+    [fizzle.engine.cards :as cards]
     [fizzle.engine.turn-based :as turn-based]))
 
 

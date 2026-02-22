@@ -2,7 +2,8 @@
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
-    [fizzle.cards.iggy-pop :as cards]
+    [fizzle.cards.artifacts.lotus-petal :as lotus-petal]
+    [fizzle.cards.black.cabal-ritual :as cabal-ritual]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
     [fizzle.engine.grants :as grants]
@@ -225,7 +226,7 @@
   (let [conn (d/conn-from-db db)
         player-eid (q/get-player-eid db player-id)]
     ;; Add card definition
-    (d/transact! conn [cards/cabal-ritual])
+    (d/transact! conn [cabal-ritual/card])
     ;; Create object in hand
     (let [card-eid (d/q '[:find ?e .
                           :where [?e :card/id :cabal-ritual]]
@@ -430,7 +431,7 @@
           ;; Add Lotus Petal card definition (it's in cards/all-cards via init)
           ;; But init-game-state only loads dark-ritual, so add it
           conn (d/conn-from-db db)
-          _ (d/transact! conn [cards/lotus-petal])
+          _ (d/transact! conn [lotus-petal/card])
           db @conn
           [obj-id db] (add-artifact-to-hand db :player-1 :lotus-petal)
           ;; Cast - artifacts have 0 mana cost
@@ -592,7 +593,7 @@
   (testing "Artifact cannot be cast during combat phase (requires sorcery speed)"
     (let [db (init-game-state)
           conn (d/conn-from-db db)
-          _ (d/transact! conn [cards/lotus-petal])
+          _ (d/transact! conn [lotus-petal/card])
           db @conn
           [obj-id db] (add-artifact-to-hand db :player-1 :lotus-petal)
           db (set-phase db :combat)]

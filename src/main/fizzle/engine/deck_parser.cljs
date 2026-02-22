@@ -3,7 +3,7 @@
    Parses Moxfield and MTGGoldfish text export formats."
   (:require
     [clojure.string :as str]
-    [fizzle.cards.iggy-pop :as cards]))
+    [fizzle.engine.cards :as cards]))
 
 
 ;; Card name registry: lowercase name -> card-id keyword

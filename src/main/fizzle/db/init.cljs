@@ -8,7 +8,7 @@
    - Game state set up"
   (:require
     [datascript.core :as d]
-    [fizzle.cards.iggy-pop :refer [dark-ritual]]
+    [fizzle.cards.black.dark-ritual :as dark-ritual]
     [fizzle.db.schema :refer [schema]]))
 
 
@@ -36,7 +36,7 @@
   []
   (let [conn (d/create-conn schema)]
     ;; 1. Transact card definitions
-    (d/transact! conn [dark-ritual])
+    (d/transact! conn [dark-ritual/card])
 
     ;; 2. Transact player
     (d/transact! conn [{:player/id :player-1

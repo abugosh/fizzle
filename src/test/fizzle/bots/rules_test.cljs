@@ -4,7 +4,7 @@
     [datascript.core :as d]
     [fizzle.bots.definitions :as defs]
     [fizzle.bots.rules :as rules]
-    [fizzle.cards.lightning-bolt :as lightning-bolt]
+    [fizzle.cards.red.lightning-bolt :as lightning-bolt]
     [fizzle.db.queries :as q]
     [fizzle.engine.stack :as stack]
     [fizzle.test-helpers :as th]))
@@ -229,7 +229,7 @@
   []
   (let [db (th/create-test-db)
         conn (d/conn-from-db db)
-        _ (d/transact! conn [lightning-bolt/lightning-bolt])
+        _ (d/transact! conn [lightning-bolt/card])
         db (th/add-opponent @conn)
         [db _] (th/add-card-to-zone db :lightning-bolt :hand :player-2)
         [db _] (th/add-card-to-zone db :mountain :battlefield :player-2)]
@@ -256,7 +256,7 @@
 (deftest match-priority-rule-burn-passes-without-mountain
   (let [db (th/create-test-db)
         conn (d/conn-from-db db)
-        _ (d/transact! conn [lightning-bolt/lightning-bolt])
+        _ (d/transact! conn [lightning-bolt/card])
         db (th/add-opponent @conn)
         [db _] (th/add-card-to-zone db :lightning-bolt :hand :player-2)
         ctx {:db db :player-id :player-2}
@@ -356,7 +356,7 @@
 (deftest burn-hate-rule-ordering-pillar-over-bolt
   (let [db (th/create-test-db {:mana {:black 1}})
         conn (d/conn-from-db db)
-        _ (d/transact! conn [lightning-bolt/lightning-bolt])
+        _ (d/transact! conn [lightning-bolt/card])
         db (th/add-opponent @conn)
         [db _] (th/add-card-to-zone db :dark-ritual :hand :player-2)
         [db _] (th/add-card-to-zone db :lightning-bolt :hand :player-2)
@@ -378,7 +378,7 @@
 (deftest burn-hate-fallback-to-bolt-when-no-pillar
   (let [db (th/create-test-db)
         conn (d/conn-from-db db)
-        _ (d/transact! conn [lightning-bolt/lightning-bolt])
+        _ (d/transact! conn [lightning-bolt/card])
         db (th/add-opponent @conn)
         [db _] (th/add-card-to-zone db :lightning-bolt :hand :player-2)
         [db _] (th/add-card-to-zone db :mountain :battlefield :player-2)

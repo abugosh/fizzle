@@ -1,7 +1,7 @@
 (ns fizzle.subs.setup-test
   (:require
     [cljs.test :refer-macros [deftest is testing]]
-    [fizzle.cards.iggy-pop :as cards]
+    [fizzle.cards.iggy-pop :as iggy-pop]
     [fizzle.events.setup :as setup]
     [fizzle.subs.setup :as subs]
     [re-frame.core :as rf]
@@ -30,7 +30,7 @@
                  ;; Move one from side to main first (side=14, main=61)
                  ;; then move two from main to side (side=16... no, test deck-valid for 59)
                  ;; Simplest: just set the main-deck directly
-                 (assoc :setup/main-deck (rest (:deck/main cards/iggy-pop-decklist))))]
+                 (assoc :setup/main-deck (rest (:deck/main iggy-pop/iggy-pop-decklist))))]
       ;; Now main has fewer than 60
       (is (false? (sub-value db [::subs/deck-valid?]))
           "Should be invalid when main != 60"))))
@@ -40,7 +40,7 @@
   (testing "deck-valid? returns true when main > 60"
     (let [db (-> (setup/init-setup-handler {})
                  (assoc :setup/main-deck
-                        (conj (:deck/main cards/iggy-pop-decklist)
+                        (conj (:deck/main iggy-pop/iggy-pop-decklist)
                               {:card/id :dark-ritual :count 2})))]
       (is (true? (sub-value db [::subs/deck-valid?]))
           "Should be valid for oversized main deck"))))

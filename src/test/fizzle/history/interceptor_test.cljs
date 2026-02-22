@@ -2,9 +2,9 @@
   (:require
     [cljs.test :refer-macros [deftest is testing]]
     [datascript.core :as d]
-    [fizzle.cards.iggy-pop :as cards]
     [fizzle.db.queries :as queries]
     [fizzle.db.schema :refer [schema]]
+    [fizzle.engine.cards :as cards]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.history.core :as history]
