@@ -607,3 +607,29 @@
                    :grant/data {:restriction/type (:restriction/type effect)}}]
         (grants/add-player-grant db target-player grant))
       db)))
+
+
+(defmethod execute-effect-impl :exile-zone
+  ;; Exile all objects in a zone for a target player.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/target - Target player (pre-resolved by caller)
+  ;;   :effect/zone - Zone to exile from (:graveyard, :hand, etc.)
+  ;;
+  ;; Moves every object the target player owns in the specified zone
+  ;; to exile. Used by Tormod's Crypt (exile target player's graveyard).
+  ;;
+  ;; Handles edge cases:
+  ;;   - Empty zone: no-op (returns db unchanged)
+  ;;   - Invalid player: no-op (returns db unchanged)
+  ;;   - Missing zone key: no-op (returns db unchanged)
+  [db _player-id effect _object-id]
+  (let [target-player (:effect/target effect)
+        zone (:effect/zone effect)]
+    (if-not (and target-player zone (q/get-player-eid db target-player))
+      db
+      (let [zone-objects (or (q/get-objects-in-zone db target-player zone) [])]
+        (reduce (fn [db' obj]
+                  (zones/move-to-zone db' (:object/id obj) :exile))
+                db
+                zone-objects)))))

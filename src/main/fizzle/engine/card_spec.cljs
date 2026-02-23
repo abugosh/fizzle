@@ -16,7 +16,7 @@
   #{:add-mana :mill :lose-life :gain-life :deal-damage :add-counters
     :draw :exile-self :discard-hand :return-from-graveyard :sacrifice
     :destroy :discard :tutor :scry :peek-and-select :grant-flashback
-    :add-restriction :storm-copies})
+    :add-restriction :storm-copies :exile-zone})
 
 
 (def valid-cost-types
@@ -86,6 +86,7 @@
 (s/def :effect/selected-zone keyword?)
 (s/def :effect/remainder-zone keyword?)
 (s/def :effect/order-remainder? boolean?)
+(s/def :effect/zone keyword?)
 (s/def :restriction/type valid-restriction-types)
 
 
@@ -103,6 +104,7 @@
                 :effect/condition :effect/x
                 :effect/select-count :effect/selected-zone
                 :effect/remainder-zone :effect/order-remainder?
+                :effect/zone
                 :restriction/type]))
 
 

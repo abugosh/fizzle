@@ -6,6 +6,7 @@
   (:require
     [fizzle.cards.artifacts.lions-eye-diamond :as lions-eye-diamond]
     [fizzle.cards.artifacts.lotus-petal :as lotus-petal]
+    [fizzle.cards.artifacts.tormods-crypt :as tormods-crypt]
     [fizzle.cards.black.cabal-ritual :as cabal-ritual]
     [fizzle.cards.black.dark-ritual :as dark-ritual]
     [fizzle.cards.black.ill-gotten-gains :as ill-gotten-gains]
@@ -59,7 +60,8 @@
        gemstone-mine/card
        cephalid-coliseum/card
        lotus-petal/card
-       lions-eye-diamond/card]
+       lions-eye-diamond/card
+       tormods-crypt/card]
       ;; Cycle cards
       basic-lands/cards
       pain-lands/cards
