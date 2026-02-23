@@ -222,13 +222,21 @@
       false
       (if-let [obj (q/get-object db object-id)]
         (let [card (:object/card obj)
-              ;; Check timing: non-instant cards require sorcery speed
-              timing-ok (or (instant-speed? card)
-                            (sorcery-speed-ok? db))
-              modes (get-casting-modes db player-id object-id)
-              has-mode (boolean (some #(can-cast-mode? db player-id object-id %) modes))
-              has-targets (targeting/has-valid-targets? db player-id card)]
-          (and timing-ok has-mode has-targets))
+              card-types (set (:card/types card))
+              ;; Check type-specific restriction: cannot-cast-instants-sorceries
+              ;; Only blocks instants and sorceries, not lands/artifacts/etc.
+              type-restricted (and (has-restriction? db player-id :cannot-cast-instants-sorceries)
+                                   (or (contains? card-types :instant)
+                                       (contains? card-types :sorcery)))]
+          (if type-restricted
+            false
+            (let [;; Check timing: non-instant cards require sorcery speed
+                  timing-ok (or (instant-speed? card)
+                                (sorcery-speed-ok? db))
+                  modes (get-casting-modes db player-id object-id)
+                  has-mode (boolean (some #(can-cast-mode? db player-id object-id %) modes))
+                  has-targets (targeting/has-valid-targets? db player-id card)]
+              (and timing-ok has-mode has-targets))))
         false))))
 
 

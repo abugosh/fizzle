@@ -26,6 +26,7 @@
     [fizzle.cards.lands.pain-lands :as pain-lands]
     [fizzle.cards.red.lightning-bolt :as lightning-bolt]
     [fizzle.cards.red.recoup :as recoup]
+    [fizzle.cards.white.abeyance :as abeyance]
     [fizzle.cards.white.orims-chant :as orims-chant]
     [fizzle.cards.white.ray-of-revelation :as ray-of-revelation]
     [fizzle.cards.white.seal-of-cleansing :as seal-of-cleansing]))
@@ -47,6 +48,7 @@
        mental-note/card
        merchant-scroll/card
        opt/card
+       abeyance/card
        orims-chant/card
        ray-of-revelation/card
        seal-of-cleansing/card

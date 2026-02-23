@@ -48,7 +48,8 @@
 
 
 (def valid-restriction-types
-  #{:cannot-cast-spells :cannot-attack})
+  #{:cannot-cast-spells :cannot-attack
+    :cannot-cast-instants-sorceries :cannot-activate-non-mana-abilities})
 
 
 ;; === Mana Cost Spec ===
