@@ -18,6 +18,7 @@
     [fizzle.cards.blue.mental-note :as mental-note]
     [fizzle.cards.blue.merchant-scroll :as merchant-scroll]
     [fizzle.cards.blue.opt :as opt]
+    [fizzle.cards.green.crumble :as crumble]
     [fizzle.cards.lands.basic-lands :as basic-lands]
     [fizzle.cards.lands.cephalid-coliseum :as cephalid-coliseum]
     [fizzle.cards.lands.city-of-brass :as city-of-brass]
@@ -61,7 +62,8 @@
        cephalid-coliseum/card
        lotus-petal/card
        lions-eye-diamond/card
-       tormods-crypt/card]
+       tormods-crypt/card
+       crumble/card]
       ;; Cycle cards
       basic-lands/cards
       pain-lands/cards

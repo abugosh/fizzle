@@ -633,3 +633,38 @@
                   (zones/move-to-zone db' (:object/id obj) :exile))
                 db
                 zone-objects)))))
+
+
+(defmethod execute-effect-impl :gain-life-equal-to-cmc
+  ;; Give a target object's controller life equal to its converted mana cost.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/target - Target object-id (pre-resolved by caller via
+  ;;                    stack/resolve-effect-target from :effect/target-ref)
+  ;;
+  ;; Looks up the target object, reads its card's :card/cmc, and gives
+  ;; that much life to the object's controller. Used by Crumble.
+  ;;
+  ;; Handles edge cases:
+  ;;   - No target: no-op (returns db unchanged)
+  ;;   - Target doesn't exist: no-op
+  ;;   - CMC is 0: no-op (gain 0 life does nothing)
+  ;;   - Target already destroyed (in graveyard): still works, object data persists
+  [db _player-id effect _object-id]
+  (let [target-id (:effect/target effect)]
+    (if-not target-id
+      db
+      (if-let [target-obj (q/get-object db target-id)]
+        (let [card (:object/card target-obj)
+              cmc (or (:card/cmc card) 0)
+              ;; Controller is a ref {:db/id N} from get-object pull;
+              ;; resolve to player-id via d/pull
+              controller-eid (:db/id (:object/controller target-obj))
+              controller-id (when controller-eid
+                              (:player/id (d/pull db [:player/id] controller-eid)))]
+          (if (or (<= cmc 0) (nil? controller-id))
+            db
+            (let [current-life (q/get-life-total db controller-id)
+                  new-life (+ current-life cmc)]
+              (d/db-with db [[:db/add controller-eid :player/life new-life]]))))
+        db))))
