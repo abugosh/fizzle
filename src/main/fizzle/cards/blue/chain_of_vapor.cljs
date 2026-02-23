@@ -29,8 +29,11 @@
                      :target/criteria {:match/not-types #{:land}}
                      :target/required true}]
 
-   ;; Effects: bounce target permanent to owner's hand
-   ;; The chain mechanic (sacrifice land to copy) is handled post-resolution
-   ;; as a separate selection flow, not as a card effect.
+   ;; Effects: bounce + chain mechanic
+   ;; 1. Bounce target to owner's hand
+   ;; 2. Chain choice: target's controller may sacrifice a land to copy
+   ;;    (interactive effect — pauses for selection via reduce-effects)
    :card/effects [{:effect/type :bounce
+                   :effect/target-ref :target-permanent}
+                  {:effect/type :chain-bounce
                    :effect/target-ref :target-permanent}]})

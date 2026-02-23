@@ -1,13 +1,17 @@
 (ns fizzle.events.selection.zone-ops
-  "Zone operation selection domains: discard (unified) and graveyard-return.
+  "Zone operation selection domains: discard (unified), graveyard-return,
+   and chain-bounce (Chain of Vapor chain mechanic).
 
    Discard unification: :cleanup-discard is removed as a separate type.
    The :discard type now checks :selection/cleanup? flag:
      - false/nil → standard discard (wrapper handles remaining-effects)
      - true → cleanup discard (expire grants, return finalized)"
   (:require
+    [datascript.core :as d]
     [fizzle.db.queries :as queries]
     [fizzle.engine.grants :as grants]
+    [fizzle.engine.stack :as stack]
+    [fizzle.engine.triggers :as triggers]
     [fizzle.engine.zones :as zones]
     [fizzle.events.selection.core :as core]))
 
@@ -144,3 +148,126 @@
                      (zones/move-to-zone gdb obj-id :graveyard))
                    game-db
                    selected)})))
+
+
+;; =====================================================
+;; Chain Bounce Selection (Chain of Vapor chain mechanic)
+;; =====================================================
+
+(defn build-chain-bounce-selection
+  "Build selection for Chain of Vapor's chain mechanic.
+   The bounced permanent's controller may sacrifice a land to create a copy.
+   Shows the controller's lands on the battlefield; they pick one (or decline).
+
+   Uses :exact-or-zero validation: select 1 land (sacrifice) or 0 (decline).
+   When controller has no lands or is nil, auto-confirms with 0 (chain ends)."
+  [game-db _player-id object-id effect effects-after]
+  (let [chain-controller (:chain/controller effect)
+        chain-target-id (:chain/target-id effect)
+        lands (when chain-controller
+                (or (queries/query-zone-by-criteria
+                      game-db chain-controller :battlefield
+                      {:match/types #{:land}})
+                    []))
+        land-ids (set (mapv :object/id (or lands [])))]
+    {:selection/type :chain-bounce
+     :selection/zone :battlefield
+     :selection/card-source :zone
+     :selection/select-count 1
+     :selection/player-id chain-controller
+     :selection/selected #{}
+     :selection/spell-id object-id
+     :selection/remaining-effects effects-after
+     :selection/valid-targets (vec land-ids)
+     :selection/chain-controller chain-controller
+     :selection/chain-target-id chain-target-id
+     :selection/validation :exact-or-zero
+     :selection/auto-confirm? (empty? land-ids)}))
+
+
+(defn- build-chain-bounce-target-selection
+  "Build selection for choosing a new target for the chain copy.
+   Shows all nonland permanents on the battlefield from any controller.
+   The chain controller chooses the new target."
+  [game-db chain-controller spell-id copy-object-id copy-stack-item-eid]
+  (let [;; Find all nonland permanents on the battlefield (any controller)
+        p1-permanents (or (queries/query-zone-by-criteria
+                            game-db chain-controller :battlefield
+                            {:match/not-types #{:land}})
+                          [])
+        opponent-id (queries/get-opponent-id game-db chain-controller)
+        p2-permanents (if opponent-id
+                        (or (queries/query-zone-by-criteria
+                              game-db opponent-id :battlefield
+                              {:match/not-types #{:land}})
+                            [])
+                        [])
+        all-permanents (concat p1-permanents p2-permanents)
+        target-ids (set (mapv :object/id all-permanents))]
+    {:selection/type :chain-bounce-target
+     :selection/zone :battlefield
+     :selection/card-source :zone
+     :selection/select-count 1
+     :selection/player-id chain-controller
+     :selection/selected #{}
+     :selection/spell-id spell-id
+     :selection/chain-copy-object-id copy-object-id
+     :selection/chain-copy-stack-item-eid copy-stack-item-eid
+     :selection/valid-targets (vec target-ids)
+     :selection/validation :exact-or-zero
+     :selection/auto-confirm? (empty? target-ids)}))
+
+
+(defmethod core/build-selection-for-effect :chain-bounce
+  [db _player-id object-id effect remaining]
+  (build-chain-bounce-selection db _player-id object-id effect remaining))
+
+
+(defmethod core/execute-confirmed-selection :chain-bounce
+  [game-db selection]
+  (let [selected (:selection/selected selection)
+        chain-controller (:selection/chain-controller selection)
+        spell-id (:selection/spell-id selection)]
+    (if (empty? selected)
+      ;; Declined — chain ends, no copy
+      {:db game-db}
+      ;; Sacrifice the selected land
+      (let [land-id (first selected)
+            db-after-sac (zones/move-to-zone game-db land-id :graveyard)
+            ;; Create a spell copy on the stack
+            ;; Use nil target-override — we'll set the target via the next selection
+            db-with-copy (triggers/create-spell-copy
+                           db-after-sac spell-id chain-controller)
+            ;; Find the copy we just created (topmost stack item)
+            copy-stack-item (stack/get-top-stack-item db-with-copy)
+            copy-obj-ref (when copy-stack-item
+                           (let [raw (:stack-item/object-ref copy-stack-item)]
+                             (if (map? raw) (:db/id raw) raw)))
+            copy-object-id (when copy-obj-ref
+                             (:object/id (d/pull db-with-copy [:object/id] copy-obj-ref)))]
+        (if (nil? copy-stack-item)
+          ;; Failed to create copy (source gone) — just return after sacrifice
+          {:db db-after-sac}
+          ;; Chain to target selection for the copy
+          (let [target-sel (build-chain-bounce-target-selection
+                             db-with-copy chain-controller spell-id
+                             copy-object-id (:db/id copy-stack-item))]
+            {:db db-with-copy
+             :pending-selection target-sel}))))))
+
+
+(defmethod core/execute-confirmed-selection :chain-bounce-target
+  [game-db selection]
+  (let [selected (:selection/selected selection)
+        copy-si-eid (:selection/chain-copy-stack-item-eid selection)]
+    (if (empty? selected)
+      ;; No target chosen — remove the copy from the stack (fizzles)
+      {:db (stack/remove-stack-item game-db copy-si-eid)
+       :finalized? true}
+      ;; Set the copy's target and leave it on the stack to resolve normally
+      (let [target-id (first selected)
+            db-with-target (d/db-with game-db
+                                      [[:db/add copy-si-eid
+                                        :stack-item/targets
+                                        {:target-permanent target-id}]])]
+        {:db db-with-target :finalized? true}))))

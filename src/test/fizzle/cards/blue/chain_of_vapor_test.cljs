@@ -17,10 +17,44 @@
     [fizzle.engine.effects :as effects]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
+    [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.game :as game]
+    [fizzle.events.selection.core :as sel-core]
     [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
+
+
+;; === Helper: cast Chain of Vapor targeting a permanent ===
+
+(defn- cast-chain-of-vapor
+  "Cast Chain of Vapor targeting a permanent. Returns db after casting
+   (spell on stack, mana spent, storm incremented)."
+  [db cov-id target-id]
+  (let [target-req (first (:card/targeting chain-of-vapor/card))
+        modes (rules/get-casting-modes db :player-1 cov-id)
+        mode (first modes)
+        selection {:selection/type :cast-time-targeting
+                   :selection/player-id :player-1
+                   :selection/object-id cov-id
+                   :selection/mode mode
+                   :selection/target-requirement target-req
+                   :selection/selected #{target-id}}]
+    (sel-targeting/confirm-cast-time-target db selection)))
+
+
+(defn- resolve-and-decline-chain
+  "Resolve Chain of Vapor and decline the chain (no sacrifice).
+   Returns the final db after full resolution."
+  [db]
+  (let [result (game/resolve-one-item db)]
+    (if (:pending-selection result)
+      ;; Chain-bounce selection pending — decline by confirming with 0 selected
+      (let [app-db {:game/db (:db result)
+                    :game/pending-selection (:pending-selection result)}
+            app-db-after (sel-core/confirm-selection-impl app-db)]
+        (:game/db app-db-after))
+      (:db result))))
 
 
 ;; === A. Card Definition Tests ===
@@ -62,16 +96,21 @@
         (is (true? (:target/required req))
             "Target should be required"))))
 
-  ;; Oracle: "Return target nonland permanent to its owner's hand."
-  (testing "card has bounce effect"
+  ;; Oracle: "Return target nonland permanent to its owner's hand.
+  ;;          Then that permanent's controller may sacrifice a land..."
+  (testing "card has bounce and chain-bounce effects"
     (let [card-effects (:card/effects chain-of-vapor/card)]
-      (is (= 1 (count card-effects))
-          "Should have exactly one effect")
-      (let [bounce-effect (first card-effects)]
+      (is (= 2 (count card-effects))
+          "Should have two effects: bounce + chain-bounce")
+      (let [[bounce-effect chain-effect] card-effects]
         (is (= :bounce (:effect/type bounce-effect))
-            "Effect should be :bounce")
+            "First effect should be :bounce")
         (is (= :target-permanent (:effect/target-ref bounce-effect))
-            "Bounce should reference target permanent")))))
+            "Bounce should reference target permanent")
+        (is (= :chain-bounce (:effect/type chain-effect))
+            "Second effect should be :chain-bounce")
+        (is (= :target-permanent (:effect/target-ref chain-effect))
+            "Chain-bounce should reference target permanent")))))
 
 
 ;; === B. Cast-Resolve Happy Path ===
@@ -83,22 +122,11 @@
           db (th/add-opponent db)
           [db cov-id] (th/add-card-to-zone db :chain-of-vapor :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})
-          ;; Lotus Petal (artifact) on opponent's battlefield
           [db petal-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-2)
-          ;; Cast with targeting flow
-          target-req (first (:card/targeting chain-of-vapor/card))
-          modes (rules/get-casting-modes db :player-1 cov-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id cov-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{petal-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
+          db-cast (cast-chain-of-vapor db cov-id petal-id)
           result (game/resolve-one-item db-cast)
           db-resolved (:db result)]
-      ;; Lotus Petal should be bounced to hand
+      ;; Bounce happens as first effect even though chain-bounce pauses resolution
       (is (= :hand (:object/zone (q/get-object db-resolved petal-id)))
           "Target permanent should be returned to owner's hand"))))
 
@@ -110,18 +138,8 @@
           db (th/add-opponent db)
           [db cov-id] (th/add-card-to-zone db :chain-of-vapor :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})
-          ;; Lotus Petal on player-1's battlefield
           [db petal-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-1)
-          target-req (first (:card/targeting chain-of-vapor/card))
-          modes (rules/get-casting-modes db :player-1 cov-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id cov-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{petal-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
+          db-cast (cast-chain-of-vapor db cov-id petal-id)
           result (game/resolve-one-item db-cast)
           db-resolved (:db result)]
       (is (= :hand (:object/zone (q/get-object db-resolved petal-id)))
@@ -146,7 +164,6 @@
           db (th/add-opponent db)
           [db cov-id] (th/add-card-to-zone db :chain-of-vapor :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})]
-      ;; No nonland permanents on battlefield
       (is (false? (rules/can-cast? db :player-1 cov-id))
           "Should not be castable without nonland permanent target"))))
 
@@ -172,16 +189,7 @@
           db (mana/add-mana db :player-1 {:blue 1})
           [db target-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-2)
           storm-before (q/get-storm-count db :player-1)
-          target-req (first (:card/targeting chain-of-vapor/card))
-          modes (rules/get-casting-modes db :player-1 cov-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id cov-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{target-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)]
+          db-cast (cast-chain-of-vapor db cov-id target-id)]
       (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
           "Storm count should increment by 1"))))
 
@@ -193,7 +201,6 @@
   (testing "Cannot target lands"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Add a land to the battlefield
           [db _land-id] (th/add-card-to-zone db :island :battlefield :player-2)
           target-req (first (:card/targeting chain-of-vapor/card))
           targets (targeting/find-valid-targets db :player-1 target-req)]
@@ -286,7 +293,104 @@
           "DB should be unchanged with nonexistent target"))))
 
 
-;; === G. Edge Cases ===
+;; === G. Chain Mechanic Tests ===
+
+;; Oracle: "Then that permanent's controller may sacrifice a land."
+(deftest chain-of-vapor-offers-chain-choice-test
+  (testing "After bounce, chain-bounce offers sacrifice-land selection"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db cov-id] (th/add-card-to-zone db :chain-of-vapor :hand :player-1)
+          db (mana/add-mana db :player-1 {:blue 1})
+          [db petal-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-2)
+          ;; Opponent has a land to sacrifice
+          [db _land-id] (th/add-card-to-zone db :island :battlefield :player-2)
+          db-cast (cast-chain-of-vapor db cov-id petal-id)
+          result (game/resolve-one-item db-cast)]
+      ;; Should have a pending selection for chain choice
+      (is (some? (:pending-selection result))
+          "Should have pending chain-bounce selection")
+      (is (= :chain-bounce (:selection/type (:pending-selection result)))
+          "Selection type should be :chain-bounce")
+      (is (= :player-2 (:selection/player-id (:pending-selection result)))
+          "Chain choice should be for the bounced permanent's controller"))))
+
+
+;; Oracle: controller MAY sacrifice — declining ends the chain
+(deftest chain-of-vapor-decline-chain-test
+  (testing "Declining the chain (no sacrifice) ends resolution normally"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db cov-id] (th/add-card-to-zone db :chain-of-vapor :hand :player-1)
+          db (mana/add-mana db :player-1 {:blue 1})
+          [db petal-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-2)
+          [db _land-id] (th/add-card-to-zone db :island :battlefield :player-2)
+          db-cast (cast-chain-of-vapor db cov-id petal-id)
+          db-resolved (resolve-and-decline-chain db-cast)]
+      ;; Target was bounced
+      (is (= :hand (:object/zone (q/get-object db-resolved petal-id)))
+          "Target should be in hand after declining chain")
+      ;; Chain of Vapor goes to graveyard
+      (is (= :graveyard (:object/zone (q/get-object db-resolved cov-id)))
+          "Chain of Vapor should be in graveyard after declining")
+      ;; No extra copies on the stack
+      (is (nil? (stack/get-top-stack-item db-resolved))
+          "Stack should be empty after declining chain"))))
+
+
+;; Oracle: controller has no lands — chain ends automatically
+(deftest chain-of-vapor-no-lands-chain-ends-test
+  (testing "Chain ends automatically when controller has no lands to sacrifice"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db cov-id] (th/add-card-to-zone db :chain-of-vapor :hand :player-1)
+          db (mana/add-mana db :player-1 {:blue 1})
+          ;; Lotus Petal on opponent's battlefield, no lands for opponent
+          [db petal-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-2)
+          db-cast (cast-chain-of-vapor db cov-id petal-id)
+          result (game/resolve-one-item db-cast)]
+      ;; Chain-bounce should have pending-selection but with auto-confirm
+      ;; (no lands = empty valid-targets)
+      (is (some? (:pending-selection result))
+          "Should have pending selection (chain-bounce)")
+      (let [sel (:pending-selection result)]
+        (is (empty? (:selection/valid-targets sel))
+            "Valid targets should be empty (no lands)")
+        (is (true? (:selection/auto-confirm? sel))
+            "Should auto-confirm when no lands available")))))
+
+
+;; Oracle: "If the player does, they may copy this spell and may choose
+;;          a new target for that copy."
+(deftest chain-of-vapor-sacrifice-land-creates-copy-test
+  (testing "Sacrificing a land creates a copy and offers new target selection"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db cov-id] (th/add-card-to-zone db :chain-of-vapor :hand :player-1)
+          db (mana/add-mana db :player-1 {:blue 1})
+          [db petal-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-2)
+          [db land-id] (th/add-card-to-zone db :island :battlefield :player-2)
+          ;; A second nonland permanent to target with the copy
+          [db _seal-id] (th/add-card-to-zone db :seal-of-cleansing :battlefield :player-1)
+          db-cast (cast-chain-of-vapor db cov-id petal-id)
+          result (game/resolve-one-item db-cast)
+          ;; Simulate selecting the land to sacrifice
+          chain-sel (assoc (:pending-selection result)
+                           :selection/selected #{land-id})
+          app-db {:game/db (:db result)
+                  :game/pending-selection chain-sel}
+          app-db-after (sel-core/confirm-selection-impl app-db)]
+      ;; Land should be sacrificed (in graveyard)
+      (is (= :graveyard (:object/zone (q/get-object (:game/db app-db-after) land-id)))
+          "Sacrificed land should be in graveyard")
+      ;; Should now have a target selection for the copy
+      (is (some? (:game/pending-selection app-db-after))
+          "Should have pending target selection for the copy")
+      (is (= :chain-bounce-target (:selection/type (:game/pending-selection app-db-after)))
+          "Selection type should be :chain-bounce-target"))))
+
+
+;; === H. Edge Cases ===
 
 ;; Lands should be excluded even when mixed with nonland permanents
 (deftest chain-of-vapor-only-targets-nonlands-in-mixed-battlefield-test
@@ -310,31 +414,20 @@
           db (th/add-opponent db)
           [db cov-id] (th/add-card-to-zone db :chain-of-vapor :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})
-          ;; Only lands on battlefield
           [db _land-id] (th/add-card-to-zone db :island :battlefield :player-2)]
       (is (false? (rules/can-cast? db :player-1 cov-id))
           "Should not be castable when only lands on battlefield"))))
 
 
-;; Spell goes to graveyard after resolution (standard instant behavior)
+;; Spell goes to graveyard after declining chain (standard instant behavior)
 (deftest chain-of-vapor-goes-to-graveyard-after-resolution-test
-  (testing "Chain of Vapor goes to graveyard after resolving"
+  (testing "Chain of Vapor goes to graveyard after resolving (chain declined)"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
           [db cov-id] (th/add-card-to-zone db :chain-of-vapor :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})
           [db petal-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-2)
-          target-req (first (:card/targeting chain-of-vapor/card))
-          modes (rules/get-casting-modes db :player-1 cov-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id cov-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{petal-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
-          result (game/resolve-one-item db-cast)
-          db-resolved (:db result)]
+          db-cast (cast-chain-of-vapor db cov-id petal-id)
+          db-resolved (resolve-and-decline-chain db-cast)]
       (is (= :graveyard (:object/zone (q/get-object db-resolved cov-id)))
           "Chain of Vapor should be in graveyard after resolving"))))

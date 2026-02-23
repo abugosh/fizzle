@@ -707,3 +707,36 @@
       (if (q/get-object-eid db target-id)
         (zones/move-to-zone db target-id :hand)
         db))))
+
+
+(defmethod execute-effect-impl :chain-bounce
+  ;; Chain mechanic for Chain of Vapor.
+  ;; The bounced permanent's controller may sacrifice a land to create a copy.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/target - Object ID of the bounced permanent (pre-resolved)
+  ;;
+  ;; The target has already been bounced to hand by the :bounce effect.
+  ;; This effect enriches the effect with chain data (controller identity)
+  ;; and signals :needs-selection. The selection builder handles edge cases
+  ;; (no lands = auto-decline, no controller = auto-decline).
+  ;;
+  ;; Always returns needs-selection when target exists, consistent with
+  ;; other interactive effects. The selection layer handles all edge cases.
+  ;;
+  ;; Edge cases:
+  ;;   - No target: no-op (returns db unchanged)
+  ;;   - Target doesn't exist: signals needs-selection (builder handles)
+  ;;   - Controller has no lands: selection auto-declines (builder handles)
+  [db _player-id effect _object-id]
+  (let [target-id (:effect/target effect)]
+    (if-not target-id
+      db
+      (let [target-obj (q/get-object db target-id)
+            controller-eid (when target-obj
+                             (:db/id (:object/controller target-obj)))
+            controller-id (when controller-eid
+                            (:player/id (d/pull db [:player/id] controller-eid)))]
+        {:db db :needs-selection (cond-> effect
+                                   controller-id (assoc :chain/controller controller-id)
+                                   target-id (assoc :chain/target-id target-id))}))))
