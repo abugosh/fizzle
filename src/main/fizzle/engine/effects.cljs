@@ -668,3 +668,22 @@
                   new-life (+ current-life cmc)]
               (d/db-with db [[:db/add controller-eid :player/life new-life]]))))
         db))))
+
+
+(defmethod execute-effect-impl :discard-from-revealed-hand
+  ;; Reveal target player's hand and choose a card matching criteria to discard.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/target - Target player (pre-resolved by resolution layer)
+  ;;   :effect/criteria - Match criteria for selectable cards
+  ;;                      (e.g., {:match/not-types #{:creature :land}})
+  ;;
+  ;; Always returns tagged value for player selection. The selection builder
+  ;; shows the FULL hand (all cards visible) but only cards matching criteria
+  ;; are selectable. Used by Duress.
+  ;;
+  ;; Edge cases:
+  ;;   - Empty hand: still returns needs-selection (selection resolves with no pick)
+  ;;   - No valid cards: selection allows 0 picks (no discard)
+  [db _player-id effect _object-id]
+  {:db db :needs-selection effect})

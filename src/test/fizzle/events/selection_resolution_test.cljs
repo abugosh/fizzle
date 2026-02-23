@@ -26,7 +26,8 @@
    :scry                {:effect/type :scry :effect/amount 1}
    :peek-and-select     {:effect/type :peek-and-select}
    :discard             {:effect/type :discard :effect/selection :player}
-   :return-from-graveyard {:effect/type :return-from-graveyard :effect/selection :player}})
+   :return-from-graveyard {:effect/type :return-from-graveyard :effect/selection :player}
+   :discard-from-revealed-hand {:effect/type :discard-from-revealed-hand :effect/target :player-1}})
 
 
 (deftest test-tagged-returns-cover-all-builder-dispatch-values

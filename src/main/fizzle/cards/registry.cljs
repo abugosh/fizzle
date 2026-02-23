@@ -9,6 +9,7 @@
     [fizzle.cards.artifacts.tormods-crypt :as tormods-crypt]
     [fizzle.cards.black.cabal-ritual :as cabal-ritual]
     [fizzle.cards.black.dark-ritual :as dark-ritual]
+    [fizzle.cards.black.duress :as duress]
     [fizzle.cards.black.ill-gotten-gains :as ill-gotten-gains]
     [fizzle.cards.blue.brain-freeze :as brain-freeze]
     [fizzle.cards.blue.careful-study :as careful-study]
@@ -41,6 +42,7 @@
       ;; Individual cards
       [dark-ritual/card
        cabal-ritual/card
+       duress/card
        ill-gotten-gains/card
        brain-freeze/card
        careful-study/card

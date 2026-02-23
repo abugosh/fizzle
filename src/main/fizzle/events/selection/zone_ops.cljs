@@ -57,6 +57,33 @@
      :selection/auto-confirm? false}))
 
 
+(defn build-hand-reveal-discard-selection
+  "Build pending selection state for a hand-reveal discard effect.
+   Shows the FULL hand of the target player (all cards visible) but only
+   cards matching :effect/criteria are selectable. The caster (player-id)
+   is the one who chooses.
+
+   When no valid cards exist (e.g., hand is all creatures/lands),
+   uses :exact-or-zero validation so the caster can confirm with 0 selected."
+  [game-db player-id object-id effect effects-after]
+  (let [target-player (:effect/target effect)
+        criteria (or (:effect/criteria effect) {})
+        hand-cards (or (queries/get-objects-in-zone game-db target-player :hand) [])
+        selectable (filterv #(queries/matches-criteria? % criteria) hand-cards)
+        selectable-ids (set (map :object/id selectable))]
+    {:selection/type :hand-reveal-discard
+     :selection/card-source :opponent-hand
+     :selection/target-player target-player
+     :selection/select-count 1
+     :selection/player-id player-id
+     :selection/selected #{}
+     :selection/spell-id object-id
+     :selection/remaining-effects effects-after
+     :selection/valid-targets (vec selectable-ids)
+     :selection/validation :exact-or-zero
+     :selection/auto-confirm? (empty? selectable-ids)}))
+
+
 ;; =====================================================
 ;; Builder Multimethod Registrations
 ;; =====================================================
@@ -69,6 +96,11 @@
 (defmethod core/build-selection-for-effect :return-from-graveyard
   [db player-id object-id effect remaining]
   (build-graveyard-selection db player-id object-id effect remaining))
+
+
+(defmethod core/build-selection-for-effect :discard-from-revealed-hand
+  [db player-id object-id effect remaining]
+  (build-hand-reveal-discard-selection db player-id object-id effect remaining))
 
 
 ;; =====================================================
@@ -99,3 +131,16 @@
                    (zones/move-to-zone gdb obj-id :hand))
                  game-db
                  selected)}))
+
+
+(defmethod core/execute-confirmed-selection :hand-reveal-discard
+  [game-db selection]
+  (let [selected (:selection/selected selection)]
+    (if (empty? selected)
+      ;; No valid card chosen (or no valid cards in hand) — no discard
+      {:db game-db}
+      ;; Discard the selected card to graveyard
+      {:db (reduce (fn [gdb obj-id]
+                     (zones/move-to-zone gdb obj-id :graveyard))
+                   game-db
+                   selected)})))
