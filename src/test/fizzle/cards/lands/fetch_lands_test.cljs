@@ -50,7 +50,7 @@
         (is (= 1 (count (:ability/effects ability))))
         (let [effect (first (:ability/effects ability))]
           (is (= :tutor (:effect/type effect)))
-          (is (= #{subtype-a subtype-b} (get-in effect [:effect/criteria :card/subtypes])))
+          (is (= #{subtype-a subtype-b} (get-in effect [:effect/criteria :match/subtypes])))
           (is (= :battlefield (:effect/target-zone effect)))
           (is (true? (:effect/shuffle? effect))))))))
 
@@ -141,7 +141,7 @@
       (let [db (th/create-test-db)
             [db' _] (th/add-cards-to-library db [subtype-a subtype-b :dark-ritual] :player-1)
             results (q/query-library-by-criteria db' :player-1
-                                                 {:card/subtypes #{subtype-a subtype-b}})]
+                                                 {:match/subtypes #{subtype-a subtype-b}})]
         (is (= 2 (count results))
             "Should find exactly 2 matching cards")
         (is (= #{subtype-a subtype-b}
@@ -155,7 +155,7 @@
       (let [db (th/create-test-db)
             [db' _] (th/add-cards-to-library db [:city-of-brass :dark-ritual] :player-1)
             results (q/query-library-by-criteria db' :player-1
-                                                 {:card/subtypes #{subtype-a subtype-b}})]
+                                                 {:match/subtypes #{subtype-a subtype-b}})]
         (is (empty? results)
             "Should not find cards without matching subtypes")))))
 

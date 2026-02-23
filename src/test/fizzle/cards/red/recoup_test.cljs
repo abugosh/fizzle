@@ -63,7 +63,7 @@
           "Target zone should be :graveyard")
       (is (= :self (:target/controller (first reqs)))
           "Target controller should be :self")
-      (is (= {:card/types #{:sorcery}} (:target/criteria (first reqs)))
+      (is (= {:match/types #{:sorcery}} (:target/criteria (first reqs)))
           "Target criteria should require sorcery type")
       (is (true? (:target/required (first reqs)))
           "Target should be required")))

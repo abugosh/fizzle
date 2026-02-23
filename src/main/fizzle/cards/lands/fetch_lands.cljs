@@ -20,7 +20,7 @@
                                     :pay-life 1}
                      :ability/description "Search for Plains or Island"
                      :ability/effects [{:effect/type :tutor
-                                        :effect/criteria {:card/subtypes #{:plains :island}}
+                                        :effect/criteria {:match/subtypes #{:plains :island}}
                                         :effect/target-zone :battlefield
                                         :effect/shuffle? true}]}]})
 
@@ -39,7 +39,7 @@
                                     :pay-life 1}
                      :ability/description "Search for Island or Swamp"
                      :ability/effects [{:effect/type :tutor
-                                        :effect/criteria {:card/subtypes #{:island :swamp}}
+                                        :effect/criteria {:match/subtypes #{:island :swamp}}
                                         :effect/target-zone :battlefield
                                         :effect/shuffle? true}]}]})
 
@@ -58,7 +58,7 @@
                                     :pay-life 1}
                      :ability/description "Search for Swamp or Mountain"
                      :ability/effects [{:effect/type :tutor
-                                        :effect/criteria {:card/subtypes #{:swamp :mountain}}
+                                        :effect/criteria {:match/subtypes #{:swamp :mountain}}
                                         :effect/target-zone :battlefield
                                         :effect/shuffle? true}]}]})
 
@@ -77,7 +77,7 @@
                                     :pay-life 1}
                      :ability/description "Search for Mountain or Forest"
                      :ability/effects [{:effect/type :tutor
-                                        :effect/criteria {:card/subtypes #{:mountain :forest}}
+                                        :effect/criteria {:match/subtypes #{:mountain :forest}}
                                         :effect/target-zone :battlefield
                                         :effect/shuffle? true}]}]})
 
@@ -96,7 +96,7 @@
                                     :pay-life 1}
                      :ability/description "Search for Forest or Plains"
                      :ability/effects [{:effect/type :tutor
-                                        :effect/criteria {:card/subtypes #{:forest :plains}}
+                                        :effect/criteria {:match/subtypes #{:forest :plains}}
                                         :effect/target-zone :battlefield
                                         :effect/shuffle? true}]}]})
 
@@ -115,7 +115,7 @@
                                     :pay-life 1}
                      :ability/description "Search for Swamp or Forest"
                      :ability/effects [{:effect/type :tutor
-                                        :effect/criteria {:card/subtypes #{:swamp :forest}}
+                                        :effect/criteria {:match/subtypes #{:swamp :forest}}
                                         :effect/target-zone :battlefield
                                         :effect/shuffle? true}]}]})
 
@@ -134,7 +134,7 @@
                                     :pay-life 1}
                      :ability/description "Search for Island or Mountain"
                      :ability/effects [{:effect/type :tutor
-                                        :effect/criteria {:card/subtypes #{:island :mountain}}
+                                        :effect/criteria {:match/subtypes #{:island :mountain}}
                                         :effect/target-zone :battlefield
                                         :effect/shuffle? true}]}]})
 
@@ -153,7 +153,7 @@
                                     :pay-life 1}
                      :ability/description "Search for Forest or Island"
                      :ability/effects [{:effect/type :tutor
-                                        :effect/criteria {:card/subtypes #{:forest :island}}
+                                        :effect/criteria {:match/subtypes #{:forest :island}}
                                         :effect/target-zone :battlefield
                                         :effect/shuffle? true}]}]})
 
@@ -172,7 +172,7 @@
                                     :pay-life 1}
                      :ability/description "Search for Mountain or Plains"
                      :ability/effects [{:effect/type :tutor
-                                        :effect/criteria {:card/subtypes #{:mountain :plains}}
+                                        :effect/criteria {:match/subtypes #{:mountain :plains}}
                                         :effect/target-zone :battlefield
                                         :effect/shuffle? true}]}]})
 
@@ -191,7 +191,7 @@
                                     :pay-life 1}
                      :ability/description "Search for Plains or Swamp"
                      :ability/effects [{:effect/type :tutor
-                                        :effect/criteria {:card/subtypes #{:plains :swamp}}
+                                        :effect/criteria {:match/subtypes #{:plains :swamp}}
                                         :effect/target-zone :battlefield
                                         :effect/shuffle? true}]}]})
 

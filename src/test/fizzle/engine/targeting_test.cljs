@@ -94,7 +94,7 @@
                      :target/type :object
                      :target/zone :graveyard
                      :target/controller :self
-                     :target/criteria {:card/types #{:sorcery}}
+                     :target/criteria {:match/types #{:sorcery}}
                      :target/required true}]
    :card/effects []})
 
@@ -128,7 +128,7 @@
                      :target/type :object
                      :target/zone :battlefield
                      :target/controller :any
-                     :target/criteria {:card/types #{:creature}}
+                     :target/criteria {:match/types #{:creature}}
                      :target/required true}
                     {:target/id :player
                      :target/type :player
@@ -214,7 +214,7 @@
                       :target/type :object
                       :target/zone :graveyard
                       :target/controller :self
-                      :target/criteria {:card/types #{:sorcery}}}
+                      :target/criteria {:match/types #{:sorcery}}}
           targets (targeting/find-valid-targets db :player-1 target-req)]
       (is (= 1 (count targets))
           "Should find one valid target")
@@ -229,7 +229,7 @@
                       :target/type :object
                       :target/zone :graveyard
                       :target/controller :self
-                      :target/criteria {:card/types #{:sorcery}}}
+                      :target/criteria {:match/types #{:sorcery}}}
           targets (targeting/find-valid-targets db :player-1 target-req)]
       (is (= [] targets)
           "Should return empty vector when graveyard is empty"))))
@@ -244,7 +244,7 @@
                       :target/type :object
                       :target/zone :graveyard
                       :target/controller :self
-                      :target/criteria {:card/types #{:sorcery}}}
+                      :target/criteria {:match/types #{:sorcery}}}
           targets (targeting/find-valid-targets db :player-1 target-req)]
       (is (= [] targets)
           "Should return empty vector when no cards match criteria"))))
@@ -314,7 +314,7 @@
                       :target/type :object
                       :target/zone :graveyard
                       :target/controller :self
-                      :target/criteria {:card/types #{:sorcery}}}]
+                      :target/criteria {:match/types #{:sorcery}}}]
       (is (targeting/target-still-legal? db obj-id target-req)
           "Target should still be legal when in graveyard"))))
 
@@ -330,7 +330,7 @@
                       :target/type :object
                       :target/zone :graveyard
                       :target/controller :self
-                      :target/criteria {:card/types #{:sorcery}}}]
+                      :target/criteria {:match/types #{:sorcery}}}]
       (is (not (targeting/target-still-legal? db obj-id target-req))
           "Target should be illegal after moving to exile"))))
 
@@ -343,7 +343,7 @@
                       :target/type :object
                       :target/zone :graveyard
                       :target/controller :self
-                      :target/criteria {:card/types #{:sorcery}}}]
+                      :target/criteria {:match/types #{:sorcery}}}]
       (is (not (targeting/target-still-legal? db fake-id target-req))
           "Target should be illegal when object doesn't exist"))))
 
@@ -412,7 +412,7 @@
                       :target/type :object
                       :target/zone :graveyard  ; Expects graveyard
                       :target/controller :self
-                      :target/criteria {:card/types #{:sorcery}}}]
+                      :target/criteria {:match/types #{:sorcery}}}]
       ;; Object should NOT be found as valid target (wrong zone)
       (is (= [] (targeting/find-valid-targets db :player-1 target-req))
           "Object in wrong zone should not be found as valid target")
@@ -469,7 +469,7 @@
                       :target/type :object
                       :target/zone :battlefield
                       :target/controller :self
-                      :target/criteria {:card/types #{:artifact :enchantment}}
+                      :target/criteria {:match/types #{:artifact :enchantment}}
                       :target/required true}
           targets (targeting/find-valid-targets db :player-1 target-req)]
       (is (= 2 (count targets))

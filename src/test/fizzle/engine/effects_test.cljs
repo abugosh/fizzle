@@ -787,7 +787,7 @@
                      :target/type :object
                      :target/zone :graveyard
                      :target/controller :self
-                     :target/criteria {:card/types #{:sorcery}}
+                     :target/criteria {:match/types #{:sorcery}}
                      :target/required true}]
    :card/effects [{:effect/type :grant-flashback
                    :effect/target-ref :graveyard-sorcery}]})
@@ -1581,7 +1581,7 @@
   (testing "execute-effect-checked returns :needs-selection for :tutor"
     (let [db (init-game-state)
           effect {:effect/type :tutor
-                  :effect/criteria {:card/types [:instant]}}
+                  :effect/criteria {:match/types [:instant]}}
           result (fx/execute-effect-checked db :player-1 effect)]
       (is (contains? result :needs-selection))
       (is (= :tutor (:effect/type (:needs-selection result)))))))

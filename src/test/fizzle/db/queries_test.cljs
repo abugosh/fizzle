@@ -323,9 +323,9 @@
           [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           [db'' _] (th/add-card-to-zone db' :island :hand :player-1)
           ;; Query for instants only
-          instants (q/query-zone-by-criteria db'' :player-1 :hand {:card/types #{:instant}})
+          instants (q/query-zone-by-criteria db'' :player-1 :hand {:match/types #{:instant}})
           ;; Query for lands only
-          lands (q/query-zone-by-criteria db'' :player-1 :hand {:card/types #{:land}})]
+          lands (q/query-zone-by-criteria db'' :player-1 :hand {:match/types #{:land}})]
       (is (= 1 (count instants)))
       (is (= "Dark Ritual" (get-in (first instants) [:object/card :card/name])))
       (is (= 1 (count lands)))
@@ -339,7 +339,7 @@
           [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           [db'' _] (th/add-card-to-zone db' :brain-freeze :hand :player-1)
           ;; Query for black OR blue - should get both
-          result (q/query-zone-by-criteria db'' :player-1 :hand {:card/colors #{:black :blue}})]
+          result (q/query-zone-by-criteria db'' :player-1 :hand {:match/colors #{:black :blue}})]
       (is (= 2 (count result))))))
 
 
@@ -350,7 +350,7 @@
           [db' _] (th/add-card-to-zone db :island :hand :player-1)
           [db'' _] (th/add-card-to-zone db' :swamp :hand :player-1)
           ;; Query for island or swamp subtypes - should get both
-          result (q/query-zone-by-criteria db'' :player-1 :hand {:card/subtypes #{:island :swamp}})]
+          result (q/query-zone-by-criteria db'' :player-1 :hand {:match/subtypes #{:island :swamp}})]
       (is (= 2 (count result))))))
 
 
@@ -368,7 +368,7 @@
   (testing "returns empty vector when no objects match criteria"
     (let [db (th/create-test-db)
           [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
-          result (q/query-zone-by-criteria db' :player-1 :hand {:card/types #{:land}})]
+          result (q/query-zone-by-criteria db' :player-1 :hand {:match/types #{:land}})]
       (is (= [] result)))))
 
 
@@ -384,9 +384,9 @@
           [db' _] (th/add-card-to-zone db :dark-ritual :library :player-1)
           [db'' _] (th/add-card-to-zone db' :island :library :player-1)
           ;; Query library for instants
-          instants (q/query-library-by-criteria db'' :player-1 {:card/types #{:instant}})
+          instants (q/query-library-by-criteria db'' :player-1 {:match/types #{:instant}})
           ;; Query library for lands
-          lands (q/query-library-by-criteria db'' :player-1 {:card/types #{:land}})]
+          lands (q/query-library-by-criteria db'' :player-1 {:match/types #{:land}})]
       (is (= 1 (count instants)))
       (is (= "Dark Ritual" (get-in (first instants) [:object/card :card/name])))
       (is (= 1 (count lands)))
@@ -406,9 +406,128 @@
           [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           [db'' _] (th/add-card-to-zone db' :island :hand :player-1)
           ;; Query for instants OR lands - should get both
-          result (q/query-zone-by-criteria db'' :player-1 :hand {:card/types #{:instant :land}})]
+          result (q/query-zone-by-criteria db'' :player-1 :hand {:match/types #{:instant :land}})]
       (is (= 2 (count result))
           "Both instant and land should match when querying for either type"))))
+
+
+;; === :match/not-types tests ===
+
+(deftest matches-criteria-not-types-excludes-test
+  (testing ":match/not-types #{:land} excludes lands"
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :island :hand :player-1)
+          [db'' _] (th/add-card-to-zone db' :dark-ritual :hand :player-1)
+          result (q/query-zone-by-criteria db'' :player-1 :hand {:match/not-types #{:land}})]
+      (is (= 1 (count result))
+          "Should exclude Island (land)")
+      (is (= "Dark Ritual" (get-in (first result) [:object/card :card/name]))
+          "Should return only Dark Ritual (instant)"))))
+
+
+(deftest matches-criteria-not-types-multi-type-object-test
+  (testing "object with types #{:artifact :creature} excluded by :match/not-types #{:creature}"
+    (let [db (th/create-test-db)
+          ;; Lotus Petal is an artifact - should NOT be excluded
+          [db' _] (th/add-card-to-zone db :lotus-petal :hand :player-1)
+          ;; Island is a land - should NOT be excluded by :creature
+          [db'' _] (th/add-card-to-zone db' :island :hand :player-1)
+          result (q/query-zone-by-criteria db'' :player-1 :hand {:match/not-types #{:creature}})]
+      (is (= 2 (count result))
+          "Neither artifact nor land has :creature type, so both should match"))))
+
+
+(deftest matches-criteria-not-types-empty-set-test
+  (testing "empty :match/not-types #{} matches everything"
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          [db'' _] (th/add-card-to-zone db' :island :hand :player-1)
+          result (q/query-zone-by-criteria db'' :player-1 :hand {:match/not-types #{}})]
+      (is (= 2 (count result))
+          "Empty not-types should match all objects"))))
+
+
+(deftest matches-criteria-types-and-not-types-combined-test
+  (testing ":match/types #{:artifact} :match/not-types #{:land} combined"
+    (let [db (th/create-test-db)
+          ;; Lotus Petal is artifact (not land) - should match
+          [db' _] (th/add-card-to-zone db :lotus-petal :hand :player-1)
+          ;; Island is land (not artifact) - should not match (wrong type)
+          [db'' _] (th/add-card-to-zone db' :island :hand :player-1)
+          ;; Dark Ritual is instant (not artifact) - should not match (wrong type)
+          [db''' _] (th/add-card-to-zone db'' :dark-ritual :hand :player-1)
+          result (q/query-zone-by-criteria db''' :player-1 :hand
+                                           {:match/types #{:artifact}
+                                            :match/not-types #{:land}})]
+      (is (= 1 (count result))
+          "Only artifact that is not a land should match")
+      (is (= "Lotus Petal" (get-in (first result) [:object/card :card/name]))
+          "Lotus Petal (artifact, not land) should match"))))
+
+
+(deftest matches-criteria-not-types-no-overlap-test
+  (testing ":match/not-types #{:creature} matches object with types #{:instant}"
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          result (q/query-zone-by-criteria db' :player-1 :hand {:match/not-types #{:creature}})]
+      (is (= 1 (count result))
+          "Instant has no overlap with :creature, should match"))))
+
+
+(deftest matches-criteria-not-types-exact-type-excluded-test
+  (testing ":match/not-types #{:instant} excludes instants"
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          [db'' _] (th/add-card-to-zone db' :island :hand :player-1)
+          result (q/query-zone-by-criteria db'' :player-1 :hand {:match/not-types #{:instant}})]
+      (is (= 1 (count result))
+          "Should exclude Dark Ritual (instant)")
+      (is (= "Island" (get-in (first result) [:object/card :card/name]))
+          "Should return only Island (land)"))))
+
+
+(deftest matches-criteria-conflicting-types-and-not-types-test
+  (testing "{:match/types #{:land} :match/not-types #{:land}} matches nothing"
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :island :hand :player-1)
+          [db'' _] (th/add-card-to-zone db' :dark-ritual :hand :player-1)
+          result (q/query-zone-by-criteria db'' :player-1 :hand
+                                           {:match/types #{:land}
+                                            :match/not-types #{:land}})]
+      (is (= 0 (count result))
+          "Conflicting types/not-types should match nothing"))))
+
+
+(deftest matches-criteria-not-types-multiple-exclusions-test
+  (testing ":match/not-types #{:land :instant} excludes both"
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          [db'' _] (th/add-card-to-zone db' :island :hand :player-1)
+          [db''' _] (th/add-card-to-zone db'' :lotus-petal :hand :player-1)
+          result (q/query-zone-by-criteria db''' :player-1 :hand
+                                           {:match/not-types #{:land :instant}})]
+      (is (= 1 (count result))
+          "Should exclude both land and instant")
+      (is (= "Lotus Petal" (get-in (first result) [:object/card :card/name]))
+          "Only artifact should remain"))))
+
+
+(deftest matches-criteria-not-types-with-colors-test
+  (testing ":match/not-types combined with :match/colors"
+    (let [db (th/create-test-db)
+          ;; Dark Ritual is black instant
+          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          ;; Brain Freeze is blue instant
+          [db'' _] (th/add-card-to-zone db' :brain-freeze :hand :player-1)
+          ;; Island is colorless land
+          [db''' _] (th/add-card-to-zone db'' :island :hand :player-1)
+          result (q/query-zone-by-criteria db''' :player-1 :hand
+                                           {:match/colors #{:black}
+                                            :match/not-types #{:land}})]
+      (is (= 1 (count result))
+          "Only black non-land should match")
+      (is (= "Dark Ritual" (get-in (first result) [:object/card :card/name]))
+          "Dark Ritual (black instant) should match"))))
 
 
 ;; === Corner case tests ===

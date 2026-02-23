@@ -115,7 +115,7 @@
                            :alternate/mana-cost {:colorless 1 :blue 1}
                            :alternate/additional-costs [{:cost/type :exile-cards
                                                          :cost/zone :graveyard
-                                                         :cost/criteria {:card/colors #{:blue}}
+                                                         :cost/criteria {:match/colors #{:blue}}
                                                          :cost/count :x}]
                            :alternate/on-resolve :exile}]})
 

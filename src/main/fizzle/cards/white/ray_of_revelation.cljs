@@ -24,7 +24,7 @@
                      :target/type :object
                      :target/zone :battlefield
                      :target/controller :any
-                     :target/criteria {:card/types #{:enchantment}}
+                     :target/criteria {:match/types #{:enchantment}}
                      :target/required true}]
 
    ;; Destroy effect using target-ref to reference stored target

@@ -15,7 +15,7 @@
    :card/types #{:sorcery}
    :card/text "Search your library for a blue instant card, reveal it, put it into your hand, then shuffle."
    :card/effects [{:effect/type :tutor
-                   :effect/criteria {:card/types #{:instant}
-                                     :card/colors #{:blue}}
+                   :effect/criteria {:match/types #{:instant}
+                                     :match/colors #{:blue}}
                    :effect/target-zone :hand
                    :effect/shuffle? true}]})

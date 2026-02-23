@@ -77,7 +77,7 @@
           "Additional cost type must be :exile-cards")
       (is (= :graveyard (:cost/zone exile-cost))
           "Exile from graveyard")
-      (is (= #{:blue} (:card/colors (:cost/criteria exile-cost)))
+      (is (= #{:blue} (:match/colors (:cost/criteria exile-cost)))
           "Must exile blue cards")
       (is (= :x (:cost/count exile-cost))
           "Exile count is X (player chooses)"))))

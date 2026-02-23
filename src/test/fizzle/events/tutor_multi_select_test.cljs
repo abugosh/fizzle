@@ -104,7 +104,7 @@
                                            :player-1)
           ;; Effect without :effect/select-count (like existing Merchant Scroll)
           effect {:effect/type :tutor
-                  :effect/criteria {:card/types #{:instant} :card/colors #{:blue}}
+                  :effect/criteria {:match/types #{:instant} :match/colors #{:blue}}
                   :effect/target-zone :hand}
           result (library/build-tutor-selection db' :player-1 (random-uuid) effect [])]
       (is (= 1 (:selection/select-count result))

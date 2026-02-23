@@ -25,7 +25,7 @@
                           :target/type :object
                           :target/zone :battlefield
                           :target/controller :any
-                          :target/criteria {:card/types #{:artifact :enchantment}}
+                          :target/criteria {:match/types #{:artifact :enchantment}}
                           :target/required true}]
      :ability/cost {:sacrifice-self true}
      :ability/description "Destroy target artifact or enchantment"

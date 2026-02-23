@@ -21,7 +21,7 @@
                      :target/type :object
                      :target/zone :graveyard
                      :target/controller :self
-                     :target/criteria {:card/types #{:sorcery}}
+                     :target/criteria {:match/types #{:sorcery}}
                      :target/required true}]
 
    ;; Effect: grant flashback to target

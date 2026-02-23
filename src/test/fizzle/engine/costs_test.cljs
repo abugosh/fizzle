@@ -353,7 +353,7 @@
                  (add-colored-card-to-graveyard :player-1 :blue))
           [db object-id] (add-permanent db :player-1)
           cost {:exile-cards {:zone :graveyard
-                              :criteria {:card/colors #{:blue}}
+                              :criteria {:match/colors #{:blue}}
                               :count 2}}]
       (is (true? (costs/can-pay? db object-id cost))))))
 
@@ -363,7 +363,7 @@
     (let [db (add-colored-card-to-graveyard (init-game-state) :player-1 :blue)
           [db object-id] (add-permanent db :player-1)
           cost {:exile-cards {:zone :graveyard
-                              :criteria {:card/colors #{:blue}}
+                              :criteria {:match/colors #{:blue}}
                               :count 3}}]
       (is (false? (costs/can-pay? db object-id cost))))))
 
@@ -375,7 +375,7 @@
                  (add-colored-card-to-graveyard :player-1 :black))
           [db object-id] (add-permanent db :player-1)
           cost {:exile-cards {:zone :graveyard
-                              :criteria {:card/colors #{:blue}}
+                              :criteria {:match/colors #{:blue}}
                               :count 1}}]
       (is (false? (costs/can-pay? db object-id cost))))))
 
@@ -385,7 +385,7 @@
     (let [db (add-colored-card-to-graveyard (init-game-state) :player-1 :blue)
           [db object-id] (add-permanent db :player-1)
           cost {:exile-cards {:zone :graveyard
-                              :criteria {:card/colors #{:blue}}
+                              :criteria {:match/colors #{:blue}}
                               :count :x}}]
       (is (true? (costs/can-pay? db object-id cost))))))
 
@@ -394,7 +394,7 @@
   (testing "can-pay? :exile-cards with :x count returns false when no matching cards"
     (let [[db object-id] (add-permanent (init-game-state) :player-1)
           cost {:exile-cards {:zone :graveyard
-                              :criteria {:card/colors #{:blue}}
+                              :criteria {:match/colors #{:blue}}
                               :count :x}}]
       (is (false? (costs/can-pay? db object-id cost))))))
 
@@ -427,7 +427,7 @@
       ;; Only the spell itself is blue in graveyard - should not count
       (let [db @conn
             cost {:exile-cards {:zone :graveyard
-                                :criteria {:card/colors #{:blue}}
+                                :criteria {:match/colors #{:blue}}
                                 :count :x}}]
         (is (false? (costs/can-pay? db obj-id cost))
             "Spell being cast should not count as available exile target")))))
@@ -440,7 +440,7 @@
                  (add-colored-card-to-graveyard :player-1 :blue))
           [db object-id] (add-permanent db :player-1)
           cost {:exile-cards {:zone :graveyard
-                              :criteria {:card/colors #{:blue}}
+                              :criteria {:match/colors #{:blue}}
                               :count 2}}
           db' (costs/pay-cost db object-id cost)]
       (is (= db db')

@@ -143,7 +143,7 @@
           "Target zone should be :battlefield")
       (is (= :any (:target/controller targeting))
           "Should target any controller's enchantments")
-      (is (= #{:enchantment} (get-in targeting [:target/criteria :card/types]))
+      (is (= #{:enchantment} (get-in targeting [:target/criteria :match/types]))
           "Should only target enchantments")
       (is (true? (:target/required targeting))
           "Target should be required")))

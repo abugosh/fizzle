@@ -42,8 +42,8 @@
                                                          :player-1)
           ;; Query for blue instants
           results (q/query-library-by-criteria db' :player-1
-                                               {:card/types #{:instant}
-                                                :card/colors #{:blue}})]
+                                               {:match/types #{:instant}
+                                                :match/colors #{:blue}})]
       (is (= 1 (count results))
           "Should find exactly 1 blue instant (Brain Freeze)")
       (is (= :brain-freeze (get-in (first results) [:object/card :card/id]))
@@ -58,8 +58,8 @@
                                            [:dark-ritual :brain-freeze :mental-note]
                                            :player-1)
           results (q/query-library-by-criteria db' :player-1
-                                               {:card/types #{:instant}
-                                                :card/colors #{:blue}})]
+                                               {:match/types #{:instant}
+                                                :match/colors #{:blue}})]
       ;; Both Brain Freeze and Mental Note are blue instants
       (is (= 2 (count results))
           "Should find 2 blue instants")
@@ -76,8 +76,8 @@
                                            [:dark-ritual :cabal-ritual :dark-ritual]
                                            :player-1)
           results (q/query-library-by-criteria db' :player-1
-                                               {:card/types #{:instant}
-                                                :card/colors #{:blue}})]
+                                               {:match/types #{:instant}
+                                                :match/colors #{:blue}})]
       (is (empty? results)
           "Should return empty vector when no matches"))))
 
@@ -91,8 +91,8 @@
                                            :player-1)
           ;; Query for blue instant - should only match Brain Freeze
           results (q/query-library-by-criteria db' :player-1
-                                               {:card/types #{:instant}
-                                                :card/colors #{:blue}})]
+                                               {:match/types #{:instant}
+                                                :match/colors #{:blue}})]
       (is (= 1 (count results))
           "Careful Study is blue but sorcery - should not match instant query")
       (is (= :brain-freeze (get-in (first results) [:object/card :card/id]))
@@ -268,9 +268,9 @@
       (let [tutor-effect (first effects)]
         (is (= :tutor (:effect/type tutor-effect))
             "Effect type should be :tutor")
-        (is (= #{:instant} (get-in tutor-effect [:effect/criteria :card/types]))
+        (is (= #{:instant} (get-in tutor-effect [:effect/criteria :match/types]))
             "Should search for instants")
-        (is (= #{:blue} (get-in tutor-effect [:effect/criteria :card/colors]))
+        (is (= #{:blue} (get-in tutor-effect [:effect/criteria :match/colors]))
             "Should search for blue cards")
         (is (= :hand (:effect/target-zone tutor-effect))
             "Should put card into hand")
