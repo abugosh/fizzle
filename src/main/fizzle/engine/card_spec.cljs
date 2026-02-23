@@ -17,7 +17,7 @@
     :draw :exile-self :discard-hand :return-from-graveyard :sacrifice
     :destroy :discard :tutor :scry :peek-and-select :grant-flashback
     :add-restriction :storm-copies :exile-zone :gain-life-equal-to-cmc
-    :discard-from-revealed-hand})
+    :discard-from-revealed-hand :bounce})
 
 
 (def valid-cost-types

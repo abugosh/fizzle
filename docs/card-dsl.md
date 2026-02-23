@@ -243,6 +243,27 @@ Move a permanent to graveyard.
 
 ---
 
+### :bounce
+
+Return target permanent to its owner's hand.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `:effect/type` | keyword | yes | `:bounce` |
+| `:effect/target` | keyword/UUID | yes | Object-id (pre-resolved by caller) |
+
+**Example:** Chain of Vapor
+```clojure
+{:effect/type :bounce
+ :effect/target-ref :target-permanent}
+```
+
+**Used by:** Chain of Vapor
+
+**Note:** Target is pre-resolved via `:effect/target-ref` and cast-time targeting. Returns the permanent to the owner's hand zone.
+
+---
+
 ### :add-counters
 
 Add counters to a permanent.

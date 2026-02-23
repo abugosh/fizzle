@@ -687,3 +687,23 @@
   ;;   - No valid cards: selection allows 0 picks (no discard)
   [db _player-id effect _object-id]
   {:db db :needs-selection effect})
+
+
+(defmethod execute-effect-impl :bounce
+  ;; Return target permanent to its owner's hand.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/target - Object ID (UUID) of the permanent to return
+  ;;                    (pre-resolved by caller via stack/resolve-effect-target)
+  ;;
+  ;; Handles edge cases:
+  ;;   - No target: no-op (returns db unchanged)
+  ;;   - Target doesn't exist: no-op (returns db unchanged)
+  ;;   - Target not on battlefield: still moves to hand (zones handles it)
+  [db _player-id effect _object-id]
+  (let [target-id (:effect/target effect)]
+    (if-not target-id
+      db
+      (if (q/get-object-eid db target-id)
+        (zones/move-to-zone db target-id :hand)
+        db))))
