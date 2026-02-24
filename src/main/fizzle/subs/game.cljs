@@ -409,6 +409,11 @@
             :hand
             (queries/get-hand game-db player-id)
 
+            ;; Query target player's hand (hand-reveal-discard: Duress)
+            :opponent-hand
+            (let [target-player (:selection/target-player selection)]
+              (queries/get-objects-in-zone game-db target-player :hand))
+
             ;; Query by zone from selection metadata (graveyard-return, default)
             :zone
             (queries/get-objects-in-zone game-db player-id (or zone :hand))

@@ -172,7 +172,7 @@
         land-ids (set (mapv :object/id (or lands [])))]
     {:selection/type :chain-bounce
      :selection/zone :battlefield
-     :selection/card-source :zone
+     :selection/card-source :valid-targets
      :selection/select-count 1
      :selection/player-id chain-controller
      :selection/selected #{}
@@ -206,7 +206,7 @@
         target-ids (set (mapv :object/id all-permanents))]
     {:selection/type :chain-bounce-target
      :selection/zone :battlefield
-     :selection/card-source :zone
+     :selection/card-source :valid-targets
      :selection/select-count 1
      :selection/player-id chain-controller
      :selection/selected #{}
@@ -262,12 +262,13 @@
         copy-si-eid (:selection/chain-copy-stack-item-eid selection)]
     (if (empty? selected)
       ;; No target chosen — remove the copy from the stack (fizzles)
-      {:db (stack/remove-stack-item game-db copy-si-eid)
-       :finalized? true}
+      ;; Standard cleanup moves original spell to graveyard
+      {:db (stack/remove-stack-item game-db copy-si-eid)}
       ;; Set the copy's target and leave it on the stack to resolve normally
+      ;; Standard cleanup moves original spell to graveyard
       (let [target-id (first selected)
             db-with-target (d/db-with game-db
                                       [[:db/add copy-si-eid
                                         :stack-item/targets
                                         {:target-permanent target-id}]])]
-        {:db db-with-target :finalized? true}))))
+        {:db db-with-target}))))

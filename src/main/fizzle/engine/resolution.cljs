@@ -99,11 +99,15 @@
         effects-list))
 
 
-(defn- move-resolved-spell
+(defn move-resolved-spell
   "Move a resolved spell to its destination zone.
 
    Copies cease to exist when leaving the stack (per MTG rules 707.2).
    Non-copies go to: cast-mode destination > permanent-type battlefield > graveyard.
+
+   This is the SINGLE SOURCE OF TRUTH for spell-off-stack zone transitions.
+   Both direct resolution (resolve-spell-type) and selection cleanup
+   (cleanup-selection-source) must use this function.
 
    Arguments:
      db        - Datascript database value

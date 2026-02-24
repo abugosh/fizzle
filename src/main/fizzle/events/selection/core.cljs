@@ -8,9 +8,9 @@
   (:require
     [fizzle.db.queries :as queries]
     [fizzle.engine.effects :as effects]
+    [fizzle.engine.resolution :as resolution]
     [fizzle.engine.stack :as stack]
-    [fizzle.engine.validation :as validation]
-    [fizzle.engine.zones :as zones]))
+    [fizzle.engine.validation :as validation]))
 
 
 ;; =====================================================
@@ -101,7 +101,9 @@
   "Clean up the source of a resolved selection.
    Handles 2 source types:
    - :stack-item → remove the stack-item entity
-   - nil/spell → move spell to destination zone + remove stack-item"
+   - nil/spell → remove stack-item first (needs object EID), then move spell
+                  off stack via resolution/move-resolved-spell (single source
+                  of truth for copy vs non-copy zone transitions)"
   [game-db selection]
   (let [source-type (:selection/source-type selection)]
     (if (= source-type :stack-item)
@@ -109,13 +111,15 @@
         (stack/remove-stack-item game-db si-eid))
       (let [spell-id (:selection/spell-id selection)
             spell-obj (queries/get-object game-db spell-id)
-            current-zone (:object/zone spell-obj)
-            db-after-move (if (= current-zone :stack)
-                            (let [cast-mode (:object/cast-mode spell-obj)
-                                  destination (or (:mode/on-resolve cast-mode) :graveyard)]
-                              (zones/move-to-zone game-db spell-id destination))
-                            game-db)]
-        (remove-spell-stack-item db-after-move spell-id)))))
+            current-zone (:object/zone spell-obj)]
+        (if (= current-zone :stack)
+          ;; Remove stack-item first (needs object EID for lookup), then
+          ;; move spell off stack. Order matters: move-resolved-spell may
+          ;; retract the object entirely (copies), making EID lookup fail.
+          (-> game-db
+              (remove-spell-stack-item spell-id)
+              (resolution/move-resolved-spell spell-id spell-obj))
+          game-db)))))
 
 
 ;; =====================================================

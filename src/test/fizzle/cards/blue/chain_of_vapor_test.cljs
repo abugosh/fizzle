@@ -431,3 +431,57 @@
           db-resolved (resolve-and-decline-chain db-cast)]
       (is (= :graveyard (:object/zone (q/get-object db-resolved cov-id)))
           "Chain of Vapor should be in graveyard after resolving"))))
+
+
+;; MTG Rule 707.2: Copies cease to exist when they leave the stack
+(deftest chain-of-vapor-copy-ceases-to-exist-after-resolving-test
+  (testing "Copy ceases to exist after resolving (not moved to graveyard)"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db cov-id] (th/add-card-to-zone db :chain-of-vapor :hand :player-1)
+          db (mana/add-mana db :player-1 {:blue 1})
+          [db petal-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-2)
+          [db land-id] (th/add-card-to-zone db :island :battlefield :player-2)
+          ;; A second nonland permanent to target with the copy
+          [db seal-id] (th/add-card-to-zone db :seal-of-cleansing :battlefield :player-1)
+          ;; Cast and resolve Chain of Vapor targeting petal
+          db-cast (cast-chain-of-vapor db cov-id petal-id)
+          result (game/resolve-one-item db-cast)]
+      ;; Chain-bounce selection should be pending
+      (is (some? (:pending-selection result)))
+      (let [;; Sacrifice the land to create a copy
+            chain-sel (assoc (:pending-selection result)
+                             :selection/selected #{land-id})
+            app-db {:game/db (:db result)
+                    :game/pending-selection chain-sel}
+            app-after-sac (sel-core/confirm-selection-impl app-db)]
+        ;; Should now have chain-bounce-target selection for the copy
+        (is (= :chain-bounce-target
+               (:selection/type (:game/pending-selection app-after-sac))))
+        (let [;; Select the seal as the copy's target
+              target-sel (assoc (:game/pending-selection app-after-sac)
+                                :selection/selected #{seal-id})
+              app-with-target (assoc app-after-sac :game/pending-selection target-sel)
+              app-after-target (sel-core/confirm-selection-impl app-with-target)
+              ;; Now resolve the copy (it's on the stack)
+              copy-result (game/resolve-one-item (:game/db app-after-target))]
+          ;; Copy should trigger chain-bounce selection (same card effects)
+          (is (some? (:pending-selection copy-result))
+              "Copy should create chain-bounce selection when it resolves")
+          (let [;; Decline the chain for the copy (select nothing)
+                copy-chain-sel (:pending-selection copy-result)
+                app-copy {:game/db (:db copy-result)
+                          :game/pending-selection copy-chain-sel}
+                app-final (sel-core/confirm-selection-impl app-copy)
+                db-final (:game/db app-final)
+                ;; Check graveyard — copy should NOT be there
+                p1-gy (q/get-objects-in-zone db-final :player-1 :graveyard)
+                p2-gy (q/get-objects-in-zone db-final :player-2 :graveyard)
+                all-gy (concat p1-gy p2-gy)
+                gy-copies (filter :object/is-copy all-gy)]
+            ;; Copy should cease to exist — not in any zone
+            (is (empty? gy-copies)
+                "Copy should cease to exist after resolving, not remain in graveyard")
+            ;; Seal should have been bounced by the copy
+            (is (= :hand (:object/zone (q/get-object db-final seal-id)))
+                "Copy's target should have been bounced to hand")))))))

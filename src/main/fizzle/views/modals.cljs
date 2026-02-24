@@ -136,17 +136,24 @@
   "Modal for selecting a player as target.
    Takes the selection map and a confirm-event keyword.
    Used for spell effects, ability targeting, and cast-time targeting.
+   Only shows buttons for players in :selection/valid-targets (or both if nil).
    All dispatch ::confirm-selection."
   [selection confirm-event]
   (let [selected (or (:selection/selected selection) #{})
-        valid? @(rf/subscribe [::subs/selection-valid?])]
+        valid? @(rf/subscribe [::subs/selection-valid?])
+        valid-targets (when-let [vt (:selection/valid-targets selection)]
+                        (set vt))
+        show-self? (or (nil? valid-targets) (contains? valid-targets :player-1))
+        show-opponent? (or (nil? valid-targets) (contains? valid-targets :opponent))]
     [modal-wrapper {:title "Choose target player"
                     :max-width "400px"
                     :text-align "center"}
-     ;; Player buttons
+     ;; Player buttons — only for valid targets
      [:div {:class "flex justify-center mb-5"}
-      [player-target-button :player-1 "You" (contains? selected :player-1)]
-      [player-target-button :opponent "Opponent" (contains? selected :opponent)]]
+      (when show-self?
+        [player-target-button :player-1 "You" (contains? selected :player-1)])
+      (when show-opponent?
+        [player-target-button :opponent "Opponent" (contains? selected :opponent)])]
      ;; Confirm button
      [:div {:class "flex justify-center"}
       [confirm-button {:label "Confirm"
@@ -240,6 +247,63 @@
                                  :else "Confirm")
                         :valid? valid?
                         :on-confirm #(rf/dispatch [confirm-event])}]]]]))
+
+
+(defn- hand-reveal-card-view
+  "A card in the hand-reveal modal. Selectable cards are clickable,
+   non-selectable cards are dimmed and inert."
+  [obj selected? selectable?]
+  (let [card-name (get-in obj [:object/card :card/name])
+        object-id (:object/id obj)
+        card-types (get-in obj [:object/card :card/types])
+        card-colors (get-in obj [:object/card :card/colors])
+        border-class (cond
+                       selected? "border-[3px] border-border-accent"
+                       selectable? (str "border-2 " (card-styles/get-type-border-class card-types false))
+                       :else "border-2 border-border opacity-50")
+        bg-class (card-styles/get-color-identity-bg-class card-colors card-types)]
+    [:div {:class (str "rounded-md px-3.5 py-2.5 min-w-[90px] text-center "
+                       "select-none text-text transition-all duration-100 "
+                       (if selectable? "cursor-pointer " "cursor-not-allowed ")
+                       border-class " " bg-class)
+           :on-click (when selectable?
+                       #(rf/dispatch [::selection-events/toggle-selection object-id]))}
+     card-name]))
+
+
+(defn hand-reveal-discard-modal
+  "Modal for hand-reveal discard (Duress). Shows the full opponent hand
+   with all cards visible. Only cards matching criteria are selectable;
+   non-matching cards are dimmed."
+  [selection cards]
+  (let [selected (:selection/selected selection)
+        valid-targets (set (:selection/valid-targets selection))
+        valid? @(rf/subscribe [::subs/selection-valid?])]
+    [:div {:class overlay-class}
+     [:div {:class (container-class {})}
+      [:h2 {:class "text-text m-0 mb-2 text-lg"}
+       "Opponent's Hand"]
+      [:p {:class (str "m-0 mb-4 text-sm "
+                       (if valid? "text-health-good" "text-health-danger"))}
+       (if (empty? valid-targets)
+         "No valid targets"
+         (if (seq selected)
+           "1 card selected"
+           "Choose a noncreature, nonland card"))]
+      [:div {:class "flex flex-wrap gap-2.5 mb-5 min-h-[60px]"}
+       (if (seq cards)
+         (for [obj cards]
+           ^{:key (:object/id obj)}
+           [hand-reveal-card-view obj
+            (contains? selected (:object/id obj))
+            (contains? valid-targets (:object/id obj))])
+         [:div {:class "text-perm-text-tapped"} "Hand is empty"])]
+      [:div {:class "flex justify-end gap-3"}
+       [cancel-button {:label "Clear"
+                       :on-cancel #(rf/dispatch [::selection-events/cancel-selection])}]
+       [confirm-button {:label "Confirm"
+                        :valid? valid?
+                        :on-confirm #(rf/dispatch [::selection-events/confirm-selection])}]]]]))
 
 
 (defn pile-choice-modal
@@ -818,6 +882,10 @@
 
 (defmethod render-selection-modal :storm-split [selection _cards]
   [storm-split-modal selection])
+
+
+(defmethod render-selection-modal :hand-reveal-discard [selection cards]
+  [hand-reveal-discard-modal selection cards])
 
 
 (defmethod render-selection-modal :mana-allocation [_selection _cards]

@@ -287,10 +287,25 @@
       ;; Check for targeting requirements (interactive)
       (seq targeting-reqs)
       (let [first-req (first targeting-reqs)
-            sel (sel-targeting/build-cast-time-target-selection game-db player-id object-id mode first-req)]
-        (-> app-db
-            (assoc :game/pending-selection sel)
-            (dissoc :game/selected-card)))
+            valid-targets (targeting/find-valid-targets game-db player-id first-req)]
+        (if (and (= :player (:target/type first-req))
+                 (= 1 (count valid-targets)))
+          ;; Single player target — auto-cast without dialog
+          (let [auto-target (first valid-targets)
+                sel {:selection/player-id player-id
+                     :selection/object-id object-id
+                     :selection/mode mode
+                     :selection/target-requirement first-req
+                     :selection/selected #{auto-target}}
+                db-after (sel-targeting/confirm-cast-time-target game-db sel)]
+            (-> app-db
+                (assoc :game/db db-after)
+                (dissoc :game/selected-card)))
+          ;; Multiple targets or object targeting — show selection
+          (let [sel (sel-targeting/build-cast-time-target-selection game-db player-id object-id mode first-req)]
+            (-> app-db
+                (assoc :game/pending-selection sel)
+                (dissoc :game/selected-card)))))
 
       ;; Check for generic mana cost requiring manual allocation
       (sel-costs/has-generic-mana-cost? (:mode/mana-cost mode))
