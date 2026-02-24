@@ -22,7 +22,7 @@
 
 
 (def valid-cost-types
-  #{:pay-life :exile-cards})
+  #{:pay-life :exile-cards :return-land :discard-specific})
 
 
 (def valid-ability-cost-keys
@@ -97,6 +97,9 @@
           :opt [:condition/target :condition/counter-type]))
 
 
+(s/def :effect/unless-pay ::mana-cost)
+
+
 (s/def ::effect
   (s/keys :req [:effect/type]
           :opt [:effect/mana :effect/amount :effect/count
@@ -106,7 +109,7 @@
                 :effect/condition :effect/x
                 :effect/select-count :effect/selected-zone
                 :effect/remainder-zone :effect/order-remainder?
-                :effect/zone
+                :effect/zone :effect/unless-pay
                 :restriction/type]))
 
 
@@ -184,11 +187,14 @@
 (s/def :cost/zone keyword?)
 (s/def :cost/criteria map?)
 (s/def :cost/count (s/or :int int? :keyword keyword?))
+(s/def :cost/groups vector?)
+(s/def :cost/total int?)
 
 
 (s/def ::additional-cost
   (s/keys :req [:cost/type]
-          :opt [:cost/amount :cost/zone :cost/criteria :cost/count]))
+          :opt [:cost/amount :cost/zone :cost/criteria :cost/count
+                :cost/groups :cost/total]))
 
 
 ;; === Alternate Cost Spec (Flashback) ===

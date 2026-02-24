@@ -439,40 +439,66 @@
       db)))
 
 
+(defn counter-target-spell
+  "Counter a spell on the stack — move it to the appropriate zone.
+
+   Zone transitions:
+   - Copies cease to exist (removed from db)
+   - Flashback spells go to exile (MTG rule)
+   - All other spells go to graveyard (including permanents)
+
+   Returns db. No-op if target is nil, doesn't exist, or not on stack."
+  [db target-id]
+  (if-not target-id
+    db
+    (if-let [obj (q/get-object db target-id)]
+      (if (not= :stack (:object/zone obj))
+        db
+        (if (:object/is-copy obj)
+          (zones/remove-object db target-id)
+          (let [cast-mode (:object/cast-mode obj)
+                mode-destination (:mode/on-resolve cast-mode)
+                destination (if (= :exile mode-destination) :exile :graveyard)]
+            (zones/move-to-zone db target-id destination))))
+      db)))
+
+
 (defmethod execute-effect-impl :counter-spell
   ;; Counter target spell — remove it from the stack without resolving.
   ;;
   ;; Effect keys:
   ;;   :effect/target - Target object-id (pre-resolved by caller via
   ;;                    stack/resolve-effect-target from :effect/target-ref)
+  ;;   :effect/unless-pay - (optional) Mana cost map the targeted spell's
+  ;;                        controller may pay to prevent the counter.
+  ;;                        When present, returns {:db db :needs-selection effect}
+  ;;                        to trigger a payment choice for the target's controller.
   ;;
   ;; Zone transitions for countered spells:
   ;;   - Copies cease to exist (removed from db)
   ;;   - Flashback spells go to exile (MTG rule: flashback exiles on leave-stack)
   ;;   - All other spells go to graveyard (including permanents)
   ;;
-  ;; Note: :mode/on-resolve :battlefield (permanents) does NOT apply when
-  ;; countered — only :exile (flashback) overrides the graveyard default.
-  ;;
   ;; Handles edge cases:
   ;;   - No target: no-op (returns db unchanged)
   ;;   - Target doesn't exist: no-op
   ;;   - Target not on stack: no-op
   [db _player-id effect _object-id]
-  (let [target-id (:effect/target effect)]
+  (let [target-id (:effect/target effect)
+        unless-pay (:effect/unless-pay effect)]
     (if-not target-id
       db
-      (if-let [obj (q/get-object db target-id)]
-        (if (not= :stack (:object/zone obj))
+      (if-let [target-obj (q/get-object db target-id)]
+        (if (not= :stack (:object/zone target-obj))
           db
-          (if (:object/is-copy obj)
-            (zones/remove-object db target-id)
-            (let [cast-mode (:object/cast-mode obj)
-                  mode-destination (:mode/on-resolve cast-mode)
-                  ;; Only :exile overrides graveyard (flashback rule).
-                  ;; :battlefield (permanents) goes to graveyard when countered.
-                  destination (if (= :exile mode-destination) :exile :graveyard)]
-              (zones/move-to-zone db target-id destination))))
+          (if unless-pay
+            ;; Soft counter: enrich with target's controller and signal selection
+            (let [controller-eid (:db/id (:object/controller target-obj))
+                  controller-id (when controller-eid
+                                  (:player/id (d/pull db [:player/id] controller-eid)))]
+              {:db db :needs-selection (assoc effect :unless-pay/controller controller-id)})
+            ;; Hard counter: counter immediately
+            (counter-target-spell db target-id)))
         db))))
 
 

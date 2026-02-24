@@ -119,7 +119,10 @@
     :pay-life {:pay-life (:cost/amount cost)}
     :exile-cards {:exile-cards {:zone (:cost/zone cost)
                                 :criteria (:cost/criteria cost)
-                                :count (:cost/count cost)}}))
+                                :count (:cost/count cost)}}
+    :return-land {:return-land {:criteria (:cost/criteria cost)}}
+    :discard-specific {:discard-specific {:groups (:cost/groups cost)
+                                          :total (:cost/total cost)}}))
 
 
 (defn- can-pay-additional-cost?

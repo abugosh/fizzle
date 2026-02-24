@@ -268,6 +268,68 @@
     db))
 
 
+;; === :return-land cost ===
+;; Used for alternate costs like "return an Island you control to its owner's hand"
+;; Cost format: {:return-land {:criteria {:match/subtypes #{:island}}}}
+;; Note: pay-cost returns db unchanged because actual return is deferred
+;; to the event layer's selection system (player chooses which land).
+
+(defmethod can-pay? :return-land [db object-id cost]
+  ;; Can pay return-land if:
+  ;; 1. Object exists (to find controller)
+  ;; 2. Controller has at least one matching land on the battlefield
+  (if-let [controller-eid (get-controller-eid db object-id)]
+    (let [config (:return-land cost)
+          criteria (:criteria config)
+          controller-id (get-player-id-from-eid db controller-eid)
+          matching (q/query-zone-by-criteria db controller-id :battlefield criteria)]
+      (pos? (count (or matching []))))
+    false))
+
+
+(defmethod pay-cost :return-land [db _object-id _cost]
+  ;; Actual return is deferred to the event layer's selection system.
+  ;; Player must choose which land to return, so we return db unchanged.
+  db)
+
+
+;; === :discard-specific cost ===
+;; Used for costs like "discard an Island card and another card"
+;; Cost format: {:discard-specific {:groups [{:criteria {...} :count 1} {:count 1}] :total 2}}
+;; Note: pay-cost returns db unchanged because actual discard is deferred
+;; to the event layer's selection system (player chooses which cards).
+
+(defmethod can-pay? :discard-specific [db object-id cost]
+  ;; Can pay discard-specific if:
+  ;; 1. Object exists (to find controller)
+  ;; 2. Controller's hand has enough cards total AND enough matching each group
+  ;; The spell being cast (in hand) is excluded from candidates.
+  (if-let [controller-eid (get-controller-eid db object-id)]
+    (let [config (:discard-specific cost)
+          groups (:groups config)
+          total-required (:total config)
+          controller-id (get-player-id-from-eid db controller-eid)
+          hand (or (q/get-objects-in-zone db controller-id :hand) [])
+          ;; Exclude the spell being cast
+          candidates (filterv #(not= object-id (:object/id %)) hand)
+          candidate-count (count candidates)]
+      (and (>= candidate-count total-required)
+           ;; Check each group with criteria can be satisfied
+           (every? (fn [group]
+                     (if-let [criteria (:criteria group)]
+                       (let [matching (filterv #(q/matches-criteria? % criteria) candidates)]
+                         (>= (count matching) (:count group)))
+                       true))
+                   groups)))
+    false))
+
+
+(defmethod pay-cost :discard-specific [db _object-id _cost]
+  ;; Actual discard is deferred to the event layer's selection system.
+  ;; Player must choose which cards to discard, so we return db unchanged.
+  db)
+
+
 ;; === :exile-cards cost ===
 ;; Used for costs like "exile X blue cards from your graveyard"
 ;; Cost format: {:exile-cards {:zone :graveyard :criteria {...} :count N-or-:x}}
