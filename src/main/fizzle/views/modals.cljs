@@ -800,6 +800,104 @@
                        :extra-class "py-2.5 px-8"}]]]))
 
 
+;; === Unless-They-Pay Modal (Soft Counters) ===
+
+(defn- unless-pay-modal
+  "Modal for unless-they-pay counter choice (Mana Leak, Daze).
+   The targeted spell's controller chooses to pay mana or decline.
+   Shows Pay/Decline buttons — not a card selection."
+  [selection _cards]
+  (let [selected (or (:selection/selected selection) #{})
+        can-pay? (:selection/can-pay? selection)
+        unless-pay-cost (:selection/unless-pay-cost selection)
+        formatted-cost (format-mana-cost unless-pay-cost)
+        valid? @(rf/subscribe [::subs/selection-valid?])]
+    [modal-wrapper {:title "Counter — Pay or Decline?"
+                    :max-width "400px"
+                    :text-align "center"}
+     ;; Instructions
+     [:p {:class "text-text-muted text-sm m-0 mb-5"}
+      (str "Pay " formatted-cost " to prevent your spell from being countered.")]
+     ;; Pay / Decline buttons
+     [:div {:class "flex justify-center gap-4 mb-5"}
+      [:button {:class (str "py-4 px-8 rounded-lg font-bold text-base min-w-[120px] "
+                            "transition-all duration-100 "
+                            (if can-pay?
+                              (str "cursor-pointer text-text border-2 "
+                                   (if (contains? selected :pay)
+                                     "border-[3px] border-border-accent bg-modal-selected-bg"
+                                     "border-border bg-surface-raised"))
+                              "cursor-not-allowed border-2 border-border bg-surface-dim text-perm-text-tapped"))
+                :disabled (not can-pay?)
+                :on-click (when can-pay?
+                            #(rf/dispatch [::selection-events/toggle-selection :pay]))}
+       (str "Pay " formatted-cost)]
+      [:button {:class (str "py-4 px-8 rounded-lg cursor-pointer font-bold text-base "
+                            "min-w-[120px] transition-all duration-100 text-text border-2 "
+                            (if (contains? selected :decline)
+                              "border-[3px] border-border-accent bg-modal-selected-bg"
+                              "border-border bg-surface-raised"))
+                :on-click #(rf/dispatch [::selection-events/toggle-selection :decline])}
+       "Decline"]]
+     ;; Confirm button
+     [:div {:class "flex justify-center"}
+      [confirm-button {:label "Confirm"
+                       :valid? valid?
+                       :on-confirm #(rf/dispatch [::selection-events/confirm-selection])
+                       :extra-class "py-2.5 px-8"}]]]))
+
+
+;; === Return-Land-Cost Modal (Daze Alternate Cost) ===
+
+(defn- return-land-cost-modal
+  "Modal for selecting a land to return to hand as alternate casting cost.
+   Shows matching lands on the battlefield."
+  [selection cards]
+  [object-target-modal selection cards
+   {:select-event ::selection-events/toggle-selection
+    :confirm-event ::selection-events/confirm-selection
+    :default-zone :battlefield
+    :selected-label "1 land selected"
+    :unselected-label "Select a land to return to hand"}])
+
+
+;; === Discard-Specific-Cost Modal (Foil Alternate Cost) ===
+
+(defn- discard-specific-cost-modal
+  "Modal for selecting cards to discard as alternate casting cost.
+   Shows hand cards; player must select the required number."
+  [selection cards]
+  (let [selected (or (:selection/selected selection) #{})
+        required-count (:selection/select-count selection)
+        current-count (count selected)
+        valid-targets (set (:selection/valid-targets selection))
+        valid? @(rf/subscribe [::subs/selection-valid?])]
+    [:div {:class overlay-class}
+     [:div {:class (container-class {})}
+      [:h2 {:class "text-text m-0 mb-2 text-lg"}
+       "Select cards to discard"]
+      [:p {:class (str "m-0 mb-4 text-sm "
+                       (if valid? "text-health-good" "text-health-danger"))}
+       (str current-count " / " required-count " selected")]
+      [:div {:class "flex flex-wrap gap-2.5 mb-5 min-h-[60px]"}
+       (if (seq cards)
+         (for [obj cards]
+           (let [object-id (:object/id obj)
+                 selectable? (contains? valid-targets object-id)]
+             ^{:key object-id}
+             [hand-reveal-card-view obj
+              (contains? selected object-id)
+              selectable?]))
+         [:div {:class "text-perm-text-tapped"}
+          "No cards available"])]
+      [:div {:class "flex justify-end gap-3"}
+       [cancel-button {:label "Clear"
+                       :on-cancel #(rf/dispatch [::selection-events/cancel-selection])}]
+       [confirm-button {:label "Discard"
+                        :valid? valid?
+                        :on-confirm #(rf/dispatch [::selection-events/confirm-selection])}]]]]))
+
+
 ;; === Selection Modal Registry ===
 ;;
 ;; Multimethod dispatches to the correct modal component per selection type.
@@ -886,6 +984,18 @@
 
 (defmethod render-selection-modal :hand-reveal-discard [selection cards]
   [hand-reveal-discard-modal selection cards])
+
+
+(defmethod render-selection-modal :unless-pay [selection cards]
+  [unless-pay-modal selection cards])
+
+
+(defmethod render-selection-modal :return-land-cost [selection cards]
+  [return-land-cost-modal selection cards])
+
+
+(defmethod render-selection-modal :discard-specific-cost [selection cards]
+  [discard-specific-cost-modal selection cards])
 
 
 (defmethod render-selection-modal :mana-allocation [_selection _cards]
