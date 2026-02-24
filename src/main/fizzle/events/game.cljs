@@ -264,6 +264,26 @@
           ;; No valid cards to exile - can't cast (shouldn't happen if can-cast-mode? passed)
           app-db))
 
+      ;; Check for return-land cost (Daze alternate cost)
+      (sel-costs/has-return-land-cost? mode)
+      (let [return-cost (sel-costs/get-return-land-cost mode)
+            sel (sel-costs/build-return-land-selection game-db player-id object-id mode return-cost)]
+        (if sel
+          (-> app-db
+              (assoc :game/pending-selection sel)
+              (dissoc :game/selected-card))
+          app-db))
+
+      ;; Check for discard-specific cost (Foil alternate cost)
+      (sel-costs/has-discard-specific-cost? mode)
+      (let [discard-cost (sel-costs/get-discard-specific-cost mode)
+            sel (sel-costs/build-discard-specific-selection game-db player-id object-id mode discard-cost)]
+        (if sel
+          (-> app-db
+              (assoc :game/pending-selection sel)
+              (dissoc :game/selected-card))
+          app-db))
+
       ;; Check for X mana cost (normal cast with X)
       (sel-costs/has-mana-x-cost? mode)
       (let [sel (sel-costs/build-x-mana-selection game-db player-id object-id mode)]

@@ -34,8 +34,10 @@
 (deftest test-tagged-returns-cover-all-builder-dispatch-values
   (testing "Every build-selection-for-effect dispatch value has an effect that signals :needs-selection"
     (let [db (init-game-state)
+          ;; :player-target detected by :any-player, not by effect type
+          ;; :counter-spell conditionally interactive (only with :unless-pay + target on stack)
           dispatch-keys (disj (set (keys (methods core/build-selection-for-effect)))
-                              :default :player-target)]
+                              :default :player-target :counter-spell)]
       ;; Verify every dispatch key has a representative effect
       (doseq [k dispatch-keys]
         (is (contains? dispatch-representative-effects k)
