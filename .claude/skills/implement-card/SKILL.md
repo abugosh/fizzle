@@ -369,6 +369,23 @@ Before marking implementation complete, verify:
 - [ ] **No hallucinated rules:** No tests for behavior not in oracle/rulings
 - [ ] **Validation passes:** `make validate` succeeds
 
+### View-Layer Verification (when card introduces new selection type)
+
+This section applies when a card's effects use a `:selection/type` value not already handled by an existing `render-selection-modal` defmethod in `src/main/fizzle/views/modals.cljs`. If the card only uses existing selection types (e.g., `:discard`, `:tutor`, `:scry`), skip this section.
+
+- [ ] **Defmethod exists:** `render-selection-modal` in `views/modals.cljs` has a defmethod for the new selection type (or it correctly falls through to `:default` if the generic `card-selection-modal` is appropriate for this use case)
+- [ ] **Card-source handled:** If the selection uses a new `:card-source` value not in the existing cases, the `::selection-cards` subscription in `subs/game.cljs` handles it
+- [ ] **Modal renders correctly:** The modal component displays the right cards, valid-targets filtering works (selectable vs dimmed), and confirm/cancel buttons function
+
+**Common selection-type-to-modal mappings:**
+
+| Selection Pattern | Expected Modal | File Reference |
+|---|---|---|
+| Object targeting (permanents) | `object-target-modal` | views/modals.cljs |
+| Player targeting | `player-target-modal` | views/modals.cljs |
+| Hand/discard/tutor operations | `card-selection-modal` (default) | views/modals.cljs |
+| Specialized UX (scry, peek, storm-split) | Dedicated modal component | views/modals.cljs |
+
 ### Final Validation
 
 ```bash
