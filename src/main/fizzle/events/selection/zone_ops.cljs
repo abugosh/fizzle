@@ -290,21 +290,19 @@
 
    Player ALWAYS sees the prompt (per anti-pattern: no auto-resolving).
    :selection/can-pay? tracks whether :pay is a valid choice."
-  [game-db _player-id object-id effect effects-after]
+  [_game-db _player-id object-id effect effects-after]
   (let [target-id (:effect/target effect)
         unless-pay (:effect/unless-pay effect)
-        controller-id (:unless-pay/controller effect)
-        can-pay (mana/can-pay? game-db controller-id unless-pay)]
+        controller-id (:unless-pay/controller effect)]
     {:selection/type :unless-pay
      :selection/player-id controller-id
      :selection/selected #{}
      :selection/select-count 1
-     :selection/valid-targets (if can-pay [:pay :decline] [:decline])
+     :selection/valid-targets [:pay :decline]
      :selection/spell-id object-id
      :selection/remaining-effects effects-after
      :selection/counter-target-id target-id
      :selection/unless-pay-cost unless-pay
-     :selection/can-pay? can-pay
      :selection/validation :exact
      :selection/auto-confirm? true}))
 

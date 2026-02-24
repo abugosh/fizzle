@@ -75,6 +75,7 @@
     [battlefield/phase-bar-section]
     [hand/hand-view]
     [controls/controls-view]
+    [mana-pool/unless-pay-view]
     [:div {:class "flex gap-8"}
      [mana-pool/mana-pool-view]
      [mana-pool/storm-count-view]]

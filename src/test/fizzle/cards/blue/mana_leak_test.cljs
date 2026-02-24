@@ -244,13 +244,11 @@
           result (game/resolve-one-item db-cast)
           selection (:pending-selection result)]
       (is (= [:pay :decline] (:selection/valid-targets selection))
-          "Should offer both pay and decline when affordable")
-      (is (true? (:selection/can-pay? selection))
-          "can-pay? should be true"))))
+          "Should offer both pay and decline"))))
 
 
-(deftest mana-leak-selection-decline-only-when-cannot-pay-test
-  (testing "Selection offers only :decline when controller cannot pay"
+(deftest mana-leak-selection-always-offers-both-options-test
+  (testing "Selection always offers both :pay and :decline (can-pay checked reactively)"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
@@ -262,10 +260,8 @@
           db-cast (cast-mana-leak-targeting db ml-id ritual-id)
           result (game/resolve-one-item db-cast)
           selection (:pending-selection result)]
-      (is (= [:decline] (:selection/valid-targets selection))
-          "Should only offer decline when cannot pay")
-      (is (false? (:selection/can-pay? selection))
-          "can-pay? should be false"))))
+      (is (= [:pay :decline] (:selection/valid-targets selection))
+          "Should always offer both options — affordability is checked reactively in view"))))
 
 
 ;; === G. Edge Cases ===
@@ -301,6 +297,6 @@
           db-cast (cast-mana-leak-targeting db ml-id ritual-id)
           result (game/resolve-one-item db-cast)
           selection (:pending-selection result)]
-      ;; After casting ritual (B cost), opponent has 2 colorless left (< 3)
-      (is (= [:decline] (:selection/valid-targets selection))
-          "Should only offer decline with insufficient mana"))))
+      ;; Both options always offered — affordability checked reactively in view
+      (is (= [:pay :decline] (:selection/valid-targets selection))
+          "Should always offer both options"))))

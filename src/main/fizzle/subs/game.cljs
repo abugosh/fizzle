@@ -354,6 +354,33 @@
       selection)))
 
 
+(rf/reg-sub
+  ::unless-pay-state
+  :<- [::pending-selection]
+  (fn [selection _]
+    (when (= :unless-pay (:selection/type selection))
+      selection)))
+
+
+(rf/reg-sub
+  ::unless-pay-can-afford?
+  :<- [::game-db]
+  :<- [::unless-pay-state]
+  (fn [[game-db state] _]
+    (when (and game-db state)
+      (let [player-id (:selection/player-id state)
+            cost (:selection/unless-pay-cost state)
+            pool (queries/get-mana-pool game-db player-id)
+            generic (get cost :colorless 0)
+            colored-cost (dissoc cost :colorless)]
+        (and (every? (fn [[color amount]]
+                       (>= (get pool color 0) amount))
+                     colored-cost)
+             (let [total-pool (reduce + (vals pool))
+                   total-colored (reduce + 0 (vals colored-cost))]
+               (>= (- total-pool total-colored) generic)))))))
+
+
 ;; === Mode Selection Subscriptions ===
 ;; For spells with multiple casting modes from the same zone
 

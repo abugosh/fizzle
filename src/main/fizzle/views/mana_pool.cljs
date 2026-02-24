@@ -1,5 +1,6 @@
 (ns fizzle.views.mana-pool
   (:require
+    [fizzle.events.selection :as selection-events]
     [fizzle.events.selection.costs :as cost-events]
     [fizzle.subs.game :as subs]
     [re-frame.core :as rf]))
@@ -91,6 +92,73 @@
           ^{:key color}
           [:span {:class (str "font-bold text-lg " (mana-color-class color))}
            (str (get mana-symbols color (name color)) ": " amount)])]])))
+
+
+(defn- format-mana-cost
+  "Format a mana cost map as a short string (e.g., {3}{U})."
+  [mana-cost]
+  (if (or (nil? mana-cost) (empty? mana-cost))
+    "{0}"
+    (str
+      (when-let [c (:colorless mana-cost)]
+        (when (pos? c) (str "{" c "}")))
+      (when-let [w (:white mana-cost)]
+        (apply str (repeat w "{W}")))
+      (when-let [u (:blue mana-cost)]
+        (apply str (repeat u "{U}")))
+      (when-let [b (:black mana-cost)]
+        (apply str (repeat b "{B}")))
+      (when-let [r (:red mana-cost)]
+        (apply str (repeat r "{R}")))
+      (when-let [g (:green mana-cost)]
+        (apply str (repeat g "{G}"))))))
+
+
+(defn unless-pay-view
+  "Inline prompt for unless-they-pay counter choice.
+   Renders below the mana pool so the player can tap lands first,
+   then choose to pay or decline."
+  []
+  (when-let [state @(rf/subscribe [::subs/unless-pay-state])]
+    (let [selected (or (:selection/selected state) #{})
+          can-pay? @(rf/subscribe [::subs/unless-pay-can-afford?])
+          unless-pay-cost (:selection/unless-pay-cost state)
+          formatted-cost (format-mana-cost unless-pay-cost)
+          valid? @(rf/subscribe [::subs/selection-valid?])]
+      [:div {:class "mb-4 border-2 border-border-accent rounded-lg p-3"}
+       [:div {:class "text-text-label mb-1.5 text-xs"} "COUNTER — PAY OR DECLINE?"]
+       [:div {:class "text-sm text-text-muted mb-2"}
+        (str "Pay " formatted-cost " to prevent your spell from being countered.")]
+       [:div {:class "flex gap-2 mb-2"}
+        [:button
+         {:class (str "py-2 px-4 rounded font-bold text-sm "
+                      (if can-pay?
+                        (str "cursor-pointer text-text border-2 "
+                             (if (contains? selected :pay)
+                               "border-border-accent bg-modal-selected-bg"
+                               "border-border bg-surface-raised"))
+                        "cursor-not-allowed border-2 border-border bg-surface-dim text-perm-text-tapped"))
+          :disabled (not can-pay?)
+          :on-click (when can-pay?
+                      #(rf/dispatch [::selection-events/toggle-selection :pay]))}
+         (str "Pay " formatted-cost)]
+        [:button
+         {:class (str "py-2 px-4 rounded cursor-pointer font-bold text-sm text-text border-2 "
+                      (if (contains? selected :decline)
+                        "border-border-accent bg-modal-selected-bg"
+                        "border-border bg-surface-raised"))
+          :on-click #(rf/dispatch [::selection-events/toggle-selection :decline])}
+         "Decline"]]
+       [:div
+        [:button
+         {:class (str "py-1.5 px-4 border-none rounded font-bold text-sm "
+                      (if valid?
+                        "cursor-pointer bg-btn-enabled-bg text-white"
+                        "cursor-not-allowed bg-surface-dim text-perm-text-tapped"))
+          :disabled (not valid?)
+          :on-click (when valid?
+                      #(rf/dispatch [::selection-events/confirm-selection]))}
+         "Confirm"]]])))
 
 
 (defn storm-count-view
