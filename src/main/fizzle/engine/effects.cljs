@@ -439,6 +439,43 @@
       db)))
 
 
+(defmethod execute-effect-impl :counter-spell
+  ;; Counter target spell — remove it from the stack without resolving.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/target - Target object-id (pre-resolved by caller via
+  ;;                    stack/resolve-effect-target from :effect/target-ref)
+  ;;
+  ;; Zone transitions for countered spells:
+  ;;   - Copies cease to exist (removed from db)
+  ;;   - Flashback spells go to exile (MTG rule: flashback exiles on leave-stack)
+  ;;   - All other spells go to graveyard (including permanents)
+  ;;
+  ;; Note: :mode/on-resolve :battlefield (permanents) does NOT apply when
+  ;; countered — only :exile (flashback) overrides the graveyard default.
+  ;;
+  ;; Handles edge cases:
+  ;;   - No target: no-op (returns db unchanged)
+  ;;   - Target doesn't exist: no-op
+  ;;   - Target not on stack: no-op
+  [db _player-id effect _object-id]
+  (let [target-id (:effect/target effect)]
+    (if-not target-id
+      db
+      (if-let [obj (q/get-object db target-id)]
+        (if (not= :stack (:object/zone obj))
+          db
+          (if (:object/is-copy obj)
+            (zones/remove-object db target-id)
+            (let [cast-mode (:object/cast-mode obj)
+                  mode-destination (:mode/on-resolve cast-mode)
+                  ;; Only :exile overrides graveyard (flashback rule).
+                  ;; :battlefield (permanents) goes to graveyard when countered.
+                  destination (if (= :exile mode-destination) :exile :graveyard)]
+              (zones/move-to-zone db target-id destination))))
+        db))))
+
+
 (defmethod execute-effect-impl :destroy
   ;; Destroy target permanent - move it to owner's graveyard.
   ;;

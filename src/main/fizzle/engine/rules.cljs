@@ -458,8 +458,9 @@
   "Remove a spell from stack without resolving (counter, fizzle).
 
    Copies cease to exist when leaving the stack (removed from db).
-   Uses cast mode's :mode/on-resolve for destination if present.
-   Otherwise sends to graveyard.
+   Flashback spells go to exile (:mode/on-resolve :exile).
+   All other spells go to graveyard — including permanents whose
+   :mode/on-resolve is :battlefield.
 
    This ensures flashback spells exile when countered, per MTG rules:
    'If the flashback cost was paid, exile this card instead of putting
@@ -473,7 +474,9 @@
         (zones/remove-object db object-id)
         (let [cast-mode (:object/cast-mode obj)
               mode-destination (:mode/on-resolve cast-mode)
-              destination (or mode-destination :graveyard)]
+              ;; Only :exile overrides graveyard (flashback rule).
+              ;; :battlefield (permanents) goes to graveyard when countered/fizzled.
+              destination (if (= :exile mode-destination) :exile :graveyard)]
           (zones/move-to-zone db object-id destination))))))
 
 

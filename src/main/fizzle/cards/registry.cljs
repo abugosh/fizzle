@@ -11,9 +11,11 @@
     [fizzle.cards.black.dark-ritual :as dark-ritual]
     [fizzle.cards.black.duress :as duress]
     [fizzle.cards.black.ill-gotten-gains :as ill-gotten-gains]
+    [fizzle.cards.blue.annul :as annul]
     [fizzle.cards.blue.brain-freeze :as brain-freeze]
     [fizzle.cards.blue.careful-study :as careful-study]
     [fizzle.cards.blue.chain-of-vapor :as chain-of-vapor]
+    [fizzle.cards.blue.counterspell :as counterspell]
     [fizzle.cards.blue.deep-analysis :as deep-analysis]
     [fizzle.cards.blue.flash-of-insight :as flash-of-insight]
     [fizzle.cards.blue.intuition :as intuition]
@@ -45,8 +47,10 @@
        cabal-ritual/card
        duress/card
        ill-gotten-gains/card
+       annul/card
        brain-freeze/card
        chain-of-vapor/card
+       counterspell/card
        careful-study/card
        deep-analysis/card
        flash-of-insight/card
