@@ -16,9 +16,12 @@
     [fizzle.cards.blue.careful-study :as careful-study]
     [fizzle.cards.blue.chain-of-vapor :as chain-of-vapor]
     [fizzle.cards.blue.counterspell :as counterspell]
+    [fizzle.cards.blue.daze :as daze]
     [fizzle.cards.blue.deep-analysis :as deep-analysis]
     [fizzle.cards.blue.flash-of-insight :as flash-of-insight]
+    [fizzle.cards.blue.foil :as foil]
     [fizzle.cards.blue.intuition :as intuition]
+    [fizzle.cards.blue.mana-leak :as mana-leak]
     [fizzle.cards.blue.mental-note :as mental-note]
     [fizzle.cards.blue.merchant-scroll :as merchant-scroll]
     [fizzle.cards.blue.opt :as opt]
@@ -51,6 +54,9 @@
        brain-freeze/card
        chain-of-vapor/card
        counterspell/card
+       daze/card
+       foil/card
+       mana-leak/card
        careful-study/card
        deep-analysis/card
        flash-of-insight/card
