@@ -9,7 +9,9 @@
   (:require
     [datascript.core :as d]
     [fizzle.db.queries :as queries]
+    [fizzle.engine.effects :as effects]
     [fizzle.engine.grants :as grants]
+    [fizzle.engine.mana :as mana]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.triggers :as triggers]
     [fizzle.engine.zones :as zones]
@@ -272,3 +274,54 @@
                                         :stack-item/targets
                                         {:target-permanent target-id}]])]
         {:db db-with-target}))))
+
+
+;; =====================================================
+;; Unless-They-Pay Selection (Soft Counters)
+;; =====================================================
+
+(defn build-unless-pay-selection
+  "Build selection for unless-they-pay counter choice.
+   The targeted spell's controller chooses whether to pay mana to prevent
+   the counter. Uses :pay or :decline as the selection options.
+
+   The choosing player is the controller of the targeted spell,
+   NOT the controller of the counterspell.
+
+   Player ALWAYS sees the prompt (per anti-pattern: no auto-resolving).
+   :selection/can-pay? tracks whether :pay is a valid choice."
+  [game-db _player-id object-id effect effects-after]
+  (let [target-id (:effect/target effect)
+        unless-pay (:effect/unless-pay effect)
+        controller-id (:unless-pay/controller effect)
+        can-pay (mana/can-pay? game-db controller-id unless-pay)]
+    {:selection/type :unless-pay
+     :selection/player-id controller-id
+     :selection/selected #{}
+     :selection/select-count 1
+     :selection/valid-targets (if can-pay [:pay :decline] [:decline])
+     :selection/spell-id object-id
+     :selection/remaining-effects effects-after
+     :selection/counter-target-id target-id
+     :selection/unless-pay-cost unless-pay
+     :selection/can-pay? can-pay
+     :selection/validation :exact
+     :selection/auto-confirm? true}))
+
+
+(defmethod core/build-selection-for-effect :counter-spell
+  [db player-id object-id effect remaining]
+  (build-unless-pay-selection db player-id object-id effect remaining))
+
+
+(defmethod core/execute-confirmed-selection :unless-pay
+  [game-db selection]
+  (let [selected (first (:selection/selected selection))
+        target-id (:selection/counter-target-id selection)
+        controller-id (:selection/player-id selection)
+        unless-pay-cost (:selection/unless-pay-cost selection)]
+    (if (= :pay selected)
+      ;; Player chose to pay — spend mana, spell survives
+      {:db (mana/pay-mana game-db controller-id unless-pay-cost)}
+      ;; Player declined (or couldn't pay) — counter the spell
+      {:db (effects/counter-target-spell game-db target-id)})))
