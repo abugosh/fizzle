@@ -16,6 +16,7 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
+    [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.validation :as validation]
     [fizzle.events.game :as game]
@@ -110,7 +111,10 @@
       (is (nil? (:pending-selection result))
           "Hard counter should not create a selection")
       (is (= :graveyard (:object/zone (q/get-object db-resolved ritual-id)))
-          "Countered spell should be in graveyard"))))
+          "Countered spell should be in graveyard")
+      ;; Stack should be empty — countered spell's stack item must be removed
+      (is (nil? (stack/get-top-stack-item db-resolved))
+          "Stack should be empty after counter resolves"))))
 
 
 ;; === C. Cannot-Cast Guards ===

@@ -15,6 +15,7 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
+    [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.game :as game]
     [fizzle.events.selection.targeting :as sel-targeting]
@@ -105,7 +106,10 @@
           "Countered spell should be in graveyard")
       ;; Counterspell should be in graveyard (resolved)
       (is (= :graveyard (:object/zone (q/get-object db-resolved cs-id)))
-          "Counterspell should be in graveyard after resolving"))))
+          "Counterspell should be in graveyard after resolving")
+      ;; Stack should be empty — countered spell's stack item must be removed
+      (is (nil? (stack/get-top-stack-item db-resolved))
+          "Stack should be empty after counter resolves"))))
 
 
 (deftest counterspell-counters-instant-on-stack-test
