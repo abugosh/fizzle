@@ -68,18 +68,35 @@
       :else [])))
 
 
+(defn- mode-has-valid-targets?
+  "Check if a single mode has valid targets for ALL its required targeting."
+  [db player-id mode]
+  (let [requirements (or (:mode/targeting mode) [])]
+    (every? (fn [req]
+              (if (:target/required req)
+                (seq (find-valid-targets db player-id req))
+                true))
+            requirements)))
+
+
 (defn has-valid-targets?
   "Check if at least one valid target exists for EACH required target.
-   Returns true only if ALL required targets have valid options."
+   Returns true only if ALL required targets have valid options.
+
+   For modal cards (:card/modes), returns true if ANY mode has valid targets."
   [db player-id card-or-ability]
-  (let [requirements (get-targeting-requirements card-or-ability)]
-    (if (empty? requirements)
-      true  ; No targeting required
-      (every? (fn [req]
-                (if (:target/required req)
-                  (seq (find-valid-targets db player-id req))
-                  true))
-              requirements))))
+  (if-let [modes (:card/modes card-or-ability)]
+    ;; Modal card: castable if any mode has valid targets
+    (boolean (some #(mode-has-valid-targets? db player-id %) modes))
+    ;; Non-modal: check standard targeting
+    (let [requirements (get-targeting-requirements card-or-ability)]
+      (if (empty? requirements)
+        true  ; No targeting required
+        (every? (fn [req]
+                  (if (:target/required req)
+                    (seq (find-valid-targets db player-id req))
+                    true))
+                requirements)))))
 
 
 (defn target-still-legal?

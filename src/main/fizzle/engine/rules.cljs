@@ -383,23 +383,30 @@
   "Select which effects to use based on cast mode and card conditions.
 
    Priority order:
-   1. Mode effects (:mode/effects on cast mode) - used for kicked spells
-   2. Conditional effects (e.g., threshold) - checked at resolution time
-   3. Default effects (:card/effects)
+   1. Chosen spell mode (:object/chosen-mode) - used for modal spells (REB, BEB)
+   2. Casting mode effects (:mode/effects on cast mode) - used for kicked spells
+   3. Conditional effects (e.g., threshold) - checked at resolution time
+   4. Default effects (:card/effects)
 
    Cards may have:
    - :card/effects - Default effects (always used if no condition matches)
+   - :card/modes - Modal spell modes (chosen at cast time, stored on object)
    - :card/conditional-effects - Map of condition keyword to effects list
      e.g., {:threshold [{:effect/type :add-mana :effect/mana {:black 5}}]}
    - :card/kicked-effects - Effects when cast with kicker (stored in mode)"
   [db player-id card object-id]
   (let [obj (q/get-object db object-id)
+        chosen-mode (:object/chosen-mode obj)
         cast-mode (:object/cast-mode obj)
         mode-effects (:mode/effects cast-mode)
         default-effects (:card/effects card)
         conditional-effects (:card/conditional-effects card)]
     (cond
-      ;; Use mode effects if present (kicked spells)
+      ;; Use chosen spell mode effects (modal spells like REB/BEB)
+      (seq (:mode/effects chosen-mode))
+      (:mode/effects chosen-mode)
+
+      ;; Use casting mode effects if present (kicked spells)
       (seq mode-effects)
       mode-effects
 

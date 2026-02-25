@@ -142,10 +142,13 @@
   [db stack-item object-id obj]
   (let [controller (:stack-item/controller stack-item)
         card (:object/card obj)
+        chosen-mode (:object/chosen-mode obj)
         effects-list (or (rules/get-active-effects db controller card object-id) [])
         stored-targets (:stack-item/targets stack-item)
-        ;; Check target legality
-        requirements (targeting/get-targeting-requirements card)
+        ;; Check target legality — for modal spells, use the chosen mode's targeting
+        requirements (if chosen-mode
+                       (or (:mode/targeting chosen-mode) [])
+                       (targeting/get-targeting-requirements card))
         targets-legal? (targeting/all-targets-legal? db stored-targets requirements)]
     (if (and (seq stored-targets) (not targets-legal?))
       ;; Targets illegal — spell fizzles (no effects, still moves off stack)

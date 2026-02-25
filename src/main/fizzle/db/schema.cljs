@@ -42,6 +42,7 @@
    :object/grants     {}  ; Vector of grant maps (temporary abilities/costs)
    :object/x-value    {}  ; Integer, value of X for spells with X in cost
    :object/cast-mode  {}  ; Map storing the casting mode used (for flashback, etc.)
+   :object/chosen-mode {}  ; Map storing the chosen spell mode for modal spells (REB, BEB, etc.)
 
    ;; === Players ===
    :player/id              {:db/unique :db.unique/identity}

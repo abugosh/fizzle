@@ -35,6 +35,7 @@
     [fizzle.cards.lands.pain-lands :as pain-lands]
     [fizzle.cards.red.lightning-bolt :as lightning-bolt]
     [fizzle.cards.red.recoup :as recoup]
+    [fizzle.cards.red.red-elemental-blast :as red-elemental-blast]
     [fizzle.cards.white.abeyance :as abeyance]
     [fizzle.cards.white.orims-chant :as orims-chant]
     [fizzle.cards.white.ray-of-revelation :as ray-of-revelation]
@@ -70,6 +71,7 @@
        seal-of-cleansing/card
        lightning-bolt/card
        recoup/card
+       red-elemental-blast/card
        city-of-brass/card
        city-of-traitors/card
        gemstone-mine/card
