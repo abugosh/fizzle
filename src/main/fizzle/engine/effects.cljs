@@ -14,6 +14,7 @@
     [fizzle.engine.conditions :as conditions]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
+    [fizzle.engine.stack :as stack]
     [fizzle.engine.zones :as zones]))
 
 
@@ -531,6 +532,43 @@
               {:db db :needs-selection (assoc effect :unless-pay/controller controller-id)})
             ;; Hard counter: counter immediately
             (counter-target-spell db target-id)))
+        db))))
+
+
+(defmethod execute-effect-impl :counter-ability
+  ;; Counter target activated or triggered ability — remove it from the stack.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/target - Target stack-item EID (entity ID, not object-id)
+  ;;                    Caller resolves from :effect/target-ref via targeting
+  ;;
+  ;; Excludes mana abilities:
+  ;;   Mana abilities (with :stack-item/ability-type :mana) cannot be targeted.
+  ;;   If target is a mana ability, this is a no-op.
+  ;;
+  ;; Handles edge cases:
+  ;;   - No target: no-op (returns db unchanged)
+  ;;   - Target doesn't exist: no-op
+  ;;   - Target is not :activated-ability type: no-op
+  ;;   - Target is mana ability: no-op (mana abilities can't be countered)
+  [db _player-id effect _object-id]
+  (let [target-eid (:effect/target effect)]
+    (if-not target-eid
+      db
+      ;; Pull the stack-item to check its type and ability-type
+      (if-let [stack-item (d/pull db '[*] target-eid)]
+        (let [item-type (:stack-item/type stack-item)
+              ability-type (:stack-item/ability-type stack-item)]
+          (cond
+            ;; Only counter :activated-ability items
+            (not= :activated-ability item-type)
+            db
+            ;; Mana abilities cannot be countered (MTG rule)
+            (= :mana ability-type)
+            db
+            ;; Valid target: remove it from stack
+            :else
+            (stack/remove-stack-item db target-eid)))
         db))))
 
 

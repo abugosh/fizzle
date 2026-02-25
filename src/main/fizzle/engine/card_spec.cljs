@@ -18,7 +18,7 @@
     :destroy :discard :tutor :scry :peek-and-select :peek-and-reorder
     :grant-flashback :add-restriction :storm-copies :exile-zone
     :gain-life-equal-to-cmc :discard-from-revealed-hand :bounce
-    :chain-bounce :counter-spell})
+    :chain-bounce :counter-spell :counter-ability})
 
 
 (def valid-cost-types
