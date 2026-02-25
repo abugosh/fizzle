@@ -31,6 +31,7 @@
     [fizzle.cards.blue.opt :as opt]
     [fizzle.cards.blue.portent :as portent]
     [fizzle.cards.blue.sleight-of-hand :as sleight-of-hand]
+    [fizzle.cards.blue.stifle :as stifle]
     [fizzle.cards.green.crumble :as crumble]
     [fizzle.cards.lands.basic-lands :as basic-lands]
     [fizzle.cards.lands.cephalid-coliseum :as cephalid-coliseum]
@@ -78,6 +79,7 @@
        opt/card
        portent/card
        sleight-of-hand/card
+       stifle/card
        abeyance/card
        orims-chant/card
        ray-of-revelation/card

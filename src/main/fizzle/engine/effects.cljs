@@ -549,7 +549,7 @@
   ;; Handles edge cases:
   ;;   - No target: no-op (returns db unchanged)
   ;;   - Target doesn't exist: no-op
-  ;;   - Target is not :activated-ability type: no-op
+  ;;   - Target is not :activated-ability or :triggered-ability: no-op
   ;;   - Target is mana ability: no-op (mana abilities can't be countered)
   [db _player-id effect _object-id]
   (let [target-eid (:effect/target effect)]
@@ -560,8 +560,9 @@
         (let [item-type (:stack-item/type stack-item)
               ability-type (:stack-item/ability-type stack-item)]
           (cond
-            ;; Only counter :activated-ability items
-            (not= :activated-ability item-type)
+            ;; Only counter :activated-ability or :triggered-ability items
+            (not (or (= :activated-ability item-type)
+                     (= :triggered-ability item-type)))
             db
             ;; Mana abilities cannot be countered (MTG rule)
             (= :mana ability-type)
