@@ -35,6 +35,7 @@
     [fizzle.cards.lands.gemstone-mine :as gemstone-mine]
     [fizzle.cards.lands.pain-lands :as pain-lands]
     [fizzle.cards.red.lightning-bolt :as lightning-bolt]
+    [fizzle.cards.red.pyroblast :as pyroblast]
     [fizzle.cards.red.recoup :as recoup]
     [fizzle.cards.red.red-elemental-blast :as red-elemental-blast]
     [fizzle.cards.white.abeyance :as abeyance]
@@ -73,6 +74,7 @@
        seal-of-cleansing/card
        lightning-bolt/card
        recoup/card
+       pyroblast/card
        red-elemental-blast/card
        city-of-brass/card
        city-of-traitors/card

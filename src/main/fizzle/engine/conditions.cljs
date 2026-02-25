@@ -34,6 +34,7 @@
 
    Callers must enrich condition with runtime context before calling:
    - :no-counters requires :condition/target (object-id of the target)
+   - :target-is-color requires :condition/target (object-id to check)
 
    Returns true if condition met, false otherwise.
    nil condition = no condition = always met.
@@ -56,5 +57,13 @@
             (<= count-value 0))
           ;; Object doesn't exist - condition met (vacuously true)
           true))
+      :target-is-color
+      (let [target-id (:condition/target condition)
+            required-color (:condition/color condition)]
+        (if-let [obj (q/get-object db target-id)]
+          (let [card-colors (set (or (:card/colors (:object/card obj)) #{}))]
+            (contains? card-colors required-color))
+          ;; Object doesn't exist - condition not met
+          false))
       ;; Unknown condition types fail closed
       false)))
