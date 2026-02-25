@@ -15,10 +15,10 @@
 (def valid-effect-types
   #{:add-mana :mill :lose-life :gain-life :deal-damage :add-counters
     :draw :exile-self :discard-hand :return-from-graveyard :sacrifice
-    :destroy :discard :tutor :scry :peek-and-select :grant-flashback
-    :add-restriction :storm-copies :exile-zone :gain-life-equal-to-cmc
-    :discard-from-revealed-hand :bounce :chain-bounce
-    :counter-spell})
+    :destroy :discard :tutor :scry :peek-and-select :peek-and-reorder
+    :grant-flashback :add-restriction :storm-copies :exile-zone
+    :gain-life-equal-to-cmc :discard-from-revealed-hand :bounce
+    :chain-bounce :counter-spell})
 
 
 (def valid-cost-types

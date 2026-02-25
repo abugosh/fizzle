@@ -25,6 +25,7 @@
   {:tutor               {:effect/type :tutor}
    :scry                {:effect/type :scry :effect/amount 1}
    :peek-and-select     {:effect/type :peek-and-select}
+   :peek-and-reorder    {:effect/type :peek-and-reorder :effect/count 3}
    :discard             {:effect/type :discard :effect/selection :player}
    :return-from-graveyard {:effect/type :return-from-graveyard :effect/selection :player}
    :discard-from-revealed-hand {:effect/type :discard-from-revealed-hand :effect/target :player-1}

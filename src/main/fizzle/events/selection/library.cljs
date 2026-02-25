@@ -239,6 +239,40 @@
 
 
 ;; =====================================================
+;; Peek-and-Reorder Selection (Portent mechanic)
+;; =====================================================
+
+(defn build-peek-and-reorder-selection
+  "Build pending selection state for a peek-and-reorder effect.
+   Look at top N cards of target player's library, put all back in any order.
+   Returns nil if library is empty or count <= 0 (no selection needed).
+
+   Arguments:
+     game-db - Datascript game database
+     player-id - Player performing the effect (caster)
+     object-id - Spell-id for cleanup after selection confirmed
+     effect - The :peek-and-reorder effect map with:
+       :effect/count - Number of cards to peek (default 0)
+       :effect/target - Target player-id (pre-resolved from :effect/target-ref)
+     effects-after - Remaining effects to execute after selection"
+  [game-db player-id object-id effect effects-after]
+  (let [peek-count (or (:effect/count effect) 0)
+        target-player (or (:effect/target effect) player-id)]
+    (when (pos? peek-count)
+      (let [library-cards (queries/get-top-n-library game-db target-player peek-count)]
+        (when (seq library-cards)
+          {:selection/type :peek-and-reorder
+           :selection/candidates (set library-cards)
+           :selection/ordered []
+           :selection/player-id player-id
+           :selection/target-player target-player
+           :selection/spell-id object-id
+           :selection/remaining-effects (vec effects-after)
+           :selection/validation :always
+           :selection/auto-confirm? false})))))
+
+
+;; =====================================================
 ;; Execution Functions
 ;; =====================================================
 
@@ -374,6 +408,46 @@
       (vec final-ordered))))
 
 
+(defn execute-peek-and-reorder-selection
+  "Execute peek-and-reorder selection — reorder library cards to player's chosen order.
+   Pure function: (db, selection) -> db
+
+   Cards in :selection/ordered are placed at positions 0, 1, 2... (click order).
+   Unordered cards from candidates stay at their original relative positions.
+   Cards not in selection are unaffected."
+  [game-db selection]
+  (let [ordered (:selection/ordered selection)
+        candidates (:selection/candidates selection)
+        target-player (or (:selection/target-player selection)
+                          (:selection/player-id selection))
+        ;; Belt and suspenders: include any candidates not yet in ordered
+        ordered-set (set ordered)
+        ;; Get all library objects for target player, sorted by current position
+        library-objs (->> (queries/get-objects-in-zone game-db target-player :library)
+                          (sort-by :object/position))
+        ;; Separate candidate cards from non-candidate cards
+        non-candidate-objs (remove #(contains? candidates (:object/id %))
+                                   library-objs)
+        ;; Cards in selection but not in ordered list (keep at original relative order after ordered)
+        unordered (filterv #(and (contains? candidates %)
+                                 (not (contains? ordered-set %)))
+                           (map :object/id library-objs))
+        ;; Build new position order:
+        ;; 1. Ordered cards (click order)
+        ;; 2. Unordered cards from candidates (original relative order)
+        ;; 3. Non-candidate cards (original positions preserved)
+        new-order (vec (concat ordered
+                               unordered
+                               (map :object/id non-candidate-objs)))]
+    ;; Build position update transactions
+    (reduce-kv
+      (fn [d idx card-id]
+        (let [obj-eid (queries/get-object-eid d card-id)]
+          (d/db-with d [[:db/add obj-eid :object/position idx]])))
+      game-db
+      new-order)))
+
+
 (defn execute-pile-choice
   "Execute pile choice - move selected cards to hand, rest to graveyard.
    Pure function: (db, selection) -> db
@@ -494,6 +568,11 @@
   (build-peek-selection db player-id object-id effect remaining))
 
 
+(defmethod core/build-selection-for-effect :peek-and-reorder
+  [db player-id object-id effect remaining]
+  (build-peek-and-reorder-selection db player-id object-id effect remaining))
+
+
 ;; =====================================================
 ;; Execute Confirmed Selection Defmethods
 ;; =====================================================
@@ -540,6 +619,25 @@
 (defmethod core/execute-confirmed-selection :order-bottom
   [game-db selection]
   {:db (execute-order-bottom-selection game-db selection)})
+
+
+(defmethod core/execute-confirmed-selection :peek-and-reorder
+  [game-db selection]
+  (let [spell-id (:selection/spell-id selection)
+        player-id (:selection/player-id selection)
+        remaining-effects (:selection/remaining-effects selection)
+        db-after-reorder (execute-peek-and-reorder-selection game-db selection)
+        db-after-remaining (reduce (fn [d effect]
+                                     (effects/execute-effect d player-id effect))
+                                   db-after-reorder
+                                   (or remaining-effects []))
+        ;; Only move spell if it exists (test helpers may not create spell objects)
+        spell-obj (queries/get-object db-after-remaining spell-id)
+        db-after-move (if spell-obj
+                        (zones/move-to-zone db-after-remaining spell-id :graveyard)
+                        db-after-remaining)
+        db-final (core/remove-spell-stack-item db-after-move spell-id)]
+    {:db db-final :finalized? true}))
 
 
 (defmethod core/execute-confirmed-selection :pile-choice

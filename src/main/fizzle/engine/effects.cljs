@@ -629,6 +629,20 @@
   {:db db :needs-selection effect})
 
 
+(defmethod execute-effect-impl :peek-and-reorder
+  ;; Look at top N cards of a player's library, put all back in any order.
+  ;; Distinct from scry (top/bottom split) and peek-and-select (some to hand).
+  ;;
+  ;; Effect keys:
+  ;;   :effect/count - Number of cards to peek (default 0)
+  ;;   :effect/target - Target player-id (pre-resolved from :effect/target-ref)
+  ;;
+  ;; Returns {:db db :needs-selection effect} — tagged value signaling
+  ;; that this effect requires player selection (reorder cards in library).
+  [db _player-id effect _object-id]
+  {:db db :needs-selection effect})
+
+
 (defmethod execute-effect-impl :grant-flashback
   ;; Grant flashback to a target card.
   ;;
