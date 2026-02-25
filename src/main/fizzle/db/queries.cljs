@@ -292,6 +292,19 @@
         (filterv #(matches-criteria? % criteria) zone-objs)))))
 
 
+(defn count-cards-named-in-zone
+  "Count objects with the given card name in the specified zone across all players."
+  [db card-name zone]
+  (or (d/q '[:find (count ?e) .
+             :in $ ?name ?zone
+             :where
+             [?e :object/zone ?zone]
+             [?e :object/card ?c]
+             [?c :card/name ?name]]
+           db card-name zone)
+      0))
+
+
 (defn query-library-by-criteria
   "Return objects in library matching criteria.
    Pure function: (db, player-id, criteria) -> vector

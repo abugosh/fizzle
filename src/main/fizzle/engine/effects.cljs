@@ -17,6 +17,35 @@
     [fizzle.engine.zones :as zones]))
 
 
+;; === Dynamic Amount Resolution ===
+
+
+(defmulti resolve-dynamic-impl
+  "Resolve a dynamic amount descriptor to an integer.
+   Dispatches on :dynamic/type."
+  (fn [_db _player-id dynamic _object-id]
+    (:dynamic/type dynamic)))
+
+
+(defmethod resolve-dynamic-impl :count-named-in-zone
+  [db _player-id dynamic object-id]
+  (let [source-card (q/get-card db object-id)
+        card-name (:card/name source-card)
+        zone (:dynamic/zone dynamic)
+        plus (or (:dynamic/plus dynamic) 0)]
+    (+ (q/count-cards-named-in-zone db card-name zone) plus)))
+
+
+(defn resolve-dynamic-value
+  "Resolve a potentially dynamic value to an integer.
+   Static integers pass through. Maps with :dynamic/type are computed from game state."
+  [db player-id value object-id]
+  (cond
+    (integer? value) value
+    (map? value) (resolve-dynamic-impl db player-id value object-id)
+    :else 0))
+
+
 ;; === Effect Execution ===
 
 
@@ -312,8 +341,8 @@
   ;;   - Partial library: draws all available, then sets loss condition
   ;;   - Draw 0 or negative: no-op, no loss condition
   ;;   - Invalid player: no-op (returns db unchanged)
-  [db player-id effect _object-id]
-  (let [amount (get effect :effect/amount 1)
+  [db player-id effect object-id]
+  (let [amount (resolve-dynamic-value db player-id (get effect :effect/amount 1) object-id)
         target (get effect :effect/target player-id)]
     ;; Guard: draw 0 or negative is no-op
     (if (<= amount 0)

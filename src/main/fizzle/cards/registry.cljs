@@ -11,6 +11,7 @@
     [fizzle.cards.black.dark-ritual :as dark-ritual]
     [fizzle.cards.black.duress :as duress]
     [fizzle.cards.black.ill-gotten-gains :as ill-gotten-gains]
+    [fizzle.cards.blue.accumulated-knowledge :as accumulated-knowledge]
     [fizzle.cards.blue.annul :as annul]
     [fizzle.cards.blue.blue-elemental-blast :as blue-elemental-blast]
     [fizzle.cards.blue.brain-freeze :as brain-freeze]
@@ -22,11 +23,13 @@
     [fizzle.cards.blue.flash-of-insight :as flash-of-insight]
     [fizzle.cards.blue.foil :as foil]
     [fizzle.cards.blue.hydroblast :as hydroblast]
+    [fizzle.cards.blue.impulse :as impulse]
     [fizzle.cards.blue.intuition :as intuition]
     [fizzle.cards.blue.mana-leak :as mana-leak]
     [fizzle.cards.blue.mental-note :as mental-note]
     [fizzle.cards.blue.merchant-scroll :as merchant-scroll]
     [fizzle.cards.blue.opt :as opt]
+    [fizzle.cards.blue.sleight-of-hand :as sleight-of-hand]
     [fizzle.cards.green.crumble :as crumble]
     [fizzle.cards.lands.basic-lands :as basic-lands]
     [fizzle.cards.lands.cephalid-coliseum :as cephalid-coliseum]
@@ -54,6 +57,7 @@
        cabal-ritual/card
        duress/card
        ill-gotten-gains/card
+       accumulated-knowledge/card
        annul/card
        blue-elemental-blast/card
        hydroblast/card
@@ -66,10 +70,12 @@
        careful-study/card
        deep-analysis/card
        flash-of-insight/card
+       impulse/card
        intuition/card
        mental-note/card
        merchant-scroll/card
        opt/card
+       sleight-of-hand/card
        abeyance/card
        orims-chant/card
        ray-of-revelation/card

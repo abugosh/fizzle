@@ -75,8 +75,8 @@
 
 (s/def :effect/type valid-effect-types)
 (s/def :effect/mana ::mana-cost)
-(s/def :effect/amount (s/or :int int? :keyword keyword?))
-(s/def :effect/count (s/or :int int? :keyword keyword?))
+(s/def :effect/amount (s/or :int int? :keyword keyword? :dynamic map?))
+(s/def :effect/count (s/or :int int? :keyword keyword? :dynamic map?))
 (s/def :effect/target keyword?)
 (s/def :effect/target-ref keyword?)
 (s/def :effect/selection keyword?)

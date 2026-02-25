@@ -1728,3 +1728,90 @@
       (is (contains? result :db))
       (is (not (contains? result :needs-selection)))
       (is (= db (:db result))))))
+
+
+;; === resolve-dynamic-value tests ===
+
+(deftest resolve-dynamic-value-static-integer-passes-through
+  (testing "static integer amount passes through unchanged"
+    (let [db (th/create-test-db)]
+      (is (= 5 (fx/resolve-dynamic-value db :player-1 5 nil)))
+      (is (= 0 (fx/resolve-dynamic-value db :player-1 0 nil)))
+      (is (= 1 (fx/resolve-dynamic-value db :player-1 1 nil))))))
+
+
+(deftest resolve-dynamic-value-count-named-in-zone
+  (testing "dynamic map resolves count-named-in-zone correctly"
+    (let [db (th/create-test-db)
+          ;; Add 3 Dark Rituals to graveyard
+          [db _ids] (th/add-cards-to-graveyard db [:dark-ritual :dark-ritual :dark-ritual] :player-1)
+          ;; Create a Dark Ritual object so we can get its card name
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          dynamic {:dynamic/type :count-named-in-zone
+                   :dynamic/zone :graveyard}]
+      (is (= 3 (fx/resolve-dynamic-value db :player-1 dynamic obj-id))))))
+
+
+(deftest resolve-dynamic-value-count-named-in-zone-with-plus
+  (testing "dynamic with :dynamic/plus adds offset"
+    (let [db (th/create-test-db)
+          ;; Add 2 Dark Rituals to graveyard
+          [db _ids] (th/add-cards-to-graveyard db [:dark-ritual :dark-ritual] :player-1)
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          dynamic {:dynamic/type :count-named-in-zone
+                   :dynamic/zone :graveyard
+                   :dynamic/plus 1}]
+      (is (= 3 (fx/resolve-dynamic-value db :player-1 dynamic obj-id))))))
+
+
+(deftest resolve-dynamic-value-zero-cards-returns-plus
+  (testing "zero cards in zone returns :dynamic/plus value"
+    (let [db (th/create-test-db)
+          ;; No cards in graveyard
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          dynamic {:dynamic/type :count-named-in-zone
+                   :dynamic/zone :graveyard
+                   :dynamic/plus 2}]
+      (is (= 2 (fx/resolve-dynamic-value db :player-1 dynamic obj-id))))))
+
+
+(deftest resolve-dynamic-value-counts-across-players
+  (testing "cards across multiple players' graveyards are counted"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          ;; Add 2 Dark Rituals to player-1 graveyard
+          [db _ids] (th/add-cards-to-graveyard db [:dark-ritual :dark-ritual] :player-1)
+          ;; Add 1 Dark Ritual to player-2 graveyard
+          [db _ids] (th/add-cards-to-graveyard db [:dark-ritual] :player-2)
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          dynamic {:dynamic/type :count-named-in-zone
+                   :dynamic/zone :graveyard}]
+      ;; Should count ALL Dark Rituals in ALL graveyards = 3
+      (is (= 3 (fx/resolve-dynamic-value db :player-1 dynamic obj-id))))))
+
+
+(deftest resolve-dynamic-value-non-integer-non-map-defaults-to-zero
+  (testing "non-integer non-map values default to 0"
+    (let [db (th/create-test-db)]
+      (is (= 0 (fx/resolve-dynamic-value db :player-1 nil nil)))
+      (is (= 0 (fx/resolve-dynamic-value db :player-1 "bad" nil))))))
+
+
+;; === draw with dynamic amount tests ===
+
+(deftest draw-with-dynamic-amount-resolves-at-execution
+  (testing ":draw effect resolves dynamic amount from game state"
+    (let [db (th/create-test-db)
+          ;; Add 3 Dark Rituals to graveyard (simulating AK in graveyard)
+          [db _ids] (th/add-cards-to-graveyard db [:dark-ritual :dark-ritual :dark-ritual] :player-1)
+          ;; Add a Dark Ritual to hand as the source object
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          ;; Add cards to library to draw from
+          [db _lib-ids] (th/add-cards-to-library db [:dark-ritual :dark-ritual :dark-ritual :dark-ritual :dark-ritual] :player-1)
+          initial-hand (th/get-hand-count db :player-1)
+          effect {:effect/type :draw
+                  :effect/amount {:dynamic/type :count-named-in-zone
+                                  :dynamic/zone :graveyard}}
+          db' (fx/execute-effect db :player-1 effect obj-id)]
+      ;; Should draw 3 cards (matching graveyard count)
+      (is (= (+ initial-hand 3) (th/get-hand-count db' :player-1))))))
