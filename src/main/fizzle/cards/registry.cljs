@@ -12,6 +12,7 @@
     [fizzle.cards.black.duress :as duress]
     [fizzle.cards.black.ill-gotten-gains :as ill-gotten-gains]
     [fizzle.cards.blue.annul :as annul]
+    [fizzle.cards.blue.blue-elemental-blast :as blue-elemental-blast]
     [fizzle.cards.blue.brain-freeze :as brain-freeze]
     [fizzle.cards.blue.careful-study :as careful-study]
     [fizzle.cards.blue.chain-of-vapor :as chain-of-vapor]
@@ -52,6 +53,7 @@
        duress/card
        ill-gotten-gains/card
        annul/card
+       blue-elemental-blast/card
        brain-freeze/card
        chain-of-vapor/card
        counterspell/card
