@@ -3,10 +3,15 @@
 
    All functions are pure: (db, args) -> db
 
-   Valid zones: :hand, :library, :graveyard, :stack, :battlefield, :exile"
+   Valid zones: :hand, :library, :graveyard, :stack, :battlefield, :exile
+
+   Stack-item safety: When an object leaves the :stack zone (via move-to-zone
+   or remove-object), any associated stack-item is automatically cleaned up.
+   This prevents orphaned stack items that would stall the priority system."
   (:require
     [datascript.core :as d]
-    [fizzle.db.queries :as q]))
+    [fizzle.db.queries :as q]
+    [fizzle.engine.stack :as stack]))
 
 
 (defn shuffle-library
@@ -53,6 +58,12 @@
     (if (= current-zone new-zone)
       db
       (let [obj-eid (q/get-object-eid db object-id)
+            ;; Clean up stack-item when leaving the stack zone
+            db (if (= current-zone :stack)
+                 (if-let [si (stack/get-stack-item-by-object-ref db obj-eid)]
+                   (stack/remove-stack-item db (:db/id si))
+                   db)
+                 db)
             ;; Retract Datascript trigger entities when leaving battlefield
             trigger-retract-txs
             (when (= current-zone :battlefield)
@@ -78,8 +89,13 @@
    Used for spell copies that cease to exist when leaving the stack (per MTG rules).
    Pure function: (db, object-id) -> db
 
+   Automatically cleans up any associated stack-item.
    Returns db unchanged if object doesn't exist."
   [db object-id]
   (if-let [obj-eid (q/get-object-eid db object-id)]
-    (d/db-with db [[:db.fn/retractEntity obj-eid]])
+    (let [;; Clean up stack-item if one exists for this object
+          db (if-let [si (stack/get-stack-item-by-object-ref db obj-eid)]
+               (stack/remove-stack-item db (:db/id si))
+               db)]
+      (d/db-with db [[:db.fn/retractEntity obj-eid]]))
     db))

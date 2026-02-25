@@ -322,7 +322,7 @@
 
 
 (deftest test-stack-item-removed-after-spell-resolution
-  (testing "Stack-item is removed after resolve-spell"
+  (testing "Stack-item is removed after resolve-spell moves object off stack"
     (let [db (init-game-state)
           db (mana/add-mana db :player-1 {:black 3})
           obj (first (d/q '[:find [(pull ?e [*]) ...]
@@ -342,13 +342,13 @@
                        db' object-id)
           stack-item (stack/get-stack-item-by-object-ref db' obj-eid)]
       (is (some? stack-item) "Stack-item exists before resolution")
-      ;; Resolve the spell (uses resolve-spell which doesn't touch stack-items)
-      ;; Stack-item removal is the caller's responsibility (::resolve-top, confirm handlers)
-      ;; This test verifies the stack-item persists through resolve-spell alone
+      ;; Resolve the spell - this moves the object off the stack
+      ;; When an object leaves the stack via zones/move-to-zone, any associated
+      ;; stack-item is automatically cleaned up (see zones.cljs move-to-zone)
       (let [db-resolved (rules/resolve-spell db' :player-1 object-id)]
-        ;; Stack-item should still exist (resolve-spell doesn't remove it - that's the event handler's job)
-        (is (some? (stack/get-stack-item-by-object-ref db-resolved obj-eid))
-            "resolve-spell alone should not remove stack-item")))))
+        ;; Stack-item should be removed because object left the stack
+        (is (nil? (stack/get-stack-item-by-object-ref db-resolved obj-eid))
+            "stack-item is cleaned up when object leaves stack via resolve-spell")))))
 
 
 (deftest test-storm-copy-creates-stack-item

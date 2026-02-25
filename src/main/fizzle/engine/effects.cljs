@@ -14,7 +14,6 @@
     [fizzle.engine.conditions :as conditions]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
-    [fizzle.engine.stack :as stack]
     [fizzle.engine.zones :as zones]))
 
 
@@ -441,16 +440,15 @@
 
 
 (defn counter-target-spell
-  "Counter a spell on the stack — move it to the appropriate zone
-   and remove its stack item.
+  "Counter a spell on the stack — move it to the appropriate zone.
 
    Zone transitions:
    - Copies cease to exist (removed from db)
    - Flashback spells go to exile (MTG rule)
    - All other spells go to graveyard (including permanents)
 
-   Also removes the countered spell's stack-item so the stack
-   accurately reflects what's still pending resolution.
+   Stack-item cleanup is handled automatically by zones/move-to-zone
+   and zones/remove-object when the object leaves the :stack zone.
 
    Returns db. No-op if target is nil, doesn't exist, or not on stack."
   [db target-id]
@@ -459,17 +457,12 @@
     (if-let [obj (q/get-object db target-id)]
       (if (not= :stack (:object/zone obj))
         db
-        (let [obj-eid (q/get-object-eid db target-id)
-              ;; Remove the countered spell's stack item
-              db (if-let [si (stack/get-stack-item-by-object-ref db obj-eid)]
-                   (stack/remove-stack-item db (:db/id si))
-                   db)]
-          (if (:object/is-copy obj)
-            (zones/remove-object db target-id)
-            (let [cast-mode (:object/cast-mode obj)
-                  mode-destination (:mode/on-resolve cast-mode)
-                  destination (if (= :exile mode-destination) :exile :graveyard)]
-              (zones/move-to-zone db target-id destination)))))
+        (if (:object/is-copy obj)
+          (zones/remove-object db target-id)
+          (let [cast-mode (:object/cast-mode obj)
+                mode-destination (:mode/on-resolve cast-mode)
+                destination (if (= :exile mode-destination) :exile :graveyard)]
+            (zones/move-to-zone db target-id destination))))
       db)))
 
 
