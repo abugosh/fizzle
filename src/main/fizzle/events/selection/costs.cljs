@@ -183,6 +183,9 @@
        :selection/discard-cost discard-cost
        :selection/discard-groups groups
        :selection/valid-targets (vec candidate-ids)
+       :selection/candidate-card-map (into {} (map (fn [obj]
+                                                     [(:object/id obj) (:object/card obj)]))
+                                           candidates)
        :selection/validation :exact
        :selection/auto-confirm? false})))
 

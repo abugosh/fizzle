@@ -17,6 +17,7 @@
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
+    [fizzle.engine.validation :as validation]
     [fizzle.events.game :as game]
     [fizzle.events.selection.core :as sel-core]
     [fizzle.events.selection.costs :as sel-costs]
@@ -275,6 +276,49 @@
 
 
 ;; === G. Edge Cases ===
+
+(deftest foil-discard-rejects-non-island-cards-test
+  (testing "Selecting two non-Island cards is invalid for Foil alternate cost"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
+          db (mana/add-mana db :player-2 {:black 1})
+          db (rules/cast-spell db :player-2 ritual-id)
+          ;; Foil + two Lotus Petals in hand (no Island)
+          [db foil-id] (th/add-card-to-zone db :foil :hand :player-1)
+          [db petal1-id] (th/add-card-to-zone db :lotus-petal :hand :player-1)
+          [db petal2-id] (th/add-card-to-zone db :lotus-petal :hand :player-1)
+          modes (rules/get-casting-modes db :player-1 foil-id)
+          alt-mode (first (filter #(= :foil-free (:mode/id %)) modes))
+          discard-cost (sel-costs/get-discard-specific-cost alt-mode)
+          sel (sel-costs/build-discard-specific-selection db :player-1 foil-id alt-mode discard-cost)
+          ;; Select two Lotus Petals (no Island)
+          sel-invalid (assoc sel :selection/selected #{petal1-id petal2-id})]
+      ;; Selection should be invalid — need at least one Island card
+      (is (not (validation/validate-selection sel-invalid))
+          "Two non-Island cards should not satisfy Foil's discard groups"))))
+
+
+(deftest foil-discard-accepts-island-plus-other-test
+  (testing "Selecting an Island card and another card is valid for Foil alternate cost"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
+          db (mana/add-mana db :player-2 {:black 1})
+          db (rules/cast-spell db :player-2 ritual-id)
+          ;; Foil + Island + Lotus Petal in hand
+          [db foil-id] (th/add-card-to-zone db :foil :hand :player-1)
+          [db island-id] (th/add-card-to-zone db :island :hand :player-1)
+          [db petal-id] (th/add-card-to-zone db :lotus-petal :hand :player-1)
+          modes (rules/get-casting-modes db :player-1 foil-id)
+          alt-mode (first (filter #(= :foil-free (:mode/id %)) modes))
+          discard-cost (sel-costs/get-discard-specific-cost alt-mode)
+          sel (sel-costs/build-discard-specific-selection db :player-1 foil-id alt-mode discard-cost)
+          ;; Select Island + Lotus Petal
+          sel-valid (assoc sel :selection/selected #{island-id petal-id})]
+      (is (true? (validation/validate-selection sel-valid))
+          "Island + non-Island card should satisfy Foil's discard groups"))))
+
 
 (deftest foil-fizzles-when-target-leaves-stack-test
   (testing "Foil fizzles when target resolves before it"
