@@ -21,6 +21,7 @@
     [fizzle.cards.blue.deep-analysis :as deep-analysis]
     [fizzle.cards.blue.flash-of-insight :as flash-of-insight]
     [fizzle.cards.blue.foil :as foil]
+    [fizzle.cards.blue.hydroblast :as hydroblast]
     [fizzle.cards.blue.intuition :as intuition]
     [fizzle.cards.blue.mana-leak :as mana-leak]
     [fizzle.cards.blue.mental-note :as mental-note]
@@ -55,6 +56,7 @@
        ill-gotten-gains/card
        annul/card
        blue-elemental-blast/card
+       hydroblast/card
        brain-freeze/card
        chain-of-vapor/card
        counterspell/card
