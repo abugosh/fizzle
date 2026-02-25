@@ -29,6 +29,7 @@
     [fizzle.cards.blue.mental-note :as mental-note]
     [fizzle.cards.blue.merchant-scroll :as merchant-scroll]
     [fizzle.cards.blue.opt :as opt]
+    [fizzle.cards.blue.portent :as portent]
     [fizzle.cards.blue.sleight-of-hand :as sleight-of-hand]
     [fizzle.cards.green.crumble :as crumble]
     [fizzle.cards.lands.basic-lands :as basic-lands]
@@ -75,6 +76,7 @@
        mental-note/card
        merchant-scroll/card
        opt/card
+       portent/card
        sleight-of-hand/card
        abeyance/card
        orims-chant/card

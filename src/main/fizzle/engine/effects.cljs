@@ -721,6 +721,40 @@
         db))))
 
 
+(defmethod execute-effect-impl :grant-delayed-draw
+  ;; Grant a delayed draw effect to a player.
+  ;; The draw happens at the beginning of the next turn's upkeep.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/target - Target player-id (symbolic: :controller, :self, or resolved player-id)
+  ;;
+  ;; Creates a :delayed-effect grant with:
+  ;;   - :delayed/phase :upkeep (when to fire)
+  ;;   - :delayed/effect {:effect/type :draw :effect/amount 1} (what to do)
+  ;;   - Expires at the upkeep phase of next turn (turn N+1)
+  ;;
+  ;; Handles edge cases:
+  ;;   - No target: defaults to :controller (the spell's controller)
+  [db player-id effect object-id]
+  (let [target (:effect/target effect)
+        target-player (case target
+                        :controller player-id
+                        :self player-id
+                        target)
+        game-state (q/get-game-state db)
+        current-turn (or (:game/turn game-state) 1)
+        next-turn (inc current-turn)
+        grant {:grant/id (random-uuid)
+               :grant/type :delayed-effect
+               :grant/source object-id
+               :grant/expires {:expires/turn next-turn
+                               :expires/phase :upkeep}
+               :grant/data {:delayed/phase :upkeep
+                            :delayed/effect {:effect/type :draw
+                                             :effect/amount 1}}}]
+    (grants/add-player-grant db target-player grant)))
+
+
 (defmethod execute-effect-impl :add-restriction
   ;; Add a restriction grant to a target player.
   ;;
