@@ -611,7 +611,8 @@
 
    Returns db unchanged if the stack is non-empty.
    At cleanup phase, stays at cleanup (user must call start-turn for new turn).
-   Dispatches :phase-entered event to fire turn-based actions (draw, etc.)."
+   Dispatches :phase-entered event to fire turn-based actions (draw, etc.).
+   Fires delayed-effect grants when entering upkeep."
   [db player-id]
   (if-not (queries/stack-empty? db)
     db
@@ -623,6 +624,9 @@
       (-> db
           (mana/empty-pool player-id)
           (d/db-with [[:db/add game-eid :game/phase new-phase]])
+          ;; Fire delayed-effect grants when entering upkeep
+          (cond-> (= new-phase :upkeep)
+            (turn-based/fire-delayed-effects player-id))
           ;; Dispatch phase-entered event to fire turn-based actions
           (dispatch/dispatch-event (game-events/phase-entered-event new-phase turn player-id))))))
 
