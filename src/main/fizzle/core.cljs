@@ -87,6 +87,7 @@
    ;; Modals (overlay, not in grid flow)
    [modals/selection-modal]
    [modals/mode-selector-modal]
+   [modals/spell-mode-selector-modal]
    [game-over/game-over-modal]])
 
 

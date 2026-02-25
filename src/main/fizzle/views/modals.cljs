@@ -728,6 +728,45 @@
            "Cancel"]]]))))
 
 
+;; === Spell Mode Selection Modal ===
+;; For modal spells (REB, BEB, Pyroblast, Hydroblast) — player chooses spell mode
+
+(defn- spell-mode-button
+  "Button for selecting a spell mode (e.g., 'Counter target blue spell')."
+  [mode]
+  [:button {:class (str "w-full py-3 px-4 mb-2 border-2 border-border-accent rounded-lg "
+                        "cursor-pointer bg-mode-btn-bg text-text text-left "
+                        "transition-all duration-100 hover:bg-mode-btn-hover")
+            :on-click #(rf/dispatch [::events/select-spell-mode mode])}
+   [:div {:class "font-bold text-sm"}
+    (:mode/label mode)]])
+
+
+(defn spell-mode-selector-modal
+  "Modal for selecting spell mode when casting a modal spell."
+  []
+  (let [pending @(rf/subscribe [::subs/pending-spell-mode-selection])]
+    (when pending
+      (let [modes (:modes pending)]
+        [:div {:class overlay-class
+               :on-click #(rf/dispatch [::events/cancel-spell-mode-selection])}
+         [:div {:class (container-class {:max-width "400px"})
+                :on-click #(.stopPropagation %)}
+          ;; Header
+          [:h2 {:class "text-text m-0 mb-4 text-lg text-center"}
+           "Choose one"]
+          ;; Mode buttons
+          [:div {:class "flex flex-col"}
+           (for [mode modes]
+             ^{:key (:mode/label mode)}
+             [spell-mode-button mode])]
+          ;; Cancel button
+          [:button {:class (str "w-full py-2 px-4 mt-2 border border-border rounded "
+                                "cursor-pointer bg-surface-dim text-text-label text-[13px]")
+                    :on-click #(rf/dispatch [::events/cancel-spell-mode-selection])}
+           "Cancel"]]]))))
+
+
 ;; === Storm Split Modal ===
 
 (defn storm-split-target-label

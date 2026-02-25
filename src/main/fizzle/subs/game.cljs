@@ -390,6 +390,14 @@
     (:game/pending-mode-selection db)))
 
 
+;; For modal spells (REB, BEB, Pyroblast, Hydroblast) — choose spell mode before targeting
+
+(rf/reg-sub
+  ::pending-spell-mode-selection
+  (fn [db _]
+    (:game/pending-spell-mode-selection db)))
+
+
 (rf/reg-sub
   ::selection-hand
   :<- [::game-db]
