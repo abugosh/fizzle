@@ -23,10 +23,18 @@
   (let [conn (d/conn-from-db db)
         player-eid (q/get-player-eid db player-id)
         stack-item-id (random-uuid)
+        ;; Get current highest position on stack to place this item above
+        existing-positions (d/q '[:find [?p ...]
+                                  :where [?e :stack-item/position ?p]]
+                                @conn)
+        next-position (if (empty? existing-positions)
+                        0
+                        (inc (apply max existing-positions)))
         stack-item {:stack-item/id stack-item-id
                     :stack-item/type :activated-ability
                     :stack-item/ability-type ability-type
                     :stack-item/controller player-eid
+                    :stack-item/position next-position
                     :stack-item/effects []}]
     (d/transact! conn [stack-item])
     (let [eid (d/q '[:find ?e . :in $ ?sid
@@ -42,9 +50,17 @@
   (let [conn (d/conn-from-db db)
         player-eid (q/get-player-eid db player-id)
         stack-item-id (random-uuid)
+        ;; Get current highest position on stack to place this item above
+        existing-positions (d/q '[:find [?p ...]
+                                  :where [?e :stack-item/position ?p]]
+                                @conn)
+        next-position (if (empty? existing-positions)
+                        0
+                        (inc (apply max existing-positions)))
         stack-item {:stack-item/id stack-item-id
                     :stack-item/type :triggered-ability
                     :stack-item/controller player-eid
+                    :stack-item/position next-position
                     :stack-item/effects []}]
     (d/transact! conn [stack-item])
     (let [eid (d/q '[:find ?e . :in $ ?sid
@@ -96,6 +112,40 @@
 
 
 ;; === B. Cast-Resolve Happy Path ===
+
+;; Regression: Stifle must be castable when there's a non-mana ability on stack
+(deftest stifle-castable-with-ability-on-stack-test
+  (testing "can-cast? returns true when non-mana activated ability is on stack"
+    (let [db (-> (th/create-test-db {:mana {:blue 1}})
+                 (th/add-opponent))
+          [db _ability-eid] (create-fake-activated-ability-stack-item db :player-2 :other)
+          [db stifle-id] (th/add-card-to-zone db :stifle :hand :player-1)]
+      (is (true? (rules/can-cast? db :player-1 stifle-id))
+          "Stifle should be castable with U and non-mana ability on stack")))
+
+  (testing "can-cast? returns true when triggered ability is on stack"
+    (let [db (-> (th/create-test-db {:mana {:blue 1}})
+                 (th/add-opponent))
+          [db _ability-eid] (create-fake-triggered-ability-stack-item db :player-2)
+          [db stifle-id] (th/add-card-to-zone db :stifle :hand :player-1)]
+      (is (true? (rules/can-cast? db :player-1 stifle-id))
+          "Stifle should be castable with triggered ability on stack")))
+
+  (testing "can-cast? returns false when no abilities on stack"
+    (let [db (-> (th/create-test-db {:mana {:blue 1}})
+                 (th/add-opponent))
+          [db stifle-id] (th/add-card-to-zone db :stifle :hand :player-1)]
+      (is (false? (rules/can-cast? db :player-1 stifle-id))
+          "Stifle should not be castable with no abilities on stack")))
+
+  (testing "can-cast? returns false when only mana ability on stack"
+    (let [db (-> (th/create-test-db {:mana {:blue 1}})
+                 (th/add-opponent))
+          [db _ability-eid] (create-fake-activated-ability-stack-item db :player-2 :mana)
+          [db stifle-id] (th/add-card-to-zone db :stifle :hand :player-1)]
+      (is (false? (rules/can-cast? db :player-1 stifle-id))
+          "Stifle should not be castable when only mana abilities exist"))))
+
 
 ;; Oracle: "Counter target activated or triggered ability"
 (deftest stifle-counters-activated-ability-test

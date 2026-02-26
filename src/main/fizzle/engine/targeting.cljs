@@ -24,7 +24,10 @@
 
 (defn find-valid-targets
   "Find all objects/players that are valid targets for a requirement.
-   Returns vector of valid target IDs (object UUIDs or player keywords)."
+   Returns vector of valid target IDs (object UUIDs or player keywords).
+
+   For ability targeting:
+   - Finds activated and triggered abilities on the stack (excludes mana abilities)"
   [db player-id target-requirement]
   (let [target-type (:target/type target-requirement)]
     (cond
@@ -64,6 +67,21 @@
         (->> objects-in-zone
              (filter #(q/matches-criteria? % criteria))
              (mapv :object/id)))
+
+      ;; Ability targeting
+      (= :ability target-type)
+      (let [all-stack-items (q/get-all-stack-items db)]
+        (->> all-stack-items
+             ;; Include activated and triggered abilities, exclude mana abilities
+             (filter (fn [item]
+                       (let [item-type (:stack-item/type item)
+                             ability-type (:stack-item/ability-type item)]
+                         (and (or (= item-type :activated-ability)
+                                  (= item-type :triggered-ability))
+                              ;; Exclude mana abilities
+                              (not= ability-type :mana)))))
+             ;; Use stack-item entity ID as the target (db/id)
+             (mapv :db/id)))
 
       :else [])))
 
@@ -105,6 +123,7 @@
 
    For player targets, always returns true (players don't move zones).
    For object targets, checks zone and criteria still match.
+   For ability targets, checks ability still exists on the stack.
    Returns false if target doesn't exist."
   [db target-id target-requirement]
   (let [target-type (:target/type target-requirement)]
@@ -123,6 +142,12 @@
                (q/matches-criteria? obj criteria)))
         ;; Object not found - target is illegal
         false)
+
+      ;; Ability targets - check ability still exists on stack
+      (= :ability target-type)
+      ;; target-id is a Datascript entity ID from the stack-item
+      ;; Check if a stack item with this entity ID still exists
+      (boolean (some #(= (:db/id %) target-id) (q/get-all-stack-items db)))
 
       :else false)))
 

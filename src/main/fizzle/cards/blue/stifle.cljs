@@ -13,8 +13,6 @@
    :card/colors #{:blue}
    :card/types #{:instant}
    :card/text "Counter target activated or triggered ability. (Mana abilities can't be targeted.)"
-   ;; Note: Ability targeting UI not yet implemented.
-   ;; For now, card definition is minimal - targeting will be added when UI is ready.
    :card/targeting [{:target/id :ability
                      :target/type :ability
                      :target/required true}]

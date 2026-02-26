@@ -95,6 +95,17 @@
 
 ;; === B. Cast-Resolve Happy Path ===
 
+;; Regression: Portent must be castable when player has U and targets exist
+(deftest portent-castable-with-mana-and-targets-test
+  (testing "can-cast? returns true for Portent with U mana"
+    (let [db (-> (th/create-test-db {:mana {:blue 1}})
+                 (th/add-opponent))
+          [db _lib-ids] (th/add-cards-to-library db [:dark-ritual :cabal-ritual :brain-freeze] :player-1)
+          [db portent-id] (th/add-card-to-zone db :portent :hand :player-1)]
+      (is (true? (rules/can-cast? db :player-1 portent-id))
+          "Portent should be castable with U and valid player targets"))))
+
+
 ;; Oracle: "Look at the top three cards of target player's library, then put them back in any order"
 (deftest portent-cast-resolve-test
   (testing "Cast with U targeting self, resolve creates peek-and-reorder selection"

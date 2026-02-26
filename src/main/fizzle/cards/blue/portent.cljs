@@ -17,6 +17,7 @@
    :card/text "Look at the top three cards of target player's library, then put them back in any order. You may have that player shuffle their library. Draw a card at the beginning of the next turn's upkeep."
    :card/targeting [{:target/id :player
                      :target/type :player
+                     :target/options #{:any-player}
                      :target/required true}]
    :card/effects [{:effect/type :peek-and-reorder
                    :effect/count 3
