@@ -624,9 +624,13 @@
       (-> db
           (mana/empty-pool player-id)
           (d/db-with [[:db/add game-eid :game/phase new-phase]])
-          ;; Fire delayed-effect grants when entering upkeep
+          ;; Fire delayed-effect grants when entering upkeep (for both players)
+          ;; Delayed triggers fire based on game timing, not turn ownership.
           (cond-> (= new-phase :upkeep)
-            (turn-based/fire-delayed-effects player-id))
+            (as-> db'
+              (let [other-id (queries/get-other-player-id db' player-id)]
+                (cond-> (turn-based/fire-delayed-effects db' player-id)
+                  other-id (turn-based/fire-delayed-effects other-id)))))
           ;; Dispatch phase-entered event to fire turn-based actions
           (dispatch/dispatch-event (game-events/phase-entered-event new-phase turn player-id))))))
 

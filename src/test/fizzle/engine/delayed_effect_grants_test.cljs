@@ -205,6 +205,35 @@
       (is (= 0 (count (grants/get-player-grants db-after :player-1)))))))
 
 
+;; Regression: delayed grants must fire for ALL players at upkeep, not just active player.
+;; Portent: "Draw a card at the beginning of the next turn's upkeep."
+;; If caster is player-1 and next turn is opponent's, the draw fires at opponent's upkeep.
+(deftest delayed-effect-fires-for-non-active-player
+  (testing "Grant on player-1 fires during opponent's upkeep (next turn)"
+    (let [db (-> (init-game-state)
+                 (add-library-cards :player-1 10))
+          grant {:grant/id (random-uuid)
+                 :grant/type :delayed-effect
+                 :grant/source (random-uuid)
+                 :grant/expires {:expires/turn 2 :expires/phase :upkeep}
+                 :grant/data {:delayed/phase :upkeep
+                              :delayed/effect {:effect/type :draw :effect/amount 1}}}
+          db-with-grant (grants/add-player-grant db :player-1 grant)
+          initial-hand-count (count (q/get-hand db-with-grant :player-1))
+          ;; Set to turn 2 untap (opponent's turn — player-2 is active)
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db-with-grant)
+          db-at-untap (d/db-with db-with-grant [[:db/add game-eid :game/turn 2]
+                                                [:db/add game-eid :game/phase :untap]])
+          ;; Advance to upkeep with player-2 as active player
+          db-after (game-events/advance-phase db-at-untap :player-2)]
+      ;; Player-1 should draw (they own the grant), even though it's player-2's upkeep
+      (is (= (+ initial-hand-count 1) (count (q/get-hand db-after :player-1)))
+          "Grant holder should draw even when it's opponent's upkeep")
+      ;; Grant should be removed
+      (is (= 0 (count (grants/get-player-grants-by-type db-after :player-1 :delayed-effect)))
+          "Grant should be removed after firing"))))
+
+
 ;; === Integration Tests ===
 
 (deftest delayed-effect-fires-via-advance-phase
