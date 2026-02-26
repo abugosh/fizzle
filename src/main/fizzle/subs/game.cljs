@@ -503,3 +503,21 @@
         {:ordered-cards (mapv get-obj ordered)
          :unsequenced-cards (sorting/sort-cards (mapv get-obj (vec unsequenced-ids)))
          :all-ordered? (= (count ordered) (count candidates))}))))
+
+
+;; Subscription for peek-and-reorder card objects
+;; Returns ordered and unsequenced card objects for the peek-and-reorder modal
+(rf/reg-sub
+  ::peek-and-reorder-cards
+  :<- [::game-db]
+  :<- [::pending-selection]
+  (fn [[game-db selection] _]
+    (when (and game-db selection (= :peek-and-reorder (:selection/type selection)))
+      (let [candidates (:selection/candidates selection)
+            ordered (:selection/ordered selection)
+            ordered-set (set ordered)
+            unsequenced-ids (remove ordered-set candidates)
+            get-obj (fn [oid] (queries/get-object game-db oid))]
+        {:ordered-cards (mapv get-obj ordered)
+         :unsequenced-cards (sorting/sort-cards (mapv get-obj (vec unsequenced-ids)))
+         :all-ordered? (= (count ordered) (count candidates))}))))

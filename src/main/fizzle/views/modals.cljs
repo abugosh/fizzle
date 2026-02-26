@@ -592,6 +592,47 @@
                        :on-confirm #(rf/dispatch [::selection-events/confirm-selection])}]]]))
 
 
+(defn- peek-and-reorder-modal
+  "Modal for reordering cards on top of library (Portent).
+   Player clicks cards to set the order (first click = top of library).
+   Click ordered card to remove from sequence."
+  []
+  (let [data @(rf/subscribe [::subs/peek-and-reorder-cards])
+        ordered-cards (:ordered-cards data)
+        unsequenced-cards (:unsequenced-cards data)
+        all-ordered? (:all-ordered? data)]
+    [modal-wrapper {:title "Reorder top of library"}
+     ;; Instructions
+     [:p {:class "text-text-muted text-sm m-0 mb-4"}
+      "Click cards to set order (first click = top of library). Click ordered cards to unsequence."]
+     ;; Unsequenced section
+     [:div {:class "mb-4"}
+      [:h3 {:class "text-text-muted text-sm m-0 mb-2"}
+       "Unsequenced"]
+      [:div {:class "flex flex-wrap gap-2.5 min-h-[40px]"}
+       (if (seq unsequenced-cards)
+         (for [obj unsequenced-cards]
+           ^{:key (:object/id obj)}
+           [order-bottom-card-view obj false nil])
+         [:div {:class "text-perm-text-tapped text-sm"}
+          "All cards sequenced"])]]
+     ;; Ordered section
+     [:div {:class "mb-5"}
+      [:h3 {:class "text-health-good text-sm m-0 mb-2"}
+       (str "Ordered (" (count ordered-cards) ")")]
+      [:div {:class "flex flex-wrap gap-2.5 min-h-[40px]"}
+       (for [[idx obj] (map-indexed vector ordered-cards)]
+         ^{:key (:object/id obj)}
+         [order-bottom-card-view obj true idx])]]
+     ;; Buttons
+     [:div {:class "flex justify-end gap-3"}
+      [cancel-button {:label "Any Order"
+                      :on-cancel #(rf/dispatch [::selection-events/any-order])}]
+      [confirm-button {:label "Confirm"
+                       :valid? all-ordered?
+                       :on-confirm #(rf/dispatch [::selection-events/confirm-selection])}]]]))
+
+
 ;; === X Mana Selection Modal ===
 
 (defn- stepper-button-class
@@ -968,6 +1009,10 @@
 
 (defmethod render-selection-modal :order-bottom [_selection _cards]
   [order-bottom-modal])
+
+
+(defmethod render-selection-modal :peek-and-reorder [_selection _cards]
+  [peek-and-reorder-modal])
 
 
 (defmethod render-selection-modal :storm-split [selection _cards]
