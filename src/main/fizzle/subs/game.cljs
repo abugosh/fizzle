@@ -520,4 +520,20 @@
             get-obj (fn [oid] (queries/get-object game-db oid))]
         {:ordered-cards (mapv get-obj ordered)
          :unsequenced-cards (sorting/sort-cards (mapv get-obj (vec unsequenced-ids)))
-         :all-ordered? (= (count ordered) (count candidates))}))))
+         :all-ordered? (= (count ordered) (count candidates))
+         :may-shuffle? (boolean (:selection/may-shuffle? selection))}))))
+
+
+;; Returns targetable ability stack items for ability-cast-targeting selection.
+;; Maps valid-target EIDs to stack item data for display in the ability targeting modal.
+(rf/reg-sub
+  ::ability-cast-targets
+  :<- [::game-db]
+  :<- [::pending-selection]
+  (fn [[game-db selection] _]
+    (when (and game-db selection (= :ability-cast-targeting (:selection/type selection)))
+      (let [valid-eids (set (:selection/valid-targets selection))
+            all-items (queries/get-all-stack-items game-db)]
+        (->> all-items
+             (filter #(contains? valid-eids (:db/id %)))
+             (vec))))))

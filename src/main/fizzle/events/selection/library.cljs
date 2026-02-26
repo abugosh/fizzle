@@ -261,15 +261,18 @@
     (when (pos? peek-count)
       (let [library-cards (queries/get-top-n-library game-db target-player peek-count)]
         (when (seq library-cards)
-          {:selection/type :peek-and-reorder
-           :selection/candidates (set library-cards)
-           :selection/ordered []
-           :selection/player-id player-id
-           :selection/target-player target-player
-           :selection/spell-id object-id
-           :selection/remaining-effects (vec effects-after)
-           :selection/validation :always
-           :selection/auto-confirm? false})))))
+          (cond->
+            {:selection/type :peek-and-reorder
+             :selection/candidates (set library-cards)
+             :selection/ordered []
+             :selection/player-id player-id
+             :selection/target-player target-player
+             :selection/spell-id object-id
+             :selection/remaining-effects (vec effects-after)
+             :selection/validation :always
+             :selection/auto-confirm? false}
+            (:effect/may-shuffle? effect)
+            (assoc :selection/may-shuffle? true)))))))
 
 
 ;; =====================================================
@@ -626,7 +629,11 @@
   (let [spell-id (:selection/spell-id selection)
         player-id (:selection/player-id selection)
         remaining-effects (:selection/remaining-effects selection)
-        db-after-reorder (execute-peek-and-reorder-selection game-db selection)
+        target-player (or (:selection/target-player selection) player-id)
+        ;; If player chose shuffle, shuffle the target's library instead of reordering
+        db-after-reorder (if (:selection/shuffle? selection)
+                           (zones/shuffle-library game-db target-player)
+                           (execute-peek-and-reorder-selection game-db selection))
         db-after-remaining (reduce (fn [d effect]
                                      (effects/execute-effect d player-id effect))
                                    db-after-reorder
@@ -733,3 +740,11 @@
   :fizzle.events.selection/any-order
   (fn [db _]
     (update db :game/pending-selection any-order-selection)))
+
+
+(rf/reg-event-db
+  :fizzle.events.selection/shuffle-and-confirm
+  (fn [db _]
+    (-> db
+        (assoc-in [:game/pending-selection :selection/shuffle?] true)
+        (core/confirm-selection-handler))))

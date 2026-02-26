@@ -71,6 +71,13 @@
             "Targets player's library"))))
 
 
+  ;; Oracle: "You may have that player shuffle their library"
+  (testing "Portent peek-and-reorder has may-shuffle flag"
+    (let [peek-effect (first (:card/effects portent/card))]
+      (is (true? (:effect/may-shuffle? peek-effect))
+          "peek-and-reorder effect should have :effect/may-shuffle? true")))
+
+
   ;; Oracle: "Draw a card at the beginning of the next turn's upkeep"
   (testing "Portent grants delayed draw effect"
     (let [effects (:card/effects portent/card)
@@ -227,6 +234,22 @@
           "Should create peek-and-reorder selection")
       (is (= 3 (count (:selection/candidates sel)))
           "Should peek at 3 cards from own library"))))
+
+
+;; Oracle: "You may have that player shuffle their library"
+(deftest portent-may-shuffle-selection-flag-test
+  (testing "Selection has may-shuffle? flag from card effect"
+    (let [db (-> (th/create-test-db {:mana {:blue 1}})
+                 (th/add-opponent))
+          [db _lib-ids] (th/add-cards-to-library db
+                                                 [:dark-ritual :cabal-ritual :brain-freeze :lotus-petal]
+                                                 :player-1)
+          [db portent-id] (th/add-card-to-zone db :portent :hand :player-1)
+          db-cast (cast-portent-with-target db :player-1 portent-id :player-1)
+          result (resolve-portent db-cast)
+          sel (:pending-selection result)]
+      (is (true? (:selection/may-shuffle? sel))
+          "Selection should carry may-shuffle? flag"))))
 
 
 ;; === G. Edge Cases ===

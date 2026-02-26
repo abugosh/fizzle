@@ -11,6 +11,7 @@
     [fizzle.engine.effects :as effects]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
+    [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
 
 
@@ -214,6 +215,25 @@
           db-cast (rules/cast-spell db :player-1 stifle-id)]
       (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
           "Storm count should increment by 1"))))
+
+
+;; === E. Selection Tests ===
+
+;; Oracle: "Counter target activated or triggered ability"
+(deftest stifle-targeting-creates-ability-cast-selection-test
+  (testing "Casting Stifle creates :ability-cast-targeting selection"
+    (let [db (-> (th/create-test-db {:mana {:blue 1}})
+                 (th/add-opponent))
+          [db ability-eid] (create-fake-activated-ability-stack-item db :player-2 :other)
+          [db stifle-id] (th/add-card-to-zone db :stifle :hand :player-1)
+          result (sel-targeting/cast-spell-with-targeting db :player-1 stifle-id)
+          sel (:pending-target-selection result)]
+      (is (some? sel)
+          "Should create a targeting selection")
+      (is (= :ability-cast-targeting (:selection/type sel))
+          "Selection type should be :ability-cast-targeting for ability targets")
+      (is (= [ability-eid] (:selection/valid-targets sel))
+          "Valid targets should include the ability on stack"))))
 
 
 ;; === F. Targeting Tests ===

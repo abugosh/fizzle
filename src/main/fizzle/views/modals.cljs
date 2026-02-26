@@ -600,7 +600,8 @@
   (let [data @(rf/subscribe [::subs/peek-and-reorder-cards])
         ordered-cards (:ordered-cards data)
         unsequenced-cards (:unsequenced-cards data)
-        all-ordered? (:all-ordered? data)]
+        all-ordered? (:all-ordered? data)
+        may-shuffle? (:may-shuffle? data)]
     [modal-wrapper {:title "Reorder top of library"}
      ;; Instructions
      [:p {:class "text-text-muted text-sm m-0 mb-4"}
@@ -628,6 +629,9 @@
      [:div {:class "flex justify-end gap-3"}
       [cancel-button {:label "Any Order"
                       :on-cancel #(rf/dispatch [::selection-events/any-order])}]
+      (when may-shuffle?
+        [cancel-button {:label "Shuffle Library"
+                        :on-cancel #(rf/dispatch [::selection-events/shuffle-and-confirm])}])
       [confirm-button {:label "Confirm"
                        :valid? all-ordered?
                        :on-confirm #(rf/dispatch [::selection-events/confirm-selection])}]]]))
@@ -985,6 +989,36 @@
     :default-zone :battlefield
     :selected-label "1 target selected"
     :unselected-label "Select a target"}])
+
+
+(defmethod render-selection-modal :ability-cast-targeting [selection _cards]
+  (let [targets @(rf/subscribe [::subs/ability-cast-targets])
+        selected (or (:selection/selected selection) #{})
+        valid? @(rf/subscribe [::subs/selection-valid?])]
+    [:div {:class overlay-class}
+     [:div {:class (container-class {})}
+      [:h2 {:class "text-text m-0 mb-2 text-lg"}
+       "Counter target ability"]
+      [:p {:class (str "m-0 mb-4 text-sm "
+                       (if valid? "text-health-good" "text-health-danger"))}
+       (if valid? "1 target selected" "Select an ability to counter")]
+      [:div {:class "flex flex-col gap-2.5 mb-5 min-h-[60px]"}
+       (if (seq targets)
+         (for [item targets]
+           ^{:key (:db/id item)}
+           [:div {:class (str "cursor-pointer rounded px-3 py-2 text-sm border "
+                              (if (contains? selected (:db/id item))
+                                "border-health-good bg-health-good/20 text-text"
+                                "border-perm-border bg-surface text-text hover:border-text-muted"))
+                  :on-click #(rf/dispatch [::selection-events/toggle-selection (:db/id item)])}
+            (or (:stack-item/description item)
+                (str (name (or (:stack-item/type item) :unknown)) " ability"))])
+         [:div {:class "text-perm-text-tapped"}
+          "No valid targets"])]
+      [:div {:class "flex justify-end"}
+       [confirm-button {:label "Confirm"
+                        :valid? valid?
+                        :on-confirm #(rf/dispatch [::selection-events/confirm-selection])}]]]]))
 
 
 (defmethod render-selection-modal :player-target [selection _cards]

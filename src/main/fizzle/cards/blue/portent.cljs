@@ -21,6 +21,7 @@
                      :target/required true}]
    :card/effects [{:effect/type :peek-and-reorder
                    :effect/count 3
-                   :effect/target-ref :player}
+                   :effect/target-ref :player
+                   :effect/may-shuffle? true}
                   {:effect/type :grant-delayed-draw
                    :effect/target :controller}]})

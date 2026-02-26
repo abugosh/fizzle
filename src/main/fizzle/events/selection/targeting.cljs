@@ -51,9 +51,12 @@
 
    Returns selection state map."
   [game-db player-id object-id mode target-req]
-  (let [valid-targets (targeting/find-valid-targets game-db player-id target-req)]
+  (let [valid-targets (targeting/find-valid-targets game-db player-id target-req)
+        target-type (:target/type target-req)]
     (cond->
-      {:selection/type :cast-time-targeting
+      {:selection/type (if (= :ability target-type)
+                         :ability-cast-targeting
+                         :cast-time-targeting)
        :selection/player-id player-id
        :selection/object-id object-id
        :selection/mode mode
@@ -63,7 +66,7 @@
        :selection/select-count 1
        :selection/validation :exact
        :selection/auto-confirm? true}
-      (= :object (:target/type target-req))
+      (= :object target-type)
       (assoc :selection/card-source :valid-targets))))
 
 
@@ -214,4 +217,23 @@
           ;; Defensive: builder returned nil
           {:db (confirm-cast-time-target game-db selection) :finalized? true}))
       ;; No generic: cast directly with target storage
+      {:db (confirm-cast-time-target game-db selection) :finalized? true})))
+
+
+(defmethod core/execute-confirmed-selection :ability-cast-targeting
+  [game-db selection]
+  ;; Delegates to cast-time-targeting logic — same confirm flow
+  (let [mode (:selection/mode selection)
+        cost (:mode/mana-cost mode)]
+    (if (sel-costs/has-generic-mana-cost? cost)
+      (let [player-id (:selection/player-id selection)
+            object-id (:selection/object-id selection)
+            target-req (:selection/target-requirement selection)
+            selected-target (first (:selection/selected selection))
+            target-id (:target/id target-req)
+            sel (sel-costs/build-mana-allocation-selection game-db player-id object-id mode cost)]
+        (if sel
+          {:db game-db
+           :pending-selection (assoc sel :selection/pending-targets {target-id selected-target})}
+          {:db (confirm-cast-time-target game-db selection) :finalized? true}))
       {:db (confirm-cast-time-target game-db selection) :finalized? true})))
