@@ -745,12 +745,16 @@
         game-state (q/get-game-state db)
         current-turn (or (:game/turn game-state) 1)
         next-turn (inc current-turn)
+        source-name (when object-id
+                      (:card/name (:object/card (q/get-object db object-id))))
         grant {:grant/id (random-uuid)
                :grant/type :delayed-effect
                :grant/source object-id
                :grant/expires {:expires/turn next-turn
                                :expires/phase :upkeep}
                :grant/data {:delayed/phase :upkeep
+                            :delayed/description (str (or source-name "Delayed trigger")
+                                                      " — Draw a card")
                             :delayed/effect {:effect/type :draw
                                              :effect/amount 1}}}]
     (grants/add-player-grant db target-player grant)))

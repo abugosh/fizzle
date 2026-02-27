@@ -5,8 +5,8 @@
    phase is entered. They fire before card triggers."
   (:require
     [fizzle.db.queries :as q]
-    [fizzle.engine.effects :as effects]
     [fizzle.engine.grants :as grants]
+    [fizzle.engine.stack :as stack]
     [fizzle.engine.trigger-db :as trigger-db]))
 
 
@@ -39,7 +39,7 @@
 
 
 (defn fire-delayed-effects
-  "Fire all delayed-effect grants that match the current phase.
+  "Put delayed-effect grants on the stack as triggered abilities.
    Pure function: (db, player-id) -> db
 
    Delayed-effect grants are player grants with:
@@ -51,10 +51,14 @@
    When entering a phase, checks all delayed-effect grants:
    - If grant's :delayed/phase matches current phase AND
    - If current turn >= grant's :expires/turn
-   - Execute the effect
-   - Remove the grant
+   - Creates a :delayed-trigger stack item with the grant's effect
+   - Removes the grant (consumed regardless of whether the trigger resolves)
 
-   Returns updated db with effects executed and grants removed."
+   The stack item resolves via the :default handler in resolution.cljs,
+   which executes the effects. Players can respond (e.g., Stifle can
+   counter the delayed trigger).
+
+   Returns updated db with stack items created and grants removed."
   [db player-id]
   (let [game-state (q/get-game-state db)
         current-turn (:game/turn game-state)
@@ -70,12 +74,18 @@
                                          (>= current-turn target-turn))))
                                 delayed-grants)]
     (if (seq matching-grants)
-      ;; Execute each grant's effect and remove the grant
+      ;; Create stack items for each grant's effect and remove the grant
       (reduce (fn [d grant]
                 (let [effect (get-in grant [:grant/data :delayed/effect])
                       grant-id (:grant/id grant)
-                      db-after-effect (effects/execute-effect d player-id effect)]
-                  (grants/remove-player-grant db-after-effect player-id grant-id)))
+                      description (or (:delayed/description (:grant/data grant))
+                                      "Delayed trigger")
+                      db-with-stack-item (stack/create-stack-item d
+                                                                  {:stack-item/type :delayed-trigger
+                                                                   :stack-item/controller player-id
+                                                                   :stack-item/effects [effect]
+                                                                   :stack-item/description description})]
+                  (grants/remove-player-grant db-with-stack-item player-id grant-id)))
               db
               matching-grants)
       ;; No matching grants
