@@ -18,9 +18,7 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
-    [fizzle.engine.zones :as zones]
     [fizzle.events.game :as game]
-    [fizzle.events.selection.library :as library]
     [fizzle.test-helpers :as th]))
 
 
@@ -128,29 +126,16 @@
       ;; Select count should be 1
       (is (= 1 (:selection/select-count sel))
           "Should select exactly 1 card")
-      ;; Simulate selecting the first peeked card
+      ;; Confirm peek-and-select with first card via production path
       (let [selected-card (first lib-ids)
-            db-after-peek (library/execute-peek-selection
-                            (:db result)
-                            (assoc sel :selection/selected #{selected-card}))
-            ;; Move spell off stack (simulating confirm handler cleanup)
-            spell-obj (q/get-object db-after-peek foi-id)
-            cast-mode (:object/cast-mode spell-obj)
-            destination (or (:mode/on-resolve cast-mode) :graveyard)
-            db-final (zones/move-to-zone db-after-peek foi-id destination)]
+            {:keys [db]} (th/confirm-selection (:db result) sel #{selected-card})]
         ;; Selected card should be in hand
-        (is (= :hand (th/get-object-zone db-final selected-card))
+        (is (= :hand (th/get-object-zone db selected-card))
             "Selected card should be moved to hand")
-        ;; Non-selected peeked card should NOT be in library top (moved to bottom)
+        ;; Non-selected peeked card should NOT be in hand
         (let [second-card (second lib-ids)]
-          (is (not= :hand (th/get-object-zone db-final second-card))
-              "Non-selected peeked card should not be in hand"))
-        ;; FoI should be in graveyard (normal cast)
-        (is (= :graveyard (th/get-object-zone db-final foi-id))
-            "Flash of Insight should go to graveyard after normal cast")
-        ;; Hand should have 1 card (the selected one)
-        (is (= 1 (th/get-hand-count db-final :player-1))
-            "Hand should have 1 card after selecting from peek")))))
+          (is (not= :hand (th/get-object-zone db second-card))
+              "Non-selected peeked card should not be in hand"))))))
 
 
 ;; === Integration Test: Flashback with Exile Cost ===

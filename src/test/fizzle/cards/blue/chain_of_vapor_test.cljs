@@ -21,26 +21,16 @@
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.game :as game]
     [fizzle.events.selection.core :as sel-core]
-    [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
 
 
 ;; === Helper: cast Chain of Vapor targeting a permanent ===
 
 (defn- cast-chain-of-vapor
-  "Cast Chain of Vapor targeting a permanent. Returns db after casting
-   (spell on stack, mana spent, storm incremented)."
+  "Cast Chain of Vapor targeting a permanent via production path. Returns db
+   after casting (spell on stack, mana spent, storm incremented)."
   [db cov-id target-id]
-  (let [target-req (first (:card/targeting chain-of-vapor/card))
-        modes (rules/get-casting-modes db :player-1 cov-id)
-        mode (first modes)
-        selection {:selection/type :cast-time-targeting
-                   :selection/player-id :player-1
-                   :selection/object-id cov-id
-                   :selection/mode mode
-                   :selection/target-requirement target-req
-                   :selection/selected #{target-id}}]
-    (sel-targeting/confirm-cast-time-target db selection)))
+  (th/cast-with-target db :player-1 cov-id target-id))
 
 
 (defn- resolve-and-decline-chain

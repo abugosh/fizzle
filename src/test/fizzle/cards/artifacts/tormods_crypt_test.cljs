@@ -13,6 +13,7 @@
     [datascript.core :as d]
     [fizzle.cards.artifacts.tormods-crypt :as tormods-crypt]
     [fizzle.db.queries :as q]
+    [fizzle.engine.abilities :as abilities]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
@@ -115,6 +116,10 @@
           gy-before (th/get-zone-count db :graveyard :player-2)
           _ (is (= 3 gy-before)
                 "Precondition: opponent has 3 cards in graveyard")
+          ;; Verify ability shows as activatable through production path
+          ability (first (:card/abilities tormods-crypt/card))
+          _ (is (true? (abilities/can-activate? db crypt-id ability :player-1))
+                "Ability should be activatable on untapped battlefield permanent")
           ;; Activate ability (index 0)
           result (ability-events/activate-ability db :player-1 crypt-id 0)
           sel (:pending-selection result)]

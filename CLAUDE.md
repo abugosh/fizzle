@@ -193,6 +193,13 @@ Every card must have a dedicated test file (`src/test/fizzle/cards/<card>_test.c
 | Flashback/Storm spell | 12 |
 
 **Top anti-patterns:**
-1. Reimplementing production handlers in tests (test through `rules/cast-spell`, not manual copies)
+1. Reimplementing production handlers in tests — use `th/cast-and-resolve`, `th/cast-with-target`, `th/resolve-top`, `th/confirm-selection` instead of manual selection construction or direct effect execution
 2. Copy-pasted test variants that differ only by parameter (use `doseq`)
 3. Tautological assertions (`(is (some? x))` instead of `(is (= expected x))`)
+
+**Production path helpers** (in `fizzle.test-helpers`):
+- `cast-and-resolve` — simple spells: asserts `can-cast?`, casts, resolves, returns db
+- `cast-with-target` — targeted spells: asserts valid target, uses production targeting flow
+- `cast-mode-with-target` — modal+targeted spells: validates mode has targets, casts with explicit mode
+- `resolve-top` — resolve top stack item, returns `{:db}` or `{:db :selection}`
+- `confirm-selection` — confirm interactive selection, returns `{:db}` or chains to next selection

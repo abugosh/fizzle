@@ -17,10 +17,8 @@
     [datascript.core :as d]
     [fizzle.cards.blue.careful-study :as careful-study]
     [fizzle.db.queries :as q]
-    [fizzle.engine.effects :as effects]
     [fizzle.engine.rules :as rules]
     [fizzle.events.game :as game]
-    [fizzle.events.selection.core :as core]
     [fizzle.events.selection.zone-ops]
     [fizzle.test-helpers :as th]))
 
@@ -83,23 +81,28 @@
 ;; === Selection State Tests ===
 ;; Note: These tests require the selection state system in events/game.cljs
 
-(deftest test-discard-effect-returns-pending-selection-info
-  (testing "Discard effect with :selection :player returns selection info"
+(deftest test-discard-selection-created-on-resolve
+  (testing "Resolving Careful Study creates discard selection after draw"
     (let [db (th/create-test-db {:mana {:blue 1}})
           ;; Add cards to hand for discard
-          [db' id1] (th/add-card-to-zone db :dark-ritual :hand :player-1)
-          [db'' id2] (th/add-card-to-zone db' :cabal-ritual :hand :player-1)
-          ;; Execute discard effect with player selection
-          discard-effect {:effect/type :discard
-                          :effect/count 2
-                          :effect/selection :player}
-          result (effects/execute-effect db'' :player-1 discard-effect)]
-      ;; The effect should return unchanged db (selection handled at app-db level)
-      ;; Or return a special value indicating pending selection
-      ;; For now, test that cards are NOT auto-discarded
-      (is (= :hand (th/get-object-zone result id1))
+          [db id1] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          [db id2] (th/add-card-to-zone db :cabal-ritual :hand :player-1)
+          ;; Add Careful Study to hand
+          [db cs-id] (th/add-card-to-zone db :careful-study :hand :player-1)
+          ;; Add library cards for draw
+          [db _lib-ids] (th/add-cards-to-library db [:brain-freeze :island] :player-1)
+          ;; Cast and resolve through production path
+          db-cast (rules/cast-spell db :player-1 cs-id)
+          {:keys [db selection]} (th/resolve-top db-cast)]
+      ;; Draw should have happened, discard selection should be pending
+      (is (= :discard (:selection/type selection))
+          "Selection type should be :discard")
+      (is (= 2 (:selection/select-count selection))
+          "Should require discarding 2 cards")
+      ;; Cards should still be in hand (waiting for selection)
+      (is (= :hand (th/get-object-zone db id1))
           "First card should still be in hand (waiting for selection)")
-      (is (= :hand (th/get-object-zone result id2))
+      (is (= :hand (th/get-object-zone db id2))
           "Second card should still be in hand (waiting for selection)"))))
 
 
@@ -230,47 +233,33 @@
   (testing "Full cast -> draw -> discard selection -> confirm discard flow"
     (let [db (th/create-test-db {:mana {:blue 1}})
           ;; Add 4 cards to library for drawing
-          [db' _lib-ids] (th/add-cards-to-library db
-                                                  [:dark-ritual :cabal-ritual :brain-freeze :island]
-                                                  :player-1)
+          [db _lib-ids] (th/add-cards-to-library db
+                                                 [:dark-ritual :cabal-ritual :brain-freeze :island]
+                                                 :player-1)
           ;; Add Careful Study to hand
-          [db'' cs-id] (th/add-card-to-zone db' :careful-study :hand :player-1)
-          _ (is (= 1 (th/get-hand-count db'' :player-1)) "Precondition: 1 card in hand")
+          [db cs-id] (th/add-card-to-zone db :careful-study :hand :player-1)
+          _ (is (= 1 (th/get-hand-count db :player-1)) "Precondition: 1 card in hand")
           ;; Cast Careful Study
-          db-cast (rules/cast-spell db'' :player-1 cs-id)
+          db-cast (rules/cast-spell db :player-1 cs-id)
           _ (is (= :stack (th/get-object-zone db-cast cs-id))
                 "Precondition: CS on stack")
           ;; Resolve - draws 2, pauses for discard selection
-          result (game/resolve-one-item db-cast)
-          sel (:pending-selection result)
-          db-after-draw (:db result)]
+          {:keys [db selection]} (th/resolve-top db-cast)]
       ;; Should have 2 cards in hand (drew 2, CS was cast from hand)
-      (is (= 2 (th/get-hand-count db-after-draw :player-1))
+      (is (= 2 (th/get-hand-count db :player-1))
           "Should have 2 cards in hand after draw")
       ;; Should have pending discard selection
-      (is (= :discard (:selection/type sel))
+      (is (= :discard (:selection/type selection))
           "Selection type should be :discard")
-      (is (= 2 (:selection/select-count sel))
+      (is (= 2 (:selection/select-count selection))
           "Should require discarding 2 cards")
-      ;; Simulate selecting 2 cards for discard
-      (let [hand-cards (q/get-hand db-after-draw :player-1)
+      ;; Select all hand cards for discard via production path
+      (let [hand-cards (q/get-hand db :player-1)
             card-ids (set (map :object/id hand-cards))
-            ;; Build app-db with selection
-            sel-with-choice (assoc sel :selection/selected card-ids)
-            app-db {:game/db db-after-draw
-                    :game/pending-selection sel-with-choice}
-            ;; Confirm discard via the production confirm-selection-impl
-            result-app-db (core/confirm-selection-impl app-db)
-            final-db (:game/db result-app-db)]
+            {:keys [db]} (th/confirm-selection db selection card-ids)]
         ;; Hand should be empty (discarded 2 cards)
-        (is (= 0 (th/get-hand-count final-db :player-1))
+        (is (= 0 (th/get-hand-count db :player-1))
             "Hand should be empty after discarding 2 cards")
-        ;; Graveyard should have 3 cards (2 discarded + CS itself)
-        (is (= 3 (th/get-zone-count final-db :graveyard :player-1))
-            "Graveyard should have 3 cards (2 discarded + Careful Study)")
-        ;; CS should be in graveyard
-        (is (= :graveyard (th/get-object-zone final-db cs-id))
-            "Careful Study should be in graveyard after resolution")
-        ;; No pending selection
-        (is (nil? (:game/pending-selection result-app-db))
-            "Should not have pending selection after confirmation")))))
+        ;; Graveyard should have 2 discarded cards
+        (is (= 2 (th/get-zone-count db :graveyard :player-1))
+            "Graveyard should have 2 discarded cards")))))

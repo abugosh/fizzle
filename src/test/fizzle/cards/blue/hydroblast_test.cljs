@@ -14,14 +14,11 @@
    - Different from BEB: BEB restricts targets at cast time"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
-    [datascript.core :as d]
     [fizzle.cards.blue.hydroblast :as hydroblast]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
-    [fizzle.events.game :as game]
-    [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
 
 
@@ -96,24 +93,12 @@
           db (rules/cast-spell db :player-2 bolt-id)
           [db hydro-id] (th/add-card-to-zone db :hydroblast :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})
-          chosen-mode (first (:card/modes hydroblast/card))
-          target-req (first (:mode/targeting chosen-mode))
-          modes (rules/get-casting-modes db :player-1 hydro-id)
-          mode (first modes)
-          hydro-eid (q/get-object-eid db hydro-id)
-          db (d/db-with db [[:db/add hydro-eid :object/chosen-mode chosen-mode]])
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id hydro-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{bolt-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
-          result (game/resolve-one-item db-cast)
-          db-resolved (:db result)]
-      (is (= :graveyard (:object/zone (q/get-object db-resolved bolt-id)))
+          counter-mode (first (:card/modes hydroblast/card))
+          db-cast (th/cast-mode-with-target db :player-1 hydro-id counter-mode bolt-id)
+          {:keys [db]} (th/resolve-top db-cast)]
+      (is (= :graveyard (:object/zone (q/get-object db bolt-id)))
           "Red spell should be countered to graveyard")
-      (is (= :graveyard (:object/zone (q/get-object db-resolved hydro-id)))
+      (is (= :graveyard (:object/zone (q/get-object db hydro-id)))
           "Hydroblast should be in graveyard after resolving"))))
 
 
@@ -124,24 +109,12 @@
           [db perm-id] (th/add-card-to-zone db :lightning-bolt :battlefield :player-2)
           [db hydro-id] (th/add-card-to-zone db :hydroblast :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})
-          chosen-mode (second (:card/modes hydroblast/card))
-          target-req (first (:mode/targeting chosen-mode))
-          modes (rules/get-casting-modes db :player-1 hydro-id)
-          mode (first modes)
-          hydro-eid (q/get-object-eid db hydro-id)
-          db (d/db-with db [[:db/add hydro-eid :object/chosen-mode chosen-mode]])
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id hydro-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{perm-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
-          result (game/resolve-one-item db-cast)
-          db-resolved (:db result)]
-      (is (= :graveyard (:object/zone (q/get-object db-resolved perm-id)))
+          destroy-mode (second (:card/modes hydroblast/card))
+          db-cast (th/cast-mode-with-target db :player-1 hydro-id destroy-mode perm-id)
+          {:keys [db]} (th/resolve-top db-cast)]
+      (is (= :graveyard (:object/zone (q/get-object db perm-id)))
           "Red permanent should be destroyed")
-      (is (= :graveyard (:object/zone (q/get-object db-resolved hydro-id)))
+      (is (= :graveyard (:object/zone (q/get-object db hydro-id)))
           "Hydroblast should be in graveyard after resolving"))))
 
 
@@ -194,19 +167,8 @@
           [db hydro-id] (th/add-card-to-zone db :hydroblast :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})
           storm-before (q/get-storm-count db :player-1)
-          chosen-mode (first (:card/modes hydroblast/card))
-          target-req (first (:mode/targeting chosen-mode))
-          modes (rules/get-casting-modes db :player-1 hydro-id)
-          mode (first modes)
-          hydro-eid (q/get-object-eid db hydro-id)
-          db (d/db-with db [[:db/add hydro-eid :object/chosen-mode chosen-mode]])
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id hydro-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{bolt-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)]
+          counter-mode (first (:card/modes hydroblast/card))
+          db-cast (th/cast-mode-with-target db :player-1 hydro-id counter-mode bolt-id)]
       (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
           "Storm count should increment by 1"))))
 
@@ -242,24 +204,12 @@
           db (rules/cast-spell db :player-2 opt-id)
           [db hydro-id] (th/add-card-to-zone db :hydroblast :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})
-          chosen-mode (first (:card/modes hydroblast/card))
-          target-req (first (:mode/targeting chosen-mode))
-          modes (rules/get-casting-modes db :player-1 hydro-id)
-          mode (first modes)
-          hydro-eid (q/get-object-eid db hydro-id)
-          db (d/db-with db [[:db/add hydro-eid :object/chosen-mode chosen-mode]])
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id hydro-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{opt-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
-          result (game/resolve-one-item db-cast)
-          db-resolved (:db result)]
-      (is (= :stack (:object/zone (q/get-object db-resolved opt-id)))
+          counter-mode (first (:card/modes hydroblast/card))
+          db-cast (th/cast-mode-with-target db :player-1 hydro-id counter-mode opt-id)
+          {:keys [db]} (th/resolve-top db-cast)]
+      (is (= :stack (:object/zone (q/get-object db opt-id)))
           "Non-red spell should remain on stack (not countered)")
-      (is (= :graveyard (:object/zone (q/get-object db-resolved hydro-id)))
+      (is (= :graveyard (:object/zone (q/get-object db hydro-id)))
           "Hydroblast should be in graveyard after resolving"))))
 
 
@@ -270,24 +220,12 @@
           [db blue-perm-id] (th/add-card-to-zone db :counterspell :battlefield :player-2)
           [db hydro-id] (th/add-card-to-zone db :hydroblast :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})
-          chosen-mode (second (:card/modes hydroblast/card))
-          target-req (first (:mode/targeting chosen-mode))
-          modes (rules/get-casting-modes db :player-1 hydro-id)
-          mode (first modes)
-          hydro-eid (q/get-object-eid db hydro-id)
-          db (d/db-with db [[:db/add hydro-eid :object/chosen-mode chosen-mode]])
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id hydro-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{blue-perm-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
-          result (game/resolve-one-item db-cast)
-          db-resolved (:db result)]
-      (is (= :battlefield (:object/zone (q/get-object db-resolved blue-perm-id)))
+          destroy-mode (second (:card/modes hydroblast/card))
+          db-cast (th/cast-mode-with-target db :player-1 hydro-id destroy-mode blue-perm-id)
+          {:keys [db]} (th/resolve-top db-cast)]
+      (is (= :battlefield (:object/zone (q/get-object db blue-perm-id)))
           "Non-red permanent should remain on battlefield")
-      (is (= :graveyard (:object/zone (q/get-object db-resolved hydro-id)))
+      (is (= :graveyard (:object/zone (q/get-object db hydro-id)))
           "Hydroblast should be in graveyard after resolving"))))
 
 

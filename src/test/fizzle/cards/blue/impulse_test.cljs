@@ -13,8 +13,6 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
     [fizzle.events.game :as game]
-    [fizzle.events.selection.core :as sel-core]
-    [fizzle.events.selection.library :as library]
     [fizzle.test-helpers :as th]))
 
 
@@ -93,19 +91,18 @@
           result (game/resolve-one-item db-cast)
           sel (:pending-selection result)
           selected-card (first lib-ids)
-          ;; Confirm peek-and-select with 1 card selected
-          confirm-result (sel-core/execute-confirmed-selection
-                           (:db result)
-                           (assoc sel :selection/selected #{selected-card}))]
+          ;; Confirm peek-and-select with 1 card selected via production path
+          {:keys [db selection]} (th/confirm-selection
+                                   (:db result) sel #{selected-card})]
       ;; Selected card should be in hand
-      (is (= :hand (th/get-object-zone (:db confirm-result) selected-card))
+      (is (= :hand (th/get-object-zone db selected-card))
           "Selected card should be moved to hand")
       ;; Should chain to order-bottom for remaining 3
-      (is (some? (:pending-selection confirm-result))
+      (is (some? selection)
           "Should chain to a pending selection")
-      (is (= :order-bottom (:selection/type (:pending-selection confirm-result)))
+      (is (= :order-bottom (:selection/type selection))
           "Chained selection should be :order-bottom")
-      (is (= 3 (count (:selection/candidates (:pending-selection confirm-result))))
+      (is (= 3 (count (:selection/candidates selection)))
           "Order-bottom should have 3 cards (the non-selected peeked cards)"))))
 
 
@@ -122,22 +119,19 @@
           result (game/resolve-one-item db-cast)
           sel (:pending-selection result)
           selected-card (first lib-ids)
-          ;; Confirm peek-and-select
-          confirm-result (sel-core/execute-confirmed-selection
-                           (:db result)
-                           (assoc sel :selection/selected #{selected-card}))
-          order-sel (:pending-selection confirm-result)
-          remainder-ids (vec (:selection/candidates order-sel))
-          ;; Execute order-bottom with a specific ordering
-          db-after-order (library/execute-order-bottom-selection
-                           (:db confirm-result)
-                           (assoc order-sel :selection/ordered remainder-ids))]
+          ;; Confirm peek-and-select via production path
+          {:keys [db selection]} (th/confirm-selection
+                                   (:db result) sel #{selected-card})
+          remainder-ids (vec (:selection/candidates selection))
+          ;; Confirm order-bottom with a specific ordering via production path
+          order-sel (assoc selection :selection/ordered remainder-ids)
+          {:keys [db]} (th/confirm-selection db order-sel #{})]
       ;; All 3 remainder cards should still be in library
       (doseq [r-id remainder-ids]
-        (is (= :library (th/get-object-zone db-after-order r-id))
+        (is (= :library (th/get-object-zone db r-id))
             "Remainder card should be in library"))
       ;; The 5th card (not peeked) should still be in library too
-      (is (= :library (th/get-object-zone db-after-order (nth lib-ids 4)))
+      (is (= :library (th/get-object-zone db (nth lib-ids 4)))
           "Unpeeked card should still be in library"))))
 
 
@@ -198,16 +192,14 @@
           result (game/resolve-one-item db-cast)
           sel (:pending-selection result)
           first-card (first lib-ids)
-          confirm-result (sel-core/execute-confirmed-selection
-                           (:db result)
-                           (assoc sel :selection/selected #{first-card}))]
-      (is (= :hand (th/get-object-zone (:db confirm-result) first-card))
+          {:keys [db selection]} (th/confirm-selection
+                                   (:db result) sel #{first-card})]
+      (is (= :hand (th/get-object-zone db first-card))
           "First card should be in hand")
-      (let [order-sel (:pending-selection confirm-result)
-            remainder (set (rest (take 4 lib-ids)))]
-        (is (= :order-bottom (:selection/type order-sel))
+      (let [remainder (set (rest (take 4 lib-ids)))]
+        (is (= :order-bottom (:selection/type selection))
             "Should chain to order-bottom")
-        (is (= remainder (:selection/candidates order-sel))
+        (is (= remainder (:selection/candidates selection))
             "Order-bottom candidates should be the 3 non-selected peeked cards")))))
 
 
@@ -222,14 +214,13 @@
           db-cast (rules/cast-spell db :player-1 imp-id)
           result (game/resolve-one-item db-cast)
           sel (:pending-selection result)
-          ;; Select nothing (fail-to-find)
-          confirm-result (sel-core/execute-confirmed-selection
-                           (:db result)
-                           (assoc sel :selection/selected #{}))]
+          ;; Select nothing (fail-to-find) via production path
+          {:keys [selection]} (th/confirm-selection
+                                (:db result) sel #{})]
       ;; Should chain to order-bottom for all 4 candidates
-      (is (= :order-bottom (:selection/type (:pending-selection confirm-result)))
+      (is (= :order-bottom (:selection/type selection))
           "Should chain to order-bottom")
-      (is (= 4 (count (:selection/candidates (:pending-selection confirm-result))))
+      (is (= 4 (count (:selection/candidates selection)))
           "Order-bottom should have all 4 cards"))))
 
 
@@ -250,13 +241,12 @@
           "Should peek at 2 cards (all available)")
       ;; Select 1 — only 1 remainder, no order-bottom chain needed
       (let [selected-card (first lib-ids)
-            confirm-result (sel-core/execute-confirmed-selection
-                             (:db result)
-                             (assoc sel :selection/selected #{selected-card}))]
-        (is (= :hand (th/get-object-zone (:db confirm-result) selected-card))
+            {:keys [db selection]} (th/confirm-selection
+                                     (:db result) sel #{selected-card})]
+        (is (= :hand (th/get-object-zone db selected-card))
             "Selected card should be in hand")
         ;; With only 1 remainder, no order-bottom chain (< 2 remainder)
-        (is (nil? (:pending-selection confirm-result))
+        (is (nil? selection)
             "Should not chain to order-bottom with only 1 remainder card")))))
 
 
@@ -273,10 +263,9 @@
       (is (= 1 (count (:selection/candidates sel)))
           "Should peek at 1 card (all available)")
       (let [only-card (first lib-ids)
-            confirm-result (sel-core/execute-confirmed-selection
-                             (:db result)
-                             (assoc sel :selection/selected #{only-card}))]
-        (is (= :hand (th/get-object-zone (:db confirm-result) only-card))
+            {:keys [db]} (th/confirm-selection
+                           (:db result) sel #{only-card})]
+        (is (= :hand (th/get-object-zone db only-card))
             "Only card should be moved to hand")))))
 
 

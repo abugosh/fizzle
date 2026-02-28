@@ -17,7 +17,6 @@
     [fizzle.engine.cards :as cards]
     [fizzle.engine.rules :as rules]
     [fizzle.events.game :as game]
-    [fizzle.events.selection.library :as library]
     [fizzle.test-helpers :as th]))
 
 
@@ -63,17 +62,19 @@
 
 (deftest test-intuition-full-flow-integration
   ;; Bug caught: Card definition doesn't work with selection system
-  (testing "Intuition triggers pile choice after tutor selection"
-    (let [db (th/create-test-db {:mana {:blue 3}})
-          [db' _card-ids] (th/add-cards-to-library db
-                                                   [:dark-ritual :cabal-ritual :brain-freeze
-                                                    :careful-study :mental-note]
-                                                   :player-1)
-          intuition-card (some #(when (= :intuition (:card/id %)) %)
-                               cards/all-cards)
-          intuition-effect (first (:card/effects intuition-card))
-          selection (library/build-tutor-selection db' :player-1 (random-uuid)
-                                                   intuition-effect [])]
+  (testing "Intuition triggers tutor selection via production cast-resolve path"
+    (let [db (th/create-test-db {:mana {:colorless 2 :blue 1}})
+          [db _card-ids] (th/add-cards-to-library db
+                                                  [:dark-ritual :cabal-ritual :brain-freeze
+                                                   :careful-study :mental-note]
+                                                  :player-1)
+          [db int-id] (th/add-card-to-zone db :intuition :hand :player-1)
+          ;; Cast and resolve through production path
+          db-cast (rules/cast-spell db :player-1 int-id)
+          {:keys [selection]} (th/resolve-top db-cast)]
+      ;; Verify tutor selection was created
+      (is (= :tutor (:selection/type selection))
+          "Selection type should be :tutor")
       ;; Verify multi-select tutor
       (is (= 3 (:selection/select-count selection))
           "Intuition must require 3 cards")

@@ -14,14 +14,11 @@
    - Color filtering restricts targets at cast time (not resolution)"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
-    [datascript.core :as d]
     [fizzle.cards.red.red-elemental-blast :as reb]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
-    [fizzle.events.game :as game]
-    [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
 
 
@@ -123,30 +120,15 @@
           ;; Add REB to player's hand with R mana
           [db reb-id] (th/add-card-to-zone db :red-elemental-blast :hand :player-1)
           db (mana/add-mana db :player-1 {:red 1})
-          ;; Cast REB choosing mode 0 (counter), targeting Opt
-          chosen-mode (first (:card/modes reb/card))
-          target-req (first (:mode/targeting chosen-mode))
-          modes (rules/get-casting-modes db :player-1 reb-id)
-          mode (first modes)
-          ;; Store chosen spell mode on object before casting
-          reb-eid (q/get-object-eid db reb-id)
-          db (d/db-with db [[:db/add reb-eid :object/chosen-mode chosen-mode]])
-          ;; Build selection and confirm cast
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id reb-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{opt-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
-          ;; Resolve REB
-          result (game/resolve-one-item db-cast)
-          db-resolved (:db result)]
+          ;; Cast REB choosing counter mode, targeting Opt
+          counter-mode (first (:card/modes reb/card))
+          db-cast (th/cast-mode-with-target db :player-1 reb-id counter-mode opt-id)
+          {:keys [db]} (th/resolve-top db-cast)]
       ;; Opt should be countered -> graveyard
-      (is (= :graveyard (:object/zone (q/get-object db-resolved opt-id)))
+      (is (= :graveyard (:object/zone (q/get-object db opt-id)))
           "Countered blue spell should be in graveyard")
       ;; REB should be in graveyard (resolved)
-      (is (= :graveyard (:object/zone (q/get-object db-resolved reb-id)))
+      (is (= :graveyard (:object/zone (q/get-object db reb-id)))
           "REB should be in graveyard after resolving"))))
 
 
@@ -155,35 +137,19 @@
     (let [db (th/create-test-db)
           db (th/add-opponent db)
           ;; Put a blue permanent on battlefield
-          ;; Use Seal of Cleansing... wait, that's white. Need a blue permanent.
-          ;; Let's add an Opt to battlefield manually (treating as if it's a permanent for this test)
-          ;; Actually, we need a blue card on battlefield. Let's just add a blue card directly.
           [db perm-id] (th/add-card-to-zone db :counterspell :battlefield :player-2)
           ;; Add REB
           [db reb-id] (th/add-card-to-zone db :red-elemental-blast :hand :player-1)
           db (mana/add-mana db :player-1 {:red 1})
-          ;; Cast REB choosing mode 1 (destroy), targeting the blue permanent
-          chosen-mode (second (:card/modes reb/card))
-          target-req (first (:mode/targeting chosen-mode))
-          modes (rules/get-casting-modes db :player-1 reb-id)
-          mode (first modes)
-          reb-eid (q/get-object-eid db reb-id)
-          db (d/db-with db [[:db/add reb-eid :object/chosen-mode chosen-mode]])
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id reb-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{perm-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
-          ;; Resolve REB
-          result (game/resolve-one-item db-cast)
-          db-resolved (:db result)]
+          ;; Cast REB choosing destroy mode, targeting the blue permanent
+          destroy-mode (second (:card/modes reb/card))
+          db-cast (th/cast-mode-with-target db :player-1 reb-id destroy-mode perm-id)
+          {:keys [db]} (th/resolve-top db-cast)]
       ;; Blue permanent should be destroyed -> graveyard
-      (is (= :graveyard (:object/zone (q/get-object db-resolved perm-id)))
+      (is (= :graveyard (:object/zone (q/get-object db perm-id)))
           "Destroyed blue permanent should be in graveyard")
       ;; REB should be in graveyard
-      (is (= :graveyard (:object/zone (q/get-object db-resolved reb-id)))
+      (is (= :graveyard (:object/zone (q/get-object db reb-id)))
           "REB should be in graveyard after resolving"))))
 
 
@@ -246,20 +212,8 @@
           [db reb-id] (th/add-card-to-zone db :red-elemental-blast :hand :player-1)
           db (mana/add-mana db :player-1 {:red 1})
           storm-before (q/get-storm-count db :player-1)
-          ;; Set up chosen mode and cast
-          chosen-mode (first (:card/modes reb/card))
-          target-req (first (:mode/targeting chosen-mode))
-          modes (rules/get-casting-modes db :player-1 reb-id)
-          mode (first modes)
-          reb-eid (q/get-object-eid db reb-id)
-          db (d/db-with db [[:db/add reb-eid :object/chosen-mode chosen-mode]])
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id reb-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{opt-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)]
+          counter-mode (first (:card/modes reb/card))
+          db-cast (th/cast-mode-with-target db :player-1 reb-id counter-mode opt-id)]
       (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
           "Storm count should increment by 1"))))
 
@@ -363,24 +317,12 @@
           ;; Cast REB targeting Opt
           [db reb-id] (th/add-card-to-zone db :red-elemental-blast :hand :player-1)
           db (mana/add-mana db :player-1 {:red 1})
-          chosen-mode (first (:card/modes reb/card))
-          target-req (first (:mode/targeting chosen-mode))
-          modes (rules/get-casting-modes db :player-1 reb-id)
-          mode (first modes)
-          reb-eid (q/get-object-eid db reb-id)
-          db (d/db-with db [[:db/add reb-eid :object/chosen-mode chosen-mode]])
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id reb-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{opt-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
+          counter-mode (first (:card/modes reb/card))
+          db-cast (th/cast-mode-with-target db :player-1 reb-id counter-mode opt-id)
           ;; Move Opt off stack (simulate it resolving)
           db-opt-gone (rules/move-spell-off-stack db-cast nil opt-id)
           ;; Now resolve REB — target gone, should fizzle
-          result (game/resolve-one-item db-opt-gone)
-          db-resolved (:db result)]
+          {:keys [db]} (th/resolve-top db-opt-gone)]
       ;; REB should still end up in graveyard (fizzled)
-      (is (= :graveyard (:object/zone (q/get-object db-resolved reb-id)))
+      (is (= :graveyard (:object/zone (q/get-object db reb-id)))
           "REB should be in graveyard after fizzling"))))

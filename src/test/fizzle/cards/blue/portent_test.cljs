@@ -11,28 +11,17 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
     [fizzle.events.game :as game]
-    [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
 
 
 ;; === File-specific helpers ===
 
 (defn cast-portent-with-target
-  "Cast Portent through the targeting flow, selecting the given target.
+  "Cast Portent through the production targeting flow, selecting the given target.
    Pays mana, moves to stack, stores target on stack-item.
    Returns updated db."
   [db player-id object-id target-player-id]
-  (let [card portent/card
-        target-req (first (:card/targeting card))
-        modes (rules/get-casting-modes db player-id object-id)
-        mode (first (filter #(= :primary (:mode/id %)) modes))
-        selection {:selection/type :cast-time-targeting
-                   :selection/player-id player-id
-                   :selection/object-id object-id
-                   :selection/mode mode
-                   :selection/target-requirement target-req
-                   :selection/selected #{target-player-id}}]
-    (sel-targeting/confirm-cast-time-target db selection)))
+  (th/cast-with-target db player-id object-id target-player-id))
 
 
 (defn resolve-portent

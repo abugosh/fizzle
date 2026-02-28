@@ -210,6 +210,25 @@ Create test file mirroring the card file path:
 
 Use existing test files as reference for structure.
 
+### Step 3.1a: Use Production Path Helpers
+
+**CRITICAL:** Happy-path cast-resolve tests MUST use the composable test helpers from `fizzle.test-helpers`. Never manually construct selection maps or call internal selection/effect functions.
+
+| Card type | Helper pattern |
+|-----------|---------------|
+| Simple spell | `th/cast-and-resolve` |
+| Targeted spell | `th/cast-with-target` → `th/resolve-top` |
+| Modal+targeted spell | `th/cast-mode-with-target` → `th/resolve-top` |
+| Interactive spell | `rules/cast-spell` → `th/resolve-top` → `th/confirm-selection` |
+
+**Forbidden in happy-path tests:**
+- `sel-targeting/confirm-cast-time-target` (use `th/cast-with-target`)
+- `effects/execute-effect` (use `th/resolve-top`)
+- `sel-core/execute-confirmed-selection` (use `th/confirm-selection`)
+- `d/db-with [[:db/add _ :object/chosen-mode _]]` (use `th/cast-mode-with-target`)
+- `library/execute-peek-selection` (use `th/resolve-top` + `th/confirm-selection`)
+- `library/build-tutor-selection` (use `th/resolve-top` + `th/confirm-selection`)
+
 ### Step 3.2: Write Failing Test (RED)
 
 **CRITICAL:** Every test MUST trace to oracle text or a Scryfall ruling.
@@ -340,6 +359,13 @@ Based on oracle text, write tests for:
 | "When...becomes tapped" | Trigger firing on tap |
 | "Sacrifice" | Zone change to graveyard |
 
+### Production Path Verification
+
+Before proceeding to Phase 5, verify:
+- [ ] Happy-path cast-resolve test uses production path helpers (no manual selection construction)
+- [ ] `can-cast?` is implicitly tested via helper assertions
+- [ ] No direct imports of `events.selection.targeting`, `events.selection.core`, or `engine.effects` in happy-path tests (edge case tests may use these)
+
 ### Running Tests
 
 ```bash
@@ -368,6 +394,7 @@ Before marking implementation complete, verify:
 - [ ] **All tests cite sources:** No tests without oracle/ruling citations
 - [ ] **No hallucinated rules:** No tests for behavior not in oracle/rulings
 - [ ] **Validation passes:** `make validate` succeeds
+- [ ] **Production path tested:** Happy-path test uses `th/cast-and-resolve`, `th/cast-with-target`, `th/cast-mode-with-target`, or equivalent — no manual selection construction
 
 ### View-Layer Verification (when card introduces new selection type)
 

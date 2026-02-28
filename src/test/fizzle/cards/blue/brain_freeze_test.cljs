@@ -24,21 +24,11 @@
 ;; === File-specific helpers ===
 
 (defn cast-brain-freeze-with-target
-  "Cast Brain Freeze through the targeting flow, selecting the given target.
+  "Cast Brain Freeze through the production targeting flow, selecting the given target.
    Pays mana, moves to stack, stores target on stack-item.
    Returns updated db."
   [db player-id object-id target-player-id]
-  (let [card brain-freeze/card
-        target-req (first (:card/targeting card))
-        modes (rules/get-casting-modes db player-id object-id)
-        mode (first (filter #(= :primary (:mode/id %)) modes))
-        selection {:selection/type :cast-time-targeting
-                   :selection/player-id player-id
-                   :selection/object-id object-id
-                   :selection/mode mode
-                   :selection/target-requirement target-req
-                   :selection/selected #{target-player-id}}]
-    (sel-targeting/confirm-cast-time-target db selection)))
+  (th/cast-with-target db player-id object-id target-player-id))
 
 
 (defn resolve-brain-freeze

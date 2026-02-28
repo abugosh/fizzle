@@ -108,15 +108,14 @@ Test the complete cast-resolve cycle with valid mana and game state. Verify:
 - Storm count increments
 
 ```clojure
+;; Simple spell — use th/cast-and-resolve
 (deftest dark-ritual-cast-resolve-test
   (testing "Dark Ritual adds 3 black mana on resolve"
-    (let [db (th/create-test-db)
-          [db' obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
-          db-mana (mana/add-mana db' :player-1 {:black 1})
-          db-cast (rules/cast-spell db-mana :player-1 obj-id)
-          db-resolved (rules/resolve-spell db-cast :player-1 obj-id)]
-      (is (= 3 (:black (q/get-mana-pool db-resolved :player-1))))
-      (is (= :graveyard (th/get-object-zone db-resolved obj-id))))))
+    (let [db (th/create-test-db {:mana {:black 1}})
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          db (th/cast-and-resolve db :player-1 obj-id)]
+      (is (= 3 (:black (q/get-mana-pool db :player-1))))
+      (is (= :graveyard (th/get-object-zone db obj-id))))))
 ```
 
 ### Category C: Cannot-Cast Guards
@@ -174,6 +173,21 @@ Test:
 - Target selection prompt appears during cast
 - Effect resolves against chosen target
 - Spell fizzles when target becomes invalid before resolution
+
+```clojure
+;; Targeted spell — use th/cast-with-target + th/resolve-top
+(deftest counterspell-counters-target-test
+  (testing "Counterspell counters target spell"
+    (let [db (th/create-test-db {:mana {:blue 2}})
+          db (th/add-opponent db)
+          [db bolt-id] (th/add-card-to-zone db :lightning-bolt :hand :player-2)
+          db (mana/add-mana db :player-2 {:red 1})
+          db (rules/cast-spell db :player-2 bolt-id)
+          [db cs-id] (th/add-card-to-zone db :counterspell :hand :player-1)
+          db (th/cast-with-target db :player-1 cs-id bolt-id)
+          {:keys [db]} (th/resolve-top db)]
+      (is (= :graveyard (th/get-object-zone db bolt-id))))))
+```
 
 See: `src/test/fizzle/cards/red/recoup_test.cljs` — tests cast-time targeting, fizzle on target removal, and targeting restrictions (sorceries only, own graveyard only).
 
@@ -313,6 +327,35 @@ Card tests should use real function calls (`rules/cast-spell`, `rules/resolve-sp
 
 Never add methods to production namespaces purely for test access. If a test needs to inspect internal state, use Datascript queries directly.
 
+### 6. Bypassing production code paths with manual construction
+
+Happy-path cast-resolve tests must exercise the full production flow. Manually constructing intermediate data (selection maps, effect maps, target assignments) bypasses validation, ordering, and integration logic — letting real bugs ship undetected. This anti-pattern caused the Portent (missing shuffle option) and Stifle (targeting dialog) bugs.
+
+**Before (anti-pattern):**
+```clojure
+;; DO NOT DO THIS — manually constructs selection and calls internal functions
+(let [db-cast (rules/cast-spell db :player-1 obj-id)
+      ;; Bypass: manually build targeting selection
+      selection {:selection/type :cast-time-targeting
+                 :selection/player-id :player-1
+                 :selection/object-id obj-id
+                 :selection/selected #{target-id}}
+      db-targeted (sel-targeting/confirm-cast-time-target db-cast selection)
+      ;; Bypass: directly call effect execution
+      db-resolved (effects/execute-effect db-targeted :player-1 effect)]
+  ...)
+```
+
+**After (correct):**
+```clojure
+;; Use production-path helpers that exercise the full flow
+(let [db (th/cast-with-target db :player-1 obj-id target-id)
+      {:keys [db]} (th/resolve-top db)]
+  ...)
+```
+
+The production-path helpers (`th/cast-and-resolve`, `th/cast-with-target`, `th/cast-mode-with-target`, `th/resolve-top`, `th/confirm-selection`) wrap the same code paths the running application uses, including `can-cast?` validation, targeting selection, and resolution. See "Production Path Helpers" section below.
+
 ## Shared Test Helpers Reference
 
 All helpers are in `fizzle.test-helpers` (`src/test/fizzle/test_helpers.cljs`).
@@ -330,16 +373,91 @@ All helpers are in `fizzle.test-helpers` (`src/test/fizzle/test_helpers.cljs`).
 
 **Helpers are card-agnostic.** Pass card-id keywords (e.g., `:dark-ritual`), not card definition maps.
 
+## Production Path Helpers
+
+These helpers wrap the full production code paths for cast-resolve testing. Use them in happy-path tests (Category B, F) instead of calling internal selection/effect functions directly. See Anti-Pattern #6 for motivation.
+
+| Helper | Signature | Returns | Use for |
+|--------|-----------|---------|---------|
+| `cast-and-resolve` | `[db player-id obj-id]` | `db` | Non-interactive spells (Dark Ritual, Cabal Ritual) |
+| `cast-with-target` | `[db player-id obj-id target-id]` | `db` | Targeted spells (Counterspell, Stifle, Brain Freeze, Deep Analysis) |
+| `cast-mode-with-target` | `[db player-id obj-id spell-mode target-id]` | `db` | Modal+targeted spells (BEB, REB, Hydroblast) |
+| `resolve-top` | `[db]` | `{:db db}` or `{:db db :selection sel}` | Resolve topmost stack item |
+| `confirm-selection` | `[db selection selected-items]` | `{:db db}` or `{:db db :selection sel}` | Confirm a pending selection |
+
+All casting helpers assert `can-cast?` before casting and validate targets. If an assertion fails, the test gets a clear error message explaining the precondition failure.
+
+### Composition Patterns
+
+**Simple spell (no interaction):**
+```clojure
+(let [db (th/cast-and-resolve db :player-1 obj-id)]
+  (is (= 3 (:black (q/get-mana-pool db :player-1)))))
+```
+
+**Targeted spell (cast-time targeting):**
+```clojure
+(let [db (th/cast-with-target db :player-1 cs-id target-id)
+      {:keys [db]} (th/resolve-top db)]
+  (is (= :graveyard (th/get-object-zone db target-id))))
+```
+
+**Modal + targeted spell (mode then targeting):**
+```clojure
+(let [counter-mode (first (:card/modes beb/card))
+      db (th/cast-mode-with-target db :player-1 beb-id counter-mode bolt-id)
+      {:keys [db]} (th/resolve-top db)]
+  (is (= :graveyard (th/get-object-zone db bolt-id))))
+```
+
+**Interactive spell (resolution produces selection):**
+```clojure
+(let [db-cast (rules/cast-spell db :player-1 cs-id)
+      {:keys [db selection]} (th/resolve-top db-cast)
+      {:keys [db]} (th/confirm-selection db selection #{card1 card2})]
+  (is (= :graveyard (th/get-object-zone db card1))))
+```
+
+**Targeted + interactive (cast-time target, then resolution selection):**
+```clojure
+(let [db (th/cast-with-target db :player-1 bf-id target-id)
+      {:keys [db]} (th/resolve-top db)]
+  (is (= 3 (th/get-zone-count db :graveyard :player-2))))
+```
+
+### Selection-specific attributes
+
+Some selections require special attributes beyond `:selection/selected`:
+
+| Selection type | Required attribute | Format |
+|----------------|--------------------|--------|
+| Scry | `:selection/top-pile`, `:selection/bottom-pile` | Sets of obj-ids |
+| Order bottom | `:selection/ordered` | Ordered vector of obj-ids |
+| Standard (discard, tutor, etc.) | `:selection/selected` | Set of obj-ids |
+
+For scry and order-bottom selections, set these attributes on the selection map before passing to `th/confirm-selection`.
+
+### When to use helpers vs direct calls
+
+- **Happy-path cast-resolve tests (Category B, F):** Always use helpers.
+- **Cannot-cast guards (Category C):** Call `rules/can-cast?` directly — no helper needed.
+- **Targeting infrastructure tests:** May use `sel-targeting/cast-spell-with-targeting` directly when inspecting intermediate selection state.
+- **Edge cases testing internal behavior:** May use direct calls when testing specific internal mechanics (fizzle behavior, storm copy infrastructure, etc.).
+
 ## Exemplar Test Files
 
 These files demonstrate the testing patterns described above:
 
 | File | Demonstrates |
 |------|-------------|
+| `cards/black/dark_ritual_test.cljs` | `th/cast-and-resolve` for simple non-interactive spells |
+| `cards/blue/counterspell_test.cljs` | `th/cast-with-target` + `th/resolve-top` for targeted spells |
+| `cards/blue/blue_elemental_blast_test.cljs` | `th/cast-mode-with-target` for modal+targeted spells |
+| `cards/blue/careful_study_test.cljs` | `th/resolve-top` + `th/confirm-selection` for interactive spells |
 | `cards/blue/brain_freeze_test.cljs` | Full storm pipeline, targeting, parameterized copy tests, edge cases |
 | `cards/red/recoup_test.cljs` | Targeting, flashback, fizzle behavior, grant expiration, zone restrictions |
 | `cards/lands/gemstone_mine_test.cljs` | Land ability testing, counter depletion, parameterized colors, zone guards |
 | `cards/artifacts/lotus_petal_test.cljs` | Mana ability, `doseq` parameterization, zone restrictions |
 | `cards/artifacts/led_test.cljs` | Sacrifice + discard combo, `doseq` parameterization, tapped state guard |
-| `cards/blue/careful_study_test.cljs` | Selection/modal flow, draw-then-discard integration |
+| `cards/artifacts/tormods_crypt_test.cljs` | Activated ability with `can-activate?` precondition, targeting, resolve |
 | `engine/effects_test.cljs` | Engine-level effect testing with thorough corner cases |

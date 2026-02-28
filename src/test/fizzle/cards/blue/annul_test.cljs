@@ -17,7 +17,6 @@
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.zones :as zones]
     [fizzle.events.game :as game]
-    [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
 
 
@@ -87,24 +86,14 @@
           ;; Add Annul with U mana
           [db annul-id] (th/add-card-to-zone db :annul :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})
-          ;; Cast Annul targeting Lotus Petal
-          target-req (first (:card/targeting annul/card))
-          modes (rules/get-casting-modes db :player-1 annul-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id annul-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{petal-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
-          result (game/resolve-one-item db-cast)
-          db-resolved (:db result)]
+          ;; Cast Annul targeting Lotus Petal via production path
+          db-cast (th/cast-with-target db :player-1 annul-id petal-id)
+          {:keys [db]} (th/resolve-top db-cast)]
       ;; Lotus Petal should be countered -> graveyard
-      (is (= :graveyard (:object/zone (q/get-object db-resolved petal-id)))
+      (is (= :graveyard (:object/zone (q/get-object db petal-id)))
           "Countered artifact should be in graveyard")
       ;; Annul should be in graveyard
-      (is (= :graveyard (:object/zone (q/get-object db-resolved annul-id)))
+      (is (= :graveyard (:object/zone (q/get-object db annul-id)))
           "Annul should be in graveyard after resolving"))))
 
 
@@ -119,19 +108,9 @@
           ;; Add Annul
           [db annul-id] (th/add-card-to-zone db :annul :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})
-          target-req (first (:card/targeting annul/card))
-          modes (rules/get-casting-modes db :player-1 annul-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id annul-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{seal-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
-          result (game/resolve-one-item db-cast)
-          db-resolved (:db result)]
-      (is (= :graveyard (:object/zone (q/get-object db-resolved seal-id)))
+          db-cast (th/cast-with-target db :player-1 annul-id seal-id)
+          {:keys [db]} (th/resolve-top db-cast)]
+      (is (= :graveyard (:object/zone (q/get-object db seal-id)))
           "Countered enchantment should be in graveyard"))))
 
 
@@ -191,16 +170,7 @@
           [db annul-id] (th/add-card-to-zone db :annul :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})
           storm-before (q/get-storm-count db :player-1)
-          target-req (first (:card/targeting annul/card))
-          modes (rules/get-casting-modes db :player-1 annul-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id annul-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{petal-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)]
+          db-cast (th/cast-with-target db :player-1 annul-id petal-id)]
       (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
           "Storm count should increment by 1"))))
 
@@ -237,16 +207,7 @@
           ;; Cast Annul targeting petal
           [db annul-id] (th/add-card-to-zone db :annul :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})
-          target-req (first (:card/targeting annul/card))
-          modes (rules/get-casting-modes db :player-1 annul-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id annul-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{petal-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
+          db-cast (th/cast-with-target db :player-1 annul-id petal-id)
           ;; Simulate petal resolving first: move to battlefield (permanent)
           db-petal-resolved (zones/move-to-zone db-cast petal-id :battlefield)
           ;; Resolve Annul — target left stack, should fizzle

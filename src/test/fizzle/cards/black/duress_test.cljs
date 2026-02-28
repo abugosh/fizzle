@@ -18,9 +18,6 @@
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
-    [fizzle.events.game :as game]
-    [fizzle.events.selection.core :as sel-core]
-    [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
 
 
@@ -84,20 +81,11 @@
           db (mana/add-mana db :player-1 {:black 1})
           ;; Add an instant (Dark Ritual) to opponent's hand — selectable
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
-          ;; Cast Duress targeting opponent
-          target-req (first (:card/targeting duress/card))
-          modes (rules/get-casting-modes db :player-1 duress-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id duress-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{:player-2}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
+          ;; Cast Duress targeting opponent via production path
+          db-cast (th/cast-with-target db :player-1 duress-id :player-2)
           ;; Resolve — should return pending-selection for hand reveal
-          result (game/resolve-one-item db-cast)
-          sel (:pending-selection result)]
+          {:keys [db selection]} (th/resolve-top db-cast)
+          sel selection]
       ;; Should have pending selection for hand reveal
       (is (= :hand-reveal-discard (:selection/type sel))
           "Should enter hand-reveal-discard selection")
@@ -109,11 +97,9 @@
       (is (contains? (set (:selection/valid-targets sel)) ritual-id)
           "Dark Ritual should be a valid target (instant)")
       ;; Select the instant and confirm
-      (let [app-db {:game/db (:db result)
-                    :game/pending-selection (assoc sel :selection/selected #{ritual-id})}
-            app-db-after (sel-core/confirm-selection-impl app-db)]
+      (let [{:keys [db]} (th/confirm-selection db sel #{ritual-id})]
         ;; Dark Ritual should be discarded
-        (is (= :graveyard (th/get-object-zone (:game/db app-db-after) ritual-id))
+        (is (= :graveyard (th/get-object-zone db ritual-id))
             "Dark Ritual should be in graveyard after Duress")))))
 
 
@@ -160,16 +146,7 @@
           [db duress-id] (th/add-card-to-zone db :duress :hand :player-1)
           db (mana/add-mana db :player-1 {:black 1})
           storm-before (q/get-storm-count db :player-1)
-          target-req (first (:card/targeting duress/card))
-          modes (rules/get-casting-modes db :player-1 duress-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id duress-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{:player-2}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)]
+          db-cast (th/cast-with-target db :player-1 duress-id :player-2)]
       (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
           "Storm count should increment by 1"))))
 
@@ -187,18 +164,9 @@
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           [db _island-id] (th/add-card-to-zone db :island :hand :player-2)
           ;; Cast and resolve
-          target-req (first (:card/targeting duress/card))
-          modes (rules/get-casting-modes db :player-1 duress-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id duress-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{:player-2}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
-          result (game/resolve-one-item db-cast)
-          sel (:pending-selection result)]
+          db-cast (th/cast-with-target db :player-1 duress-id :player-2)
+          {:keys [selection]} (th/resolve-top db-cast)
+          sel selection]
       ;; Only instant should be selectable
       (is (= 1 (count (:selection/valid-targets sel)))
           "Only 1 card should be selectable (the instant)")
@@ -217,18 +185,9 @@
           [db _island-id] (th/add-card-to-zone db :island :hand :player-2)
           [db _swamp-id] (th/add-card-to-zone db :swamp :hand :player-2)
           ;; Cast and resolve
-          target-req (first (:card/targeting duress/card))
-          modes (rules/get-casting-modes db :player-1 duress-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id duress-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{:player-2}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
-          result (game/resolve-one-item db-cast)
-          sel (:pending-selection result)]
+          db-cast (th/cast-with-target db :player-1 duress-id :player-2)
+          {:keys [selection]} (th/resolve-top db-cast)
+          sel selection]
       ;; No cards should be selectable (both are lands)
       (is (empty? (:selection/valid-targets sel))
           "No cards should be selectable when hand is all lands")
@@ -273,18 +232,9 @@
           ;; Opponent has empty hand
           _ (is (= 0 (th/get-hand-count db :player-2))
                 "Precondition: opponent has empty hand")
-          target-req (first (:card/targeting duress/card))
-          modes (rules/get-casting-modes db :player-1 duress-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id duress-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{:player-2}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
-          result (game/resolve-one-item db-cast)
-          sel (:pending-selection result)]
+          db-cast (th/cast-with-target db :player-1 duress-id :player-2)
+          {:keys [selection]} (th/resolve-top db-cast)
+          sel selection]
       ;; Should still enter selection (reveals empty hand)
       (is (= :hand-reveal-discard (:selection/type sel))
           "Should enter hand-reveal-discard even with empty hand")
@@ -304,18 +254,9 @@
           db (mana/add-mana db :player-1 {:black 1})
           ;; Add a sorcery (Careful Study) to opponent's hand
           [db study-id] (th/add-card-to-zone db :careful-study :hand :player-2)
-          target-req (first (:card/targeting duress/card))
-          modes (rules/get-casting-modes db :player-1 duress-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id duress-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{:player-2}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
-          result (game/resolve-one-item db-cast)
-          sel (:pending-selection result)]
+          db-cast (th/cast-with-target db :player-1 duress-id :player-2)
+          {:keys [selection]} (th/resolve-top db-cast)
+          sel selection]
       (is (contains? (set (:selection/valid-targets sel)) study-id)
           "Careful Study (sorcery) should be selectable"))))
 
@@ -329,17 +270,8 @@
           db (mana/add-mana db :player-1 {:black 1})
           ;; Add Lotus Petal (artifact) to opponent's hand
           [db petal-id] (th/add-card-to-zone db :lotus-petal :hand :player-2)
-          target-req (first (:card/targeting duress/card))
-          modes (rules/get-casting-modes db :player-1 duress-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id duress-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{:player-2}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
-          result (game/resolve-one-item db-cast)
-          sel (:pending-selection result)]
+          db-cast (th/cast-with-target db :player-1 duress-id :player-2)
+          {:keys [selection]} (th/resolve-top db-cast)
+          sel selection]
       (is (contains? (set (:selection/valid-targets sel)) petal-id)
           "Lotus Petal (artifact) should be selectable"))))

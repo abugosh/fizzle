@@ -18,7 +18,6 @@
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.game :as game]
-    [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
 
 
@@ -87,28 +86,18 @@
           ;; Add Counterspell to player's hand with UU mana
           [db cs-id] (th/add-card-to-zone db :counterspell :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 2})
-          ;; Cast Counterspell targeting Dark Ritual
-          target-req (first (:card/targeting counterspell/card))
-          modes (rules/get-casting-modes db :player-1 cs-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id cs-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{ritual-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
+          ;; Cast Counterspell targeting Dark Ritual via production path
+          db-cast (th/cast-with-target db :player-1 cs-id ritual-id)
           ;; Resolve Counterspell (top of stack)
-          result (game/resolve-one-item db-cast)
-          db-resolved (:db result)]
+          {:keys [db]} (th/resolve-top db-cast)]
       ;; Dark Ritual should be countered -> graveyard
-      (is (= :graveyard (:object/zone (q/get-object db-resolved ritual-id)))
+      (is (= :graveyard (:object/zone (q/get-object db ritual-id)))
           "Countered spell should be in graveyard")
       ;; Counterspell should be in graveyard (resolved)
-      (is (= :graveyard (:object/zone (q/get-object db-resolved cs-id)))
+      (is (= :graveyard (:object/zone (q/get-object db cs-id)))
           "Counterspell should be in graveyard after resolving")
       ;; Stack should be empty — countered spell's stack item must be removed
-      (is (nil? (stack/get-top-stack-item db-resolved))
+      (is (nil? (stack/get-top-stack-item db))
           "Stack should be empty after counter resolves"))))
 
 
@@ -123,19 +112,9 @@
           ;; Add Counterspell
           [db cs-id] (th/add-card-to-zone db :counterspell :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 2})
-          target-req (first (:card/targeting counterspell/card))
-          modes (rules/get-casting-modes db :player-1 cs-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id cs-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{opt-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
-          result (game/resolve-one-item db-cast)
-          db-resolved (:db result)]
-      (is (= :graveyard (:object/zone (q/get-object db-resolved opt-id)))
+          db-cast (th/cast-with-target db :player-1 cs-id opt-id)
+          {:keys [db]} (th/resolve-top db-cast)]
+      (is (= :graveyard (:object/zone (q/get-object db opt-id)))
           "Countered Opt should be in graveyard"))))
 
 
@@ -195,16 +174,7 @@
           [db cs-id] (th/add-card-to-zone db :counterspell :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 2})
           storm-before (q/get-storm-count db :player-1)
-          target-req (first (:card/targeting counterspell/card))
-          modes (rules/get-casting-modes db :player-1 cs-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id cs-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{ritual-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)]
+          db-cast (th/cast-with-target db :player-1 cs-id ritual-id)]
       (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
           "Storm count should increment by 1"))))
 
@@ -260,16 +230,7 @@
           ;; Cast Counterspell targeting ritual
           [db cs-id] (th/add-card-to-zone db :counterspell :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 2})
-          target-req (first (:card/targeting counterspell/card))
-          modes (rules/get-casting-modes db :player-1 cs-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id cs-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{ritual-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
+          db-cast (th/cast-with-target db :player-1 cs-id ritual-id)
           ;; Now manually resolve the ritual first (simulate it leaving stack)
           ;; Move ritual off stack to graveyard
           db-ritual-resolved (rules/move-spell-off-stack db-cast nil ritual-id)
@@ -300,18 +261,9 @@
           ;; Add Counterspell
           [db cs-id] (th/add-card-to-zone db :counterspell :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 2})
-          target-req (first (:card/targeting counterspell/card))
-          modes (rules/get-casting-modes db :player-1 cs-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id cs-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{copy-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
-          result (game/resolve-one-item db-cast)
-          db-resolved (:db result)]
+          db-cast (th/cast-with-target db :player-1 cs-id copy-id)
+          {:keys [db]} (th/resolve-top db-cast)
+          db-resolved db]
       ;; Copy should be completely removed from db
       (is (nil? (q/get-object db-resolved copy-id))
           "Copy should be removed from db entirely"))))
@@ -331,18 +283,9 @@
           ;; Add Counterspell
           [db cs-id] (th/add-card-to-zone db :counterspell :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 2})
-          target-req (first (:card/targeting counterspell/card))
-          modes (rules/get-casting-modes db :player-1 cs-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id cs-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{spell-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
-          result (game/resolve-one-item db-cast)
-          db-resolved (:db result)]
+          db-cast (th/cast-with-target db :player-1 cs-id spell-id)
+          {:keys [db]} (th/resolve-top db-cast)
+          db-resolved db]
       ;; Flashback spell should go to exile, not graveyard
       (is (= :exile (:object/zone (q/get-object db-resolved spell-id)))
           "Flashback spell should be exiled when countered"))))

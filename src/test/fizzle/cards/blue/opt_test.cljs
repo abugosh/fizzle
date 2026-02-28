@@ -15,7 +15,6 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
     [fizzle.events.game :as game]
-    [fizzle.events.selection.library :as library]
     [fizzle.test-helpers :as th]))
 
 
@@ -100,36 +99,29 @@
   (testing "After scry confirm, draw effect executes"
     (let [db (th/create-test-db {:mana {:blue 1}})
           ;; Add 3 cards to library
-          [db' _lib-ids] (th/add-cards-to-library db
-                                                  [:dark-ritual :cabal-ritual :brain-freeze]
-                                                  :player-1)
+          [db _lib-ids] (th/add-cards-to-library db
+                                                 [:dark-ritual :cabal-ritual :brain-freeze]
+                                                 :player-1)
           ;; Add Opt to hand
-          [db'' opt-id] (th/add-card-to-zone db' :opt :hand :player-1)
-          initial-hand (th/get-hand-count db'' :player-1)
+          [db opt-id] (th/add-card-to-zone db :opt :hand :player-1)
+          initial-hand (th/get-hand-count db :player-1)
           _ (is (= 1 initial-hand) "Precondition: hand has 1 card (Opt)")
           ;; Cast Opt
-          db-after-cast (rules/cast-spell db'' :player-1 opt-id)
+          db-cast (rules/cast-spell db :player-1 opt-id)
           ;; Resolve spell - creates scry selection
-          result (game/resolve-one-item db-after-cast)
-          scry-selection (:pending-selection result)
-          top-card (first (:selection/cards scry-selection))
-          ;; Simulate scry choice: put card on bottom
-          db-before-confirm (:db result)
-          scry-state (assoc scry-selection
-                            :selection/top-pile []
-                            :selection/bottom-pile [top-card])
-          ;; Create app-db with pending selection for confirm-scry-selection
-          app-db {:game/db db-before-confirm
-                  :game/pending-selection scry-state}
-          ;; Confirm scry selection - should trigger draw
-          result-app-db (library/confirm-scry-selection app-db)
-          result-db (:game/db result-app-db)]
+          {:keys [db selection]} (th/resolve-top db-cast)
+          top-card (first (:selection/cards selection))
+          ;; Set scry piles: put card on bottom, then confirm via production path
+          scry-sel (assoc selection
+                          :selection/top-pile []
+                          :selection/bottom-pile [top-card])
+          {:keys [db]} (th/confirm-selection db scry-sel #{})]
       ;; After scry + draw, hand should have 1 card (drew the top card after reorder)
-      (is (= 1 (th/get-hand-count result-db :player-1))
+      (is (= 1 (th/get-hand-count db :player-1))
           "After scry confirm and draw, hand should have 1 card")
-      ;; Should NOT have pending selection (draw is automatic, not selection-based)
-      (is (nil? (:game/pending-selection result-app-db))
-          "Should not have pending selection after draw"))))
+      ;; Opt should be in graveyard after full resolution
+      (is (= :graveyard (th/get-object-zone db opt-id))
+          "Opt should be in graveyard after resolution"))))
 
 
 (deftest test-opt-empty-library-scry-still-draws-attempt

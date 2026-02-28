@@ -1,4 +1,4 @@
-.PHONY: repl dev test clean help lint fmt-check fmt validate build-css
+.PHONY: repl dev test clean help lint fmt-check fmt validate build-css lint-test-paths
 
 # Detect Java - try common locations
 JAVA_HOME ?= $(shell \
@@ -49,6 +49,16 @@ fmt-check:
 
 fmt:
 	cljstyle fix src/
+
+lint-test-paths:
+	@echo "Checking card tests for production path bypasses..."
+	@grep -rn 'confirm-cast-time-target\|execute-confirmed-selection\|execute-effect\|execute-peek-selection\|build-tutor-selection\|execute-tutor-selection' \
+		src/test/fizzle/cards/ \
+		--include="*_test.cljs" \
+		| grep -v '^\s*;;' \
+		|| echo "  No production path bypasses found."
+	@echo "Review matches above — happy-path tests should use th/ helpers instead."
+	@echo "Edge case tests calling internals directly are acceptable."
 
 validate:
 	@$(MAKE) lint && $(MAKE) fmt-check && $(MAKE) test

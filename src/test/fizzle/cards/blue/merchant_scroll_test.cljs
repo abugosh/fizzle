@@ -18,7 +18,6 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.zones :as zones]
     [fizzle.events.game :as game]
-    [fizzle.events.selection.library :as library]
     [fizzle.test-helpers :as th]))
 
 
@@ -171,83 +170,71 @@
 
 (deftest test-tutor-fail-to-find-preserves-cards
   (testing "Selecting nothing (fail-to-find) preserves library and hand contents"
-    (let [db (th/create-test-db {:mana {:blue 2}})
-          [db' _obj-ids] (th/add-cards-to-library db
-                                                  [:brain-freeze :dark-ritual :mental-note]
-                                                  :player-1)
-          hand-before (th/get-hand-count db' :player-1)
-          ;; Simulate confirming empty selection (fail-to-find)
-          selection {:selection/zone :library
-                     :selection/select-count 1
-                     :selection/player-id :player-1
-                     :selection/selected #{}  ; Empty = fail to find
-                     :selection/spell-id (random-uuid)
-                     :selection/target-zone :hand
-                     :selection/type :tutor
-                     :selection/allow-fail-to-find? true}
-          db-after (library/execute-tutor-selection db' selection)]
+    (let [db (th/create-test-db {:mana {:colorless 1 :blue 1}})
+          [db _obj-ids] (th/add-cards-to-library db
+                                                 [:brain-freeze :dark-ritual :mental-note]
+                                                 :player-1)
+          [db ms-id] (th/add-card-to-zone db :merchant-scroll :hand :player-1)
+          ;; Cast and resolve to get selection
+          db-cast (rules/cast-spell db :player-1 ms-id)
+          {:keys [db selection]} (th/resolve-top db-cast)
+          hand-before (th/get-hand-count db :player-1)
+          ;; Confirm empty selection (fail-to-find) via production path
+          {:keys [db]} (th/confirm-selection db selection #{})]
       ;; Hand should not change
-      (is (= hand-before (th/get-hand-count db-after :player-1))
+      (is (= hand-before (th/get-hand-count db :player-1))
           "Hand should not gain cards on fail-to-find")
       ;; Library still has same count
-      (is (= 3 (th/get-zone-count db-after :library :player-1))
+      (is (= 3 (th/get-zone-count db :library :player-1))
           "Library count should not change"))))
 
 
 (deftest test-tutor-card-to-hand
   (testing "Selecting a card moves it to target zone (hand)"
-    (let [db (th/create-test-db {:mana {:blue 2}})
-          [db' [bf-id dr-id]] (th/add-cards-to-library db
-                                                       [:brain-freeze :dark-ritual]
-                                                       :player-1)
-          hand-before (th/get-hand-count db' :player-1)
-          ;; Simulate selecting Brain Freeze
-          selection {:selection/zone :library
-                     :selection/select-count 1
-                     :selection/player-id :player-1
-                     :selection/selected #{bf-id}
-                     :selection/spell-id (random-uuid)
-                     :selection/target-zone :hand
-                     :selection/type :tutor
-                     :selection/allow-fail-to-find? true}
-          db-after (library/execute-tutor-selection db' selection)]
+    (let [db (th/create-test-db {:mana {:colorless 1 :blue 1}})
+          [db [bf-id dr-id]] (th/add-cards-to-library db
+                                                      [:brain-freeze :dark-ritual]
+                                                      :player-1)
+          [db ms-id] (th/add-card-to-zone db :merchant-scroll :hand :player-1)
+          ;; Cast and resolve to get selection
+          db-cast (rules/cast-spell db :player-1 ms-id)
+          {:keys [db selection]} (th/resolve-top db-cast)
+          hand-before (th/get-hand-count db :player-1)
+          ;; Confirm selecting Brain Freeze via production path
+          {:keys [db]} (th/confirm-selection db selection #{bf-id})]
       ;; Brain Freeze should be in hand
-      (is (= :hand (th/get-object-zone db-after bf-id))
+      (is (= :hand (th/get-object-zone db bf-id))
           "Selected card should move to hand")
       ;; Hand count increased
-      (is (= (inc hand-before) (th/get-hand-count db-after :player-1))
+      (is (= (inc hand-before) (th/get-hand-count db :player-1))
           "Hand count should increase by 1")
       ;; Dark Ritual should still be in library
-      (is (= :library (th/get-object-zone db-after dr-id))
+      (is (= :library (th/get-object-zone db dr-id))
           "Non-selected cards should stay in library"))))
 
 
 (deftest test-tutor-shuffles-after-find
   (testing "Library is shuffled AFTER card is moved (not before)"
-    (let [db (th/create-test-db {:mana {:blue 2}})
+    (let [db (th/create-test-db {:mana {:colorless 1 :blue 1}})
           ;; Add 5 cards to library to make shuffle order detectable
-          [db' [bf-id & _rest-ids]] (th/add-cards-to-library db
-                                                             [:brain-freeze :dark-ritual :dark-ritual
-                                                              :dark-ritual :dark-ritual]
-                                                             :player-1)
-          ;; Select Brain Freeze (which was at position 0)
-          selection {:selection/zone :library
-                     :selection/select-count 1
-                     :selection/player-id :player-1
-                     :selection/selected #{bf-id}
-                     :selection/spell-id (random-uuid)
-                     :selection/target-zone :hand
-                     :selection/type :tutor
-                     :selection/allow-fail-to-find? true}
-          db-after (library/execute-tutor-selection db' selection)]
+          [db [bf-id & _rest-ids]] (th/add-cards-to-library db
+                                                            [:brain-freeze :dark-ritual :dark-ritual
+                                                             :dark-ritual :dark-ritual]
+                                                            :player-1)
+          [db ms-id] (th/add-card-to-zone db :merchant-scroll :hand :player-1)
+          ;; Cast and resolve to get selection
+          db-cast (rules/cast-spell db :player-1 ms-id)
+          {:keys [db selection]} (th/resolve-top db-cast)
+          ;; Confirm selecting Brain Freeze via production path
+          {:keys [db]} (th/confirm-selection db selection #{bf-id})]
       ;; Brain Freeze should be in hand (moved before shuffle)
-      (is (= :hand (th/get-object-zone db-after bf-id))
+      (is (= :hand (th/get-object-zone db bf-id))
           "Selected card should be in hand")
       ;; Remaining 4 cards should be in library
-      (is (= 4 (th/get-zone-count db-after :library :player-1))
+      (is (= 4 (th/get-zone-count db :library :player-1))
           "Library should have 4 cards after tutoring 1")
       ;; Positions should be 0-3 (re-numbered after shuffle)
-      (let [positions (get-library-positions db-after :player-1)]
+      (let [positions (get-library-positions db :player-1)]
         (is (= (set (range 4)) (set (vals positions)))
             "Library positions should be 0-3 after shuffle")))))
 

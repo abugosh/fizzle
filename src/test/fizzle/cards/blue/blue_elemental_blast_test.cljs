@@ -14,14 +14,11 @@
    - Color filtering restricts targets at cast time (not resolution)"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
-    [datascript.core :as d]
     [fizzle.cards.blue.blue-elemental-blast :as beb]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
-    [fizzle.events.game :as game]
-    [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
 
 
@@ -119,34 +116,20 @@
           ;; Put a red spell (Lightning Bolt) on opponent's stack
           [db bolt-id] (th/add-card-to-zone db :lightning-bolt :hand :player-2)
           db (mana/add-mana db :player-2 {:red 1})
-          ;; Lightning Bolt has player targeting, need to cast with target
-          ;; Just use cast-spell which auto-picks target
           db (rules/cast-spell db :player-2 bolt-id)
           ;; Add BEB to player's hand with U mana
           [db beb-id] (th/add-card-to-zone db :blue-elemental-blast :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})
-          ;; Cast BEB choosing mode 0 (counter), targeting Lightning Bolt
-          chosen-mode (first (:card/modes beb/card))
-          target-req (first (:mode/targeting chosen-mode))
-          modes (rules/get-casting-modes db :player-1 beb-id)
-          mode (first modes)
-          beb-eid (q/get-object-eid db beb-id)
-          db (d/db-with db [[:db/add beb-eid :object/chosen-mode chosen-mode]])
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id beb-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{bolt-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
+          ;; Cast BEB choosing counter mode, targeting Lightning Bolt
+          counter-mode (first (:card/modes beb/card))
+          db-cast (th/cast-mode-with-target db :player-1 beb-id counter-mode bolt-id)
           ;; Resolve BEB
-          result (game/resolve-one-item db-cast)
-          db-resolved (:db result)]
+          {:keys [db]} (th/resolve-top db-cast)]
       ;; Lightning Bolt should be countered -> graveyard
-      (is (= :graveyard (:object/zone (q/get-object db-resolved bolt-id)))
+      (is (= :graveyard (:object/zone (q/get-object db bolt-id)))
           "Countered red spell should be in graveyard")
       ;; BEB should be in graveyard (resolved)
-      (is (= :graveyard (:object/zone (q/get-object db-resolved beb-id)))
+      (is (= :graveyard (:object/zone (q/get-object db beb-id)))
           "BEB should be in graveyard after resolving"))))
 
 
@@ -159,27 +142,15 @@
           ;; Add BEB
           [db beb-id] (th/add-card-to-zone db :blue-elemental-blast :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})
-          ;; Cast BEB choosing mode 1 (destroy), targeting the red permanent
-          chosen-mode (second (:card/modes beb/card))
-          target-req (first (:mode/targeting chosen-mode))
-          modes (rules/get-casting-modes db :player-1 beb-id)
-          mode (first modes)
-          beb-eid (q/get-object-eid db beb-id)
-          db (d/db-with db [[:db/add beb-eid :object/chosen-mode chosen-mode]])
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id beb-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{perm-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
-          result (game/resolve-one-item db-cast)
-          db-resolved (:db result)]
+          ;; Cast BEB choosing destroy mode, targeting the red permanent
+          destroy-mode (second (:card/modes beb/card))
+          db-cast (th/cast-mode-with-target db :player-1 beb-id destroy-mode perm-id)
+          {:keys [db]} (th/resolve-top db-cast)]
       ;; Red permanent should be destroyed -> graveyard
-      (is (= :graveyard (:object/zone (q/get-object db-resolved perm-id)))
+      (is (= :graveyard (:object/zone (q/get-object db perm-id)))
           "Destroyed red permanent should be in graveyard")
       ;; BEB should be in graveyard
-      (is (= :graveyard (:object/zone (q/get-object db-resolved beb-id)))
+      (is (= :graveyard (:object/zone (q/get-object db beb-id)))
           "BEB should be in graveyard after resolving"))))
 
 
@@ -242,19 +213,8 @@
           [db beb-id] (th/add-card-to-zone db :blue-elemental-blast :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})
           storm-before (q/get-storm-count db :player-1)
-          chosen-mode (first (:card/modes beb/card))
-          target-req (first (:mode/targeting chosen-mode))
-          modes (rules/get-casting-modes db :player-1 beb-id)
-          mode (first modes)
-          beb-eid (q/get-object-eid db beb-id)
-          db (d/db-with db [[:db/add beb-eid :object/chosen-mode chosen-mode]])
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id beb-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{bolt-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)]
+          counter-mode (first (:card/modes beb/card))
+          db-cast (th/cast-mode-with-target db :player-1 beb-id counter-mode bolt-id)]
       (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
           "Storm count should increment by 1"))))
 
@@ -336,21 +296,9 @@
           db (rules/cast-spell db :player-2 bolt-id)
           [db beb-id] (th/add-card-to-zone db :blue-elemental-blast :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})
-          chosen-mode (first (:card/modes beb/card))
-          target-req (first (:mode/targeting chosen-mode))
-          modes (rules/get-casting-modes db :player-1 beb-id)
-          mode (first modes)
-          beb-eid (q/get-object-eid db beb-id)
-          db (d/db-with db [[:db/add beb-eid :object/chosen-mode chosen-mode]])
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id beb-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{bolt-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
+          counter-mode (first (:card/modes beb/card))
+          db-cast (th/cast-mode-with-target db :player-1 beb-id counter-mode bolt-id)
           db-bolt-gone (rules/move-spell-off-stack db-cast nil bolt-id)
-          result (game/resolve-one-item db-bolt-gone)
-          db-resolved (:db result)]
-      (is (= :graveyard (:object/zone (q/get-object db-resolved beb-id)))
+          {:keys [db]} (th/resolve-top db-bolt-gone)]
+      (is (= :graveyard (:object/zone (q/get-object db beb-id)))
           "BEB should be in graveyard after fizzling"))))

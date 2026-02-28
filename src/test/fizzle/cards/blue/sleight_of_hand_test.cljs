@@ -13,7 +13,6 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
     [fizzle.events.game :as game]
-    [fizzle.events.selection.library :as library]
     [fizzle.test-helpers :as th]))
 
 
@@ -87,15 +86,14 @@
           result (game/resolve-one-item db-cast)
           sel (:pending-selection result)
           selected-card (first lib-ids)
-          db-after-peek (library/execute-peek-selection
-                          (:db result)
-                          (assoc sel :selection/selected #{selected-card}))]
+          {:keys [db]} (th/confirm-selection
+                         (:db result) sel #{selected-card})]
       ;; Selected card should be in hand
-      (is (= :hand (th/get-object-zone db-after-peek selected-card))
+      (is (= :hand (th/get-object-zone db selected-card))
           "Selected card should be moved to hand")
       ;; Non-selected card should not be in hand
       (let [other-card (second lib-ids)]
-        (is (not= :hand (th/get-object-zone db-after-peek other-card))
+        (is (not= :hand (th/get-object-zone db other-card))
             "Non-selected card should not be in hand")))))
 
 
@@ -146,12 +144,11 @@
           sel (:pending-selection result)
           first-card (first lib-ids)
           second-card (second lib-ids)
-          db-after (library/execute-peek-selection
-                     (:db result)
-                     (assoc sel :selection/selected #{first-card}))]
-      (is (= :hand (th/get-object-zone db-after first-card))
+          {:keys [db]} (th/confirm-selection
+                         (:db result) sel #{first-card})]
+      (is (= :hand (th/get-object-zone db first-card))
           "First card should be in hand")
-      (is (= :library (th/get-object-zone db-after second-card))
+      (is (= :library (th/get-object-zone db second-card))
           "Second card should be in library (bottom)"))))
 
 
@@ -167,12 +164,11 @@
           sel (:pending-selection result)
           first-card (first lib-ids)
           second-card (second lib-ids)
-          db-after (library/execute-peek-selection
-                     (:db result)
-                     (assoc sel :selection/selected #{second-card}))]
-      (is (= :hand (th/get-object-zone db-after second-card))
+          {:keys [db]} (th/confirm-selection
+                         (:db result) sel #{second-card})]
+      (is (= :hand (th/get-object-zone db second-card))
           "Second card should be in hand")
-      (is (= :library (th/get-object-zone db-after first-card))
+      (is (= :library (th/get-object-zone db first-card))
           "First card should be in library (bottom)"))))
 
 
@@ -195,10 +191,9 @@
           "Should peek at 1 card (all available)")
       ;; Select the 1 card
       (let [only-card (first lib-ids)
-            db-after (library/execute-peek-selection
-                       (:db result)
-                       (assoc sel :selection/selected #{only-card}))]
-        (is (= :hand (th/get-object-zone db-after only-card))
+            {:keys [db]} (th/confirm-selection
+                           (:db result) sel #{only-card})]
+        (is (= :hand (th/get-object-zone db only-card))
             "Only card should be moved to hand")))))
 
 

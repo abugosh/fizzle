@@ -2,13 +2,23 @@
   "Shared test helpers for creating game state and managing zones.
 
    All helpers return immutable db values (not conn).
-   Return convention: [db result] tuples (db first)."
+   Return convention: [db result] tuples (db first).
+
+   Production-path helpers (cast-and-resolve, cast-with-target, resolve-top,
+   confirm-selection) wrap the full production code paths for use in tests.
+   Use these for happy-path cast-resolve tests instead of calling internal
+   selection/effect functions directly."
   (:require
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.cards :as cards]
-    [fizzle.engine.turn-based :as turn-based]))
+    [fizzle.engine.rules :as rules]
+    [fizzle.engine.targeting :as targeting]
+    [fizzle.engine.turn-based :as turn-based]
+    [fizzle.events.game :as game]
+    [fizzle.events.selection.core :as sel-core]
+    [fizzle.events.selection.targeting :as sel-targeting]))
 
 
 (def ^:private empty-mana-pool
@@ -191,3 +201,103 @@
      (let [opp-eid (q/get-player-eid @conn :player-2)]
        (d/transact! conn (turn-based/create-turn-based-triggers-tx opp-eid :player-2)))
      @conn)))
+
+
+;; =====================================================
+;; Production-Path Test Helpers
+;; =====================================================
+
+(defn cast-and-resolve
+  "Casts a spell and resolves it through the full production path.
+   Asserts can-cast? before casting. For non-interactive spells only.
+   Returns resolved db."
+  [db player-id obj-id]
+  (assert (rules/can-cast? db player-id obj-id)
+          (str "can-cast? returned false for " obj-id))
+  (let [db-cast (rules/cast-spell db player-id obj-id)
+        result (game/resolve-one-item db-cast)]
+    (assert (nil? (:pending-selection result))
+            "Spell has pending selection — use resolve-top instead")
+    (:db result)))
+
+
+(defn cast-with-target
+  "Casts a targeted spell, selecting the given target through production
+   targeting flow. Asserts can-cast? and target is valid.
+   Returns db with spell on stack and target assigned."
+  [db player-id obj-id target-id]
+  (assert (rules/can-cast? db player-id obj-id)
+          (str "can-cast? returned false for " obj-id))
+  (let [result (sel-targeting/cast-spell-with-targeting db player-id obj-id)
+        selection (:pending-target-selection result)]
+    (assert selection "Expected targeting selection but got none")
+    (assert (some #{target-id} (:selection/valid-targets selection))
+            (str target-id " not in valid targets: " (:selection/valid-targets selection)))
+    (sel-targeting/confirm-cast-time-target
+      (:db result)
+      (assoc selection :selection/selected #{target-id}))))
+
+
+(defn- spell-mode-has-valid-targets?
+  "Check if a spell mode's required targeting has valid targets.
+   Mirrors get-valid-spell-modes in events/game.cljs."
+  [db player-id spell-mode]
+  (let [targeting-reqs (or (:mode/targeting spell-mode) [])]
+    (every? (fn [req]
+              (if (:target/required req)
+                (seq (targeting/find-valid-targets db player-id req))
+                true))
+            targeting-reqs)))
+
+
+(defn cast-mode-with-target
+  "Casts a modal+targeted spell using the given spell mode and target through
+   the production flow. For spells like BEB/REB/Hydroblast that require both
+   mode selection and targeting.
+   spell-mode: the card mode from (:card/modes card), e.g. counter or destroy
+   Validates can-cast?, spell mode has valid targets, and target is valid.
+   Returns db with spell on stack, chosen-mode set, and target assigned."
+  [db player-id obj-id spell-mode target-id]
+  (assert (rules/can-cast? db player-id obj-id)
+          (str "can-cast? returned false for " obj-id))
+  ;; Validate spell mode has valid targets (mirrors get-valid-spell-modes in cast-spell-handler)
+  (assert (spell-mode-has-valid-targets? db player-id spell-mode)
+          (str "Spell mode has no valid targets: " (:mode/label spell-mode)))
+  ;; Store chosen spell mode on object (mirrors select-spell-mode-handler)
+  (let [obj-eid (q/get-object-eid db obj-id)
+        db-with-mode (d/db-with db [[:db/add obj-eid :object/chosen-mode spell-mode]])
+        ;; Get casting mode (primary) for mana payment
+        modes (rules/get-casting-modes db-with-mode player-id obj-id)
+        casting-mode (or (first (filter #(= :primary (:mode/id %)) modes))
+                         (first modes))
+        ;; Build targeting selection using the spell mode's targeting requirements
+        target-req (first (:mode/targeting spell-mode))
+        selection (sel-targeting/build-cast-time-target-selection
+                    db-with-mode player-id obj-id casting-mode target-req)]
+    (assert (some #{target-id} (:selection/valid-targets selection))
+            (str target-id " not in valid targets: " (:selection/valid-targets selection)))
+    (sel-targeting/confirm-cast-time-target
+      db-with-mode
+      (assoc selection :selection/selected #{target-id}))))
+
+
+(defn resolve-top
+  "Resolves the topmost stack item via production path.
+   Returns {:db db} for non-interactive effects,
+   or {:db db :selection sel} for interactive effects."
+  [db]
+  (let [result (game/resolve-one-item db)]
+    (if-let [sel (:pending-selection result)]
+      {:db (:db result) :selection sel}
+      {:db (:db result)})))
+
+
+(defn confirm-selection
+  "Confirms a pending selection with the given selected items.
+   Returns {:db db} or {:db db :selection sel} if chaining."
+  [db selection selected-items]
+  (let [sel (assoc selection :selection/selected selected-items)
+        result (sel-core/execute-confirmed-selection db sel)]
+    (if-let [next-sel (:pending-selection result)]
+      {:db (:db result) :selection next-sel}
+      {:db (:db result)})))

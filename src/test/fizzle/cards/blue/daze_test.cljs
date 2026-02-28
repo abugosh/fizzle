@@ -19,7 +19,6 @@
     [fizzle.events.game :as game]
     [fizzle.events.selection.core :as sel-core]
     [fizzle.events.selection.costs :as sel-costs]
-    [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
 
 
@@ -79,18 +78,9 @@
 ;; === B. Cast-Resolve Happy Path ===
 
 (defn- cast-daze-targeting
-  "Helper: cast Daze targeting a spell, using primary mode."
+  "Helper: cast Daze targeting a spell, using primary mode via production path."
   [db daze-id target-id]
-  (let [target-req (first (:card/targeting daze/card))
-        modes (rules/get-casting-modes db :player-1 daze-id)
-        mode (first (filter #(= :primary (:mode/id %)) modes))
-        selection {:selection/type :cast-time-targeting
-                   :selection/player-id :player-1
-                   :selection/object-id daze-id
-                   :selection/mode mode
-                   :selection/target-requirement target-req
-                   :selection/selected #{target-id}}]
-    (sel-targeting/confirm-cast-time-target db selection)))
+  (th/cast-with-target db :player-1 daze-id target-id))
 
 
 (deftest daze-counters-when-declined-normal-cast-test
