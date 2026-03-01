@@ -182,8 +182,8 @@
       (is (= 1 (:blue (q/get-mana-pool db-after :player-1)))))))
 
 
-(deftest execute-confirmed-selection-peek-and-reorder-finalized
-  (testing "execute-confirmed-selection returns :finalized? true"
+(deftest execute-confirmed-selection-peek-and-reorder-returns-db
+  (testing "execute-confirmed-selection returns {:db ...}"
     (let [db (-> (init-game-state)
                  (add-library-cards :player-1 [:card-1 :card-2 :card-3]))
           library-objs (q/get-objects-in-zone db :player-1 :library)

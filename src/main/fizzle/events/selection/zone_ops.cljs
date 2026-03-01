@@ -121,11 +121,11 @@
                                  game-db
                                  selected)]
     (if (:selection/cleanup? selection)
-      ;; Cleanup path: expire grants and return finalized
+      ;; Cleanup path: expire grants, lifecycle declared by builder
       (let [game-state (queries/get-game-state db-after-discard)
             current-turn (:game/turn game-state)
             db-final (grants/expire-grants db-after-discard current-turn :cleanup)]
-        {:db db-final :finalized? true})
+        {:db db-final})
       ;; Standard path: wrapper handles remaining-effects
       {:db db-after-discard})))
 

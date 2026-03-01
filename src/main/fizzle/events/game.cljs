@@ -488,6 +488,7 @@
    :selection/player-id player-id
    :selection/selected #{}
    :selection/type :discard
+   :selection/lifecycle :finalized
    :selection/cleanup? true
    :selection/validation :exact
    :selection/auto-confirm? false})

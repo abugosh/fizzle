@@ -105,6 +105,8 @@
     (when (seq candidate-ids)
       {:selection/zone zone
        :selection/type :exile-cards-cost
+       :selection/lifecycle :finalized
+       :selection/clear-selected-card? true
        :selection/card-source :candidates
        :selection/candidates candidate-ids
        :selection/select-count (count candidate-ids)  ; Can select up to all candidates
@@ -243,6 +245,8 @@
             remaining-pool (merge-with - pool colored-cost)]
         {:selection/zone :mana-pool
          :selection/type :mana-allocation
+         :selection/lifecycle :finalized
+         :selection/clear-selected-card? true
          :selection/player-id player-id
          :selection/spell-id object-id
          :selection/mode mode
@@ -345,7 +349,7 @@
         db-with-x (d/db-with db-after-exile
                              [[:db/add obj-eid :object/x-value selected-count]])
         db-after-cast (rules/cast-spell-mode db-with-x player-id object-id mode)]
-    {:db db-after-cast :finalized? true :clear-selected-card? true}))
+    {:db db-after-cast}))
 
 
 (defmethod core/execute-confirmed-selection :x-mana-cost
@@ -396,7 +400,7 @@
                                   [[:db/add stack-item-eid :stack-item/targets pending-targets]])
                        db-after-cast))
                    db-after-cast)]
-    {:db db-final :finalized? true :clear-selected-card? true}))
+    {:db db-final}))
 
 
 (defn- confirm-ability-mana-allocation
@@ -416,7 +420,7 @@
                                                :stack-item/source object-id
                                                :stack-item/effects effects-list
                                                :stack-item/description (:ability/description ability)})]
-    {:db db-with-item :finalized? true :clear-selected-card? true}))
+    {:db db-with-item}))
 
 
 (defmethod core/execute-confirmed-selection :mana-allocation

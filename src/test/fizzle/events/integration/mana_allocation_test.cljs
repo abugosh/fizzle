@@ -467,6 +467,8 @@
           app-db {:game/db db
                   :game/pending-selection
                   {:selection/type :mana-allocation
+                   :selection/lifecycle :finalized
+                   :selection/clear-selected-card? true
                    :selection/player-id :player-1
                    :selection/spell-id obj-id
                    :selection/mode mode
@@ -618,8 +620,7 @@
                      :selection/auto-confirm? true
                      :selection/validation :always}
           result (core/execute-confirmed-selection db selection)]
-      ;; Should be finalized
-      (is (true? (:finalized? result)) "Should be finalized")
+      (is (some? (:db result)))
       ;; Stack-item should exist with :activated-ability type
       (let [items (q/get-all-stack-items (:db result))
             ability-items (filter #(= :activated-ability (:stack-item/type %)) items)]
