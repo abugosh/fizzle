@@ -263,7 +263,7 @@
   ;; Validate spell mode has valid targets (mirrors get-valid-spell-modes in cast-spell-handler)
   (assert (spell-mode-has-valid-targets? db player-id spell-mode)
           (str "Spell mode has no valid targets: " (:mode/label spell-mode)))
-  ;; Store chosen spell mode on object (mirrors select-spell-mode-handler)
+  ;; Store chosen spell mode on object (mirrors spell-mode executor)
   (let [obj-eid (q/get-object-eid db obj-id)
         db-with-mode (d/db-with db [[:db/add obj-eid :object/chosen-mode spell-mode]])
         ;; Get casting mode (primary) for mana payment

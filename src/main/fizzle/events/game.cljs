@@ -366,6 +366,46 @@
              card-modes)))
 
 
+(defn- build-spell-mode-selection
+  "Build a spell-mode selection for a modal card.
+   Mode maps are used as candidate identifiers — select-count 1, auto-confirm true.
+   Per-mode targeting evaluation happens here (valid modes only).
+   Returns selection map for :game/pending-selection."
+  [player-id object-id valid-modes]
+  {:selection/type :spell-mode
+   :selection/lifecycle :finalized
+   :selection/player-id player-id
+   :selection/object-id object-id
+   :selection/candidates valid-modes
+   :selection/selected #{}
+   :selection/select-count 1
+   :selection/auto-confirm? true
+   :selection/validation :exact
+   :selection/on-complete {:continuation/type :cast-after-spell-mode
+                           :continuation/object-id object-id}})
+
+
+(defmethod sel-core/execute-confirmed-selection :spell-mode
+  [game-db selection]
+  (let [chosen-mode (first (:selection/selected selection))
+        object-id (:selection/object-id selection)
+        obj-eid (queries/get-object-eid game-db object-id)]
+    {:db (if (and chosen-mode obj-eid)
+           (d/db-with game-db [[:db/add obj-eid :object/chosen-mode chosen-mode]])
+           game-db)}))
+
+
+(defmethod sel-core/apply-continuation :cast-after-spell-mode
+  [continuation app-db]
+  (let [object-id (:continuation/object-id continuation)
+        game-db (:game/db app-db)
+        player-id (queries/get-human-player-id game-db)
+        modes (rules/get-casting-modes game-db player-id object-id)
+        primary (first (filter #(= :primary (:mode/id %)) modes))
+        casting-mode (or primary (first modes))]
+    (initiate-cast-with-mode app-db player-id object-id casting-mode nil)))
+
+
 (defn cast-spell-handler
   "Handle cast-spell event: check casting modes and either auto-cast,
    show mode selector, or initiate casting with X cost/targeting checks.
@@ -385,10 +425,9 @@
              card (:object/card obj)
              valid-spell-modes (get-valid-spell-modes game-db player-id card)]
          (if (seq valid-spell-modes)
-           ;; Modal card: show spell mode selector
-           (assoc app-db :game/pending-spell-mode-selection
-                  {:object-id object-id
-                   :modes valid-spell-modes})
+           ;; Modal card: spell mode selection through standard selection system
+           (assoc app-db :game/pending-selection
+                  (build-spell-mode-selection player-id object-id valid-spell-modes))
            ;; Non-modal card: proceed with casting mode selection
            (let [modes (rules/get-casting-modes game-db player-id object-id)
                  castable-modes (filterv #(rules/can-cast-mode? game-db player-id object-id %) modes)]
@@ -1083,13 +1122,15 @@
       (cond
         ;; Pre-cast selection needed (mana allocation, targeting, etc.)
         ;; Set on-complete continuation so auto-resolve happens after selection completes
+        ;; Don't overwrite if selection already has its own continuation (e.g., spell-mode)
         (:game/pending-selection new-db)
-        {:db (assoc-in new-db [:game/pending-selection :selection/on-complete]
-                       {:continuation/type :resolve-one-and-stop})}
+        (if (:selection/on-complete (:game/pending-selection new-db))
+          {:db new-db}
+          {:db (assoc-in new-db [:game/pending-selection :selection/on-complete]
+                         {:continuation/type :resolve-one-and-stop})})
 
         ;; Mode selection needed — no continuation (mode selection is a choice, not a cost)
-        (or (:game/pending-mode-selection new-db)
-            (:game/pending-spell-mode-selection new-db))
+        (:game/pending-mode-selection new-db)
         {:db new-db}
 
         ;; Cast failed or nothing on stack
@@ -1250,52 +1291,3 @@
   ::cancel-mode-selection
   (fn [db _]
     (cancel-mode-selection-handler db)))
-
-
-;; === Spell Mode Selection System ===
-;; For modal spells (cards with :card/modes like REB/BEB/Pyroblast/Hydroblast)
-;; Player chooses which spell mode (counter vs destroy) before targeting.
-
-(defn select-spell-mode-handler
-  "Handle select-spell-mode event: store chosen mode on object and proceed to targeting.
-   1. Stores the chosen spell mode as :object/chosen-mode on the game object
-   2. Clears pending spell mode selection
-   3. Delegates to initiate-cast-with-mode which reads targeting from chosen mode
-   Pure function: (app-db, spell-mode) -> app-db"
-  [app-db spell-mode]
-  (let [pending (:game/pending-spell-mode-selection app-db)
-        object-id (:object-id pending)]
-    (if (and pending object-id spell-mode)
-      (let [game-db (:game/db app-db)
-            player-id (queries/get-human-player-id game-db)
-            ;; Store chosen spell mode on the object
-            obj-eid (queries/get-object-eid game-db object-id)
-            game-db-with-mode (d/db-with game-db [[:db/add obj-eid :object/chosen-mode spell-mode]])
-            ;; Get casting mode (primary)
-            modes (rules/get-casting-modes game-db-with-mode player-id object-id)
-            primary (first (filter #(= :primary (:mode/id %)) modes))
-            casting-mode (or primary (first modes))]
-        (-> app-db
-            (assoc :game/db game-db-with-mode)
-            (dissoc :game/pending-spell-mode-selection)
-            (initiate-cast-with-mode player-id object-id casting-mode nil)))
-      app-db)))
-
-
-(rf/reg-event-db
-  ::select-spell-mode
-  (fn [db [_ spell-mode]]
-    (select-spell-mode-handler db spell-mode)))
-
-
-(defn cancel-spell-mode-selection-handler
-  "Handle cancel-spell-mode-selection event: clear pending spell mode selection.
-   Pure function: (app-db) -> app-db"
-  [app-db]
-  (dissoc app-db :game/pending-spell-mode-selection))
-
-
-(rf/reg-event-db
-  ::cancel-spell-mode-selection
-  (fn [db _]
-    (cancel-spell-mode-selection-handler db)))

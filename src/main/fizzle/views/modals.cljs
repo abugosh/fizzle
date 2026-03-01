@@ -775,41 +775,35 @@
 
 ;; === Spell Mode Selection Modal ===
 ;; For modal spells (REB, BEB, Pyroblast, Hydroblast) — player chooses spell mode
+;; Renders through standard selection system via render-selection-modal :spell-mode
 
-(defn- spell-mode-button
-  "Button for selecting a spell mode (e.g., 'Counter target blue spell')."
-  [mode]
-  [:button {:class (str "w-full py-3 px-4 mb-2 border-2 border-border-accent rounded-lg "
-                        "cursor-pointer bg-mode-btn-bg text-text text-left "
-                        "transition-all duration-100 hover:bg-mode-btn-hover")
-            :on-click #(rf/dispatch [::events/select-spell-mode mode])}
-   [:div {:class "font-bold text-sm"}
-    (:mode/label mode)]])
-
-
-(defn spell-mode-selector-modal
-  "Modal for selecting spell mode when casting a modal spell."
-  []
-  (let [pending @(rf/subscribe [::subs/pending-spell-mode-selection])]
-    (when pending
-      (let [modes (:modes pending)]
-        [:div {:class overlay-class
-               :on-click #(rf/dispatch [::events/cancel-spell-mode-selection])}
-         [:div {:class (container-class {:max-width "400px"})
-                :on-click #(.stopPropagation %)}
-          ;; Header
-          [:h2 {:class "text-text m-0 mb-4 text-lg text-center"}
-           "Choose one"]
-          ;; Mode buttons
-          [:div {:class "flex flex-col"}
-           (for [mode modes]
-             ^{:key (:mode/label mode)}
-             [spell-mode-button mode])]
-          ;; Cancel button
-          [:button {:class (str "w-full py-2 px-4 mt-2 border border-border rounded "
-                                "cursor-pointer bg-surface-dim text-text-label text-[13px]")
-                    :on-click #(rf/dispatch [::events/cancel-spell-mode-selection])}
-           "Cancel"]]]))))
+(defn- spell-mode-selection-modal
+  "Render spell-mode selection using standard selection system.
+   Mode maps are candidates — player clicks one to select (auto-confirm)."
+  [selection _cards]
+  (let [candidates (:selection/candidates selection)]
+    [:div {:class overlay-class
+           :on-click #(rf/dispatch [::selection-events/cancel-selection])}
+     [:div {:class (container-class {:max-width "400px"})
+            :on-click #(.stopPropagation %)}
+      ;; Header
+      [:h2 {:class "text-text m-0 mb-4 text-lg text-center"}
+       "Choose one"]
+      ;; Mode buttons
+      [:div {:class "flex flex-col"}
+       (for [mode candidates]
+         ^{:key (:mode/label mode)}
+         [:button {:class (str "w-full py-3 px-4 mb-2 border-2 border-border-accent rounded-lg "
+                               "cursor-pointer bg-mode-btn-bg text-text text-left "
+                               "transition-all duration-100 hover:bg-mode-btn-hover")
+                   :on-click #(rf/dispatch [::selection-events/toggle-selection mode])}
+          [:div {:class "font-bold text-sm"}
+           (:mode/label mode)]])]
+      ;; Cancel button
+      [:button {:class (str "w-full py-2 px-4 mt-2 border border-border rounded "
+                            "cursor-pointer bg-surface-dim text-text-label text-[13px]")
+                :on-click #(rf/dispatch [::selection-events/cancel-selection])}
+       "Cancel"]]]))
 
 
 ;; === Storm Split Modal ===
@@ -1071,6 +1065,10 @@
 
 (defmethod render-selection-modal :mana-allocation [_selection _cards]
   nil)
+
+
+(defmethod render-selection-modal :spell-mode [selection cards]
+  [spell-mode-selection-modal selection cards])
 
 
 (defmethod render-selection-modal :default [selection cards]

@@ -6,8 +6,8 @@
    which chooses how to pay costs. Spell mode selection chooses which
    effect/targeting to use.
 
-   Flow: cast-spell -> pending-spell-mode-selection -> select-spell-mode
-         -> store chosen-mode on object -> proceed to targeting"
+   Flow: cast-spell -> pending-selection (type :spell-mode) -> toggle-selection
+         (auto-confirm) -> store chosen-mode on object -> continuation -> proceed to targeting"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [fizzle.cards.red.red-elemental-blast :as reb]
@@ -15,13 +15,14 @@
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.events.game :as game]
+    [fizzle.events.selection.core :as sel-core]
     [fizzle.test-helpers :as th]))
 
 
 ;; === Spell Mode Selection Shows for Modal Cards ===
 
 (deftest modal-card-shows-spell-mode-selector-test
-  (testing "Casting a modal card shows spell mode selector"
+  (testing "Casting a modal card shows spell mode selection via standard selection system"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
           ;; Put a blue spell on stack (valid target for REB mode 1)
@@ -36,22 +37,30 @@
           app-db {:game/db db
                   :game/selected-card reb-id}
           result-db (game/cast-spell-handler app-db)]
-      ;; Should show spell mode selection
-      (is (some? (:game/pending-spell-mode-selection result-db))
-          "Should show spell mode selector for modal card")
-      ;; Should have the card's modes available
-      (let [pending (:game/pending-spell-mode-selection result-db)]
-        (is (= reb-id (:object-id pending))
+      ;; Should show spell mode selection via standard selection system
+      (is (some? (:game/pending-selection result-db))
+          "Should show selection for modal card")
+      (let [selection (:game/pending-selection result-db)]
+        (is (= :spell-mode (:selection/type selection))
+            "Selection type should be :spell-mode")
+        (is (= reb-id (:selection/object-id selection))
             "Should track the object id")
-        (is (= 2 (count (:modes pending)))
-            "Should have both modes available"))
+        (is (= 2 (count (:selection/candidates selection)))
+            "Should have both modes as candidates")
+        (is (= 1 (:selection/select-count selection))
+            "Should select exactly one mode")
+        (is (true? (:selection/auto-confirm? selection))
+            "Should auto-confirm on selection"))
       ;; Card should NOT be on stack yet
       (is (= :hand (:object/zone (q/get-object (:game/db result-db) reb-id)))
-          "Card should still be in hand"))))
+          "Card should still be in hand")
+      ;; Should NOT have old parallel mechanism
+      (is (nil? (:game/pending-spell-mode-selection result-db))
+          "Old parallel mechanism should not be used"))))
 
 
 (deftest modal-card-only-shows-modes-with-valid-targets-test
-  (testing "Only modes with valid targets are shown"
+  (testing "Only modes with valid targets are shown as candidates"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
           ;; Put a blue permanent on battlefield (valid for mode 2 only)
@@ -63,85 +72,62 @@
                   :game/selected-card reb-id}
           result-db (game/cast-spell-handler app-db)]
       ;; Should show only modes with valid targets
-      (let [pending (:game/pending-spell-mode-selection result-db)
-            modes (:modes pending)]
-        (is (= 1 (count modes))
+      (let [selection (:game/pending-selection result-db)
+            candidates (:selection/candidates selection)]
+        (is (= 1 (count candidates))
             "Should only show mode 2 (destroy blue permanent)")
-        (is (= "Destroy target blue permanent" (:mode/label (first modes)))
+        (is (= "Destroy target blue permanent" (:mode/label (first candidates)))
             "Available mode should be the destroy mode")))))
 
 
-;; === Select Spell Mode Handler ===
+;; === Spell Mode Executor and Continuation ===
 
-(deftest select-spell-mode-proceeds-to-targeting-test
-  (testing "Selecting a spell mode stores chosen mode and proceeds to targeting"
+(deftest spell-mode-executor-stores-chosen-mode-test
+  (testing "Confirming spell mode selection stores chosen mode on object"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Put a blue spell on stack
           [db opt-id] (th/add-card-to-zone db :opt :hand :player-2)
           db (mana/add-mana db :player-2 {:blue 1})
           db (rules/cast-spell db :player-2 opt-id)
-          ;; Add REB
           [db reb-id] (th/add-card-to-zone db :red-elemental-blast :hand :player-1)
           db (mana/add-mana db :player-1 {:red 1})
           chosen-mode (first (:card/modes reb/card))
-          ;; Setup app-db as if spell mode selector is showing
+          ;; Build spell-mode selection as cast-spell-handler would
           app-db {:game/db db
-                  :game/selected-card reb-id
-                  :game/pending-spell-mode-selection {:object-id reb-id
-                                                      :modes (:card/modes reb/card)}}
-          result-db (game/select-spell-mode-handler app-db chosen-mode)]
-      ;; Pending spell mode should be cleared
-      (is (nil? (:game/pending-spell-mode-selection result-db))
-          "Spell mode selection should be cleared")
+                  :game/selected-card reb-id}
+          app-db-with-sel (game/cast-spell-handler app-db)
+          ;; Simulate toggle-selection (select the first mode)
+          app-db-with-toggle (assoc-in app-db-with-sel
+                                       [:game/pending-selection :selection/selected]
+                                       #{chosen-mode})
+          ;; Confirm selection through production path
+          result-db (sel-core/confirm-selection-impl app-db-with-toggle)]
       ;; Object should have chosen mode stored
       (let [obj (q/get-object (:game/db result-db) reb-id)]
         (is (= chosen-mode (:object/chosen-mode obj))
             "Object should have chosen mode stored"))
-      ;; Should have pending selection for targeting (since mode has targets)
+      ;; Should have proceeded to targeting (continuation triggers initiate-cast-with-mode)
       (is (some? (:game/pending-selection result-db))
-          "Should proceed to target selection"))))
+          "Should proceed to target selection after spell mode chosen")
+      ;; Spell mode selection should be cleared (new selection is targeting, not spell-mode)
+      (is (not= :spell-mode (:selection/type (:game/pending-selection result-db)))
+          "Should no longer be in spell-mode selection"))))
 
 
-(deftest select-spell-mode-shows-targeting-for-object-targets-test
-  (testing "When mode has object targets, proceeds to target selection"
-    (let [db (th/create-test-db)
-          db (th/add-opponent db)
-          ;; Put exactly one blue spell on stack
-          [db _opt-id] (th/add-card-to-zone db :opt :hand :player-2)
-          db (mana/add-mana db :player-2 {:blue 1})
-          db (rules/cast-spell db :player-2 _opt-id)
-          ;; Add REB
-          [db reb-id] (th/add-card-to-zone db :red-elemental-blast :hand :player-1)
-          db (mana/add-mana db :player-1 {:red 1})
-          chosen-mode (first (:card/modes reb/card))
-          app-db {:game/db db
-                  :game/selected-card reb-id
-                  :game/pending-spell-mode-selection {:object-id reb-id
-                                                      :modes (:card/modes reb/card)}}
-          result-db (game/select-spell-mode-handler app-db chosen-mode)]
-      ;; Object targeting shows selection (even with single target)
-      (is (some? (:game/pending-selection result-db))
-          "Should show target selection for object targets")
-      ;; Spell should still be in hand (not yet cast, waiting for target)
-      (is (= :hand (:object/zone (q/get-object (:game/db result-db) reb-id)))
-          "REB should still be in hand until target is selected"))))
+;; === Cancel Selection ===
 
-
-;; === Cancel Spell Mode Selection ===
-
-(deftest cancel-spell-mode-selection-test
-  (testing "Canceling spell mode selection clears pending state"
+(deftest cancel-spell-mode-selection-clears-state-test
+  (testing "Canceling spell mode selection clears standard selection"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
           [db reb-id] (th/add-card-to-zone db :red-elemental-blast :hand :player-1)
           app-db {:game/db db
-                  :game/selected-card reb-id
-                  :game/pending-spell-mode-selection {:object-id reb-id
-                                                      :modes (:card/modes reb/card)}}
-          result-db (game/cancel-spell-mode-selection-handler app-db)]
-      (is (nil? (:game/pending-spell-mode-selection result-db))
-          "Pending spell mode selection should be cleared")
+                  :game/pending-selection {:selection/type :spell-mode
+                                           :selection/object-id reb-id
+                                           :selection/candidates (:card/modes reb/card)}}
+          result-db (dissoc app-db :game/pending-selection)]
+      (is (nil? (:game/pending-selection result-db))
+          "Selection should be cleared")
       (is (= :hand (:object/zone (q/get-object (:game/db result-db) reb-id)))
           "Card should still be in hand"))))
 
@@ -163,7 +149,7 @@
                   :game/selected-card cs-id}
           result-db (game/cast-spell-handler app-db)]
       ;; Should NOT show spell mode selection
-      (is (nil? (:game/pending-spell-mode-selection result-db))
+      (is (not= :spell-mode (:selection/type (:game/pending-selection result-db)))
           "Non-modal card should not trigger spell mode selection")
       ;; Should proceed to targeting directly
       (is (some? (:game/pending-selection result-db))

@@ -71,7 +71,7 @@
   "Clear app-db keys that refer to game state which is no longer valid
    after a history navigation (undo, redo, jump, branch switch)."
   [db]
-  (dissoc db :game/pending-selection :game/selected-card :game/pending-mode-selection :game/pending-spell-mode-selection))
+  (dissoc db :game/pending-selection :game/selected-card :game/pending-mode-selection))
 
 
 (defn step-to
