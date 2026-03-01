@@ -20,7 +20,6 @@
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.validation :as validation]
     [fizzle.events.game :as game]
-    [fizzle.events.selection.core :as sel-core]
     [fizzle.events.selection.costs :as sel-costs]
     [fizzle.test-helpers :as th]))
 
@@ -241,16 +240,15 @@
           alt-mode (first (filter #(= :foil-free (:mode/id %)) modes))
           discard-cost (sel-costs/get-discard-specific-cost alt-mode)
           sel (sel-costs/build-discard-specific-selection db :player-1 foil-id alt-mode discard-cost)
-          ;; Select both cards
-          sel-with-cards (assoc sel :selection/selected #{island-id other-id})
-          result (sel-core/execute-confirmed-selection db sel-with-cards)]
+          ;; Confirm selection via production path
+          {:keys [db selection]} (th/confirm-selection db sel #{island-id other-id})]
       ;; Both cards should be discarded to graveyard
-      (is (= :graveyard (:object/zone (q/get-object (:db result) island-id)))
+      (is (= :graveyard (:object/zone (q/get-object db island-id)))
           "Island should be in graveyard")
-      (is (= :graveyard (:object/zone (q/get-object (:db result) other-id)))
+      (is (= :graveyard (:object/zone (q/get-object db other-id)))
           "Other card should be in graveyard")
       ;; Should chain to targeting selection for choosing counter target
-      (is (some? (:pending-selection result))
+      (is (some? selection)
           "Should chain to targeting selection"))))
 
 

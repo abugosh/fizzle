@@ -229,15 +229,13 @@
           return-cost (sel-costs/get-return-land-cost alt-mode)
           ;; Build return-land selection
           sel (sel-costs/build-return-land-selection db :player-1 daze-id alt-mode return-cost)
-          ;; Select the Island
-          sel-with-island (assoc sel :selection/selected #{island-id})
-          ;; Execute return-land-cost selection
-          result (sel-core/execute-confirmed-selection db sel-with-island)]
+          ;; Confirm return-land-cost selection via production path
+          {:keys [db selection]} (th/confirm-selection db sel #{island-id})]
       ;; Island should be returned to hand
-      (is (= :hand (:object/zone (q/get-object (:db result) island-id)))
+      (is (= :hand (:object/zone (q/get-object db island-id)))
           "Island should be returned to hand")
       ;; Should chain to targeting selection
-      (is (some? (:pending-selection result))
+      (is (some? selection)
           "Should chain to targeting selection"))))
 
 

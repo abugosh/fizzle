@@ -52,7 +52,8 @@
    Returns selection state map."
   [game-db player-id object-id mode target-req]
   (let [valid-targets (targeting/find-valid-targets game-db player-id target-req)
-        target-type (:target/type target-req)]
+        target-type (:target/type target-req)
+        has-generic? (sel-costs/has-generic-mana-cost? (:mode/mana-cost mode))]
     (cond->
       {:selection/type (if (= :ability target-type)
                          :ability-cast-targeting
@@ -67,7 +68,12 @@
        :selection/validation :exact
        :selection/auto-confirm? true}
       (= :object target-type)
-      (assoc :selection/card-source :valid-targets))))
+      (assoc :selection/card-source :valid-targets)
+      has-generic?
+      (assoc :selection/lifecycle :chaining)
+      (not has-generic?)
+      (assoc :selection/lifecycle :finalized
+             :selection/clear-selected-card? true))))
 
 
 ;; =====================================================
@@ -199,41 +205,46 @@
       {:db (:db result)})))
 
 
+(defmethod core/build-chain-selection :cast-time-targeting
+  [db selection]
+  (let [mode (:selection/mode selection)
+        cost (:mode/mana-cost mode)
+        player-id (:selection/player-id selection)
+        object-id (:selection/object-id selection)
+        target-req (:selection/target-requirement selection)
+        selected-target (first (:selection/selected selection))
+        target-id (:target/id target-req)]
+    (when-let [sel (sel-costs/build-mana-allocation-selection db player-id object-id mode cost)]
+      (assoc sel :selection/pending-targets {target-id selected-target}))))
+
+
 (defmethod core/execute-confirmed-selection :cast-time-targeting
   [game-db selection]
+  (if (= :chaining (:selection/lifecycle selection))
+    ;; Chaining: chain builder will provide mana-allocation
+    {:db game-db}
+    ;; Finalized: cast directly with target storage
+    {:db (confirm-cast-time-target game-db selection)}))
+
+
+(defmethod core/build-chain-selection :ability-cast-targeting
+  [db selection]
+  ;; Same chain logic as cast-time-targeting
   (let [mode (:selection/mode selection)
-        cost (:mode/mana-cost mode)]
-    (if (sel-costs/has-generic-mana-cost? cost)
-      ;; Chain to mana allocation, carry target info
-      (let [player-id (:selection/player-id selection)
-            object-id (:selection/object-id selection)
-            target-req (:selection/target-requirement selection)
-            selected-target (first (:selection/selected selection))
-            target-id (:target/id target-req)
-            sel (sel-costs/build-mana-allocation-selection game-db player-id object-id mode cost)]
-        (if sel
-          {:db game-db
-           :pending-selection (assoc sel :selection/pending-targets {target-id selected-target})}
-          ;; Defensive: builder returned nil
-          {:db (confirm-cast-time-target game-db selection) :finalized? true}))
-      ;; No generic: cast directly with target storage
-      {:db (confirm-cast-time-target game-db selection) :finalized? true})))
+        cost (:mode/mana-cost mode)
+        player-id (:selection/player-id selection)
+        object-id (:selection/object-id selection)
+        target-req (:selection/target-requirement selection)
+        selected-target (first (:selection/selected selection))
+        target-id (:target/id target-req)]
+    (when-let [sel (sel-costs/build-mana-allocation-selection db player-id object-id mode cost)]
+      (assoc sel :selection/pending-targets {target-id selected-target}))))
 
 
 (defmethod core/execute-confirmed-selection :ability-cast-targeting
   [game-db selection]
-  ;; Delegates to cast-time-targeting logic — same confirm flow
-  (let [mode (:selection/mode selection)
-        cost (:mode/mana-cost mode)]
-    (if (sel-costs/has-generic-mana-cost? cost)
-      (let [player-id (:selection/player-id selection)
-            object-id (:selection/object-id selection)
-            target-req (:selection/target-requirement selection)
-            selected-target (first (:selection/selected selection))
-            target-id (:target/id target-req)
-            sel (sel-costs/build-mana-allocation-selection game-db player-id object-id mode cost)]
-        (if sel
-          {:db game-db
-           :pending-selection (assoc sel :selection/pending-targets {target-id selected-target})}
-          {:db (confirm-cast-time-target game-db selection) :finalized? true}))
-      {:db (confirm-cast-time-target game-db selection) :finalized? true})))
+  (if (= :chaining (:selection/lifecycle selection))
+    ;; Chaining: chain builder will provide mana-allocation
+    {:db game-db}
+    ;; Finalized: cast directly with target storage
+    {:db (confirm-cast-time-target game-db selection)}))

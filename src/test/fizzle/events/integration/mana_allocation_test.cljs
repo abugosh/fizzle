@@ -294,25 +294,23 @@
           [db obj-id] (add-card-and-object db spell-x-with-generic :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 3 :black 5})
           mode (first (rules/get-casting-modes db :player-1 obj-id))
-          ;; Simulate X=2 confirmed: resolved cost = {:colorless 3 :blue 1}
-          ;; (X*1=2 + fixed colorless 1 = 3 colorless, plus blue 1)
           x-value 2
-          ;; Build x-mana-cost selection as if player set X=2
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
           db-with-x (d/db-with db [[:db/add obj-eid :object/x-value x-value]])
-          ;; Call execute-confirmed-selection for :x-mana-cost
           selection {:selection/type :x-mana-cost
+                     :selection/lifecycle :chaining
                      :selection/player-id :player-1
                      :selection/spell-id obj-id
                      :selection/mode mode
                      :selection/selected-x x-value}
-          result (core/execute-confirmed-selection db-with-x selection)]
-      ;; Should chain to allocation (not cast directly)
-      (is (some? (:pending-selection result))
+          result (core/execute-confirmed-selection db-with-x selection)
+          chain-sel (core/build-chain-selection (:db result) selection)]
+      ;; Chain builder should provide mana-allocation
+      (is (some? chain-sel)
           "X confirm should chain to :mana-allocation selection")
-      (is (= :mana-allocation (:selection/type (:pending-selection result)))
+      (is (= :mana-allocation (:selection/type chain-sel))
           "Chained selection should be :mana-allocation")
-      (is (= 3 (:selection/generic-remaining (:pending-selection result)))
+      (is (= 3 (:selection/generic-remaining chain-sel))
           "Generic remaining should be 3 (X=2 + fixed 1)")
       ;; Spell should NOT be on stack yet
       (let [obj (q/get-object (:db result) obj-id)]
@@ -325,28 +323,27 @@
 ;; =====================================================
 
 (deftest test-x-cost-x-zero-no-fixed-generic-skips-allocation
-  (testing "X=0 with no fixed generic skips allocation and casts directly"
+  (testing "X=0 with no fixed generic still chains to mana-allocation (handles cast)"
     (let [db (create-allocation-test-db)
           [db obj-id] (add-card-and-object db spell-x-no-fixed-generic :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 5})
           mode (first (rules/get-casting-modes db :player-1 obj-id))
-          ;; X=0: resolved cost = {:colorless 0 :blue 1}
           selection {:selection/type :x-mana-cost
+                     :selection/lifecycle :chaining
                      :selection/player-id :player-1
                      :selection/spell-id obj-id
                      :selection/mode mode
                      :selection/selected-x 0}
-          result (core/execute-confirmed-selection db selection)]
-      ;; Should NOT chain to allocation
-      (is (nil? (:pending-selection result))
-          "X=0 with no fixed generic should not chain to allocation")
-      ;; Should cast directly (finalized)
-      (is (true? (:finalized? result))
-          "Should be finalized (cast directly)")
-      ;; Spell should be on stack
-      (let [obj (q/get-object (:db result) obj-id)]
-        (is (= :stack (:object/zone obj))
-            "Spell should be on stack (cast directly)")))))
+          result (core/execute-confirmed-selection db selection)
+          chain-sel (core/build-chain-selection (:db result) selection)]
+      ;; Chain builder always provides mana-allocation (even with 0 generic)
+      ;; so mana-allocation executor handles casting
+      (is (some? chain-sel)
+          "X=0 should still chain to mana-allocation for casting")
+      (is (= :mana-allocation (:selection/type chain-sel))
+          "Chained selection should be :mana-allocation")
+      (is (= 0 (:selection/generic-remaining chain-sel))
+          "Generic remaining should be 0"))))
 
 
 ;; =====================================================
@@ -359,8 +356,8 @@
           [db obj-id] (add-card-and-object db spell-targeting-with-generic :hand :player-1)
           db (mana/add-mana db :player-1 {:red 3 :black 5})
           mode (first (rules/get-casting-modes db :player-1 obj-id))
-          ;; Simulate targeting selection with :player-1 selected
           selection {:selection/type :cast-time-targeting
+                     :selection/lifecycle :chaining
                      :selection/player-id :player-1
                      :selection/object-id obj-id
                      :selection/mode mode
@@ -371,17 +368,17 @@
                      :selection/valid-targets #{:player-1 :opponent}
                      :selection/selected #{:player-1}
                      :selection/select-count 1}
-          result (core/execute-confirmed-selection db selection)]
-      ;; Should chain to allocation
-      (is (some? (:pending-selection result))
+          result (core/execute-confirmed-selection db selection)
+          chain-sel (core/build-chain-selection (:db result) selection)]
+      ;; Chain builder should provide mana-allocation with pending targets
+      (is (some? chain-sel)
           "Targeting confirm should chain to allocation")
-      (is (= :mana-allocation (:selection/type (:pending-selection result)))
+      (is (= :mana-allocation (:selection/type chain-sel))
           "Chained selection should be :mana-allocation")
-      (is (= 1 (:selection/generic-remaining (:pending-selection result)))
+      (is (= 1 (:selection/generic-remaining chain-sel))
           "Generic remaining should be 1")
-      ;; Should carry pending targets
       (is (= {:player :player-1}
-             (:selection/pending-targets (:pending-selection result)))
+             (:selection/pending-targets chain-sel))
           "Should carry pending targets through allocation"))))
 
 
@@ -390,12 +387,14 @@
 ;; =====================================================
 
 (deftest test-targeting-no-generic-casts-directly
-  (testing "Targeting confirm casts directly when no generic cost"
+  (testing "Targeting confirm casts directly when no generic cost (finalized lifecycle)"
     (let [db (create-allocation-test-db)
           [db obj-id] (add-card-and-object db spell-targeting-no-generic :hand :player-1)
           db (mana/add-mana db :player-1 {:red 5})
           mode (first (rules/get-casting-modes db :player-1 obj-id))
           selection {:selection/type :cast-time-targeting
+                     :selection/lifecycle :finalized
+                     :selection/clear-selected-card? true
                      :selection/player-id :player-1
                      :selection/object-id obj-id
                      :selection/mode mode
@@ -407,12 +406,9 @@
                      :selection/selected #{:player-1}
                      :selection/select-count 1}
           result (core/execute-confirmed-selection db selection)]
-      ;; Should NOT chain
-      (is (nil? (:pending-selection result))
-          "No generic: should NOT chain to allocation")
-      ;; Finalized
-      (is (true? (:finalized? result))
-          "Should be finalized")
+      ;; Executor returns only {:db db} — should have cast the spell
+      (is (map? (:db result))
+          "Executor should return {:db db}")
       ;; Spell should be on stack with targets stored
       (let [obj (q/get-object (:db result) obj-id)]
         (is (= :stack (:object/zone obj))

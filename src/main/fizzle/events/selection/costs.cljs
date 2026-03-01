@@ -136,20 +136,26 @@
   [game-db player-id object-id mode return-cost]
   (let [criteria (or (:cost/criteria return-cost) {})
         matching (queries/query-zone-by-criteria game-db player-id :battlefield criteria)
-        candidate-ids (set (map :object/id matching))]
+        candidate-ids (set (map :object/id matching))
+        ;; Check if spell has targeting (determines lifecycle)
+        obj (queries/get-object game-db object-id)
+        has-targeting? (seq (:card/targeting (:object/card obj)))]
     (when (seq candidate-ids)
-      {:selection/zone :battlefield
-       :selection/type :return-land-cost
-       :selection/card-source :valid-targets
-       :selection/select-count 1
-       :selection/valid-targets (vec candidate-ids)
-       :selection/selected #{}
-       :selection/player-id player-id
-       :selection/spell-id object-id
-       :selection/mode mode
-       :selection/return-cost return-cost
-       :selection/validation :exact
-       :selection/auto-confirm? true})))
+      (cond-> {:selection/zone :battlefield
+               :selection/type :return-land-cost
+               :selection/card-source :valid-targets
+               :selection/select-count 1
+               :selection/valid-targets (vec candidate-ids)
+               :selection/selected #{}
+               :selection/player-id player-id
+               :selection/spell-id object-id
+               :selection/mode mode
+               :selection/return-cost return-cost
+               :selection/validation :exact
+               :selection/auto-confirm? true}
+        has-targeting? (assoc :selection/lifecycle :chaining)
+        (not has-targeting?) (assoc :selection/lifecycle :finalized
+                                    :selection/clear-selected-card? true)))))
 
 
 (defn build-discard-specific-selection
@@ -172,24 +178,30 @@
         hand (or (queries/get-objects-in-zone game-db player-id :hand) [])
         ;; Exclude the spell being cast
         candidates (filterv #(not= object-id (:object/id %)) hand)
-        candidate-ids (set (map :object/id candidates))]
+        candidate-ids (set (map :object/id candidates))
+        ;; Check if spell has targeting (determines lifecycle)
+        obj (queries/get-object game-db object-id)
+        has-targeting? (seq (:card/targeting (:object/card obj)))]
     (when (seq candidate-ids)
-      {:selection/zone :hand
-       :selection/type :discard-specific-cost
-       :selection/card-source :hand
-       :selection/select-count total
-       :selection/selected #{}
-       :selection/player-id player-id
-       :selection/spell-id object-id
-       :selection/mode mode
-       :selection/discard-cost discard-cost
-       :selection/discard-groups groups
-       :selection/valid-targets (vec candidate-ids)
-       :selection/candidate-card-map (into {} (map (fn [obj]
-                                                     [(:object/id obj) (:object/card obj)]))
-                                           candidates)
-       :selection/validation :exact
-       :selection/auto-confirm? false})))
+      (cond-> {:selection/zone :hand
+               :selection/type :discard-specific-cost
+               :selection/card-source :hand
+               :selection/select-count total
+               :selection/selected #{}
+               :selection/player-id player-id
+               :selection/spell-id object-id
+               :selection/mode mode
+               :selection/discard-cost discard-cost
+               :selection/discard-groups groups
+               :selection/valid-targets (vec candidate-ids)
+               :selection/candidate-card-map (into {} (map (fn [obj']
+                                                             [(:object/id obj') (:object/card obj')]))
+                                                   candidates)
+               :selection/validation :exact
+               :selection/auto-confirm? false}
+        has-targeting? (assoc :selection/lifecycle :chaining)
+        (not has-targeting?) (assoc :selection/lifecycle :finalized
+                                    :selection/clear-selected-card? true)))))
 
 
 (defn build-x-mana-selection
@@ -216,6 +228,7 @@
         max-x total-remaining]
     {:selection/zone :mana-pool
      :selection/type :x-mana-cost
+     :selection/lifecycle :chaining
      :selection/player-id player-id
      :selection/spell-id object-id
      :selection/mode mode
@@ -265,6 +278,28 @@
 ;; Confirm Selection Defmethods
 ;; =====================================================
 
+(defmethod core/build-chain-selection :discard-specific-cost
+  [db selection]
+  (let [object-id (:selection/spell-id selection)
+        player-id (:selection/player-id selection)
+        mode (:selection/mode selection)
+        obj (queries/get-object db object-id)
+        targeting-reqs (:card/targeting (:object/card obj))]
+    (when (seq targeting-reqs)
+      (let [first-req (first targeting-reqs)]
+        {:selection/type :cast-time-targeting
+         :selection/player-id player-id
+         :selection/object-id object-id
+         :selection/mode mode
+         :selection/target-requirement first-req
+         :selection/valid-targets (targeting/find-valid-targets db player-id first-req)
+         :selection/selected #{}
+         :selection/select-count 1
+         :selection/validation :exact
+         :selection/auto-confirm? true
+         :selection/card-source :valid-targets}))))
+
+
 (defmethod core/execute-confirmed-selection :discard-specific-cost
   [game-db selection]
   (let [selected (:selection/selected selection)
@@ -275,30 +310,34 @@
         db-after-discard (reduce (fn [d card-id]
                                    (zones/move-to-zone d card-id :graveyard))
                                  game-db
-                                 selected)
-        ;; Now check for targeting before casting
-        obj (queries/get-object db-after-discard object-id)
-        card (:object/card obj)
-        targeting-reqs (:card/targeting card)]
-    (if (seq targeting-reqs)
-      ;; Has targeting — chain to cast-time-targeting selection
-      (let [first-req (first targeting-reqs)
-            target-sel {:selection/type :cast-time-targeting
-                        :selection/player-id player-id
-                        :selection/object-id object-id
-                        :selection/mode mode
-                        :selection/target-requirement first-req
-                        :selection/valid-targets (targeting/find-valid-targets
-                                                   db-after-discard player-id first-req)
-                        :selection/selected #{}
-                        :selection/select-count 1
-                        :selection/validation :exact
-                        :selection/auto-confirm? true
-                        :selection/card-source :valid-targets}]
-        {:db db-after-discard :pending-selection target-sel})
-      ;; No targeting — cast directly
-      {:db (rules/cast-spell-mode db-after-discard player-id object-id mode)
-       :finalized? true :clear-selected-card? true})))
+                                 selected)]
+    (if (= :chaining (:selection/lifecycle selection))
+      ;; Chaining: just discard, chain builder handles targeting
+      {:db db-after-discard}
+      ;; Finalized: no targeting, cast directly
+      {:db (rules/cast-spell-mode db-after-discard player-id object-id mode)})))
+
+
+(defmethod core/build-chain-selection :return-land-cost
+  [db selection]
+  (let [object-id (:selection/spell-id selection)
+        player-id (:selection/player-id selection)
+        mode (:selection/mode selection)
+        obj (queries/get-object db object-id)
+        targeting-reqs (:card/targeting (:object/card obj))]
+    (when (seq targeting-reqs)
+      (let [first-req (first targeting-reqs)]
+        {:selection/type :cast-time-targeting
+         :selection/player-id player-id
+         :selection/object-id object-id
+         :selection/mode mode
+         :selection/target-requirement first-req
+         :selection/valid-targets (targeting/find-valid-targets db player-id first-req)
+         :selection/selected #{}
+         :selection/select-count 1
+         :selection/validation :exact
+         :selection/auto-confirm? true
+         :selection/card-source :valid-targets}))))
 
 
 (defmethod core/execute-confirmed-selection :return-land-cost
@@ -308,30 +347,12 @@
         object-id (:selection/spell-id selection)
         mode (:selection/mode selection)
         ;; Return the land to hand (bounce)
-        db-after-return (zones/move-to-zone game-db selected-land-id :hand)
-        ;; Now check for targeting before casting
-        obj (queries/get-object db-after-return object-id)
-        card (:object/card obj)
-        targeting-reqs (:card/targeting card)]
-    (if (seq targeting-reqs)
-      ;; Has targeting — chain to cast-time-targeting selection
-      (let [first-req (first targeting-reqs)
-            target-sel {:selection/type :cast-time-targeting
-                        :selection/player-id player-id
-                        :selection/object-id object-id
-                        :selection/mode mode
-                        :selection/target-requirement first-req
-                        :selection/valid-targets (targeting/find-valid-targets
-                                                   db-after-return player-id first-req)
-                        :selection/selected #{}
-                        :selection/select-count 1
-                        :selection/validation :exact
-                        :selection/auto-confirm? true
-                        :selection/card-source :valid-targets}]
-        {:db db-after-return :pending-selection target-sel})
-      ;; No targeting — cast directly
-      {:db (rules/cast-spell-mode db-after-return player-id object-id mode)
-       :finalized? true :clear-selected-card? true})))
+        db-after-return (zones/move-to-zone game-db selected-land-id :hand)]
+    (if (= :chaining (:selection/lifecycle selection))
+      ;; Chaining: just bounce, chain builder handles targeting
+      {:db db-after-return}
+      ;; Finalized: no targeting, cast directly
+      {:db (rules/cast-spell-mode db-after-return player-id object-id mode)})))
 
 
 (defmethod core/execute-confirmed-selection :exile-cards-cost
@@ -352,29 +373,50 @@
     {:db db-after-cast}))
 
 
-(defmethod core/execute-confirmed-selection :x-mana-cost
-  [game-db selection]
+(defmethod core/build-chain-selection :x-mana-cost
+  [db selection]
   (let [x-value (:selection/selected-x selection)
         player-id (:selection/player-id selection)
         object-id (:selection/spell-id selection)
         mode (:selection/mode selection)
-        obj-eid (queries/get-object-eid game-db object-id)
-        db-with-x (d/db-with game-db
-                             [[:db/add obj-eid :object/x-value x-value]])
         resolved-mana-cost (mana/resolve-x-cost (:mode/mana-cost mode) x-value)
         mode-with-resolved-cost (assoc mode :mode/mana-cost resolved-mana-cost)]
-    (if (has-generic-mana-cost? resolved-mana-cost)
-      ;; Chain to mana allocation with resolved cost
-      (let [sel (build-mana-allocation-selection db-with-x player-id object-id
-                                                 mode-with-resolved-cost resolved-mana-cost)]
-        (if sel
-          {:db db-with-x :pending-selection sel}
-          ;; Defensive: builder returned nil despite has-generic true
-          {:db (rules/cast-spell-mode db-with-x player-id object-id mode-with-resolved-cost)
-           :finalized? true :clear-selected-card? true}))
-      ;; No generic in resolved cost: cast directly
-      {:db (rules/cast-spell-mode db-with-x player-id object-id mode-with-resolved-cost)
-       :finalized? true :clear-selected-card? true})))
+    ;; Always chain to mana-allocation (even with 0 generic) so it handles casting.
+    ;; When generic is 0, build-mana-allocation-selection returns nil; use a
+    ;; zero-generic allocation that auto-confirms immediately.
+    (or (build-mana-allocation-selection db player-id object-id
+                                         mode-with-resolved-cost resolved-mana-cost)
+        ;; No generic mana: build minimal mana-allocation that auto-casts
+        (let [colored-cost (dissoc resolved-mana-cost :colorless)
+              pool (queries/get-mana-pool db player-id)
+              remaining-pool (merge-with - pool colored-cost)]
+          {:selection/zone :mana-pool
+           :selection/type :mana-allocation
+           :selection/lifecycle :finalized
+           :selection/clear-selected-card? true
+           :selection/player-id player-id
+           :selection/spell-id object-id
+           :selection/mode mode-with-resolved-cost
+           :selection/generic-remaining 0
+           :selection/generic-total 0
+           :selection/allocation {}
+           :selection/remaining-pool remaining-pool
+           :selection/original-remaining-pool remaining-pool
+           :selection/colored-cost colored-cost
+           :selection/original-cost resolved-mana-cost
+           :selection/validation :always
+           :selection/auto-confirm? true}))))
+
+
+(defmethod core/execute-confirmed-selection :x-mana-cost
+  [game-db selection]
+  (let [x-value (:selection/selected-x selection)
+        object-id (:selection/spell-id selection)
+        obj-eid (queries/get-object-eid game-db object-id)
+        db-with-x (d/db-with game-db
+                             [[:db/add obj-eid :object/x-value x-value]])]
+    ;; Store X value. Chain builder provides mana-allocation for casting.
+    {:db db-with-x}))
 
 
 (defn- confirm-spell-mana-allocation
