@@ -173,6 +173,7 @@
                     []))
         land-ids (set (mapv :object/id (or lands [])))]
     {:selection/type :chain-bounce
+     :selection/lifecycle :chaining
      :selection/zone :battlefield
      :selection/card-source :valid-targets
      :selection/select-count 1
@@ -225,37 +226,38 @@
   (build-chain-bounce-selection db _player-id object-id effect remaining))
 
 
+(defmethod core/build-chain-selection :chain-bounce
+  [db selection]
+  (let [selected (:selection/selected selection)]
+    (when (seq selected)
+      ;; Find the copy created by the executor (topmost stack item)
+      (let [copy-stack-item (stack/get-top-stack-item db)]
+        (when copy-stack-item
+          (let [chain-controller (:selection/chain-controller selection)
+                spell-id (:selection/spell-id selection)
+                copy-obj-ref (let [raw (:stack-item/object-ref copy-stack-item)]
+                               (if (map? raw) (:db/id raw) raw))
+                copy-object-id (when copy-obj-ref
+                                 (:object/id (d/pull db [:object/id] copy-obj-ref)))]
+            (build-chain-bounce-target-selection
+              db chain-controller spell-id
+              copy-object-id (:db/id copy-stack-item))))))))
+
+
 (defmethod core/execute-confirmed-selection :chain-bounce
   [game-db selection]
-  (let [selected (:selection/selected selection)
-        chain-controller (:selection/chain-controller selection)
-        spell-id (:selection/spell-id selection)]
+  (let [selected (:selection/selected selection)]
     (if (empty? selected)
       ;; Declined — chain ends, no copy
       {:db game-db}
-      ;; Sacrifice the selected land
+      ;; Sacrifice the selected land and create a copy on the stack
       (let [land-id (first selected)
+            chain-controller (:selection/chain-controller selection)
+            spell-id (:selection/spell-id selection)
             db-after-sac (zones/move-to-zone game-db land-id :graveyard)
-            ;; Create a spell copy on the stack
-            ;; Use nil target-override — we'll set the target via the next selection
             db-with-copy (triggers/create-spell-copy
-                           db-after-sac spell-id chain-controller)
-            ;; Find the copy we just created (topmost stack item)
-            copy-stack-item (stack/get-top-stack-item db-with-copy)
-            copy-obj-ref (when copy-stack-item
-                           (let [raw (:stack-item/object-ref copy-stack-item)]
-                             (if (map? raw) (:db/id raw) raw)))
-            copy-object-id (when copy-obj-ref
-                             (:object/id (d/pull db-with-copy [:object/id] copy-obj-ref)))]
-        (if (nil? copy-stack-item)
-          ;; Failed to create copy (source gone) — just return after sacrifice
-          {:db db-after-sac}
-          ;; Chain to target selection for the copy
-          (let [target-sel (build-chain-bounce-target-selection
-                             db-with-copy chain-controller spell-id
-                             copy-object-id (:db/id copy-stack-item))]
-            {:db db-with-copy
-             :pending-selection target-sel}))))))
+                           db-after-sac spell-id chain-controller)]
+        {:db db-with-copy}))))
 
 
 (defmethod core/execute-confirmed-selection :chain-bounce-target
