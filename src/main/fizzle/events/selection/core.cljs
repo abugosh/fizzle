@@ -4,13 +4,35 @@
 
    This namespace contains ONLY mechanism — zero knowledge of specific
    selection types. Domain modules register methods on the multimethods
-   defined here."
+   defined here.
+
+   Selection hierarchy: effect types derive from interaction patterns
+   (:zone-pick, :accumulator, :reorder) via Clojure's multimethod
+   hierarchy. Generic builders/executors handle common patterns;
+   custom defmethods on specific keywords take precedence automatically."
   (:require
     [fizzle.db.queries :as queries]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.resolution :as resolution]
     [fizzle.engine.stack :as stack]
-    [fizzle.engine.validation :as validation]))
+    [fizzle.engine.validation :as validation]
+    [fizzle.engine.zones :as zones]))
+
+
+;; =====================================================
+;; Selection Hierarchy
+;; =====================================================
+;; Effect types derive from interaction patterns. Generic builders and
+;; executors register on parent keywords (:zone-pick, :accumulator,
+;; :reorder). Custom defmethods on specific child keywords take
+;; precedence automatically via multimethod dispatch.
+
+(def selection-hierarchy
+  "Hierarchy mapping effect types to interaction patterns.
+   Used by build-selection-for-effect, execute-confirmed-selection,
+   and build-chain-selection for dispatch."
+  (-> (make-hierarchy)
+      (derive :discard :zone-pick)))
 
 
 ;; =====================================================
@@ -19,7 +41,7 @@
 
 (defmulti execute-confirmed-selection
   "Execute the type-specific logic for a confirmed selection.
-   Dispatches on :selection/type.
+   Dispatches on :selection/type using the selection hierarchy.
 
    Arguments:
      game-db - Datascript database
@@ -28,16 +50,19 @@
    Returns {:db game-db}. Lifecycle behavior (standard, finalized, chaining)
    is declared by builders via :selection/lifecycle on the selection map, not
    signaled by executor return shape."
-  (fn [_game-db selection] (:selection/type selection)))
+  (fn [_game-db selection] (:selection/type selection))
+  :hierarchy #'selection-hierarchy)
 
 
 (defmulti build-selection-for-effect
   "Build selection state for an effect requiring player interaction.
-   Dispatches on effect type or :player-target for :any-player targeting."
+   Dispatches on effect type or :player-target for :any-player targeting.
+   Uses selection hierarchy for pattern-based routing."
   (fn [_db _player-id _object-id effect _remaining-effects]
     (if (= :any-player (:effect/target effect))
       :player-target
-      (:effect/type effect))))
+      (:effect/type effect)))
+  :hierarchy #'selection-hierarchy)
 
 
 (defmethod build-selection-for-effect :default
@@ -51,6 +76,41 @@
    :selection/type (:effect/type effect)
    :selection/validation :exact
    :selection/auto-confirm? false})
+
+
+;; =====================================================
+;; Generic Zone-Pick Builder
+;; =====================================================
+
+(defmethod build-selection-for-effect :zone-pick
+  [_db player-id object-id effect remaining-effects]
+  {:selection/type (:effect/type effect)
+   :selection/pattern :zone-pick
+   :selection/zone :hand
+   :selection/card-source :hand
+   :selection/target-zone :graveyard
+   :selection/select-count (or (:effect/count effect)
+                               (:effect/select-count effect))
+   :selection/player-id player-id
+   :selection/selected #{}
+   :selection/spell-id object-id
+   :selection/remaining-effects remaining-effects
+   :selection/validation :exact
+   :selection/auto-confirm? false})
+
+
+;; =====================================================
+;; Generic Zone-Pick Executor
+;; =====================================================
+
+(defmethod execute-confirmed-selection :zone-pick
+  [game-db selection]
+  (let [selected (:selection/selected selection)
+        target-zone (:selection/target-zone selection)]
+    {:db (reduce (fn [gdb obj-id]
+                   (zones/move-to-zone gdb obj-id target-zone))
+                 game-db
+                 selected)}))
 
 
 ;; =====================================================
@@ -84,9 +144,11 @@
 (defmulti build-chain-selection
   "Build the next selection for a chaining lifecycle.
    Dispatches on :selection/type of the completed selection.
+   Uses selection hierarchy for pattern-based routing.
    Returns next selection map, or nil for conditional chaining
    (no chain needed, fall through to standard behavior)."
-  (fn [_db selection] (:selection/type selection)))
+  (fn [_db selection] (:selection/type selection))
+  :hierarchy #'selection-hierarchy)
 
 
 (defmethod build-chain-selection :default [_db _selection] nil)

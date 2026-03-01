@@ -1,9 +1,10 @@
 (ns fizzle.events.selection.zone-ops
-  "Zone operation selection domains: discard (unified), graveyard-return,
-   and chain-bounce (Chain of Vapor chain mechanic).
+  "Zone operation selection domains: graveyard-return, chain-bounce,
+   and custom discard executor.
 
-   Discard unification: :cleanup-discard is removed as a separate type.
-   The :discard type now checks :selection/cleanup? flag:
+   Discard builder: handled by generic zone-pick builder in core.cljs
+   via hierarchy (derive :discard :zone-pick). Custom executor remains
+   here because cleanup discard checks :selection/cleanup? flag:
      - false/nil → standard discard (wrapper handles remaining-effects)
      - true → cleanup discard (expire grants, return finalized)"
   (:require
@@ -21,21 +22,6 @@
 ;; =====================================================
 ;; Selection Builders
 ;; =====================================================
-
-(defn build-discard-selection
-  "Build pending selection state for a discard effect."
-  [player-id object-id discard-effect effects-after]
-  {:selection/zone :hand
-   :selection/card-source :hand
-   :selection/select-count (:effect/count discard-effect)
-   :selection/player-id player-id
-   :selection/selected #{}
-   :selection/spell-id object-id
-   :selection/remaining-effects effects-after
-   :selection/type :discard
-   :selection/validation :exact
-   :selection/auto-confirm? false})
-
 
 (defn build-graveyard-selection
   "Build pending selection state for returning cards from graveyard.
@@ -93,11 +79,6 @@
 ;; =====================================================
 ;; Builder Multimethod Registrations
 ;; =====================================================
-
-(defmethod core/build-selection-for-effect :discard
-  [_db player-id object-id effect remaining]
-  (build-discard-selection player-id object-id effect remaining))
-
 
 (defmethod core/build-selection-for-effect :return-from-graveyard
   [db player-id object-id effect remaining]

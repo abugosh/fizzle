@@ -37,8 +37,9 @@
     (let [db (init-game-state)
           ;; :player-target detected by :any-player, not by effect type
           ;; :counter-spell conditionally interactive (only with :unless-pay + target on stack)
+          ;; :zone-pick is a hierarchy parent pattern, not a direct effect type
           dispatch-keys (disj (set (keys (methods core/build-selection-for-effect)))
-                              :default :player-target :counter-spell)]
+                              :default :player-target :counter-spell :zone-pick)]
       ;; Verify every dispatch key has a representative effect
       (doseq [k dispatch-keys]
         (is (contains? dispatch-representative-effects k)
