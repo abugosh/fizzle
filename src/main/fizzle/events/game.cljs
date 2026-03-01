@@ -242,113 +242,139 @@
              (when (not= currently-selected object-id) object-id)))))
 
 
-(defn- initiate-cast-with-mode
-  "Start casting a spell with a specific mode.
-   Checks for X costs and targeting before actually casting.
-   When target is provided and spell has targeting, casts directly with stored target.
-   For modal spells, reads targeting from :object/chosen-mode instead of the card.
-   Returns updated app-db."
-  [app-db player-id object-id mode target]
-  (let [game-db (:game/db app-db)
-        obj (queries/get-object game-db object-id)
+;; =====================================================
+;; Data-Driven Pre-Cast Pipeline (ADR-015)
+;; =====================================================
+;; Each pre-cast step is a defmethod on evaluate-pre-cast-step.
+;; Steps return nil (skip), {:selection sel} (pause for input),
+;; or {:db db} (terminal — casting complete).
+
+(defmulti evaluate-pre-cast-step
+  "Evaluate a single pre-cast pipeline step.
+   Dispatches on step keyword.
+
+   Arguments:
+     step - Keyword identifying the pre-cast step
+     ctx  - Map with :game-db, :player-id, :object-id, :mode, :target
+
+   Returns:
+     nil           — skip this step (condition not met)
+     {:selection s} — pause pipeline for player input
+     {:db db}       — terminal, casting complete"
+  (fn [step _ctx] step))
+
+
+(def pre-cast-pipeline
+  "Ordered vector of pre-cast step keywords. Evaluated left-to-right.
+   Costs before targeting, targeting before mana allocation."
+  [:exile-cards-cost :return-land-cost :discard-specific-cost
+   :x-mana-cost :targeting :mana-allocation])
+
+
+(defmethod evaluate-pre-cast-step :exile-cards-cost
+  [_ {:keys [game-db player-id object-id mode]}]
+  (when (sel-costs/has-exile-cards-x-cost? mode)
+    (let [exile-cost (sel-costs/get-exile-cards-x-cost mode)
+          sel (sel-costs/build-exile-cards-selection game-db player-id object-id mode exile-cost)]
+      (when sel
+        {:selection sel}))))
+
+
+(defmethod evaluate-pre-cast-step :return-land-cost
+  [_ {:keys [game-db player-id object-id mode]}]
+  (when (sel-costs/has-return-land-cost? mode)
+    (let [return-cost (sel-costs/get-return-land-cost mode)
+          sel (sel-costs/build-return-land-selection game-db player-id object-id mode return-cost)]
+      (when sel
+        {:selection sel}))))
+
+
+(defmethod evaluate-pre-cast-step :discard-specific-cost
+  [_ {:keys [game-db player-id object-id mode]}]
+  (when (sel-costs/has-discard-specific-cost? mode)
+    (let [discard-cost (sel-costs/get-discard-specific-cost mode)
+          sel (sel-costs/build-discard-specific-selection game-db player-id object-id mode discard-cost)]
+      (when sel
+        {:selection sel}))))
+
+
+(defmethod evaluate-pre-cast-step :x-mana-cost
+  [_ {:keys [game-db player-id object-id mode]}]
+  (when (sel-costs/has-mana-x-cost? mode)
+    {:selection (sel-costs/build-x-mana-selection game-db player-id object-id mode)}))
+
+
+(defmethod evaluate-pre-cast-step :targeting
+  [_ {:keys [game-db player-id object-id mode target]}]
+  (let [obj (queries/get-object game-db object-id)
         card (:object/card obj)
-        ;; For modal spells, targeting comes from the chosen spell mode
         chosen-mode (:object/chosen-mode obj)
         targeting-reqs (if chosen-mode
                          (or (:mode/targeting chosen-mode) [])
                          (targeting/get-targeting-requirements card))]
-    (cond
-      ;; Check for exile-cards X cost (flashback with exile)
-      (sel-costs/has-exile-cards-x-cost? mode)
-      (let [exile-cost (sel-costs/get-exile-cards-x-cost mode)
-            sel (sel-costs/build-exile-cards-selection game-db player-id object-id mode exile-cost)]
-        (if sel
-          (-> app-db
-              (assoc :game/pending-selection sel)
-              (dissoc :game/selected-card))
-          ;; No valid cards to exile - can't cast (shouldn't happen if can-cast-mode? passed)
-          app-db))
-
-      ;; Check for return-land cost (Daze alternate cost)
-      (sel-costs/has-return-land-cost? mode)
-      (let [return-cost (sel-costs/get-return-land-cost mode)
-            sel (sel-costs/build-return-land-selection game-db player-id object-id mode return-cost)]
-        (if sel
-          (-> app-db
-              (assoc :game/pending-selection sel)
-              (dissoc :game/selected-card))
-          app-db))
-
-      ;; Check for discard-specific cost (Foil alternate cost)
-      (sel-costs/has-discard-specific-cost? mode)
-      (let [discard-cost (sel-costs/get-discard-specific-cost mode)
-            sel (sel-costs/build-discard-specific-selection game-db player-id object-id mode discard-cost)]
-        (if sel
-          (-> app-db
-              (assoc :game/pending-selection sel)
-              (dissoc :game/selected-card))
-          app-db))
-
-      ;; Check for X mana cost (normal cast with X)
-      (sel-costs/has-mana-x-cost? mode)
-      (let [sel (sel-costs/build-x-mana-selection game-db player-id object-id mode)]
-        (-> app-db
-            (assoc :game/pending-selection sel)
-            (dissoc :game/selected-card)))
-
-      ;; Check for targeting requirements with pre-determined target
-      (and target (seq targeting-reqs))
-      (let [first-req (first targeting-reqs)
-            sel {:selection/player-id player-id
-                 :selection/object-id object-id
-                 :selection/mode mode
-                 :selection/target-requirement first-req
-                 :selection/selected #{target}}
-            db-after (sel-targeting/confirm-cast-time-target game-db sel)]
-        (-> app-db
-            (assoc :game/db db-after)
-            (dissoc :game/selected-card)))
-
-      ;; Check for targeting requirements (interactive)
-      (seq targeting-reqs)
-      (let [first-req (first targeting-reqs)
-            valid-targets (targeting/find-valid-targets game-db player-id first-req)]
-        (if (and (= :player (:target/type first-req))
-                 (= 1 (count valid-targets)))
-          ;; Single player target — auto-cast without dialog
-          (let [auto-target (first valid-targets)
-                sel {:selection/player-id player-id
+    (when (seq targeting-reqs)
+      (let [first-req (first targeting-reqs)]
+        (if target
+          ;; Pre-determined target: cast directly
+          (let [sel {:selection/player-id player-id
                      :selection/object-id object-id
                      :selection/mode mode
                      :selection/target-requirement first-req
-                     :selection/selected #{auto-target}}
-                db-after (sel-targeting/confirm-cast-time-target game-db sel)]
-            (-> app-db
-                (assoc :game/db db-after)
-                (dissoc :game/selected-card)))
-          ;; Multiple targets or object targeting — show selection
-          (let [sel (sel-targeting/build-cast-time-target-selection game-db player-id object-id mode first-req)]
-            (-> app-db
-                (assoc :game/pending-selection sel)
-                (dissoc :game/selected-card)))))
+                     :selection/selected #{target}}]
+            {:db (sel-targeting/confirm-cast-time-target game-db sel)})
+          ;; Interactive targeting
+          (let [valid-targets (targeting/find-valid-targets game-db player-id first-req)]
+            (if (and (= :player (:target/type first-req))
+                     (= 1 (count valid-targets)))
+              ;; Single player target — auto-cast without dialog
+              (let [auto-target (first valid-targets)
+                    sel {:selection/player-id player-id
+                         :selection/object-id object-id
+                         :selection/mode mode
+                         :selection/target-requirement first-req
+                         :selection/selected #{auto-target}}]
+                {:db (sel-targeting/confirm-cast-time-target game-db sel)})
+              ;; Multiple targets or object targeting — show selection
+              {:selection (sel-targeting/build-cast-time-target-selection
+                            game-db player-id object-id mode first-req)})))))))
 
-      ;; Check for generic mana cost requiring manual allocation
-      (sel-costs/has-generic-mana-cost? (:mode/mana-cost mode))
-      (let [sel (sel-costs/build-mana-allocation-selection game-db player-id object-id mode (:mode/mana-cost mode))]
-        (if sel
-          (-> app-db
-              (assoc :game/pending-selection sel)
-              (dissoc :game/selected-card))
-          ;; nil means 0 generic (defensive fallback)
-          (-> app-db
-              (assoc :game/db (rules/cast-spell-mode game-db player-id object-id mode))
-              (dissoc :game/selected-card))))
 
-      ;; No X costs, targeting, or generic: cast immediately
-      :else
-      (-> app-db
-          (assoc :game/db (rules/cast-spell-mode game-db player-id object-id mode))
-          (dissoc :game/selected-card)))))
+(defmethod evaluate-pre-cast-step :mana-allocation
+  [_ {:keys [game-db player-id object-id mode]}]
+  (when (sel-costs/has-generic-mana-cost? (:mode/mana-cost mode))
+    (if-let [sel (sel-costs/build-mana-allocation-selection
+                   game-db player-id object-id mode (:mode/mana-cost mode))]
+      {:selection sel}
+      ;; nil from builder means 0 generic (defensive fallback) — cast directly
+      {:db (rules/cast-spell-mode game-db player-id object-id mode)})))
+
+
+(defn- initiate-cast-with-mode
+  "Start casting a spell with a specific mode.
+   Evaluates the pre-cast pipeline steps in order. Each step checks for a
+   pre-cast requirement (additional cost, targeting, mana allocation) and
+   returns nil (skip), {:selection sel} (pause for input), or {:db db} (done).
+   If all steps return nil, casts immediately.
+   Returns updated app-db."
+  [app-db player-id object-id mode target]
+  (let [game-db (:game/db app-db)
+        ctx {:game-db game-db :player-id player-id
+             :object-id object-id :mode mode :target target}]
+    (loop [steps pre-cast-pipeline]
+      (if (empty? steps)
+        ;; All steps skipped — cast immediately
+        (-> app-db
+            (assoc :game/db (rules/cast-spell-mode game-db player-id object-id mode))
+            (dissoc :game/selected-card))
+        (let [result (evaluate-pre-cast-step (first steps) ctx)]
+          (cond
+            (nil? result) (recur (rest steps))
+            (:selection result) (-> app-db
+                                    (assoc :game/pending-selection (:selection result))
+                                    (dissoc :game/selected-card))
+            (:db result) (-> app-db
+                             (assoc :game/db (:db result))
+                             (dissoc :game/selected-card))))))))
 
 
 (defn- get-valid-spell-modes
