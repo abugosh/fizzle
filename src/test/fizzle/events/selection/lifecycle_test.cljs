@@ -1,7 +1,6 @@
 (ns fizzle.events.selection.lifecycle-test
   "Tests for selection lifecycle metadata support in confirm-selection-impl.
-   Covers :standard, :finalized, and :chaining lifecycles, plus backward
-   compatibility with legacy executor return shapes."
+   Covers :standard, :finalized, and :chaining lifecycles."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [fizzle.events.selection.core :as core]
@@ -30,23 +29,8 @@
   {:db game-db})
 
 
-;; Legacy executors return old shapes for backward compat tests
-(defmethod core/execute-confirmed-selection :test-legacy-finalized
-  [game-db _selection]
-  {:db game-db :finalized? true :clear-selected-card? true})
-
-
-(defmethod core/execute-confirmed-selection :test-legacy-chaining
-  [game-db _selection]
-  {:db game-db
-   :pending-selection {:selection/type :test-standard
-                       :selection/selected #{}
-                       :selection/validation :always
-                       :selection/auto-confirm? false
-                       :selection/player-id :player-1}})
-
-
-(defmethod core/execute-confirmed-selection :test-legacy-standard
+;; No-lifecycle executor: used to test that missing lifecycle defaults to :standard
+(defmethod core/execute-confirmed-selection :test-no-lifecycle
   [game-db _selection]
   {:db game-db})
 
@@ -123,9 +107,9 @@
 
 
 (deftest test-no-lifecycle-defaults-to-standard
-  (testing "selection WITHOUT :selection/lifecycle follows legacy standard path"
+  (testing "selection WITHOUT :selection/lifecycle defaults to :standard behavior"
     (let [db (th/create-test-db)
-          app-db (make-app-db db {:selection/type :test-legacy-standard
+          app-db (make-app-db db {:selection/type :test-no-lifecycle
                                   :selection/player-id :player-1
                                   :selection/selected #{}
                                   :selection/validation :always
@@ -243,75 +227,6 @@
                                   :selection/auto-confirm? false})
           result (core/confirm-selection-impl app-db)]
       ;; nil chain => standard path => selection cleared
-      (is (nil? (:game/pending-selection result))))))
-
-
-;; =====================================================
-;; Legacy backward compatibility tests
-;; =====================================================
-
-(deftest test-legacy-finalized-return-shape
-  (testing "legacy executor returning {:finalized? true :clear-selected-card? true}"
-    (let [db (th/create-test-db)
-          app-db (assoc (make-app-db db {:selection/type :test-legacy-finalized
-                                         :selection/player-id :player-1
-                                         :selection/selected #{}
-                                         :selection/validation :always
-                                         :selection/auto-confirm? false})
-                        :game/selected-card :some-card)
-          result (core/confirm-selection-impl app-db)]
-      (is (nil? (:game/pending-selection result)))
-      (is (nil? (:game/selected-card result))))))
-
-
-(deftest test-legacy-chaining-return-shape
-  (testing "legacy executor returning {:pending-selection next-sel}"
-    (let [db (th/create-test-db)
-          app-db (make-app-db db {:selection/type :test-legacy-chaining
-                                  :selection/player-id :player-1
-                                  :selection/selected #{}
-                                  :selection/validation :always
-                                  :selection/auto-confirm? false})
-          result (core/confirm-selection-impl app-db)]
-      (is (some? (:game/pending-selection result)))
-      (is (= :test-standard (:selection/type (:game/pending-selection result)))))))
-
-
-(deftest test-legacy-chaining-propagates-on-complete
-  (testing "legacy chaining propagates :selection/on-complete to chained selection"
-    (let [db (th/create-test-db)
-          app-db (make-app-db db {:selection/type :test-legacy-chaining
-                                  :selection/player-id :player-1
-                                  :selection/selected #{}
-                                  :selection/validation :always
-                                  :selection/auto-confirm? false
-                                  :selection/on-complete {:continuation/type :test-marker}})
-          result (core/confirm-selection-impl app-db)
-          chained-sel (:game/pending-selection result)]
-      (is (some? chained-sel))
-      (is (= {:continuation/type :test-marker}
-             (:selection/on-complete chained-sel))))))
-
-
-;; =====================================================
-;; Lifecycle takes precedence over return shape
-;; =====================================================
-
-(deftest test-lifecycle-takes-precedence-over-return-shape
-  (testing "when :selection/lifecycle is present, executor return flags are ignored"
-    ;; Use an executor that returns {:db db :finalized? true} but set lifecycle
-    ;; to :standard — the standard path should be followed, not finalized
-    (let [db (th/create-test-db)
-          app-db (make-app-db db {:selection/type :test-legacy-finalized
-                                  :selection/lifecycle :standard
-                                  :selection/player-id :player-1
-                                  :selection/selected #{}
-                                  :selection/validation :always
-                                  :selection/auto-confirm? false})
-          result (core/confirm-selection-impl app-db)]
-      ;; Standard path: selection is cleared (same as finalized in this case)
-      ;; but crucially, :clear-selected-card? from executor return is NOT read
-      ;; — only :selection/clear-selected-card? on the selection map matters
       (is (nil? (:game/pending-selection result))))))
 
 

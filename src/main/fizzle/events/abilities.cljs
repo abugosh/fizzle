@@ -46,6 +46,7 @@
   (let [valid-targets (targeting/find-valid-targets db player-id target-req)]
     (cond->
       {:selection/type :ability-targeting
+       :selection/lifecycle :finalized
        :selection/player-id player-id
        :selection/object-id object-id
        :selection/ability-index ability-index
@@ -223,4 +224,4 @@
 (defmethod selection-core/execute-confirmed-selection :ability-targeting
   [game-db selection]
   (let [result (confirm-ability-target game-db selection)]
-    {:db (:db result) :finalized? true}))
+    {:db (:db result)}))

@@ -27,6 +27,7 @@
    Used when :effect/target is :any-player - player must choose target."
   [player-id object-id target-effect effects-after]
   {:selection/type :player-target
+   :selection/lifecycle :finalized
    :selection/player-id player-id
    :selection/selected #{}
    :selection/select-count 1
@@ -178,31 +179,12 @@
         target-effect (:selection/target-effect selection)
         remaining-effects (vec (or (:selection/remaining-effects selection) []))
         player-id (:selection/player-id selection)
-        source-type (:selection/source-type selection)
-        spell-id (:selection/spell-id selection)
         ;; Replace :any-player with selected target
         resolved-effect (assoc target-effect :effect/target selected-target)
         db-after-effect (effects/execute-effect game-db player-id resolved-effect)
-        ;; Execute remaining effects via reduce-effects — automatically detects
-        ;; interactive effects via tagged return values from execute-effect-impl
+        ;; Execute remaining effects — finalized lifecycle means framework won't re-apply
         result (effects/reduce-effects db-after-effect player-id remaining-effects)]
-    (if (:needs-selection result)
-      ;; Chain to next selection (e.g., discard after draw)
-      (let [sel-effect (:needs-selection result)
-            next-selection (when (= :player (:effect/selection sel-effect))
-                             (cond-> {:selection/type :discard
-                                      :selection/card-source :hand
-                                      :selection/player-id selected-target
-                                      :selection/select-count (:effect/count sel-effect)
-                                      :selection/selected #{}
-                                      :selection/source-type source-type
-                                      :selection/remaining-effects (vec (:remaining-effects result))}
-                               spell-id (assoc :selection/spell-id spell-id)
-                               (:selection/stack-item-eid selection)
-                               (assoc :selection/stack-item-eid (:selection/stack-item-eid selection))))]
-        {:db (:db result) :pending-selection next-selection})
-      ;; No more selections - all remaining executed (wrapper will handle cleanup)
-      {:db (:db result)})))
+    {:db (:db result)}))
 
 
 (defmethod core/build-chain-selection :cast-time-targeting

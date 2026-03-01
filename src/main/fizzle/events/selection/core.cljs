@@ -27,10 +27,7 @@
 
    Returns {:db game-db}. Lifecycle behavior (standard, finalized, chaining)
    is declared by builders via :selection/lifecycle on the selection map, not
-   signaled by executor return shape.
-
-   Legacy return shapes (:pending-selection, :finalized?, :clear-selected-card?)
-   are still supported as backward compat when :selection/lifecycle is absent."
+   signaled by executor return shape."
   (fn [_game-db selection] (:selection/type selection)))
 
 
@@ -195,7 +192,7 @@
    1. Gets game-db and selection from app-db
    2. Reads :selection/on-complete continuation BEFORE dissoc
    3. Calls execute-confirmed-selection multimethod
-   4. Routes based on :selection/lifecycle (or legacy return-shape inspection)
+   4. Routes based on :selection/lifecycle
    5. Applies continuation (if present) after selection is cleared
 
    Lifecycle values (:selection/lifecycle on selection map):
@@ -203,37 +200,18 @@
      :finalized — no remaining-effects, selection cleared
      :chaining  — calls build-chain-selection for next selection
 
-   When :selection/lifecycle is absent, falls back to legacy return-shape
-   inspection for backward compatibility.
-
    Returns updated app-db."
   [app-db]
   (let [selection (:game/pending-selection app-db)
         on-complete (:selection/on-complete selection)
         game-db (:game/db app-db)
         result (execute-confirmed-selection game-db selection)
-        lifecycle (:selection/lifecycle selection)]
-    (if lifecycle
-      ;; New path: lifecycle declared by builder
-      (case lifecycle
-        :chaining (chaining-path app-db result selection on-complete)
-        :finalized (finalized-path app-db result on-complete
-                                   (:selection/clear-selected-card? selection))
-        :standard (standard-path app-db result selection on-complete))
-      ;; Legacy path: inspect executor return shape
-      (cond
-        (:pending-selection result)
-        (let [chained-sel (cond-> (:pending-selection result)
-                            on-complete (assoc :selection/on-complete on-complete))]
-          (-> app-db
-              (assoc :game/db (:db result))
-              (assoc :game/pending-selection chained-sel)))
-
-        (:finalized? result)
-        (finalized-path app-db result on-complete (:clear-selected-card? result))
-
-        :else
-        (standard-path app-db result selection on-complete)))))
+        lifecycle (or (:selection/lifecycle selection) :standard)]
+    (case lifecycle
+      :chaining (chaining-path app-db result selection on-complete)
+      :finalized (finalized-path app-db result on-complete
+                                 (:selection/clear-selected-card? selection))
+      :standard (standard-path app-db result selection on-complete))))
 
 
 ;; =====================================================
