@@ -25,10 +25,12 @@
      game-db - Datascript database
      selection - Selection state map
 
-   Returns one of:
-     {:db game-db} — standard, wrapper handles remaining-effects + cleanup
-     {:db game-db :pending-selection next-sel} — chain to next selection
-     {:db game-db :finalized? true} — fully handled (pre-cast, ability)"
+   Returns {:db game-db}. Lifecycle behavior (standard, finalized, chaining)
+   is declared by builders via :selection/lifecycle on the selection map, not
+   signaled by executor return shape.
+
+   Legacy return shapes (:pending-selection, :finalized?, :clear-selected-card?)
+   are still supported as backward compat when :selection/lifecycle is absent."
   (fn [_game-db selection] (:selection/type selection)))
 
 
@@ -79,6 +81,21 @@
 
 
 ;; =====================================================
+;; Chain Selection Protocol
+;; =====================================================
+
+(defmulti build-chain-selection
+  "Build the next selection for a chaining lifecycle.
+   Dispatches on :selection/type of the completed selection.
+   Returns next selection map, or nil for conditional chaining
+   (no chain needed, fall through to standard behavior)."
+  (fn [_db selection] (:selection/type selection)))
+
+
+(defmethod build-chain-selection :default [_db _selection] nil)
+
+
+;; =====================================================
 ;; Stack-Item Cleanup Helper
 ;; =====================================================
 
@@ -126,54 +143,97 @@
 ;; Confirm Selection Wrapper
 ;; =====================================================
 
+(defn- standard-path
+  "Standard lifecycle: execute remaining-effects and cleanup source."
+  [app-db result selection on-complete]
+  (let [remaining-effects (:selection/remaining-effects selection)
+        player-id (:selection/player-id selection)
+        db-after-remaining (reduce (fn [d effect]
+                                     (effects/execute-effect d player-id effect))
+                                   (:db result)
+                                   (or remaining-effects []))
+        db-final (cleanup-selection-source db-after-remaining selection)
+        updated (-> app-db
+                    (assoc :game/db db-final)
+                    (dissoc :game/pending-selection))]
+    (if on-complete
+      (apply-continuation on-complete updated)
+      updated)))
+
+
+(defn- finalized-path
+  "Finalized lifecycle: no remaining-effects, clear selection, optionally clear
+   selected-card. clear-selected-card? comes from the selection map when lifecycle
+   is declared, or from executor return for legacy path."
+  [app-db result on-complete clear-selected-card?]
+  (let [updated (cond-> app-db
+                  true (assoc :game/db (:db result))
+                  true (dissoc :game/pending-selection)
+                  clear-selected-card? (dissoc :game/selected-card))]
+    (if on-complete
+      (apply-continuation on-complete updated)
+      updated)))
+
+
+(defn- chaining-path
+  "Chaining lifecycle: call build-chain-selection. If it returns a selection,
+   chain to it. If nil, fall through to standard path."
+  [app-db result selection on-complete]
+  (let [next-sel (build-chain-selection (:db result) selection)]
+    (if next-sel
+      (let [chained-sel (cond-> next-sel
+                          on-complete (assoc :selection/on-complete on-complete))]
+        (-> app-db
+            (assoc :game/db (:db result))
+            (assoc :game/pending-selection chained-sel)))
+      ;; nil = conditional chaining, fall through to standard
+      (standard-path app-db result selection on-complete))))
+
+
 (defn confirm-selection-impl
   "Shared wrapper for all selection confirmations.
    1. Gets game-db and selection from app-db
    2. Reads :selection/on-complete continuation BEFORE dissoc
    3. Calls execute-confirmed-selection multimethod
-   4. Handles remaining-effects, cleanup, and chaining based on result
+   4. Routes based on :selection/lifecycle (or legacy return-shape inspection)
    5. Applies continuation (if present) after selection is cleared
+
+   Lifecycle values (:selection/lifecycle on selection map):
+     :standard  — remaining-effects applied, source cleaned up (default)
+     :finalized — no remaining-effects, selection cleared
+     :chaining  — calls build-chain-selection for next selection
+
+   When :selection/lifecycle is absent, falls back to legacy return-shape
+   inspection for backward compatibility.
 
    Returns updated app-db."
   [app-db]
   (let [selection (:game/pending-selection app-db)
         on-complete (:selection/on-complete selection)
         game-db (:game/db app-db)
-        result (execute-confirmed-selection game-db selection)]
-    (cond
-      ;; Chain to next selection — propagate on-complete to chained selection
-      (:pending-selection result)
-      (let [chained-sel (cond-> (:pending-selection result)
-                          on-complete (assoc :selection/on-complete on-complete))]
-        (-> app-db
-            (assoc :game/db (:db result))
-            (assoc :game/pending-selection chained-sel)))
+        result (execute-confirmed-selection game-db selection)
+        lifecycle (:selection/lifecycle selection)]
+    (if lifecycle
+      ;; New path: lifecycle declared by builder
+      (case lifecycle
+        :chaining (chaining-path app-db result selection on-complete)
+        :finalized (finalized-path app-db result on-complete
+                                   (:selection/clear-selected-card? selection))
+        :standard (standard-path app-db result selection on-complete))
+      ;; Legacy path: inspect executor return shape
+      (cond
+        (:pending-selection result)
+        (let [chained-sel (cond-> (:pending-selection result)
+                            on-complete (assoc :selection/on-complete on-complete))]
+          (-> app-db
+              (assoc :game/db (:db result))
+              (assoc :game/pending-selection chained-sel)))
 
-      ;; Fully handled (pre-cast, ability, pile-choice, scry, discard with cleanup?)
-      (:finalized? result)
-      (let [updated (cond-> app-db
-                      true (assoc :game/db (:db result))
-                      true (dissoc :game/pending-selection)
-                      (:clear-selected-card? result) (dissoc :game/selected-card))]
-        (if on-complete
-          (apply-continuation on-complete updated)
-          updated))
+        (:finalized? result)
+        (finalized-path app-db result on-complete (:clear-selected-card? result))
 
-      ;; Standard: execute remaining-effects and cleanup
-      :else
-      (let [remaining-effects (:selection/remaining-effects selection)
-            player-id (:selection/player-id selection)
-            db-after-remaining (reduce (fn [d effect]
-                                         (effects/execute-effect d player-id effect))
-                                       (:db result)
-                                       (or remaining-effects []))
-            db-final (cleanup-selection-source db-after-remaining selection)
-            updated (-> app-db
-                        (assoc :game/db db-final)
-                        (dissoc :game/pending-selection))]
-        (if on-complete
-          (apply-continuation on-complete updated)
-          updated)))))
+        :else
+        (standard-path app-db result selection on-complete)))))
 
 
 ;; =====================================================
