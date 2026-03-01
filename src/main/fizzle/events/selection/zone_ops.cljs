@@ -23,32 +23,6 @@
 ;; Selection Builders
 ;; =====================================================
 
-(defn build-graveyard-selection
-  "Build pending selection state for returning cards from graveyard.
-   Unlike tutor (hidden zone), graveyard is public - no fail-to-find option.
-   Player can select 0 to :effect/count cards."
-  [game-db player-id object-id effect effects-after]
-  (let [target (get effect :effect/target player-id)
-        target-player (cond
-                        (= target :opponent) (queries/get-opponent-id game-db player-id)
-                        (= target :self) player-id
-                        :else target)
-        gy-cards (or (queries/get-objects-in-zone game-db target-player :graveyard) [])
-        candidate-ids (set (map :object/id gy-cards))]
-    {:selection/type :graveyard-return
-     :selection/zone :graveyard
-     :selection/card-source :zone
-     :selection/select-count (:effect/count effect)
-     :selection/min-count 0
-     :selection/player-id target-player
-     :selection/selected #{}
-     :selection/spell-id object-id
-     :selection/remaining-effects effects-after
-     :selection/candidate-ids candidate-ids
-     :selection/validation :at-most
-     :selection/auto-confirm? false}))
-
-
 (defn build-hand-reveal-discard-selection
   "Build pending selection state for a hand-reveal discard effect.
    Shows the FULL hand of the target player (all cards visible) but only
@@ -80,11 +54,6 @@
 ;; Builder Multimethod Registrations
 ;; =====================================================
 
-(defmethod core/build-selection-for-effect :return-from-graveyard
-  [db player-id object-id effect remaining]
-  (build-graveyard-selection db player-id object-id effect remaining))
-
-
 (defmethod core/build-selection-for-effect :discard-from-revealed-hand
   [db player-id object-id effect remaining]
   (build-hand-reveal-discard-selection db player-id object-id effect remaining))
@@ -109,15 +78,6 @@
         {:db db-final})
       ;; Standard path: wrapper handles remaining-effects
       {:db db-after-discard})))
-
-
-(defmethod core/execute-confirmed-selection :graveyard-return
-  [game-db selection]
-  (let [selected (:selection/selected selection)]
-    {:db (reduce (fn [gdb obj-id]
-                   (zones/move-to-zone gdb obj-id :hand))
-                 game-db
-                 selected)}))
 
 
 (defmethod core/execute-confirmed-selection :hand-reveal-discard

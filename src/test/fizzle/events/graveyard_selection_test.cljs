@@ -5,16 +5,16 @@
    the selection system creates :selection/type :graveyard-return state for the UI.
 
    Tests verify:
-   - build-graveyard-selection creates correct selection state structure
+   - build-selection-for-effect :return-from-graveyard creates correct selection state
    - Edge cases: empty graveyard, target resolution (:self/:opponent)
-   - confirm-graveyard-selection validates and moves cards correctly
    - Confirm allows 0 to max-count selection (not exact count required)"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
-    [fizzle.events.selection.zone-ops :as zone-ops]))
+    [fizzle.events.selection.core :as core]
+    [fizzle.events.selection.zone-ops]))
 
 
 ;; === Test helpers ===
@@ -56,24 +56,18 @@
     [@conn @object-ids]))
 
 
-(defn count-zone
-  "Count objects in a zone for a player."
-  [db player-id zone]
-  (count (q/get-objects-in-zone db player-id zone)))
-
-
-;; === build-graveyard-selection tests ===
+;; === build-selection-for-effect :return-from-graveyard tests ===
 
 (deftest test-build-graveyard-selection-creates-correct-state
   ;; Bug caught: Selection state missing required fields
-  (testing "build-graveyard-selection creates correct selection state structure"
+  (testing "build-selection-for-effect :return-from-graveyard creates correct selection state"
     (let [[db gy-ids] (add-graveyard-cards (init-game-state) :player-1 3)
           effect {:effect/type :return-from-graveyard
                   :effect/count 3
                   :effect/selection :player}
           spell-id (random-uuid)
           remaining-effects [{:effect/type :draw :effect/amount 1}]
-          result (zone-ops/build-graveyard-selection db :player-1 spell-id effect remaining-effects)]
+          result (core/build-selection-for-effect db :player-1 spell-id effect remaining-effects)]
       ;; Selection type must be :graveyard-return (distinct from :tutor, :discard)
       (is (= :graveyard-return (:selection/type result))
           "Selection type must be :graveyard-return")
@@ -105,12 +99,12 @@
 
 (deftest test-build-graveyard-selection-empty-graveyard
   ;; Bug caught: Nil pointer or crash when graveyard empty
-  (testing "build-graveyard-selection with empty graveyard returns valid state"
+  (testing "build-selection-for-effect :return-from-graveyard with empty graveyard returns valid state"
     (let [db (init-game-state) ; no graveyard cards
           effect {:effect/type :return-from-graveyard
                   :effect/count 3
                   :effect/selection :player}
-          result (zone-ops/build-graveyard-selection db :player-1 (random-uuid) effect [])]
+          result (core/build-selection-for-effect db :player-1 (random-uuid) effect [])]
       ;; Candidate IDs should be empty set (not nil)
       (is (= #{} (:selection/candidate-ids result))
           "Candidate IDs must be empty set, not nil")
@@ -121,7 +115,7 @@
 
 (deftest test-build-graveyard-selection-resolves-opponent-target
   ;; Bug caught: :opponent keyword not resolved to actual player-id
-  (testing "build-graveyard-selection resolves :opponent target correctly"
+  (testing "build-selection-for-effect :return-from-graveyard resolves :opponent target correctly"
     (let [db (-> (init-game-state)
                  (add-opponent))
           [db opp-ids] (add-graveyard-cards db :player-2 4)
@@ -130,7 +124,7 @@
                   :effect/selection :player
                   :effect/target :opponent}
           ;; Player-1 casts, targets opponent
-          result (zone-ops/build-graveyard-selection db :player-1 (random-uuid) effect [])]
+          result (core/build-selection-for-effect db :player-1 (random-uuid) effect [])]
       ;; Player ID should be opponent's player-id, not :opponent keyword
       (is (= :player-2 (:selection/player-id result))
           "Player ID must be resolved to :player-2, not :opponent keyword")
@@ -141,13 +135,13 @@
 
 (deftest test-build-graveyard-selection-resolves-self-target
   ;; Bug caught: :self keyword passed directly to queries
-  (testing "build-graveyard-selection resolves :self target correctly"
+  (testing "build-selection-for-effect :return-from-graveyard resolves :self target correctly"
     (let [[db gy-ids] (add-graveyard-cards (init-game-state) :player-1 2)
           effect {:effect/type :return-from-graveyard
                   :effect/count 2
                   :effect/selection :player
                   :effect/target :self}
-          result (zone-ops/build-graveyard-selection db :player-1 (random-uuid) effect [])]
+          result (core/build-selection-for-effect db :player-1 (random-uuid) effect [])]
       ;; Player ID should be caster's player-id, not :self keyword
       (is (= :player-1 (:selection/player-id result))
           "Player ID must be resolved to :player-1, not :self keyword")
@@ -158,14 +152,14 @@
 
 (deftest test-build-graveyard-selection-defaults-target-to-caster
   ;; Bug caught: Missing target causes crash or wrong player
-  (testing "build-graveyard-selection defaults target to caster when not specified"
+  (testing "build-selection-for-effect :return-from-graveyard defaults target to caster when not specified"
     (let [[db gy-ids] (add-graveyard-cards (init-game-state) :player-1 2)
           effect {:effect/type :return-from-graveyard
                   :effect/count 2
                   :effect/selection :player
                   ;; No :effect/target - should default to caster
                   }
-          result (zone-ops/build-graveyard-selection db :player-1 (random-uuid) effect [])]
+          result (core/build-selection-for-effect db :player-1 (random-uuid) effect [])]
       (is (= :player-1 (:selection/player-id result))
           "Player ID must default to caster when target not specified")
       (is (= (set gy-ids) (:selection/candidate-ids result))

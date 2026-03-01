@@ -30,9 +30,16 @@
 (def selection-hierarchy
   "Hierarchy mapping effect types to interaction patterns.
    Used by build-selection-for-effect, execute-confirmed-selection,
-   and build-chain-selection for dispatch."
+   and build-chain-selection for dispatch.
+
+   Note: build-selection-for-effect dispatches on :effect/type, while
+   execute-confirmed-selection dispatches on :selection/type. These may
+   differ (e.g., :return-from-graveyard effect -> :graveyard-return selection).
+   Both sides must derive from :zone-pick for the hierarchy to work."
   (-> (make-hierarchy)
-      (derive :discard :zone-pick)))
+      (derive :discard :zone-pick)
+      (derive :return-from-graveyard :zone-pick)
+      (derive :graveyard-return :zone-pick)))
 
 
 ;; =====================================================
@@ -82,21 +89,66 @@
 ;; Generic Zone-Pick Builder
 ;; =====================================================
 
+(def ^:private zone-pick-defaults
+  "Default configuration for zone-pick selections."
+  {:source-zone :hand
+   :target-zone :graveyard
+   :card-source :hand
+   :validation :exact})
+
+
+(def ^:private zone-pick-config
+  "Per-effect-type overrides for zone-pick builder.
+   Keys not present fall through to zone-pick-defaults.
+   :selection-type overrides :selection/type when effect type differs
+   from the historical selection type (e.g., :return-from-graveyard
+   effect produces :graveyard-return selection type)."
+  {:return-from-graveyard {:selection-type :graveyard-return
+                           :source-zone :graveyard
+                           :target-zone :hand
+                           :card-source :zone
+                           :validation :at-most
+                           :min-count 0}})
+
+
+(defn- resolve-target-player
+  "Resolve symbolic :effect/target to a concrete player-id.
+   :self -> player-id, :opponent -> looked up, nil -> player-id."
+  [db player-id effect]
+  (let [target (get effect :effect/target player-id)]
+    (cond
+      (= target :opponent) (queries/get-opponent-id db player-id)
+      (= target :self) player-id
+      :else target)))
+
+
 (defmethod build-selection-for-effect :zone-pick
-  [_db player-id object-id effect remaining-effects]
-  {:selection/type (:effect/type effect)
-   :selection/pattern :zone-pick
-   :selection/zone :hand
-   :selection/card-source :hand
-   :selection/target-zone :graveyard
-   :selection/select-count (or (:effect/count effect)
-                               (:effect/select-count effect))
-   :selection/player-id player-id
-   :selection/selected #{}
-   :selection/spell-id object-id
-   :selection/remaining-effects remaining-effects
-   :selection/validation :exact
-   :selection/auto-confirm? false})
+  [db player-id object-id effect remaining-effects]
+  (let [effect-type (:effect/type effect)
+        config (merge zone-pick-defaults (get zone-pick-config effect-type))
+        sel-type (or (:selection-type config) effect-type)
+        target-player (resolve-target-player db player-id effect)
+        source-zone (:source-zone config)
+        candidates (when (= :zone (:card-source config))
+                     (let [zone-cards (or (queries/get-objects-in-zone
+                                            db target-player source-zone)
+                                          [])]
+                       (set (map :object/id zone-cards))))]
+    (cond-> {:selection/type sel-type
+             :selection/pattern :zone-pick
+             :selection/zone source-zone
+             :selection/card-source (:card-source config)
+             :selection/target-zone (:target-zone config)
+             :selection/select-count (or (:effect/count effect)
+                                         (:effect/select-count effect))
+             :selection/player-id target-player
+             :selection/selected #{}
+             :selection/spell-id object-id
+             :selection/remaining-effects remaining-effects
+             :selection/validation (:validation config)
+             :selection/auto-confirm? false}
+      candidates (assoc :selection/candidate-ids candidates)
+      (:min-count config) (assoc :selection/min-count (:min-count config)))))
 
 
 ;; =====================================================

@@ -2,13 +2,16 @@
   "Tests for selection hierarchy and generic zone-pick builder/executor.
    Covers:
    - Hierarchy routing: derive declarations route effect types to patterns
-   - Generic zone-pick builder: output shape for :discard effect
+   - Generic zone-pick builder: output shape for :discard and :graveyard-return
    - Generic zone-pick executor: moves cards to target zone
    - Hierarchy precedence: custom executors take precedence over generic
-   - Cleanup discard regression: cleanup path still works after migration"
+   - Zone-pick config: per-type zone/validation overrides
+   - Cleanup discard regression: cleanup path still works after migration
+   - Integration tests: Careful Study, Ill-Gotten Gains"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [fizzle.db.queries :as q]
+    [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.events.game :as game]
     [fizzle.events.selection.core :as core]
@@ -188,3 +191,175 @@
             "Hand should be empty after discarding 2 cards")
         (is (= 3 (th/get-zone-count db :graveyard :player-1))
             "Graveyard should have 2 discarded + Careful Study")))))
+
+
+;; =====================================================
+;; Zone-Pick Builder: :graveyard-return
+;; =====================================================
+
+(deftest test-zone-pick-builder-graveyard-return-shape
+  (testing "Generic zone-pick builder produces correct selection for :graveyard-return"
+    (let [db (th/create-test-db)
+          [db gy1] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
+          [db gy2] (th/add-card-to-zone db :cabal-ritual :graveyard :player-1)
+          effect {:effect/type :return-from-graveyard
+                  :effect/count 2
+                  :effect/selection :player}
+          sel (core/build-selection-for-effect db :player-1 :spell-1 effect [:remaining])]
+      (is (= :graveyard-return (:selection/type sel))
+          "selection/type should be :graveyard-return (mapped from :return-from-graveyard effect)")
+      (is (= :zone-pick (:selection/pattern sel))
+          "selection/pattern should be :zone-pick")
+      (is (= :graveyard (:selection/zone sel))
+          "zone should be :graveyard (not default :hand)")
+      (is (= :hand (:selection/target-zone sel))
+          "target-zone should be :hand (graveyard -> hand)")
+      (is (= :at-most (:selection/validation sel))
+          "validation should be :at-most (can pick 0 to N)")
+      (is (= 0 (:selection/min-count sel))
+          "min-count should be 0")
+      (is (= 2 (:selection/select-count sel))
+          "select-count should match :effect/count")
+      (is (= #{gy1 gy2} (:selection/candidate-ids sel))
+          "candidate-ids should contain graveyard card object IDs")
+      (is (= :player-1 (:selection/player-id sel))
+          "player-id should be the target player")
+      (is (= :spell-1 (:selection/spell-id sel))
+          "spell-id should be passed through")
+      (is (= [:remaining] (:selection/remaining-effects sel))
+          "remaining-effects should be passed through")
+      (is (= #{} (:selection/selected sel))
+          "selected should start empty")
+      (is (false? (:selection/auto-confirm? sel))
+          "auto-confirm should be false"))))
+
+
+(deftest test-zone-pick-builder-graveyard-return-empty-graveyard
+  (testing "Generic zone-pick builder with empty graveyard returns empty candidate-ids"
+    (let [db (th/create-test-db)
+          effect {:effect/type :return-from-graveyard
+                  :effect/count 3
+                  :effect/selection :player}
+          sel (core/build-selection-for-effect db :player-1 :spell-1 effect [])]
+      (is (= #{} (:selection/candidate-ids sel))
+          "candidate-ids should be empty set, not nil")
+      (is (= :graveyard-return (:selection/type sel))
+          "selection/type should still be :graveyard-return"))))
+
+
+(deftest test-zone-pick-builder-graveyard-return-opponent-target
+  (testing "Generic zone-pick builder resolves :opponent target for :graveyard-return"
+    (let [db (-> (th/create-test-db) (th/add-opponent))
+          [db opp-gy1] (th/add-card-to-zone db :dark-ritual :graveyard :player-2)
+          [db opp-gy2] (th/add-card-to-zone db :cabal-ritual :graveyard :player-2)
+          effect {:effect/type :return-from-graveyard
+                  :effect/count 2
+                  :effect/selection :player
+                  :effect/target :opponent}
+          sel (core/build-selection-for-effect db :player-1 :spell-1 effect [])]
+      (is (= :player-2 (:selection/player-id sel))
+          "player-id should be resolved to opponent :player-2")
+      (is (= #{opp-gy1 opp-gy2} (:selection/candidate-ids sel))
+          "candidate-ids should be from opponent's graveyard"))))
+
+
+(deftest test-zone-pick-builder-graveyard-return-self-target
+  (testing "Generic zone-pick builder resolves :self target for :graveyard-return"
+    (let [db (th/create-test-db)
+          [db gy1] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
+          effect {:effect/type :return-from-graveyard
+                  :effect/count 1
+                  :effect/selection :player
+                  :effect/target :self}
+          sel (core/build-selection-for-effect db :player-1 :spell-1 effect [])]
+      (is (= :player-1 (:selection/player-id sel))
+          "player-id should be resolved to caster :player-1")
+      (is (= #{gy1} (:selection/candidate-ids sel))
+          "candidate-ids should be from caster's graveyard"))))
+
+
+(deftest test-zone-pick-builder-graveyard-return-default-target
+  (testing "Generic zone-pick builder defaults target to caster when not specified"
+    (let [db (th/create-test-db)
+          [db gy1] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
+          effect {:effect/type :return-from-graveyard
+                  :effect/count 1
+                  :effect/selection :player}
+          sel (core/build-selection-for-effect db :player-1 :spell-1 effect [])]
+      (is (= :player-1 (:selection/player-id sel))
+          "player-id should default to caster")
+      (is (= #{gy1} (:selection/candidate-ids sel))
+          "candidate-ids should be from caster's graveyard"))))
+
+
+;; =====================================================
+;; Zone-Pick Executor: :graveyard-return via generic
+;; =====================================================
+
+(deftest test-zone-pick-executor-graveyard-to-hand
+  (testing "Generic zone-pick executor moves selected cards from graveyard to hand"
+    (let [db (th/create-test-db)
+          [db id1] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
+          [db id2] (th/add-card-to-zone db :cabal-ritual :graveyard :player-1)
+          ;; :graveyard-return should dispatch to generic :zone-pick executor
+          ;; since we removed the custom executor
+          selection {:selection/type :graveyard-return
+                     :selection/selected #{id1 id2}
+                     :selection/target-zone :hand}
+          result (core/execute-confirmed-selection db selection)]
+      (is (= :hand (th/get-object-zone (:db result) id1))
+          "First card should be moved to hand")
+      (is (= :hand (th/get-object-zone (:db result) id2))
+          "Second card should be moved to hand"))))
+
+
+;; =====================================================
+;; Hierarchy Routing: :graveyard-return
+;; =====================================================
+
+(deftest test-graveyard-return-routes-to-zone-pick-builder
+  (testing ":graveyard-return routes to zone-pick builder via hierarchy"
+    (let [db (th/create-test-db)
+          effect {:effect/type :return-from-graveyard
+                  :effect/count 1
+                  :effect/selection :player}
+          sel (core/build-selection-for-effect db :player-1 :spell-1 effect [])]
+      (is (= :zone-pick (:selection/pattern sel))
+          ":graveyard-return should route to zone-pick builder"))))
+
+
+;; =====================================================
+;; Integration: Ill-Gotten Gains graveyard-return
+;; =====================================================
+
+(deftest test-ill-gotten-gains-graveyard-return-via-hierarchy
+  (testing "Ill-Gotten Gains: full production path with graveyard-return through hierarchy"
+    (let [db (-> (th/create-test-db) (th/add-opponent))
+          [db igg-id] (th/add-card-to-zone db :ill-gotten-gains :hand :player-1)
+          ;; Add 2 cards to caster's graveyard (pre-existing)
+          [db gy1] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
+          [db gy2] (th/add-card-to-zone db :cabal-ritual :graveyard :player-1)
+          db (mana/add-mana db :player-1 {:black 4})
+          db-cast (rules/cast-spell db :player-1 igg-id)
+          result (game/resolve-one-item db-cast)
+          sel (:pending-selection result)]
+      ;; Should have graveyard-return selection from generic builder
+      (is (= :graveyard-return (:selection/type sel))
+          "Selection type should be :graveyard-return")
+      (is (= :zone-pick (:selection/pattern sel))
+          "Selection pattern should be :zone-pick from generic builder")
+      (is (= 3 (:selection/select-count sel))
+          "Max selection count should be 3")
+      (is (= 0 (:selection/min-count sel))
+          "Min selection count should be 0")
+      ;; Pre-existing GY cards should be candidates
+      (is (contains? (:selection/candidate-ids sel) gy1)
+          "Pre-existing GY card 1 should be candidate")
+      (is (contains? (:selection/candidate-ids sel) gy2)
+          "Pre-existing GY card 2 should be candidate")
+      ;; Confirm selection: return 2 cards from graveyard to hand
+      (let [{:keys [db]} (th/confirm-selection (:db result) sel #{gy1 gy2})]
+        (is (= :hand (th/get-object-zone db gy1))
+            "Card 1 should be returned to hand")
+        (is (= :hand (th/get-object-zone db gy2))
+            "Card 2 should be returned to hand")))))
