@@ -142,6 +142,7 @@
           selection (storm/build-storm-split-selection db-with-storm :player-1 storm-si)]
       (is (some? selection) "Selection should not be nil")
       (is (= :storm-split (:selection/type selection)))
+      (is (= :finalized (:selection/lifecycle selection)))
       (is (= 3 (:selection/copy-count selection)))
       (is (= source-id (:selection/source-object-id selection)))
       (is (= :player-1 (:selection/controller-id selection)))
@@ -304,7 +305,6 @@
           result (core/execute-confirmed-selection db-with-storm selection)
           db-after (:db result)]
       (is (some? db-after))
-      (is (:finalized? result) "Should be finalized (storm-split handles own cleanup)")
       (let [stack-objects (q/get-objects-in-zone db-after :player-1 :stack)
             copies (filter :object/is-copy stack-objects)]
         (is (= 3 (count copies))

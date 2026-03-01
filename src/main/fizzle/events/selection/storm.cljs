@@ -43,6 +43,7 @@
             valid-targets (filterv some? [opponent-id player-id])]
         (when (and (pos? copy-count) (seq valid-targets))
           {:selection/type :storm-split
+           :selection/lifecycle :finalized
            :selection/copy-count copy-count
            :selection/valid-targets valid-targets
            :selection/allocation (assoc (zipmap valid-targets (repeat 0))
@@ -84,7 +85,7 @@
                                  d))
                              game-db allocation)
             db-final (stack/remove-stack-item db-with-copies si-eid)]
-        {:db db-final :finalized? true}))))
+        {:db db-final}))))
 
 
 ;; =====================================================
