@@ -199,4 +199,4 @@
                      :selection/spell-id (random-uuid)
                      :selection/remaining-effects []}
           result (selection-core/execute-confirmed-selection db selection)]
-      (is (:finalized? result)))))
+      (is (some? (:db result))))))

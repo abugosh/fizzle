@@ -78,6 +78,7 @@
                         candidates
                         #{})]
     {:selection/type :pile-choice
+     :selection/lifecycle :finalized
      :selection/card-source :candidates
      :selection/candidates candidates
      :selection/hand-count hand-count
@@ -115,6 +116,7 @@
       (let [library-cards (queries/get-top-n-library game-db player-id amount)]
         (when (seq library-cards)
           {:selection/type :scry
+           :selection/lifecycle :finalized
            :selection/player-id player-id
            :selection/cards (vec library-cards)
            :selection/top-pile []
@@ -263,6 +265,7 @@
         (when (seq library-cards)
           (cond->
             {:selection/type :peek-and-reorder
+             :selection/lifecycle :finalized
              :selection/candidates (set library-cards)
              :selection/ordered []
              :selection/player-id player-id
@@ -644,7 +647,7 @@
                         (zones/move-to-zone db-after-remaining spell-id :graveyard)
                         db-after-remaining)
         db-final (core/remove-spell-stack-item db-after-move spell-id)]
-    {:db db-final :finalized? true}))
+    {:db db-final}))
 
 
 (defmethod core/execute-confirmed-selection :pile-choice
@@ -666,7 +669,7 @@
                           (zones/move-to-zone db-after-effects spell-id destination))
                         db-after-effects)
         db-final (core/remove-spell-stack-item db-after-move spell-id)]
-    {:db db-final :finalized? true}))
+    {:db db-final}))
 
 
 (defmethod core/execute-confirmed-selection :scry
@@ -681,7 +684,7 @@
                                    (or remaining-effects []))
         db-after-move (zones/move-to-zone db-after-remaining spell-id :graveyard)
         db-final (core/remove-spell-stack-item db-after-move spell-id)]
-    {:db db-final :finalized? true}))
+    {:db db-final}))
 
 
 ;; =====================================================
