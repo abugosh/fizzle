@@ -43,6 +43,7 @@
      :selection/spell-id object-id
      :selection/remaining-effects effects-after
      :selection/type :tutor
+     :selection/lifecycle :chaining
      :selection/target-zone target-zone
      :selection/allow-fail-to-find? true  ; Always allow fail-to-find (anti-pattern: NO auto-select)
      :selection/candidates candidate-ids
@@ -162,6 +163,7 @@
             (cond->
               {:selection/zone :peek  ; Distinct from :library (tutor)
                :selection/type :peek-and-select
+               :selection/lifecycle :chaining
                :selection/card-source :candidates
                :selection/candidates candidate-ids
                :selection/select-count actual-select-count
@@ -583,20 +585,41 @@
 ;; Execute Confirmed Selection Defmethods
 ;; =====================================================
 
+(defmethod core/build-chain-selection :tutor
+  [_db selection]
+  (let [pile-choice (:selection/pile-choice selection)
+        selected (:selection/selected selection)]
+    (when (and pile-choice (seq selected))
+      (build-pile-choice-selection
+        selected pile-choice
+        (:selection/player-id selection)
+        (:selection/spell-id selection)
+        (:selection/remaining-effects selection)))))
+
+
 (defmethod core/execute-confirmed-selection :tutor
   [game-db selection]
-  (let [selected (:selection/selected selection)
-        pile-choice (:selection/pile-choice selection)
-        player-id (:selection/player-id selection)
-        spell-id (:selection/spell-id selection)
-        remaining-effects (:selection/remaining-effects selection)]
+  (let [pile-choice (:selection/pile-choice selection)
+        selected (:selection/selected selection)]
     (if (and pile-choice (seq selected))
-      ;; Chain to pile-choice phase
-      {:db game-db
-       :pending-selection (build-pile-choice-selection
-                            selected pile-choice player-id spell-id remaining-effects)}
-      ;; Normal tutor flow
+      ;; Pile-choice will handle card distribution — db unchanged
+      {:db game-db}
+      ;; Normal tutor flow — execute immediately
       {:db (execute-tutor-selection game-db selection)})))
+
+
+(defmethod core/build-chain-selection :peek-and-select
+  [_db selection]
+  (let [order-remainder? (:selection/order-remainder? selection)
+        selected (:selection/selected selection)
+        candidates (:selection/candidates selection)
+        remainder (set/difference candidates selected)]
+    (when (and order-remainder? (>= (count remainder) 2))
+      (build-order-bottom-selection
+        remainder
+        (:selection/player-id selection)
+        (:selection/spell-id selection)
+        (:selection/remaining-effects selection)))))
 
 
 (defmethod core/execute-confirmed-selection :peek-and-select
@@ -606,18 +629,12 @@
         candidates (:selection/candidates selection)
         remainder (set/difference candidates selected)]
     (if (and order-remainder? (>= (count remainder) 2))
-      ;; Chain to order-bottom for player-ordered placement
-      (let [selected-zone (or (:selection/selected-zone selection) :hand)
-            db-after-selected (reduce (fn [d card-id]
-                                        (zones/move-to-zone d card-id selected-zone))
-                                      game-db
-                                      selected)]
-        {:db db-after-selected
-         :pending-selection (build-order-bottom-selection
-                              remainder
-                              (:selection/player-id selection)
-                              (:selection/spell-id selection)
-                              (:selection/remaining-effects selection))})
+      ;; Order-bottom will handle remainder — only move selected to hand
+      (let [selected-zone (or (:selection/selected-zone selection) :hand)]
+        {:db (reduce (fn [d card-id]
+                       (zones/move-to-zone d card-id selected-zone))
+                     game-db
+                     selected)})
       ;; Standard path: execute immediately
       {:db (execute-peek-selection game-db selection)})))
 

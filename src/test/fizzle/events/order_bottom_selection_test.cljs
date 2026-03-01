@@ -357,6 +357,7 @@
                  (add-library-cards-with-ids :player-1 obj-ids))
           selected-id (first obj-ids)
           selection {:selection/type :peek-and-select
+                     :selection/lifecycle :chaining
                      :selection/selected #{selected-id}
                      :selection/candidates (set obj-ids)
                      :selection/selected-zone :hand
@@ -365,16 +366,17 @@
                      :selection/player-id :player-1
                      :selection/spell-id (random-uuid)
                      :selection/remaining-effects []}
-          result (core/execute-confirmed-selection db selection)]
-      (is (:pending-selection result)
+          ;; Executor moves selected to hand, chain builder produces order-bottom
+          result (core/execute-confirmed-selection db selection)
+          chain-sel (core/build-chain-selection (:db result) selection)]
+      (is (some? chain-sel)
           "Should chain to next selection")
-      (is (= :order-bottom (:selection/type (:pending-selection result)))
+      (is (= :order-bottom (:selection/type chain-sel))
           "Chained selection should be :order-bottom")
-      (let [order-sel (:pending-selection result)]
-        (is (= 2 (count (:selection/candidates order-sel)))
-            "Should have 2 remainder cards as candidates")
-        (is (not (contains? (:selection/candidates order-sel) selected-id))
-            "Selected card should not be in order-bottom candidates")))))
+      (is (= 2 (count (:selection/candidates chain-sel)))
+          "Should have 2 remainder cards as candidates")
+      (is (not (contains? (:selection/candidates chain-sel) selected-id))
+          "Selected card should not be in order-bottom candidates"))))
 
 
 (deftest test-peek-no-chain-when-flag-false

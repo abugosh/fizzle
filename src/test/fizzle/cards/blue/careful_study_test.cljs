@@ -260,6 +260,6 @@
         ;; Hand should be empty (discarded 2 cards)
         (is (= 0 (th/get-hand-count db :player-1))
             "Hand should be empty after discarding 2 cards")
-        ;; Graveyard should have 2 discarded cards
-        (is (= 2 (th/get-zone-count db :graveyard :player-1))
-            "Graveyard should have 2 discarded cards")))))
+        ;; Graveyard should have 3: 2 discarded cards + Careful Study itself
+        (is (= 3 (th/get-zone-count db :graveyard :player-1))
+            "Graveyard should have 2 discarded cards + spell")))))

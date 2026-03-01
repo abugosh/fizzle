@@ -294,10 +294,13 @@
 
 (defn confirm-selection
   "Confirms a pending selection with the given selected items.
+   Routes through confirm-selection-impl which handles lifecycle routing
+   (standard, finalized, chaining) based on builder-declared metadata.
    Returns {:db db} or {:db db :selection sel} if chaining."
   [db selection selected-items]
   (let [sel (assoc selection :selection/selected selected-items)
-        result (sel-core/execute-confirmed-selection db sel)]
-    (if-let [next-sel (:pending-selection result)]
-      {:db (:db result) :selection next-sel}
-      {:db (:db result)})))
+        app-db {:game/db db :game/pending-selection sel}
+        result (sel-core/confirm-selection-impl app-db)]
+    (if-let [next-sel (:game/pending-selection result)]
+      {:db (:game/db result) :selection next-sel}
+      {:db (:game/db result)})))
