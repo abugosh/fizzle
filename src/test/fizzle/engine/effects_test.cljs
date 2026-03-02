@@ -459,7 +459,8 @@
     (let [db (init-game-state) ; starts at 20 life
           effect {:effect/type :lose-life
                   :effect/amount 20}
-          db' (fx/execute-effect db :player-1 effect)]
+          db' (-> (fx/execute-effect db :player-1 effect)
+                  (sba/check-and-execute-sbas))]
       (is (= 0 (q/get-life-total db' :player-1)))
       (is (= :life-zero (get-loss-condition db'))))))
 
@@ -469,7 +470,8 @@
     (let [db (init-game-state) ; starts at 20 life
           effect {:effect/type :lose-life
                   :effect/amount 25}
-          db' (fx/execute-effect db :player-1 effect)]
+          db' (-> (fx/execute-effect db :player-1 effect)
+                  (sba/check-and-execute-sbas))]
       (is (= -5 (q/get-life-total db' :player-1)))
       (is (= :life-zero (get-loss-condition db'))))))
 
@@ -1479,7 +1481,8 @@
           effect {:effect/type :lose-life
                   :effect/amount 20
                   :effect/target :player-2}
-          db' (fx/execute-effect db :player-1 effect)]
+          db' (-> (fx/execute-effect db :player-1 effect)
+                  (sba/check-and-execute-sbas))]
       (is (= :life-zero (get-loss-condition db'))
           "Loss condition should be set")
       (is (= :player-1 (get-winner db'))
@@ -1523,7 +1526,8 @@
                  (add-opponent))
           effect {:effect/type :lose-life
                   :effect/amount 20}  ; targets self (player-1) by default
-          db' (fx/execute-effect db :player-1 effect)]
+          db' (-> (fx/execute-effect db :player-1 effect)
+                  (sba/check-and-execute-sbas))]
       (is (= :life-zero (get-loss-condition db'))
           "Loss condition should be set")
       (is (= :player-2 (get-winner db'))
@@ -1536,7 +1540,8 @@
     (let [db (init-game-state) ; no opponent in test init
           effect {:effect/type :lose-life
                   :effect/amount 20}
-          db' (fx/execute-effect db :player-1 effect)]
+          db' (-> (fx/execute-effect db :player-1 effect)
+                  (sba/check-and-execute-sbas))]
       (is (= :life-zero (get-loss-condition db'))
           "Loss condition should still be set")
       (is (nil? (get-winner db'))
@@ -1552,12 +1557,14 @@
           effect1 {:effect/type :lose-life
                    :effect/amount 20
                    :effect/target :player-2}
-          db' (fx/execute-effect db :player-1 effect1)
+          db' (-> (fx/execute-effect db :player-1 effect1)
+                  (sba/check-and-execute-sbas))
           ;; Second hit: reduce opponent to -5
           effect2 {:effect/type :lose-life
                    :effect/amount 5
                    :effect/target :player-2}
-          db'' (fx/execute-effect db' :player-1 effect2)]
+          db'' (-> (fx/execute-effect db' :player-1 effect2)
+                   (sba/check-and-execute-sbas))]
       (is (= :life-zero (get-loss-condition db''))
           "Loss condition should still be :life-zero")
       (is (= :player-1 (get-winner db''))
