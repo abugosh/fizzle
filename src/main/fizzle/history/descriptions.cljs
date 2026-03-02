@@ -86,32 +86,48 @@
       "Cast & Yield")))
 
 
+(defn- get-peek-result
+  "Get :game/peek-result from a game-db, if present.
+   Returns the card name string or nil."
+  [game-db]
+  (when game-db
+    (try
+      (:game/peek-result (queries/get-game-state game-db))
+      (catch :default _ nil))))
+
+
 (defn- describe-resolve-top
-  "Describe a resolve-top event using pre-game-db (stack item about to resolve)."
-  [pre-game-db]
-  (if-let [top (get-stack-top-info pre-game-db)]
-    (let [item-type (:stack-item/type top)]
-      (case item-type
-        (:spell :storm-copy)
-        (if-let [card-name (get-card-name pre-game-db (:stack-item/source top))]
-          (str "Resolve " card-name)
-          "Resolve top of stack")
+  "Describe a resolve-top event using pre-game-db (stack item about to resolve)
+   and game-db-after (post-resolution state with peek results etc.)."
+  [pre-game-db game-db-after]
+  (let [base-desc
+        (if-let [top (get-stack-top-info pre-game-db)]
+          (let [item-type (:stack-item/type top)]
+            (case item-type
+              (:spell :storm-copy)
+              (if-let [card-name (get-card-name pre-game-db (:stack-item/source top))]
+                (str "Resolve " card-name)
+                "Resolve top of stack")
 
-        :activated-ability
-        (if-let [card-name (get-card-name pre-game-db (:stack-item/source top))]
-          (str "Resolve " card-name " ability")
-          "Resolve top of stack")
+              :activated-ability
+              (if-let [card-name (get-card-name pre-game-db (:stack-item/source top))]
+                (str "Resolve " card-name " ability")
+                "Resolve top of stack")
 
-        :storm
-        (if-let [desc (:stack-item/description top)]
-          (str "Resolve " desc)
-          "Resolve top of stack")
+              :storm
+              (if-let [desc (:stack-item/description top)]
+                (str "Resolve " desc)
+                "Resolve top of stack")
 
-        ;; Triggers: :etb, :permanent-tapped, :land-entered
-        (if-let [card-name (get-card-name pre-game-db (:stack-item/source top))]
-          (str "Resolve " card-name " trigger")
-          "Resolve top of stack")))
-    "Resolve top of stack"))
+              ;; Triggers: :etb, :permanent-tapped, :land-entered
+              (if-let [card-name (get-card-name pre-game-db (:stack-item/source top))]
+                (str "Resolve " card-name " trigger")
+                "Resolve top of stack")))
+          "Resolve top of stack")
+        peek-result (get-peek-result game-db-after)]
+    (if peek-result
+      (str base-desc " (revealed " peek-result ")")
+      base-desc)))
 
 
 (defn- describe-advance-phase
@@ -174,6 +190,10 @@
                          :activated-ability (when card-name (str card-name " ability"))
                          :storm (:stack-item/description top)
                          card-name))))
+        peek-result (get-peek-result game-db-after)
+        resolved (if (and resolved peek-result)
+                   (str resolved " (revealed " peek-result ")")
+                   resolved)
         phase-desc (describe-phase-result pre-game-db game-db-after)]
     (cond
       (and resolved phase-desc) (str "Yield: " resolved " \u2192 " phase-desc)
@@ -284,7 +304,7 @@
      (describe-yield-all pre-game-db game-db-after)
 
      :fizzle.events.game/resolve-top
-     (describe-resolve-top pre-game-db)
+     (describe-resolve-top pre-game-db game-db-after)
 
      :fizzle.events.game/advance-phase
      (describe-advance-phase game-db-after)

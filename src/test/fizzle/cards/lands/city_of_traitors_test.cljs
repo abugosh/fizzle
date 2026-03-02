@@ -59,6 +59,31 @@
           "No trigger should fire when CoT enters (exclude-self filter)"))))
 
 
+;; === Opponent land entry tests (should NOT trigger) ===
+
+(deftest test-cot-does-not-sacrifice-when-opponent-plays-land
+  (testing "City of Traitors does NOT sacrifice when opponent plays a land"
+    (let [db (th/create-test-db {:land-plays 2})
+          db (th/add-opponent db)
+          [db cot-id] (th/add-card-to-zone db :city-of-traitors :hand :player-1)
+          ;; Play CoT
+          db (game/play-land db :player-1 cot-id)
+          _ (is (= :battlefield (:object/zone (q/get-object db cot-id)))
+                "Precondition: CoT on battlefield")
+          ;; Give opponent a land and play it
+          [db island-id] (th/add-card-to-zone db :island :hand :player-2)
+          ;; Give opponent land plays
+          opp-eid (q/get-player-eid db :player-2)
+          db (d/db-with db [[:db/add opp-eid :player/land-plays-left 1]])
+          db-after-opp-land (game/play-land db :player-2 island-id)]
+      ;; CoT should NOT trigger
+      (is (= 0 (count (q/get-all-stack-items db-after-opp-land)))
+          "CoT trigger should NOT fire when opponent plays a land")
+      ;; CoT should still be on battlefield
+      (is (= :battlefield (:object/zone (q/get-object db-after-opp-land cot-id)))
+          "CoT should remain on battlefield"))))
+
+
 ;; === Another land entry tests ===
 
 (deftest test-cot-sacrifices-when-another-land-enters

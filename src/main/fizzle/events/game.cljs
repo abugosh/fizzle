@@ -527,11 +527,22 @@
     {:db (:db result) :pending-selection sel}))
 
 
+(defn- clear-peek-result
+  "Clear any stale :game/peek-result from a previous resolution."
+  [db]
+  (let [game-state (queries/get-game-state db)]
+    (if-let [old-val (:game/peek-result game-state)]
+      (let [game-eid (d/q '[:find ?g . :where [?g :game/id _]] db)]
+        (d/db-with db [[:db/retract game-eid :game/peek-result old-val]]))
+      db)))
+
+
 (defn resolve-one-item
   "Resolve the topmost stack-item. Returns {:db} or {:db :pending-selection}.
    Controller identity comes from the stack-item itself — no player-id parameter."
   [game-db]
-  (let [top (stack/get-top-stack-item game-db)]
+  (let [game-db (clear-peek-result game-db)
+        top (stack/get-top-stack-item game-db)]
     (if-not top
       {:db game-db}
       (let [controller (:stack-item/controller top)

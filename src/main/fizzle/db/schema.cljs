@@ -70,6 +70,7 @@
    :game/passed         {:db/valueType :db.type/ref :db/cardinality :db.cardinality/many}  ; Players who have passed priority
    :game/auto-mode      {}  ; :resolving | :f6 | nil
    :game/human-player-id {}  ; :player-1 — explicit identity of the human player
+   :game/peek-result      {}  ; String, card name revealed by peek effect (ephemeral per resolution)
 
    ;; === Stack Items (unified stack representation) ===
    ;; Stack items represent anything on the stack awaiting resolution.

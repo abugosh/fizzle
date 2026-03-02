@@ -70,28 +70,46 @@
     [cleaned]))
 
 
+(defn- resolve-filter-values
+  "Resolve symbolic filter values at trigger registration time.
+   :self-controller is replaced with the controller's player-id keyword."
+  [db player-eid filter-map]
+  (into {}
+        (map (fn [[k v]]
+               (if (= v :self-controller)
+                 (let [player-id (d/q '[:find ?pid .
+                                        :in $ ?e
+                                        :where [?e :player/id ?pid]]
+                                      db player-eid)]
+                   [k player-id])
+                 [k v]))
+             filter-map)))
+
+
 (defn create-triggers-for-card-tx
   "Create tx-data for card triggers, linking to source object as components.
 
    Maps :trigger/type to :trigger/event-type.
    Applies default filter {:event/object-id :self} when no filter specified.
+   Resolves :self-controller in filter values to the controller's player-id.
    Uses nested tx-data so Datascript creates child entities and links automatically.
 
    Arguments:
-     db             - Datascript db value (unused, reserved for future)
+     db             - Datascript db value
      object-eid     - Entity ID of the source object
      player-eid     - Entity ID of the controlling player
      card-triggers  - Vector of card trigger definitions from :card/triggers
 
    Returns:
      Vector of tx-data (object update with nested trigger entities)"
-  [_db object-eid player-eid card-triggers]
+  [db object-eid player-eid card-triggers]
   (let [trigger-entities
         (mapv (fn [ct]
                 (let [trigger-type (:trigger/type ct)
                       event-type (trigger-type->event-type trigger-type)
-                      trigger-filter (or (:trigger/filter ct)
-                                         {:event/object-id :self})
+                      raw-filter (or (:trigger/filter ct)
+                                     {:event/object-id :self})
+                      trigger-filter (resolve-filter-values db player-eid raw-filter)
                       base {:trigger/type trigger-type
                             :trigger/event-type event-type
                             :trigger/source object-eid

@@ -15,11 +15,13 @@
    :card/types #{:land}
    :card/text "When you play another land, sacrifice City of Traitors. {T}: Add {C}{C}."
 
-   ;; Trigger: When ANOTHER land enters (not self)
-   ;; Uses :exclude-self filter to prevent triggering on own entry
+   ;; Trigger: When YOU play ANOTHER land (not self, controller only)
+   ;; :exclude-self prevents triggering on own entry
+   ;; :event/controller :self-controller restricts to controller's lands only
    :card/triggers [{:trigger/type :land-entered
                     :trigger/description "sacrifice City of Traitors"
-                    :trigger/filter {:exclude-self true}
+                    :trigger/filter {:exclude-self true
+                                     :event/controller :self-controller}
                     :trigger/effects [{:effect/type :sacrifice
                                        :effect/target :self}]}]
 

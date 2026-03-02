@@ -22,6 +22,7 @@
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.abilities :as ability-events]
     [fizzle.events.game :as game]
+    [fizzle.history.descriptions :as descriptions]
     [fizzle.test-helpers :as th]))
 
 
@@ -213,20 +214,22 @@
 ;; === F. Effect Tests ===
 
 ;; Oracle: "Look at a card at random in target player's hand"
-(deftest peek-random-hand-effect-no-state-change-test
-  (testing "peek-random-hand does not change game state"
+(deftest peek-random-hand-effect-stores-result-test
+  (testing "peek-random-hand stores revealed card name on game state"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
           [db _hand-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           effect {:effect/type :peek-random-hand
                   :effect/target :player-2}
           db-after (effects/execute-effect db :player-1 effect)]
-      (is (= db db-after)
-          "DB should be unchanged after peek (informational only)"))))
+      (is (= "Dark Ritual" (:game/peek-result (q/get-game-state db-after)))
+          "peek-result should contain the revealed card name")
+      (is (= (q/get-hand db :player-2) (q/get-hand db-after :player-2))
+          "Opponent's hand should be unchanged (peek is informational)"))))
 
 
 (deftest peek-random-hand-empty-hand-noop-test
-  (testing "peek-random-hand on empty hand is a no-op"
+  (testing "peek-random-hand on empty hand stores no peek-result"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
           _ (is (= 0 (th/get-zone-count db :hand :player-2))
@@ -234,8 +237,8 @@
           effect {:effect/type :peek-random-hand
                   :effect/target :player-2}
           db-after (effects/execute-effect db :player-1 effect)]
-      (is (= db db-after)
-          "DB should be unchanged for empty hand"))))
+      (is (nil? (:game/peek-result (q/get-game-state db-after)))
+          "No peek-result should be stored for empty hand"))))
 
 
 ;; === G. Edge Cases ===
@@ -266,6 +269,49 @@
           result (ability-events/activate-ability db :player-1 bauble-id 0)]
       (is (nil? (:pending-selection result))
           "Should not be able to activate from hand"))))
+
+
+;; Edge case: Resolve description includes revealed card name
+(deftest urzas-bauble-resolve-description-shows-revealed-card-test
+  (testing "Resolve description includes revealed card name in history log"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db bauble-id] (th/add-card-to-zone db :urzas-bauble :battlefield :player-1)
+          [db _hand-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
+          ;; Activate ability, target opponent
+          result (ability-events/activate-ability db :player-1 bauble-id 0)
+          sel (:pending-selection result)
+          selection-with-target (assoc sel :selection/selected #{:player-2})
+          confirm-result (ability-events/confirm-ability-target (:db result) selection-with-target)
+          pre-game-db (:db confirm-result)
+          ;; Resolve — this executes :peek-random-hand which stores the result
+          resolve-result (game/resolve-one-item pre-game-db)
+          game-db-after (:db resolve-result)
+          ;; Generate description using the same function the history interceptor uses
+          event [:fizzle.events.game/resolve-top]
+          desc (descriptions/describe-event event pre-game-db game-db-after)]
+      (is (string? desc) "Description should be a string")
+      (is (re-find #"Resolve Urza's Bauble ability" desc)
+          "Description should mention the card")
+      (is (re-find #"revealed Dark Ritual" desc)
+          "Description should include the revealed card name"))))
+
+
+;; Edge case: Stale peek-result is cleared between resolutions
+(deftest urzas-bauble-peek-result-cleared-between-resolutions-test
+  (testing "peek-result from previous resolution does not leak into next"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          ;; Set up a fake peek-result as if a previous resolve set it
+          game-eid (d/q '[:find ?g . :where [?g :game/id _]] db)
+          db (d/db-with db [[:db/add game-eid :game/peek-result "Stale Card"]])
+          ;; Add a Dark Ritual to hand and cast it
+          [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          db (rules/cast-spell db :player-1 ritual-id)
+          ;; Resolve Dark Ritual — should clear the stale peek-result
+          result (game/resolve-one-item db)]
+      (is (nil? (:game/peek-result (q/get-game-state (:db result))))
+          "peek-result should be cleared after resolving a non-peek spell"))))
 
 
 ;; Edge case: Empty hand peek still grants delayed draw

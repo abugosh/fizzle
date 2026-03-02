@@ -885,18 +885,26 @@
 
 (defmethod execute-effect-impl :peek-random-hand
   ;; Look at a card at random in target player's hand.
-  ;; This is informational only — no game state change.
+  ;; Picks a random card and stores the name on :game/peek-result for the
+  ;; history log. No cards change zones — peek is informational only.
   ;;
   ;; Effect keys:
   ;;   :effect/target - Target player-id (pre-resolved from :effect/target-ref)
   ;;
   ;; Handles edge cases:
-  ;;   - Empty hand: no-op (returns db unchanged)
+  ;;   - Empty hand: no-op (returns db unchanged, no peek-result stored)
   ;;   - Invalid player: no-op (returns db unchanged)
-  [db _player-id _effect _object-id]
-  ;; Peek is informational only. No state change.
-  ;; Future: log revealed card name to game log when log system exists.
-  db)
+  [db _player-id effect _object-id]
+  (let [target-player (:effect/target effect)]
+    (if target-player
+      (let [hand (q/get-hand db target-player)]
+        (if (seq hand)
+          (let [card (rand-nth hand)
+                card-name (get-in card [:object/card :card/name])
+                game-eid (d/q '[:find ?g . :where [?g :game/id _]] db)]
+            (d/db-with db [[:db/add game-eid :game/peek-result card-name]]))
+          db))
+      db)))
 
 
 (defmethod execute-effect-impl :chain-bounce
