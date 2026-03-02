@@ -1518,3 +1518,57 @@
     (let [db (th/create-test-db)
           [db obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)]
       (is (false? (rules/can-play-land? db :player-1 obj-id))))))
+
+
+;; =====================================================
+;; Cast Restriction Tests
+;; =====================================================
+
+(def end-step-instant
+  {:card/id :end-step-instant
+   :card/name "End Step Instant"
+   :card/cmc 1
+   :card/mana-cost {:black 1}
+   :card/colors #{:black}
+   :card/types #{:instant}
+   :card/text "Cast only during end step."
+   :card/cast-restriction {:restriction/phase :end}
+   :card/effects []})
+
+
+(defn add-restricted-card-to-hand
+  "Add end-step-instant card to db and player's hand.
+   Returns [obj-id db]."
+  [db player-id]
+  (let [conn (d/conn-from-db db)]
+    (d/transact! conn [end-step-instant])
+    (let [db' @conn]
+      (th/add-card-to-zone db' :end-step-instant :hand player-id))))
+
+
+(deftest cast-restriction-blocks-during-main-phase
+  (testing "Card with :card/cast-restriction {:restriction/phase :end} cannot cast during main1"
+    (let [db (th/create-test-db {:mana {:black 1}})
+          [db obj-id] (add-restricted-card-to-hand db :player-1)]
+      ;; Phase is :main1 by default
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable during main phase"))))
+
+
+(deftest cast-restriction-allows-during-correct-phase
+  (testing "Card with :card/cast-restriction {:restriction/phase :end} can cast during end step"
+    (let [db (th/create-test-db {:mana {:black 1}})
+          [db obj-id] (add-restricted-card-to-hand db :player-1)
+          db (set-phase db :end)]
+      (is (true? (rules/can-cast? db :player-1 obj-id))
+          "Should be castable during end step"))))
+
+
+(deftest cast-restriction-blocks-during-other-phases
+  (testing "Card with phase restriction cannot cast during combat or upkeep"
+    (let [db (th/create-test-db {:mana {:black 1}})
+          [db obj-id] (add-restricted-card-to-hand db :player-1)]
+      (doseq [phase [:combat :main2]]
+        (let [db' (set-phase db phase)]
+          (is (false? (rules/can-cast? db' :player-1 obj-id))
+              (str "Should not be castable during " (name phase))))))))

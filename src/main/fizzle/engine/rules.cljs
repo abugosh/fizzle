@@ -30,12 +30,13 @@
 
 (defn- get-primary-mode
   "Returns the primary casting mode for a card.
-   Primary mode is: cast from hand with the card's mana cost."
+   Primary mode is: cast from hand with the card's mana cost.
+   Includes :card/additional-costs if present on the card."
   [card]
   {:mode/id :primary
    :mode/zone :hand
    :mode/mana-cost (or (:card/mana-cost card) {})
-   :mode/additional-costs []
+   :mode/additional-costs (or (:card/additional-costs card) [])
    :mode/on-resolve (if (some #{:instant :sorcery} (set (:card/types card)))
                       :graveyard
                       :battlefield)})
@@ -122,7 +123,8 @@
                                 :count (:cost/count cost)}}
     :return-land {:return-land {:criteria (:cost/criteria cost)}}
     :discard-specific {:discard-specific {:groups (:cost/groups cost)
-                                          :total (:cost/total cost)}}))
+                                          :total (:cost/total cost)}}
+    :pay-x-life {:pay-x-life true}))
 
 
 (defn- can-pay-additional-cost?
@@ -203,12 +205,24 @@
            (q/stack-empty? db)))))
 
 
+(defn- cast-restriction-met?
+  "Check if a card's cast restriction is satisfied by the current game state.
+   Returns true if no restriction exists or if the restriction is met."
+  [db card]
+  (if-let [restriction (:card/cast-restriction card)]
+    (let [phase (:restriction/phase restriction)
+          current-phase (:game/phase (q/get-game-state db))]
+      (= phase current-phase))
+    true))
+
+
 (defn can-cast?
   "Check if a player can cast a card.
 
    Checks if ANY valid casting mode is castable.
    A mode is valid if:
    - Player does not have :cannot-cast-spells restriction
+   - Card's cast restriction is met (e.g., only during end step)
    - Timing is correct (sorcery-speed cards need main phase + empty stack)
    - The card is in the mode's required zone
    - Player can pay the mode's mana cost
@@ -233,13 +247,15 @@
                                        (contains? card-types :sorcery)))]
           (if type-restricted
             false
-            (let [;; Check timing: non-instant cards require sorcery speed
-                  timing-ok (or (instant-speed? card)
-                                (sorcery-speed-ok? db))
-                  modes (get-casting-modes db player-id object-id)
-                  has-mode (boolean (some #(can-cast-mode? db player-id object-id %) modes))
-                  has-targets (targeting/has-valid-targets? db player-id card)]
-              (and timing-ok has-mode has-targets))))
+            (if-not (cast-restriction-met? db card)
+              false
+              (let [;; Check timing: non-instant cards require sorcery speed
+                    timing-ok (or (instant-speed? card)
+                                  (sorcery-speed-ok? db))
+                    modes (get-casting-modes db player-id object-id)
+                    has-mode (boolean (some #(can-cast-mode? db player-id object-id %) modes))
+                    has-targets (targeting/has-valid-targets? db player-id card)]
+                (and timing-ok has-mode has-targets)))))
         false))))
 
 
