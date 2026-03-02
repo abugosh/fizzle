@@ -4,7 +4,8 @@
     [datascript.core :as d]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
-    [fizzle.engine.state-based :as sba]))
+    [fizzle.engine.state-based :as sba]
+    [fizzle.test-helpers :as th]))
 
 
 ;; === Test helpers ===
@@ -177,3 +178,175 @@
       (remove-method sba/check-sba :test-cascade-b-check)
       (remove-method sba/execute-sba :test-cascade-a)
       (remove-method sba/execute-sba :test-cascade-b))))
+
+
+;; === :life-zero SBA tests ===
+
+(defn- get-loss-condition
+  "Get the loss condition from game state."
+  [db]
+  (:game/loss-condition (q/get-game-state db)))
+
+
+(defn- set-drew-from-empty
+  "Set the :player/drew-from-empty flag on a player. Returns updated db."
+  [db player-id]
+  (let [player-eid (q/get-player-eid db player-id)]
+    (d/db-with db [[:db/add player-eid :player/drew-from-empty true]])))
+
+
+(deftest test-check-sba-life-zero-fires-at-zero
+  (testing "check-sba :life-zero returns SBA event when player has life = 0"
+    (let [db (-> (th/create-test-db {:life 0})
+                 (th/add-opponent))
+          sbas (sba/check-sba db :life-zero)]
+      (is (= 1 (count sbas))
+          "Should return exactly one SBA event")
+      (is (= :life-zero (:sba/type (first sbas)))
+          "SBA type should be :life-zero")
+      (is (= :player-1 (:sba/player-id (first sbas)))
+          "SBA should identify the player at 0 life"))))
+
+
+(deftest test-check-sba-life-zero-fires-at-negative
+  (testing "check-sba :life-zero returns SBA event when player has negative life"
+    (let [db (-> (th/create-test-db {:life -5})
+                 (th/add-opponent))
+          sbas (sba/check-sba db :life-zero)]
+      (is (= 1 (count sbas)))
+      (is (= :player-1 (:sba/player-id (first sbas)))))))
+
+
+(deftest test-check-sba-life-zero-no-fire-positive
+  (testing "check-sba :life-zero returns [] when all players have life > 0"
+    (let [db (-> (th/create-test-db {:life 20})
+                 (th/add-opponent))
+          sbas (sba/check-sba db :life-zero)]
+      (is (empty? sbas)
+          "Should return empty when all players have positive life"))))
+
+
+(deftest test-check-sba-life-zero-skips-when-game-over
+  (testing "check-sba :life-zero returns [] when game already has loss condition"
+    (let [db (th/create-test-db {:life 0})
+          db (th/add-opponent db)
+          ;; Set loss condition manually
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          db (d/db-with db [[:db/add game-eid :game/loss-condition :life-zero]])
+          sbas (sba/check-sba db :life-zero)]
+      (is (empty? sbas)
+          "Should not fire when game already has a loss condition"))))
+
+
+(deftest test-execute-sba-life-zero-sets-loss-condition
+  (testing "execute-sba :life-zero sets :game/loss-condition and :game/winner"
+    (let [db (-> (th/create-test-db {:life 0})
+                 (th/add-opponent))
+          sba-event {:sba/type :life-zero :sba/player-id :player-1}
+          db' (sba/execute-sba db sba-event)]
+      (is (= :life-zero (get-loss-condition db'))
+          "Loss condition should be :life-zero")
+      (let [game (q/get-game-state db')
+            winner-eid (:game/winner game)
+            winner-pid (when winner-eid
+                         (:player/id (d/pull db' [:player/id] (:db/id winner-eid))))]
+        (is (= :player-2 winner-pid)
+            "Winner should be the other player")))))
+
+
+(deftest test-check-and-execute-sbas-life-zero-integration
+  (testing "check-and-execute-sbas detects life=0 and sets loss condition"
+    (let [db (-> (th/create-test-db {:life 0})
+                 (th/add-opponent))
+          db' (sba/check-and-execute-sbas db)]
+      (is (= :life-zero (get-loss-condition db'))
+          "check-and-execute-sbas should detect and apply life-zero SBA"))))
+
+
+;; === :empty-library SBA tests ===
+
+(deftest test-check-sba-empty-library-fires-with-flag
+  (testing "check-sba :empty-library returns SBA event when player has drew-from-empty flag"
+    (let [db (-> (th/create-test-db)
+                 (th/add-opponent)
+                 (set-drew-from-empty :player-1))
+          sbas (sba/check-sba db :empty-library)]
+      (is (= 1 (count sbas))
+          "Should return exactly one SBA event")
+      (is (= :empty-library (:sba/type (first sbas)))
+          "SBA type should be :empty-library")
+      (is (= :player-1 (:sba/player-id (first sbas)))
+          "SBA should identify the player who drew from empty"))))
+
+
+(deftest test-check-sba-empty-library-no-flag
+  (testing "check-sba :empty-library returns [] when no player has the flag"
+    (let [db (-> (th/create-test-db)
+                 (th/add-opponent))
+          sbas (sba/check-sba db :empty-library)]
+      (is (empty? sbas)
+          "Should return empty when no player has drew-from-empty flag"))))
+
+
+(deftest test-check-sba-empty-library-skips-when-game-over
+  (testing "check-sba :empty-library returns [] when game already has loss condition"
+    (let [db (-> (th/create-test-db)
+                 (th/add-opponent)
+                 (set-drew-from-empty :player-1))
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          db (d/db-with db [[:db/add game-eid :game/loss-condition :empty-library]])
+          sbas (sba/check-sba db :empty-library)]
+      (is (empty? sbas)
+          "Should not fire when game already has a loss condition"))))
+
+
+(deftest test-execute-sba-empty-library-sets-loss-and-clears-flag
+  (testing "execute-sba :empty-library sets loss condition and clears flag"
+    (let [db (-> (th/create-test-db)
+                 (th/add-opponent)
+                 (set-drew-from-empty :player-1))
+          sba-event {:sba/type :empty-library :sba/player-id :player-1}
+          db' (sba/execute-sba db sba-event)]
+      (is (= :empty-library (get-loss-condition db'))
+          "Loss condition should be :empty-library")
+      ;; Flag should be cleared
+      (let [player-eid (q/get-player-eid db' :player-1)
+            flag (d/q '[:find ?f .
+                        :in $ ?e
+                        :where [?e :player/drew-from-empty ?f]]
+                      db' player-eid)]
+        (is (not flag)
+            "drew-from-empty flag should be cleared after SBA executes")))))
+
+
+(deftest test-check-and-execute-sbas-empty-library-integration
+  (testing "check-and-execute-sbas detects drew-from-empty flag and sets loss condition"
+    (let [db (-> (th/create-test-db)
+                 (th/add-opponent)
+                 (set-drew-from-empty :player-1))
+          db' (sba/check-and-execute-sbas db)]
+      (is (= :empty-library (get-loss-condition db'))
+          "check-and-execute-sbas should detect and apply empty-library SBA"))))
+
+
+;; === set-loss-condition tests ===
+
+(deftest test-set-loss-condition-sets-winner
+  (testing "set-loss-condition identifies the winner as the other player"
+    (let [db (-> (th/create-test-db)
+                 (th/add-opponent))
+          db' (sba/set-loss-condition db :life-zero :player-1)
+          game (q/get-game-state db')
+          winner-eid (:game/winner game)
+          winner-pid (when winner-eid
+                       (:player/id (d/pull db' [:player/id] (:db/id winner-eid))))]
+      (is (= :life-zero (:game/loss-condition game)))
+      (is (= :player-2 winner-pid)))))
+
+
+(deftest test-set-loss-condition-without-opponent
+  (testing "set-loss-condition works with single player (no crash)"
+    (let [db (th/create-test-db)
+          db' (sba/set-loss-condition db :life-zero :player-1)]
+      (is (= :life-zero (get-loss-condition db'))
+          "Loss condition should be set even without opponent"))))
