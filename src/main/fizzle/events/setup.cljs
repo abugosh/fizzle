@@ -264,7 +264,8 @@
             game-db (game/init-game-state {:main-deck main-deck
                                            :bot-archetype arch
                                            :bot-deck (bot/bot-deck arch)
-                                           :must-contain (:setup/must-contain db)})]
+                                           :must-contain (:setup/must-contain db)
+                                           :sideboard (:setup/sideboard db)})]
         (assoc game-db :setup/stashed-config (stash-setup-config db)))
       db)))
 
@@ -285,7 +286,8 @@
           game-db (game/init-game-state {:main-deck (:setup/main-deck config)
                                          :bot-archetype arch
                                          :bot-deck (bot/bot-deck arch)
-                                         :must-contain (get config :setup/must-contain {})})]
+                                         :must-contain (get config :setup/must-contain {})
+                                         :sideboard (get config :setup/sideboard [])})]
       (assoc game-db :setup/stashed-config config))
     db))
 

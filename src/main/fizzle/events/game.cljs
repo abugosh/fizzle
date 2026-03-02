@@ -139,11 +139,12 @@
    Config keys:
      :main-deck     - vec of {:card/id :count} maps (required)
      :must-contain  - map of {card-id count} for sculpted opening hand (default {})
+     :sideboard     - vec of {:card/id :count} maps for sideboard zone (default [])
 
    Returns app-db map with :game/db, :active-screen :opening-hand,
    and opening-hand state keys."
-  [{:keys [main-deck bot-archetype bot-deck must-contain]
-    :or {bot-archetype :goldfish must-contain {}}}]
+  [{:keys [main-deck bot-archetype bot-deck must-contain sideboard]
+    :or {bot-archetype :goldfish must-contain {} sideboard []}}]
   (card-spec/validate-cards! cards/all-cards)
   (let [conn (d/create-conn schema)
         _ (d/transact! conn cards/all-cards)
@@ -166,6 +167,10 @@
     (d/transact! conn (objects-tx @conn library-ids :library player-eid
                                   (repeatedly (count library-ids) random-uuid)))
     (d/transact! conn (opponent-deck-tx @conn opp-eid (or bot-deck [])))
+    (let [sb-card-ids (mapcat (fn [{:keys [card/id count]}] (repeat count id)) sideboard)]
+      (when (seq sb-card-ids)
+        (d/transact! conn (objects-tx @conn sb-card-ids :sideboard player-eid
+                                      (repeatedly (count sb-card-ids) random-uuid)))))
     (d/transact! conn [{:game/id :game-1 :game/turn 1 :game/phase :main1
                         :game/active-player player-eid :game/priority player-eid
                         :game/human-player-id :player-1}])

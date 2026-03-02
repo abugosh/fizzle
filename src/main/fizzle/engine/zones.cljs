@@ -3,7 +3,7 @@
 
    All functions are pure: (db, args) -> db
 
-   Valid zones: :hand, :library, :graveyard, :stack, :battlefield, :exile
+   Valid zones: :hand, :library, :graveyard, :stack, :battlefield, :exile, :sideboard
 
    Stack-item safety: When an object leaves the :stack zone (via move-to-zone
    or remove-object), any associated stack-item is automatically cleaned up.
