@@ -15,8 +15,7 @@
     [fizzle.events.abilities :as abilities]
     [fizzle.events.game :as game]
     [fizzle.events.selection.core :as core]
-    ;; Bare requires ensure defmethod registrations are loaded
-    [fizzle.events.selection.costs]
+    [fizzle.events.selection.costs :as sel-costs]
     [fizzle.events.selection.targeting]
     [fizzle.test-helpers :as th]))
 
@@ -297,12 +296,8 @@
           x-value 2
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
           db-with-x (d/db-with db [[:db/add obj-eid :object/x-value x-value]])
-          selection {:selection/type :x-mana-cost
-                     :selection/lifecycle :chaining
-                     :selection/player-id :player-1
-                     :selection/spell-id obj-id
-                     :selection/mode mode
-                     :selection/selected-x x-value}
+          selection (assoc (sel-costs/build-x-mana-selection db-with-x :player-1 obj-id mode)
+                           :selection/selected-x x-value)
           result (core/execute-confirmed-selection db-with-x selection)
           chain-sel (core/build-chain-selection (:db result) selection)]
       ;; Chain builder should provide mana-allocation
@@ -328,12 +323,8 @@
           [db obj-id] (add-card-and-object db spell-x-no-fixed-generic :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 5})
           mode (first (rules/get-casting-modes db :player-1 obj-id))
-          selection {:selection/type :x-mana-cost
-                     :selection/lifecycle :chaining
-                     :selection/player-id :player-1
-                     :selection/spell-id obj-id
-                     :selection/mode mode
-                     :selection/selected-x 0}
+          selection (assoc (sel-costs/build-x-mana-selection db :player-1 obj-id mode)
+                           :selection/selected-x 0)
           result (core/execute-confirmed-selection db selection)
           chain-sel (core/build-chain-selection (:db result) selection)]
       ;; Chain builder always provides mana-allocation (even with 0 generic)

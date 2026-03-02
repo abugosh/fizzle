@@ -14,6 +14,11 @@
     [re-frame.core :as rf]))
 
 
+;; Forward declarations for builder-declared chains
+(declare build-order-bottom-selection)
+(declare build-pile-choice-selection)
+
+
 ;; =====================================================
 ;; Selection Builders
 ;; =====================================================
@@ -34,24 +39,39 @@
         effect-select-count (max 1 (or (:effect/select-count tutor-effect) 1))
         ;; Actual count is min of requested and available candidates
         actual-select-count (min effect-select-count (count candidate-ids))]
-    {:selection/zone :library
-     :selection/card-source :library
-     :selection/select-count actual-select-count
-     :selection/exact? true  ; Must select exactly this many (or fail-to-find)
-     :selection/player-id player-id
-     :selection/selected #{}
-     :selection/spell-id object-id
-     :selection/remaining-effects effects-after
-     :selection/type :tutor
-     :selection/lifecycle :chaining
-     :selection/target-zone target-zone
-     :selection/allow-fail-to-find? true  ; Always allow fail-to-find (anti-pattern: NO auto-select)
-     :selection/candidates candidate-ids
-     :selection/shuffle? (get tutor-effect :effect/shuffle? true)
-     :selection/enters-tapped (:effect/enters-tapped tutor-effect)
-     :selection/pile-choice (:effect/pile-choice tutor-effect)
-     :selection/validation :exact-or-zero
-     :selection/auto-confirm? true}))
+    (let [pile-choice-cfg (:effect/pile-choice tutor-effect)]
+      (cond->
+        {:selection/zone :library
+         :selection/card-source :library
+         :selection/select-count actual-select-count
+         :selection/exact? true  ; Must select exactly this many (or fail-to-find)
+         :selection/player-id player-id
+         :selection/selected #{}
+         :selection/spell-id object-id
+         :selection/remaining-effects effects-after
+         :selection/type :tutor
+         :selection/target-zone target-zone
+         :selection/allow-fail-to-find? true  ; Always allow fail-to-find (anti-pattern: NO auto-select)
+         :selection/candidates candidate-ids
+         :selection/shuffle? (get tutor-effect :effect/shuffle? true)
+         :selection/enters-tapped (:effect/enters-tapped tutor-effect)
+         :selection/pile-choice pile-choice-cfg
+         :selection/validation :exact-or-zero
+         :selection/auto-confirm? true}
+        ;; Lifecycle: chaining if pile-choice needed, otherwise standard
+        pile-choice-cfg
+        (assoc :selection/lifecycle :chaining
+               :selection/chain-builder
+               (fn [_db sel]
+                 (let [selected (:selection/selected sel)]
+                   (when (seq selected)
+                     (build-pile-choice-selection
+                       selected pile-choice-cfg
+                       (:selection/player-id sel)
+                       (:selection/spell-id sel)
+                       (:selection/remaining-effects sel))))))
+        (not pile-choice-cfg)
+        (assoc :selection/lifecycle :chaining)))))
 
 
 (defn build-pile-choice-selection
@@ -117,6 +137,7 @@
       (let [library-cards (queries/get-top-n-library game-db player-id amount)]
         (when (seq library-cards)
           {:selection/type :scry
+           :selection/pattern :reorder
            :selection/lifecycle :finalized
            :selection/player-id player-id
            :selection/cards (vec library-cards)
@@ -180,7 +201,18 @@
               (:effect/shuffle-remainder? effect)
               (assoc :selection/shuffle-remainder? true)
               (:effect/order-remainder? effect)
-              (assoc :selection/order-remainder? true))))))))
+              (assoc :selection/order-remainder? true
+                     :selection/chain-builder
+                     (fn [_db sel]
+                       (let [selected (:selection/selected sel)
+                             cands (:selection/candidates sel)
+                             remainder (set/difference cands selected)]
+                         (when (>= (count remainder) 2)
+                           (build-order-bottom-selection
+                             remainder
+                             (:selection/player-id sel)
+                             (:selection/spell-id sel)
+                             (:selection/remaining-effects sel)))))))))))))
 
 
 ;; =====================================================
@@ -267,6 +299,7 @@
         (when (seq library-cards)
           (cond->
             {:selection/type :peek-and-reorder
+             :selection/pattern :reorder
              :selection/lifecycle :finalized
              :selection/candidates (set library-cards)
              :selection/ordered []
@@ -585,18 +618,6 @@
 ;; Execute Confirmed Selection Defmethods
 ;; =====================================================
 
-(defmethod core/build-chain-selection :tutor
-  [_db selection]
-  (let [pile-choice (:selection/pile-choice selection)
-        selected (:selection/selected selection)]
-    (when (and pile-choice (seq selected))
-      (build-pile-choice-selection
-        selected pile-choice
-        (:selection/player-id selection)
-        (:selection/spell-id selection)
-        (:selection/remaining-effects selection)))))
-
-
 (defmethod core/execute-confirmed-selection :tutor
   [game-db selection]
   (let [pile-choice (:selection/pile-choice selection)
@@ -606,20 +627,6 @@
       {:db game-db}
       ;; Normal tutor flow — execute immediately
       {:db (execute-tutor-selection game-db selection)})))
-
-
-(defmethod core/build-chain-selection :peek-and-select
-  [_db selection]
-  (let [order-remainder? (:selection/order-remainder? selection)
-        selected (:selection/selected selection)
-        candidates (:selection/candidates selection)
-        remainder (set/difference candidates selected)]
-    (when (and order-remainder? (>= (count remainder) 2))
-      (build-order-bottom-selection
-        remainder
-        (:selection/player-id selection)
-        (:selection/spell-id selection)
-        (:selection/remaining-effects selection)))))
 
 
 (defmethod core/execute-confirmed-selection :peek-and-select

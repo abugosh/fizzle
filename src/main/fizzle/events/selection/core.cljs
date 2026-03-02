@@ -44,7 +44,21 @@
       ;; Accumulator: distribute/increment a value via stepper controls
       (derive :storm-split :accumulator)
       (derive :x-mana-cost :accumulator)
-      (derive :mana-allocation :accumulator)))
+      (derive :mana-allocation :accumulator)
+      ;; Reorder: sort/assign cards into piles or positions
+      (derive :scry :reorder)
+      (derive :peek-and-reorder :reorder)
+      (derive :order-bottom :reorder)
+      ;; Pre-cast cost chains: cost selections that chain to targeting
+      (derive :discard-specific-cost :pre-cast-cost-to-targeting)
+      (derive :return-land-cost :pre-cast-cost-to-targeting)
+      ;; Targeting chains: targeting selections that chain to mana-allocation
+      (derive :cast-time-targeting :targeting-to-mana-allocation)
+      (derive :ability-cast-targeting :targeting-to-mana-allocation)
+      ;; Builder-declared chains: selection stores chain-builder fn
+      (derive :tutor :builder-declared-chain)
+      (derive :peek-and-select :builder-declared-chain)
+      (derive :x-mana-cost :builder-declared-chain)))
 
 
 ;; =====================================================
@@ -209,6 +223,16 @@
 
 
 (defmethod build-chain-selection :default [_db _selection] nil)
+
+
+;; Generic chain: builder-declared chain via :selection/chain-builder fn.
+;; Selection types that derive from :builder-declared-chain store a
+;; function on :selection/chain-builder that receives (db, selection)
+;; and returns the next selection map (or nil).
+(defmethod build-chain-selection :builder-declared-chain
+  [db selection]
+  (when-let [chain-fn (:selection/chain-builder selection)]
+    (chain-fn db selection)))
 
 
 ;; =====================================================

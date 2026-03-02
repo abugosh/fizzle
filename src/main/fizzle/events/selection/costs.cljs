@@ -78,6 +78,10 @@
   (pos? (get cost :colorless 0)))
 
 
+;; Forward declarations for builder-declared chains
+(declare build-mana-allocation-selection)
+
+
 ;; =====================================================
 ;; Selection Builders
 ;; =====================================================
@@ -236,7 +240,39 @@
      :selection/max-x max-x
      :selection/selected-x 0  ; Default to 0, player increments
      :selection/validation :always
-     :selection/auto-confirm? false}))
+     :selection/auto-confirm? false
+     :selection/chain-builder
+     (fn [db sel]
+       (let [x-value (:selection/selected-x sel)
+             sel-mode (:selection/mode sel)
+             sel-player (:selection/player-id sel)
+             sel-object (:selection/spell-id sel)
+             resolved-mana-cost (mana/resolve-x-cost (:mode/mana-cost sel-mode) x-value)
+             mode-with-resolved-cost (assoc sel-mode :mode/mana-cost resolved-mana-cost)]
+         ;; Always chain to mana-allocation (even with 0 generic)
+         (or (build-mana-allocation-selection db sel-player sel-object
+                                              mode-with-resolved-cost resolved-mana-cost)
+             ;; No generic mana: build minimal mana-allocation that auto-casts
+             (let [colored-cost (dissoc resolved-mana-cost :colorless)
+                   pool' (queries/get-mana-pool db sel-player)
+                   remaining-pool (merge-with - pool' colored-cost)]
+               {:selection/zone :mana-pool
+                :selection/type :mana-allocation
+                :selection/pattern :accumulator
+                :selection/lifecycle :finalized
+                :selection/clear-selected-card? true
+                :selection/player-id sel-player
+                :selection/spell-id sel-object
+                :selection/mode mode-with-resolved-cost
+                :selection/generic-remaining 0
+                :selection/generic-total 0
+                :selection/allocation {}
+                :selection/remaining-pool remaining-pool
+                :selection/original-remaining-pool remaining-pool
+                :selection/colored-cost colored-cost
+                :selection/original-cost resolved-mana-cost
+                :selection/validation :always
+                :selection/auto-confirm? true}))))}))
 
 
 (defn build-mana-allocation-selection
@@ -280,7 +316,9 @@
 ;; Confirm Selection Defmethods
 ;; =====================================================
 
-(defmethod core/build-chain-selection :discard-specific-cost
+;; Generic chain: pre-cast cost selections that may chain to targeting.
+;; Dispatches for :discard-specific-cost and :return-land-cost via hierarchy.
+(defmethod core/build-chain-selection :pre-cast-cost-to-targeting
   [db selection]
   (let [object-id (:selection/spell-id selection)
         player-id (:selection/player-id selection)
@@ -320,28 +358,6 @@
       {:db (rules/cast-spell-mode db-after-discard player-id object-id mode)})))
 
 
-(defmethod core/build-chain-selection :return-land-cost
-  [db selection]
-  (let [object-id (:selection/spell-id selection)
-        player-id (:selection/player-id selection)
-        mode (:selection/mode selection)
-        obj (queries/get-object db object-id)
-        targeting-reqs (:card/targeting (:object/card obj))]
-    (when (seq targeting-reqs)
-      (let [first-req (first targeting-reqs)]
-        {:selection/type :cast-time-targeting
-         :selection/player-id player-id
-         :selection/object-id object-id
-         :selection/mode mode
-         :selection/target-requirement first-req
-         :selection/valid-targets (targeting/find-valid-targets db player-id first-req)
-         :selection/selected #{}
-         :selection/select-count 1
-         :selection/validation :exact
-         :selection/auto-confirm? true
-         :selection/card-source :valid-targets}))))
-
-
 (defmethod core/execute-confirmed-selection :return-land-cost
   [game-db selection]
   (let [selected-land-id (first (:selection/selected selection))
@@ -373,42 +389,6 @@
                              [[:db/add obj-eid :object/x-value selected-count]])
         db-after-cast (rules/cast-spell-mode db-with-x player-id object-id mode)]
     {:db db-after-cast}))
-
-
-(defmethod core/build-chain-selection :x-mana-cost
-  [db selection]
-  (let [x-value (:selection/selected-x selection)
-        player-id (:selection/player-id selection)
-        object-id (:selection/spell-id selection)
-        mode (:selection/mode selection)
-        resolved-mana-cost (mana/resolve-x-cost (:mode/mana-cost mode) x-value)
-        mode-with-resolved-cost (assoc mode :mode/mana-cost resolved-mana-cost)]
-    ;; Always chain to mana-allocation (even with 0 generic) so it handles casting.
-    ;; When generic is 0, build-mana-allocation-selection returns nil; use a
-    ;; zero-generic allocation that auto-confirms immediately.
-    (or (build-mana-allocation-selection db player-id object-id
-                                         mode-with-resolved-cost resolved-mana-cost)
-        ;; No generic mana: build minimal mana-allocation that auto-casts
-        (let [colored-cost (dissoc resolved-mana-cost :colorless)
-              pool (queries/get-mana-pool db player-id)
-              remaining-pool (merge-with - pool colored-cost)]
-          {:selection/zone :mana-pool
-           :selection/type :mana-allocation
-           :selection/pattern :accumulator
-           :selection/lifecycle :finalized
-           :selection/clear-selected-card? true
-           :selection/player-id player-id
-           :selection/spell-id object-id
-           :selection/mode mode-with-resolved-cost
-           :selection/generic-remaining 0
-           :selection/generic-total 0
-           :selection/allocation {}
-           :selection/remaining-pool remaining-pool
-           :selection/original-remaining-pool remaining-pool
-           :selection/colored-cost colored-cost
-           :selection/original-cost resolved-mana-cost
-           :selection/validation :always
-           :selection/auto-confirm? true}))))
 
 
 (defmethod core/execute-confirmed-selection :x-mana-cost

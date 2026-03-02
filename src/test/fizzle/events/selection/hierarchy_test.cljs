@@ -18,6 +18,7 @@
     [fizzle.events.game :as game]
     [fizzle.events.selection.core :as core]
     [fizzle.events.selection.costs :as sel-costs]
+    [fizzle.events.selection.library]
     [fizzle.events.selection.storm :as storm]
     [fizzle.events.selection.zone-ops]
     [fizzle.test-helpers :as th]))
@@ -470,3 +471,71 @@
                          (q/get-objects-in-zone (:db result) :player-1 :stack))]
       (is (= 2 (count copies))
           "Storm-split custom executor should create 2 copies (not generic no-op)"))))
+
+
+;; =====================================================
+;; Reorder Hierarchy Tests
+;; =====================================================
+
+(deftest test-scry-isa-reorder
+  (testing ":scry derives from :reorder in selection hierarchy"
+    (is (isa? core/selection-hierarchy :scry :reorder)
+        ":scry should be a child of :reorder")))
+
+
+(deftest test-peek-and-reorder-isa-reorder
+  (testing ":peek-and-reorder derives from :reorder in selection hierarchy"
+    (is (isa? core/selection-hierarchy :peek-and-reorder :reorder)
+        ":peek-and-reorder should be a child of :reorder")))
+
+
+(deftest test-order-bottom-isa-reorder
+  (testing ":order-bottom derives from :reorder in selection hierarchy"
+    (is (isa? core/selection-hierarchy :order-bottom :reorder)
+        ":order-bottom should be a child of :reorder")))
+
+
+(deftest test-reorder-types-not-zone-pick-or-accumulator
+  (testing "Reorder types are NOT children of :zone-pick or :accumulator"
+    (doseq [rtype [:scry :peek-and-reorder :order-bottom]]
+      (is (not (isa? core/selection-hierarchy rtype :zone-pick))
+          (str rtype " should not derive from :zone-pick"))
+      (is (not (isa? core/selection-hierarchy rtype :accumulator))
+          (str rtype " should not derive from :accumulator")))))
+
+
+(deftest test-scry-builder-sets-reorder-pattern
+  (testing "build-scry-selection sets :selection/pattern :reorder"
+    (let [db (th/create-test-db)
+          [db _lib-ids] (th/add-cards-to-library db [:dark-ritual :cabal-ritual] :player-1)
+          effect {:effect/type :scry :effect/amount 2}
+          sel (core/build-selection-for-effect db :player-1 :spell-1 effect [])]
+      (is (= :reorder (:selection/pattern sel))
+          "Scry builder should set pattern to :reorder"))))
+
+
+(deftest test-peek-and-reorder-builder-sets-reorder-pattern
+  (testing "build-peek-and-reorder-selection sets :selection/pattern :reorder"
+    (let [db (th/create-test-db)
+          [db _lib-ids] (th/add-cards-to-library db [:dark-ritual :cabal-ritual :brain-freeze] :player-1)
+          effect {:effect/type :peek-and-reorder :effect/count 3}
+          sel (core/build-selection-for-effect db :player-1 :spell-1 effect [])]
+      (is (= :reorder (:selection/pattern sel))
+          "Peek-and-reorder builder should set pattern to :reorder"))))
+
+
+;; =====================================================
+;; Chain Reduction Tests
+;; =====================================================
+
+(deftest test-chain-defmethod-count-reduced
+  (testing "build-chain-selection defmethod count reduced by at least 50%"
+    (let [all-methods (methods core/build-chain-selection)
+          ;; Exclude :default and test-only registrations
+          test-keys #{:default :test-chaining :test-chaining-nil}
+          production-methods (remove (fn [[k _]] (test-keys k)) all-methods)
+          count-methods (count production-methods)]
+      ;; Original: 8 production defmethods. Target: <= 4 (50% reduction)
+      (is (<= count-methods 4)
+          (str "Expected <= 4 production chain defmethods but found " count-methods
+               ". Methods: " (map first production-methods))))))

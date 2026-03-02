@@ -187,7 +187,9 @@
     {:db (:db result)}))
 
 
-(defmethod core/build-chain-selection :cast-time-targeting
+;; Generic chain: targeting selections that chain to mana-allocation.
+;; Dispatches for :cast-time-targeting and :ability-cast-targeting via hierarchy.
+(defmethod core/build-chain-selection :targeting-to-mana-allocation
   [db selection]
   (let [mode (:selection/mode selection)
         cost (:mode/mana-cost mode)
@@ -207,20 +209,6 @@
     {:db game-db}
     ;; Finalized: cast directly with target storage
     {:db (confirm-cast-time-target game-db selection)}))
-
-
-(defmethod core/build-chain-selection :ability-cast-targeting
-  [db selection]
-  ;; Same chain logic as cast-time-targeting
-  (let [mode (:selection/mode selection)
-        cost (:mode/mana-cost mode)
-        player-id (:selection/player-id selection)
-        object-id (:selection/object-id selection)
-        target-req (:selection/target-requirement selection)
-        selected-target (first (:selection/selected selection))
-        target-id (:target/id target-req)]
-    (when-let [sel (sel-costs/build-mana-allocation-selection db player-id object-id mode cost)]
-      (assoc sel :selection/pending-targets {target-id selected-target}))))
 
 
 (defmethod core/execute-confirmed-selection :ability-cast-targeting

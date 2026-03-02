@@ -15,6 +15,7 @@
    - No chain when flag false or 0-1 remainder"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
+    [clojure.set :as set]
     [datascript.core :as d]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
@@ -365,7 +366,17 @@
                      :selection/order-remainder? true
                      :selection/player-id :player-1
                      :selection/spell-id (random-uuid)
-                     :selection/remaining-effects []}
+                     :selection/remaining-effects []
+                     :selection/chain-builder
+                     (fn [_db sel]
+                       (let [remainder (set/difference (:selection/candidates sel)
+                                                       (:selection/selected sel))]
+                         (when (>= (count remainder) 2)
+                           (library/build-order-bottom-selection
+                             remainder
+                             (:selection/player-id sel)
+                             (:selection/spell-id sel)
+                             (:selection/remaining-effects sel)))))}
           ;; Executor moves selected to hand, chain builder produces order-bottom
           result (core/execute-confirmed-selection db selection)
           chain-sel (core/build-chain-selection (:db result) selection)]
