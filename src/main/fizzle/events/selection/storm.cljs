@@ -43,6 +43,7 @@
             valid-targets (filterv some? [opponent-id player-id])]
         (when (and (pos? copy-count) (seq valid-targets))
           {:selection/type :storm-split
+           :selection/pattern :accumulator
            :selection/lifecycle :finalized
            :selection/copy-count copy-count
            :selection/valid-targets valid-targets

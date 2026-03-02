@@ -37,9 +37,14 @@
    differ (e.g., :return-from-graveyard effect -> :graveyard-return selection).
    Both sides must derive from :zone-pick for the hierarchy to work."
   (-> (make-hierarchy)
+      ;; Zone-pick: select N cards from a zone
       (derive :discard :zone-pick)
       (derive :return-from-graveyard :zone-pick)
-      (derive :graveyard-return :zone-pick)))
+      (derive :graveyard-return :zone-pick)
+      ;; Accumulator: distribute/increment a value via stepper controls
+      (derive :storm-split :accumulator)
+      (derive :x-mana-cost :accumulator)
+      (derive :mana-allocation :accumulator)))
 
 
 ;; =====================================================

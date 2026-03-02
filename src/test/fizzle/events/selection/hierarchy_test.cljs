@@ -1,5 +1,5 @@
 (ns fizzle.events.selection.hierarchy-test
-  "Tests for selection hierarchy and generic zone-pick builder/executor.
+  "Tests for selection hierarchy and generic builders/executors.
    Covers:
    - Hierarchy routing: derive declarations route effect types to patterns
    - Generic zone-pick builder: output shape for :discard and :graveyard-return
@@ -7,14 +7,18 @@
    - Hierarchy precedence: custom executors take precedence over generic
    - Zone-pick config: per-type zone/validation overrides
    - Cleanup discard regression: cleanup path still works after migration
+   - Accumulator hierarchy: :storm-split, :x-mana-cost, :mana-allocation
    - Integration tests: Careful Study, Ill-Gotten Gains"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
+    [fizzle.engine.stack :as stack]
     [fizzle.events.game :as game]
     [fizzle.events.selection.core :as core]
+    [fizzle.events.selection.costs :as sel-costs]
+    [fizzle.events.selection.storm :as storm]
     [fizzle.events.selection.zone-ops]
     [fizzle.test-helpers :as th]))
 
@@ -363,3 +367,106 @@
             "Card 1 should be returned to hand")
         (is (= :hand (th/get-object-zone db gy2))
             "Card 2 should be returned to hand")))))
+
+
+;; =====================================================
+;; Accumulator Hierarchy Tests
+;; =====================================================
+
+(deftest test-storm-split-isa-accumulator
+  (testing ":storm-split derives from :accumulator in selection hierarchy"
+    (is (isa? core/selection-hierarchy :storm-split :accumulator)
+        ":storm-split should be a child of :accumulator")))
+
+
+(deftest test-x-mana-cost-isa-accumulator
+  (testing ":x-mana-cost derives from :accumulator in selection hierarchy"
+    (is (isa? core/selection-hierarchy :x-mana-cost :accumulator)
+        ":x-mana-cost should be a child of :accumulator")))
+
+
+(deftest test-mana-allocation-isa-accumulator
+  (testing ":mana-allocation derives from :accumulator in selection hierarchy"
+    (is (isa? core/selection-hierarchy :mana-allocation :accumulator)
+        ":mana-allocation should be a child of :accumulator")))
+
+
+(deftest test-accumulator-types-not-zone-pick
+  (testing "Accumulator types are NOT children of :zone-pick"
+    (is (not (isa? core/selection-hierarchy :storm-split :zone-pick))
+        ":storm-split should not derive from :zone-pick")
+    (is (not (isa? core/selection-hierarchy :x-mana-cost :zone-pick))
+        ":x-mana-cost should not derive from :zone-pick")
+    (is (not (isa? core/selection-hierarchy :mana-allocation :zone-pick))
+        ":mana-allocation should not derive from :zone-pick")))
+
+
+(deftest test-storm-split-builder-sets-accumulator-pattern
+  (testing "build-storm-split-selection sets :selection/pattern :accumulator"
+    (let [db (-> (th/create-test-db) (th/add-opponent))
+          [db source-id] (th/add-card-to-zone db :brain-freeze :stack :player-1)
+          db-with-storm (stack/create-stack-item db
+                                                 {:stack-item/type :storm
+                                                  :stack-item/controller :player-1
+                                                  :stack-item/source source-id
+                                                  :stack-item/effects [{:effect/type :storm-copies
+                                                                        :effect/count 3}]})
+          storm-si (first (filter #(= :storm (:stack-item/type %))
+                                  (q/get-all-stack-items db-with-storm)))
+          selection (storm/build-storm-split-selection db-with-storm :player-1 storm-si)]
+      (is (= :accumulator (:selection/pattern selection))
+          "Storm split builder should set pattern to :accumulator"))))
+
+
+(deftest test-x-mana-builder-sets-accumulator-pattern
+  (testing "build-x-mana-selection sets :selection/pattern :accumulator"
+    (let [db (-> (th/create-test-db)
+                 (mana/add-mana :player-1 {:colorless 5}))
+          [db spell-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          mode {:mode/id :primary
+                :mode/mana-cost {:colorless 1 :x true}}
+          selection (sel-costs/build-x-mana-selection db :player-1 spell-id mode)]
+      (is (= :accumulator (:selection/pattern selection))
+          "X mana builder should set pattern to :accumulator"))))
+
+
+(deftest test-mana-allocation-builder-sets-accumulator-pattern
+  (testing "build-mana-allocation-selection sets :selection/pattern :accumulator"
+    (let [db (-> (th/create-test-db)
+                 (mana/add-mana :player-1 {:black 3 :blue 2}))
+          [db spell-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          mode {:mode/id :primary
+                :mode/mana-cost {:colorless 2}}
+          resolved-cost {:colorless 2}
+          selection (sel-costs/build-mana-allocation-selection db :player-1 spell-id mode resolved-cost)]
+      (is (= :accumulator (:selection/pattern selection))
+          "Mana allocation builder should set pattern to :accumulator"))))
+
+
+(deftest test-accumulator-custom-executors-take-precedence
+  (testing "Custom accumulator executors dispatch correctly (not overridden by generic)"
+    ;; storm-split has custom executor that creates copies — verify it still works
+    (let [db (-> (th/create-test-db) (th/add-opponent))
+          [db source-id] (th/add-card-to-zone db :brain-freeze :stack :player-1)
+          db-with-storm (stack/create-stack-item db
+                                                 {:stack-item/type :storm
+                                                  :stack-item/controller :player-1
+                                                  :stack-item/source source-id
+                                                  :stack-item/effects [{:effect/type :storm-copies
+                                                                        :effect/count 2}]})
+          storm-si (first (filter #(= :storm (:stack-item/type %))
+                                  (q/get-all-stack-items db-with-storm)))
+          selection {:selection/type :storm-split
+                     :selection/copy-count 2
+                     :selection/valid-targets [:opponent :player-1]
+                     :selection/allocation {:opponent 2 :player-1 0}
+                     :selection/source-object-id source-id
+                     :selection/controller-id :player-1
+                     :selection/stack-item-eid (:db/id storm-si)
+                     :selection/selected #{}
+                     :selection/validation :always}
+          result (core/execute-confirmed-selection db-with-storm selection)
+          copies (filter :object/is-copy
+                         (q/get-objects-in-zone (:db result) :player-1 :stack))]
+      (is (= 2 (count copies))
+          "Storm-split custom executor should create 2 copies (not generic no-op)"))))
