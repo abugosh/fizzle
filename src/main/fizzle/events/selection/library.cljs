@@ -16,6 +16,7 @@
 
 ;; Forward declarations for builder-declared chains
 (declare build-order-bottom-selection)
+(declare build-order-top-selection)
 (declare build-pile-choice-selection)
 
 
@@ -207,13 +208,20 @@
                      (fn [_db sel]
                        (let [selected (:selection/selected sel)
                              cands (:selection/candidates sel)
-                             remainder (set/difference cands selected)]
+                             remainder (set/difference cands selected)
+                             remainder-zone (:selection/remainder-zone sel)]
                          (when (>= (count remainder) 2)
-                           (build-order-bottom-selection
-                             remainder
-                             (:selection/player-id sel)
-                             (:selection/spell-id sel)
-                             (:selection/remaining-effects sel)))))))))))))
+                           (if (= remainder-zone :top-of-library)
+                             (build-order-top-selection
+                               remainder
+                               (:selection/player-id sel)
+                               (:selection/spell-id sel)
+                               (:selection/remaining-effects sel))
+                             (build-order-bottom-selection
+                               remainder
+                               (:selection/player-id sel)
+                               (:selection/spell-id sel)
+                               (:selection/remaining-effects sel))))))))))))))
 
 
 ;; =====================================================
@@ -233,6 +241,30 @@
    (build-order-bottom-selection remainder-ids player-id spell-id nil))
   ([remainder-ids player-id spell-id remaining-effects]
    {:selection/type :order-bottom
+    :selection/candidates (set remainder-ids)
+    :selection/ordered []
+    :selection/player-id player-id
+    :selection/spell-id spell-id
+    :selection/remaining-effects (or remaining-effects [])
+    :selection/validation :always
+    :selection/auto-confirm? false}))
+
+
+(defn build-order-top-selection
+  "Build pending selection state for ordering cards on top of library.
+   Used when peek-and-select chains for :top-of-library remainder-zone.
+   First card clicked = top of library (position 0).
+
+   Arguments:
+     remainder-ids - Seq of object-ids to order
+     player-id - Player performing the ordering
+     spell-id - Spell that triggered this selection (for cleanup)
+     remaining-effects - Effects to execute after ordering (optional)"
+  ([remainder-ids player-id spell-id]
+   (build-order-top-selection remainder-ids player-id spell-id nil))
+  ([remainder-ids player-id spell-id remaining-effects]
+   {:selection/type :order-top
+    :selection/pattern :reorder
     :selection/candidates (set remainder-ids)
     :selection/ordered []
     :selection/player-id player-id
@@ -450,6 +482,35 @@
       (vec final-ordered))))
 
 
+(defn execute-order-top-selection
+  "Execute order-top selection — assign positions to ordered cards at top.
+   Pure function: (db, selection) -> db
+
+   First card in ordered vector gets position 0 (top of library).
+   Non-candidate cards are shifted to positions after the ordered cards."
+  [game-db selection]
+  (let [ordered (:selection/ordered selection)
+        candidates (:selection/candidates selection)
+        player-id (:selection/player-id selection)
+        ;; Belt and suspenders: include any candidates not yet in ordered
+        ordered-set (set ordered)
+        unordered (remove ordered-set candidates)
+        final-ordered (into (vec ordered) (shuffle (vec unordered)))
+        ;; Get all library objects sorted by position
+        library-objs (->> (queries/get-objects-in-zone game-db player-id :library)
+                          (sort-by :object/position))
+        non-candidate-objs (remove #(contains? candidates (:object/id %))
+                                   library-objs)
+        ;; Build new order: ordered cards first (top), then non-candidates
+        new-order (vec (concat final-ordered (map :object/id non-candidate-objs)))]
+    (reduce-kv
+      (fn [d idx card-id]
+        (let [obj-eid (queries/get-object-eid d card-id)]
+          (d/db-with d [[:db/add obj-eid :object/position idx]])))
+      game-db
+      new-order)))
+
+
 (defn execute-peek-and-reorder-selection
   "Execute peek-and-reorder selection — reorder library cards to player's chosen order.
    Pure function: (db, selection) -> db
@@ -650,6 +711,11 @@
 (defmethod core/execute-confirmed-selection :order-bottom
   [game-db selection]
   {:db (execute-order-bottom-selection game-db selection)})
+
+
+(defmethod core/execute-confirmed-selection :order-top
+  [game-db selection]
+  {:db (execute-order-top-selection game-db selection)})
 
 
 (defmethod core/execute-confirmed-selection :peek-and-reorder

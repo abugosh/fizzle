@@ -330,7 +330,10 @@
   ;;   - Invalid player: no-op (returns db unchanged)
   [db player-id effect object-id]
   (let [amount (resolve-dynamic-value db player-id (get effect :effect/amount 1) object-id)
-        target (get effect :effect/target player-id)]
+        target (get effect :effect/target player-id)
+        target-player (if (= target :opponent)
+                        (q/get-opponent-id db player-id)
+                        target)]
     ;; Guard: draw 0 or negative is no-op
     (if (<= amount 0)
       db
@@ -338,7 +341,7 @@
       (if (= target :any-player)
         {:db db :needs-selection effect}
         ;; Guard: invalid player is no-op
-        (if-let [cards-to-draw (q/get-top-n-library db target amount)]
+        (if-let [cards-to-draw (q/get-top-n-library db target-player amount)]
           (let [actual-drawn (count cards-to-draw)
                 ;; Move cards from library to hand
                 db-after-draw (reduce (fn [db' oid]
@@ -348,7 +351,7 @@
             ;; If we couldn't draw all requested cards, set drew-from-empty flag.
             ;; SBA interceptor detects and sets loss condition.
             (if (< actual-drawn amount)
-              (let [target-eid (q/get-player-eid db-after-draw target)]
+              (let [target-eid (q/get-player-eid db-after-draw target-player)]
                 (d/db-with db-after-draw [[:db/add target-eid :player/drew-from-empty true]]))
               db-after-draw))
           ;; get-top-n-library returns nil if player doesn't exist
@@ -904,6 +907,41 @@
                 game-eid (d/q '[:find ?g . :where [?g :game/id _]] db)]
             (d/db-with db [[:db/add game-eid :game/peek-result card-name]]))
           db))
+      db)))
+
+
+(defmethod execute-effect-impl :grant-mana-ability
+  ;; Grant a mana ability to all controlled lands until end of turn.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/target - :controlled-lands (which permanents get the grant)
+  ;;   :effect/ability - Ability data map to grant (mana ability with costs/effects)
+  ;;
+  ;; Creates a :grant/type :ability grant on each matching land.
+  ;; Grants expire at cleanup phase of current turn.
+  ;; Only lands controlled at resolution time receive the grant.
+  ;;
+  ;; Handles edge cases:
+  ;;   - No lands on battlefield: no-op
+  ;;   - Only :controlled-lands target supported for now
+  [db player-id effect object-id]
+  (let [target-filter (:effect/target effect)
+        ability-data (:effect/ability effect)
+        game-state (q/get-game-state db)
+        current-turn (or (:game/turn game-state) 1)]
+    (if (= target-filter :controlled-lands)
+      (let [lands (q/query-zone-by-criteria db player-id :battlefield
+                                            {:match/types #{:land}})
+            land-ids (map :object/id lands)]
+        (reduce (fn [d land-id]
+                  (grants/add-grant d land-id
+                                    {:grant/id (random-uuid)
+                                     :grant/type :ability
+                                     :grant/source object-id
+                                     :grant/expires {:expires/turn current-turn
+                                                     :expires/phase :cleanup}
+                                     :grant/data ability-data}))
+                db land-ids))
       db)))
 
 

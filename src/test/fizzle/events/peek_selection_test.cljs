@@ -357,3 +357,92 @@
         (is (> min-remainder-pos max-extra-pos)
             (str "Remainder cards (min pos " min-remainder-pos
                  ") should be below pre-existing cards (max pos " max-extra-pos ")"))))))
+
+
+;; === :top-of-library remainder tests ===
+
+(deftest test-build-peek-selection-top-of-library-remainder
+  (testing "peek-and-select with :top-of-library remainder stores correct remainder-zone"
+    (let [db (-> (init-game-state)
+                 (add-library-cards :player-1 [:a :b :c :d :e]))
+          effect {:effect/type :peek-and-select
+                  :effect/count 5
+                  :effect/select-count 1
+                  :effect/selected-zone :hand
+                  :effect/remainder-zone :top-of-library
+                  :effect/order-remainder? true}
+          result (library/build-peek-selection db :player-1 (random-uuid) effect [])]
+      (is (= :top-of-library (:selection/remainder-zone result))
+          "Should store :top-of-library as remainder-zone")
+      (is (true? (:selection/order-remainder? result))
+          "Should have order-remainder? true")
+      (is (= :chaining (:selection/lifecycle result))
+          "Should be chaining lifecycle"))))
+
+
+(deftest test-peek-chain-to-order-top-with-top-of-library-remainder
+  (testing "peek-and-select chains to :order-top when remainder-zone is :top-of-library"
+    (let [peek-ids [(random-uuid) (random-uuid) (random-uuid) (random-uuid) (random-uuid)]
+          db (-> (init-game-state)
+                 (add-library-cards-with-ids :player-1 peek-ids))
+          effect {:effect/type :peek-and-select
+                  :effect/count 5
+                  :effect/select-count 1
+                  :effect/selected-zone :hand
+                  :effect/remainder-zone :top-of-library
+                  :effect/order-remainder? true}
+          selection (library/build-peek-selection db :player-1 (random-uuid) effect [])
+          ;; Select one card
+          selected-id (first peek-ids)
+          sel-with-selected (assoc selection :selection/selected #{selected-id})
+          ;; Call chain builder
+          chain-fn (:selection/chain-builder sel-with-selected)
+          next-sel (chain-fn db sel-with-selected)]
+      (is (some? next-sel) "Should produce a chain selection")
+      (is (= :order-top (:selection/type next-sel))
+          "Chain selection should be :order-top, not :order-bottom")
+      (is (= 4 (count (:selection/candidates next-sel)))
+          "Should have 4 remainder candidates"))))
+
+
+(deftest test-execute-order-top-places-cards-at-top
+  (testing "execute-order-top-selection places ordered cards at positions 0, 1, 2..."
+    (let [top-ids [(random-uuid) (random-uuid) (random-uuid)]
+          extra-ids [(random-uuid) (random-uuid)]
+          all-ids (concat top-ids extra-ids)
+          db (-> (init-game-state)
+                 (add-library-cards-with-ids :player-1 (vec all-ids)))
+          selection {:selection/type :order-top
+                     :selection/candidates (set top-ids)
+                     :selection/ordered (vec top-ids)
+                     :selection/player-id :player-1}
+          db' (library/execute-order-top-selection db selection)]
+      ;; Ordered cards should be at top positions (0, 1, 2)
+      (doseq [i (range (count top-ids))]
+        (is (= i (get-object-position db' (nth top-ids i)))
+            (str "Card " i " should be at position " i)))
+      ;; Non-candidate cards should be after the top cards
+      (doseq [eid extra-ids]
+        (is (>= (get-object-position db' eid) (count top-ids))
+            "Non-candidate cards should be after ordered cards")))))
+
+
+(deftest test-peek-chain-to-order-bottom-unchanged
+  (testing "peek-and-select with :bottom-of-library remainder still chains to :order-bottom"
+    (let [peek-ids [(random-uuid) (random-uuid) (random-uuid) (random-uuid)]
+          db (-> (init-game-state)
+                 (add-library-cards-with-ids :player-1 peek-ids))
+          effect {:effect/type :peek-and-select
+                  :effect/count 4
+                  :effect/select-count 1
+                  :effect/selected-zone :hand
+                  :effect/remainder-zone :bottom-of-library
+                  :effect/order-remainder? true}
+          selection (library/build-peek-selection db :player-1 (random-uuid) effect [])
+          selected-id (first peek-ids)
+          sel-with-selected (assoc selection :selection/selected #{selected-id})
+          chain-fn (:selection/chain-builder sel-with-selected)
+          next-sel (chain-fn db sel-with-selected)]
+      (is (some? next-sel) "Should produce a chain selection")
+      (is (= :order-bottom (:selection/type next-sel))
+          "Chain selection should be :order-bottom for bottom-of-library remainder"))))

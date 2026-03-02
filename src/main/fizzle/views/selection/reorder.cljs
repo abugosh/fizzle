@@ -152,6 +152,15 @@
     :sub-key ::subs/order-bottom-cards}])
 
 
+(defn order-top-modal
+  "Modal for ordering cards on top of library."
+  []
+  [sequencing-modal
+   {:title "Order cards for top of library"
+    :instruction "Click cards to set order (first click = top of library). Click ordered cards to unsequence."
+    :sub-key ::subs/order-top-cards}])
+
+
 (defn peek-and-reorder-modal
   "Modal for reordering cards on top of library (Portent)."
   []

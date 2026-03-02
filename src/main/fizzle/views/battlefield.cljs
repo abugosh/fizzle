@@ -44,6 +44,16 @@
       [])))
 
 
+(defn get-granted-mana-abilities
+  "Get granted mana abilities from object grants.
+   Returns vector of grant maps with :grant/type :ability and mana ability data."
+  [obj]
+  (->> (or (:object/grants obj) [])
+       (filterv (fn [grant]
+                  (and (= :ability (:grant/type grant))
+                       (= :mana (:ability/type (:grant/data grant))))))))
+
+
 (defn get-activated-abilities
   "Get non-mana activated abilities with their indices."
   [obj]
@@ -64,6 +74,18 @@
               :disabled tapped?
               :on-click #(rf/dispatch [::ability-events/activate-mana-ability object-id mana-color])}
      symbol]))
+
+
+(defn- granted-ability-button
+  [object-id grant]
+  (let [ability (:grant/data grant)
+        produces (:ability/produces ability)
+        color (first (keys produces))
+        symbol (get mana-symbols color (name color))]
+    [:button {:class "py-0.5 px-1.5 mx-0.5 border border-amber-500 rounded text-[11px] font-bold cursor-pointer bg-amber-100 text-amber-800"
+              :on-click #(rf/dispatch [::ability-events/activate-granted-mana-ability
+                                       object-id (:grant/id grant)])}
+     (str "Sac: " symbol)]))
 
 
 (defn- ability-button
@@ -87,6 +109,7 @@
          counters (:object/counters obj)
          producible-colors (get-producible-colors obj)
          activated-abilities (get-activated-abilities obj)
+         granted-abilities (get-granted-mana-abilities obj)
          card-types (get-in obj [:object/card :card/types])
          card-colors (get-in obj [:object/card :card/colors])
          border-class (card-styles/get-type-border-class card-types tapped?)
@@ -121,7 +144,12 @@
                                desc))
                            "Activate")]
              ^{:key idx}
-             [ability-button object-id idx label tapped?]))])])))
+             [ability-button object-id idx label tapped?]))])
+      (when (and show-buttons? (seq granted-abilities))
+        [:div {:class "flex justify-center flex-wrap mt-1"}
+         (for [grant granted-abilities]
+           ^{:key (:grant/id grant)}
+           [granted-ability-button object-id grant])])])))
 
 
 (defn- empty-row-placeholder

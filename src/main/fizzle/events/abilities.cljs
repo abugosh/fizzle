@@ -2,6 +2,7 @@
   (:require
     [fizzle.db.queries :as queries]
     [fizzle.engine.abilities :as abilities]
+    [fizzle.engine.effects :as effects]
     [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.engine.priority :as priority]
     [fizzle.engine.rules :as rules]
@@ -225,3 +226,46 @@
   [game-db selection]
   (let [result (confirm-ability-target game-db selection)]
     {:db (:db result)}))
+
+
+;; === Activate Granted Mana Ability ===
+
+(defn activate-granted-mana-ability
+  "Activate a granted mana ability on a permanent.
+   Granted abilities are stored in :object/grants with :grant/type :ability.
+   Pure function: (db, player-id, object-id, grant-id) -> db
+
+   Unlike native mana abilities, granted abilities ignore tapped state
+   (no :tap cost). The grant's :ability/cost (e.g., :sacrifice-self)
+   determines what must be paid."
+  [db player-id object-id grant-id]
+  (if-not (priority/in-priority-phase? (:game/phase (queries/get-game-state db)))
+    db
+    (let [obj (queries/get-object db object-id)
+          player-eid (queries/get-player-eid db player-id)]
+      (if-not (and obj
+                   player-eid
+                   (= (:object/zone obj) :battlefield)
+                   (= (:db/id (:object/controller obj)) player-eid))
+        db
+        (let [grants (or (:object/grants obj) [])
+              grant (first (filter #(= grant-id (:grant/id %)) grants))
+              ability (:grant/data grant)]
+          (if-not (and grant ability (= :mana (:ability/type ability)))
+            db
+            ;; Pay costs (sacrifice-self, etc.) — skip can-activate? tap check
+            (if-let [db-after-costs (abilities/pay-all-costs db object-id (:ability/cost ability))]
+              ;; Execute effects (add-mana)
+              (reduce (fn [db' effect]
+                        (effects/execute-effect db' player-id effect))
+                      db-after-costs
+                      (:ability/effects ability []))
+              db)))))))
+
+
+(rf/reg-event-db
+  ::activate-granted-mana-ability
+  (fn [db [_ object-id grant-id]]
+    (let [game-db (:game/db db)
+          pid (queries/get-human-player-id game-db)]
+      (assoc db :game/db (activate-granted-mana-ability game-db pid object-id grant-id)))))

@@ -9,6 +9,7 @@
     [fizzle.engine.stack :as stack]
     [fizzle.engine.state-based :as sba]
     [fizzle.engine.zones :as zones]
+    [fizzle.events.abilities :as ability-events]
     [fizzle.test-helpers :as th]))
 
 
@@ -348,6 +349,53 @@
           db' (fx/execute-effect db :nonexistent-player effect)]
       ;; Should be no-op - no crash, return db unchanged
       (is (= db db')))))
+
+
+(deftest test-draw-opponent-target
+  (testing ":draw with :effect/target :opponent draws for opponent"
+    (let [db (-> (init-game-state)
+                 (add-opponent)
+                 (add-library-cards :player-2 [:card-1 :card-2 :card-3]))
+          initial-hand (count-zone db :player-2 :hand)
+          effect {:effect/type :draw
+                  :effect/amount 1
+                  :effect/target :opponent}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= (inc initial-hand) (count-zone db' :player-2 :hand))
+          "Opponent should have drawn 1 card")
+      (is (= 2 (count-zone db' :player-2 :library))
+          "Opponent library should have 2 cards remaining"))))
+
+
+(deftest test-draw-opponent-multiple
+  (testing ":draw with :effect/target :opponent draws multiple for opponent"
+    (let [db (-> (init-game-state)
+                 (add-opponent)
+                 (add-library-cards :player-2 [:card-1 :card-2 :card-3]))
+          initial-hand (count-zone db :player-2 :hand)
+          effect {:effect/type :draw
+                  :effect/amount 2
+                  :effect/target :opponent}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= (+ initial-hand 2) (count-zone db' :player-2 :hand))
+          "Opponent should have drawn 2 cards"))))
+
+
+(deftest test-draw-opponent-empty-library-sets-loss
+  (testing ":draw with :opponent target from empty library sets drew-from-empty"
+    (let [db (-> (init-game-state)
+                 (add-opponent))
+          effect {:effect/type :draw
+                  :effect/amount 1
+                  :effect/target :opponent}
+          db' (fx/execute-effect db :player-1 effect)
+          opp-eid (q/get-player-eid db' :player-2)
+          drew-empty (d/q '[:find ?v .
+                            :in $ ?e
+                            :where [?e :player/drew-from-empty ?v]]
+                          db' opp-eid)]
+      (is (true? drew-empty)
+          "Opponent should have drew-from-empty flag set"))))
 
 
 ;; === execute-effect :lose-life tests ===
@@ -1875,3 +1923,110 @@
           db' (fx/execute-effect db :player-1 effect obj-id)]
       ;; Should draw 3 cards (matching graveyard count)
       (is (= (+ initial-hand 3) (th/get-hand-count db' :player-1))))))
+
+
+;; === execute-effect :grant-mana-ability tests ===
+
+(def rain-of-filth-ability
+  {:ability/type :mana
+   :ability/cost {:sacrifice-self true}
+   :ability/produces {:black 1}
+   :ability/effects [{:effect/type :add-mana
+                      :effect/mana {:black 1}}]})
+
+
+(deftest test-grant-mana-ability-adds-grants-to-lands
+  (testing ":grant-mana-ability adds ability grants to all controlled lands"
+    (let [db (th/create-test-db)
+          [db land1-id] (th/add-card-to-zone db :island :battlefield :player-1)
+          [db land2-id] (th/add-card-to-zone db :swamp :battlefield :player-1)
+          effect {:effect/type :grant-mana-ability
+                  :effect/target :controlled-lands
+                  :effect/ability rain-of-filth-ability}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Both lands should have grants
+      (let [land1-grants (q/get-grants db' land1-id)
+            land2-grants (q/get-grants db' land2-id)]
+        (is (= 1 (count land1-grants)))
+        (is (= 1 (count land2-grants)))
+        (is (= :ability (:grant/type (first land1-grants))))
+        (is (= :mana (:ability/type (:grant/data (first land1-grants)))))))))
+
+
+(deftest test-grant-mana-ability-no-lands-is-noop
+  (testing ":grant-mana-ability with no lands on battlefield is a no-op"
+    (let [db (th/create-test-db)
+          effect {:effect/type :grant-mana-ability
+                  :effect/target :controlled-lands
+                  :effect/ability rain-of-filth-ability}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')))))
+
+
+(deftest test-grant-mana-ability-grants-expire-at-cleanup
+  (testing "grants from :grant-mana-ability expire at cleanup phase"
+    (let [db (th/create-test-db)
+          [db land-id] (th/add-card-to-zone db :island :battlefield :player-1)
+          effect {:effect/type :grant-mana-ability
+                  :effect/target :controlled-lands
+                  :effect/ability rain-of-filth-ability}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; Verify grant exists before expiry
+      (is (= 1 (count (q/get-grants db' land-id))))
+      ;; Expire grants at cleanup
+      (let [db-expired (grants/expire-grants db' 1 :cleanup)]
+        (is (= 0 (count (q/get-grants db-expired land-id))))))))
+
+
+(deftest test-activate-granted-mana-ability-sacrifices-and-adds-mana
+  (testing "activating granted mana ability sacrifices land and adds mana"
+    (let [db (th/create-test-db)
+          [db land-id] (th/add-card-to-zone db :island :battlefield :player-1)
+          effect {:effect/type :grant-mana-ability
+                  :effect/target :controlled-lands
+                  :effect/ability rain-of-filth-ability}
+          db' (fx/execute-effect db :player-1 effect)
+          grant-id (:grant/id (first (q/get-grants db' land-id)))
+          db'' (ability-events/activate-granted-mana-ability db' :player-1 land-id grant-id)]
+      ;; Land should be in graveyard (sacrificed)
+      (is (= :graveyard (:object/zone (q/get-object db'' land-id))))
+      ;; Mana pool should have black mana
+      (is (= 1 (:black (q/get-mana-pool db'' :player-1)))))))
+
+
+(deftest test-activate-granted-ability-works-on-tapped-lands
+  (testing "granted mana abilities can be activated on tapped lands (no :tap cost)"
+    (let [db (th/create-test-db)
+          [db land-id] (th/add-card-to-zone db :island :battlefield :player-1)
+          ;; Tap the land
+          obj-eid (q/get-object-eid db land-id)
+          db (d/db-with db [[:db/add obj-eid :object/tapped true]])
+          ;; Grant ability
+          effect {:effect/type :grant-mana-ability
+                  :effect/target :controlled-lands
+                  :effect/ability rain-of-filth-ability}
+          db' (fx/execute-effect db :player-1 effect)
+          grant-id (:grant/id (first (q/get-grants db' land-id)))
+          db'' (ability-events/activate-granted-mana-ability db' :player-1 land-id grant-id)]
+      ;; Should work even though tapped
+      (is (= :graveyard (:object/zone (q/get-object db'' land-id))))
+      (is (= 1 (:black (q/get-mana-pool db'' :player-1)))))))
+
+
+(deftest test-grant-mana-ability-multiple-lands-independent-grants
+  (testing "each land gets an independent grant"
+    (let [db (th/create-test-db)
+          [db land1-id] (th/add-card-to-zone db :island :battlefield :player-1)
+          [db land2-id] (th/add-card-to-zone db :swamp :battlefield :player-1)
+          effect {:effect/type :grant-mana-ability
+                  :effect/target :controlled-lands
+                  :effect/ability rain-of-filth-ability}
+          db' (fx/execute-effect db :player-1 effect)
+          ;; Activate granted ability on first land
+          grant1-id (:grant/id (first (q/get-grants db' land1-id)))
+          db'' (ability-events/activate-granted-mana-ability db' :player-1 land1-id grant1-id)]
+      ;; First land in graveyard
+      (is (= :graveyard (:object/zone (q/get-object db'' land1-id))))
+      ;; Second land still on battlefield with its grant intact
+      (is (= :battlefield (:object/zone (q/get-object db'' land2-id))))
+      (is (= 1 (count (q/get-grants db'' land2-id)))))))

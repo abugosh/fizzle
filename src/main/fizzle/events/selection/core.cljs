@@ -49,6 +49,7 @@
       (derive :scry :reorder)
       (derive :peek-and-reorder :reorder)
       (derive :order-bottom :reorder)
+      (derive :order-top :reorder)
       ;; Pre-cast cost chains: cost selections that chain to targeting
       (derive :discard-specific-cost :pre-cast-cost-to-targeting)
       (derive :return-land-cost :pre-cast-cost-to-targeting)

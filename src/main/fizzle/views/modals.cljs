@@ -53,6 +53,7 @@
   (case (:selection/type s)
     :scry [reorder/scry-modal s]
     :order-bottom [reorder/order-bottom-modal]
+    :order-top [reorder/order-top-modal]
     :peek-and-reorder [reorder/peek-and-reorder-modal]))
 
 

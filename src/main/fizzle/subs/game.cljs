@@ -522,6 +522,24 @@
          :may-shuffle? (boolean (:selection/may-shuffle? selection))}))))
 
 
+;; Subscription for order-top card objects
+;; Returns ordered and unsequenced card objects for the order-top modal
+(rf/reg-sub
+  ::order-top-cards
+  :<- [::game-db]
+  :<- [::pending-selection]
+  (fn [[game-db selection] _]
+    (when (and game-db selection (= :order-top (:selection/type selection)))
+      (let [candidates (:selection/candidates selection)
+            ordered (:selection/ordered selection)
+            ordered-set (set ordered)
+            unsequenced-ids (remove ordered-set candidates)
+            get-obj (fn [oid] (queries/get-object game-db oid))]
+        {:ordered-cards (mapv get-obj ordered)
+         :unsequenced-cards (sorting/sort-cards (mapv get-obj (vec unsequenced-ids)))
+         :all-ordered? (= (count ordered) (count candidates))}))))
+
+
 ;; Returns targetable ability stack items for ability-cast-targeting selection.
 ;; Maps valid-target EIDs to stack item data for display in the ability targeting modal.
 (rf/reg-sub
