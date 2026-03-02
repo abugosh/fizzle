@@ -18,6 +18,7 @@
     [fizzle.cards.blue.careful-study :as careful-study]
     [fizzle.cards.blue.chain-of-vapor :as chain-of-vapor]
     [fizzle.cards.blue.counterspell :as counterspell]
+    [fizzle.cards.blue.cunning-wish :as cunning-wish]
     [fizzle.cards.blue.daze :as daze]
     [fizzle.cards.blue.deep-analysis :as deep-analysis]
     [fizzle.cards.blue.flash-of-insight :as flash-of-insight]
@@ -66,6 +67,7 @@
        brain-freeze/card
        chain-of-vapor/card
        counterspell/card
+       cunning-wish/card
        daze/card
        foil/card
        mana-leak/card
