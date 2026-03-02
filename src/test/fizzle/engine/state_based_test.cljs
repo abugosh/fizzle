@@ -350,3 +350,96 @@
           db' (sba/set-loss-condition db :life-zero :player-1)]
       (is (= :life-zero (get-loss-condition db'))
           "Loss condition should be set even without opponent"))))
+
+
+;; === Cost-based life loss triggers SBA ===
+
+(deftest test-pay-life-cost-to-zero-triggers-sba
+  (testing "pay-life cost reducing life to 0 triggers :life-zero SBA"
+    ;; This is the bug that motivated the SBA epic: pay-life costs
+    ;; had no inline loss check, so paying life to 0 didn't end the game.
+    ;; Now the SBA system detects it.
+    (let [db (-> (th/create-test-db {:life 1})
+                 (th/add-opponent))
+          ;; Simulate pay-life cost: directly deduct life (as costs.cljs does)
+          player-eid (q/get-player-eid db :player-1)
+          db-after-cost (d/db-with db [[:db/add player-eid :player/life 0]])
+          ;; SBA detects life <= 0
+          db' (sba/check-and-execute-sbas db-after-cost)]
+      (is (= 0 (q/get-life-total db' :player-1))
+          "Life should be 0 after cost payment")
+      (is (= :life-zero (get-loss-condition db'))
+          "SBA should detect life-zero from cost payment")
+      (let [game (q/get-game-state db')
+            winner-eid (:game/winner game)
+            winner-pid (when winner-eid
+                         (:player/id (d/pull db' [:player/id] (:db/id winner-eid))))]
+        (is (= :player-2 winner-pid)
+            "Opponent should win when player pays life to 0")))))
+
+
+(deftest test-pay-x-life-cost-to-zero-triggers-sba
+  (testing "pay-x-life cost (Necrologia) reducing life to 0 triggers :life-zero SBA"
+    ;; Necrologia: pay X life as additional cost. If X >= life total, game should end.
+    (let [db (-> (th/create-test-db {:life 5})
+                 (th/add-opponent))
+          ;; Simulate pay-x-life cost: deduct exactly player's life total
+          player-eid (q/get-player-eid db :player-1)
+          db-after-cost (d/db-with db [[:db/add player-eid :player/life 0]])
+          ;; SBA detects life <= 0
+          db' (sba/check-and-execute-sbas db-after-cost)]
+      (is (= 0 (q/get-life-total db' :player-1))
+          "Life should be 0 after paying X life")
+      (is (= :life-zero (get-loss-condition db'))
+          "SBA should detect life-zero from pay-x-life cost"))))
+
+
+(deftest test-pay-x-life-to-negative-triggers-sba
+  (testing "pay-x-life reducing life below 0 triggers :life-zero SBA"
+    (let [db (-> (th/create-test-db {:life 5})
+                 (th/add-opponent))
+          ;; Simulate paying 10 life when only at 5
+          player-eid (q/get-player-eid db :player-1)
+          db-after-cost (d/db-with db [[:db/add player-eid :player/life -5]])
+          db' (sba/check-and-execute-sbas db-after-cost)]
+      (is (= -5 (q/get-life-total db' :player-1)))
+      (is (= :life-zero (get-loss-condition db'))))))
+
+
+;; === Extensibility test ===
+
+(deftest test-new-sba-type-works-with-just-defmethod
+  (testing "A new SBA type can be added with only defmethod registration"
+    ;; This proves the epic's extensibility requirement: no call-site changes needed
+    (let [executed (atom false)]
+      ;; Register a new SBA type at runtime
+      (defmethod sba/check-sba :test-extensibility
+        [db _type]
+        (let [game (q/get-game-state db)]
+          (if (:game/loss-condition game)
+            []
+            ;; Fire when player-1 has exactly 42 life (arbitrary condition)
+            (let [life (q/get-life-total db :player-1)]
+              (if (= 42 life)
+                [{:sba/type :test-extensibility :sba/player-id :player-1}]
+                [])))))
+      (defmethod sba/execute-sba :test-extensibility
+        [db sba]
+        (reset! executed true)
+        (sba/set-loss-condition db :test-custom-loss (:sba/player-id sba)))
+      ;; Test: SBA does NOT fire at normal life
+      (let [db (th/create-test-db {:life 20})
+            db' (sba/check-and-execute-sbas db)]
+        (is (nil? (get-loss-condition db'))
+            "SBA should not fire at life 20")
+        (is (false? @executed)))
+      ;; Test: SBA fires at life 42
+      (let [db (th/create-test-db {:life 42})
+            db' (sba/check-and-execute-sbas db)]
+        (is (= :test-custom-loss (get-loss-condition db'))
+            "Custom SBA should set custom loss condition")
+        (is (true? @executed)
+            "Custom SBA executor should have been called"))
+      ;; Clean up
+      (remove-method sba/check-sba :test-extensibility)
+      (remove-method sba/execute-sba :test-extensibility))))
