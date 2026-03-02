@@ -1572,3 +1572,17 @@
         (let [db' (set-phase db phase)]
           (is (false? (rules/can-cast? db' :player-1 obj-id))
               (str "Should not be castable during " (name phase))))))))
+
+
+(deftest cast-restriction-blocks-during-opponents-end-step
+  (testing "Card with end-step restriction cannot be cast during opponent's end step"
+    (let [db (-> (th/create-test-db {:mana {:black 1}})
+                 th/add-opponent)
+          [db obj-id] (add-restricted-card-to-hand db :player-1)
+          ;; Set phase to :end but make opponent the active player
+          opp-eid (q/get-player-eid db :player-2)
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          db (d/db-with db [[:db/add game-eid :game/phase :end]
+                            [:db/add game-eid :game/active-player opp-eid]])]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable during opponent's end step"))))

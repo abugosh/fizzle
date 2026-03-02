@@ -207,12 +207,13 @@
 
 (defn- cast-restriction-met?
   "Check if a card's cast restriction is satisfied by the current game state.
-   Returns true if no restriction exists or if the restriction is met."
-  [db card]
+   Phase restrictions require it to be the casting player's turn in that phase."
+  [db player-id card]
   (if-let [restriction (:card/cast-restriction card)]
     (let [phase (:restriction/phase restriction)
-          current-phase (:game/phase (q/get-game-state db))]
-      (= phase current-phase))
+          game-state (q/get-game-state db)]
+      (and (= phase (:game/phase game-state))
+           (= player-id (q/get-active-player-id db))))
     true))
 
 
@@ -247,7 +248,7 @@
                                        (contains? card-types :sorcery)))]
           (if type-restricted
             false
-            (if-not (cast-restriction-met? db card)
+            (if-not (cast-restriction-met? db player-id card)
               false
               (let [;; Check timing: non-instant cards require sorcery speed
                     timing-ok (or (instant-speed? card)
