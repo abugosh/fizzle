@@ -21,6 +21,7 @@
     [fizzle.engine.turn-based :as turn-based]
     [fizzle.engine.zones :as zones]
     [fizzle.events.abilities]
+    [fizzle.events.interceptors.sba :as sba-interceptor]
     [fizzle.events.selection]
     [fizzle.events.selection.core :as sel-core]
     [fizzle.events.selection.costs :as sel-costs]
@@ -634,6 +635,7 @@
 
 (rf/reg-event-db
   ::resolve-top
+  [sba-interceptor/sba-interceptor]
   (fn [db _]
     (let [result (resolve-one-item (:game/db db))]
       (if (:pending-selection result)
@@ -1086,6 +1088,7 @@
 
 (rf/reg-event-fx
   ::yield
+  [sba-interceptor/sba-interceptor]
   (fn [{:keys [db]} _]
     (if (:game/pending-selection db)
       {:db db}

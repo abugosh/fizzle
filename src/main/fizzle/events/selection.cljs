@@ -13,6 +13,7 @@
      selection/costs.cljs     — X-cost detection, exile-cards cost
      selection/zone_ops.cljs  — discard (unified), graveyard-return"
   (:require
+    [fizzle.events.interceptors.sba :as sba-interceptor]
     [fizzle.events.selection.core :as core]
     [re-frame.core :as rf]))
 
@@ -31,6 +32,7 @@
 
 (rf/reg-event-db
   ::confirm-selection
+  [sba-interceptor/sba-interceptor]
   (fn [db _]
     (core/confirm-selection-handler db)))
 
