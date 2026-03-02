@@ -13,6 +13,7 @@
     [fizzle.cards.black.duress :as duress]
     [fizzle.cards.black.ill-gotten-gains :as ill-gotten-gains]
     [fizzle.cards.black.necrologia :as necrologia]
+    [fizzle.cards.black.rain-of-filth :as rain-of-filth]
     [fizzle.cards.blue.accumulated-knowledge :as accumulated-knowledge]
     [fizzle.cards.blue.annul :as annul]
     [fizzle.cards.blue.blue-elemental-blast :as blue-elemental-blast]
@@ -35,6 +36,7 @@
     [fizzle.cards.blue.portent :as portent]
     [fizzle.cards.blue.sleight-of-hand :as sleight-of-hand]
     [fizzle.cards.blue.stifle :as stifle]
+    [fizzle.cards.blue.words-of-wisdom :as words-of-wisdom]
     [fizzle.cards.green.crumble :as crumble]
     [fizzle.cards.lands.basic-lands :as basic-lands]
     [fizzle.cards.lands.cephalid-coliseum :as cephalid-coliseum]
@@ -43,6 +45,7 @@
     [fizzle.cards.lands.fetch-lands :as fetch-lands]
     [fizzle.cards.lands.gemstone-mine :as gemstone-mine]
     [fizzle.cards.lands.pain-lands :as pain-lands]
+    [fizzle.cards.multicolor.diabolic-vision :as diabolic-vision]
     [fizzle.cards.red.burning-wish :as burning-wish]
     [fizzle.cards.red.lightning-bolt :as lightning-bolt]
     [fizzle.cards.red.pyroblast :as pyroblast]
@@ -64,6 +67,7 @@
        duress/card
        ill-gotten-gains/card
        necrologia/card
+       rain-of-filth/card
        accumulated-knowledge/card
        annul/card
        blue-elemental-blast/card
@@ -86,6 +90,7 @@
        portent/card
        sleight-of-hand/card
        stifle/card
+       words-of-wisdom/card
        abeyance/card
        orims-chant/card
        ray-of-revelation/card
@@ -103,7 +108,8 @@
        lions-eye-diamond/card
        tormods-crypt/card
        urzas-bauble/card
-       crumble/card]
+       crumble/card
+       diabolic-vision/card]
       ;; Cycle cards
       basic-lands/cards
       pain-lands/cards
