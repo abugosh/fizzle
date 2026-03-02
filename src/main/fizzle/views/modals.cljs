@@ -59,6 +59,7 @@
 (defmethod render-selection-modal :accumulator [s _]
   (case (:selection/type s)
     :x-mana-cost [accumulator/x-mana-selection-modal s]
+    :pay-x-life [accumulator/pay-x-life-selection-modal s]
     :storm-split [accumulator/storm-split-modal s]
     nil))
 

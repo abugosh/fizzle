@@ -22,7 +22,7 @@
 
 
 (def valid-cost-types
-  #{:pay-life :exile-cards :return-land :discard-specific})
+  #{:pay-life :pay-x-life :exile-cards :return-land :discard-specific})
 
 
 (def valid-ability-cost-keys
@@ -236,6 +236,8 @@
 (s/def :card/targeting ::targeting-vec)
 (s/def :card/alternate-costs (s/coll-of ::alternate-cost :kind vector?))
 (s/def :card/conditional-effects ::conditional-effects)
+(s/def :card/additional-costs (s/coll-of ::additional-cost :kind vector?))
+(s/def :card/cast-restriction map?)
 (s/def :card/kicker ::mana-cost)
 (s/def :card/kicked-effects ::effects)
 
@@ -246,7 +248,8 @@
           :opt [:card/effects :card/abilities :card/etb-effects
                 :card/triggers :card/targeting :card/alternate-costs
                 :card/conditional-effects :card/kicker :card/kicked-effects
-                :card/subtypes :card/supertypes :card/keywords]))
+                :card/subtypes :card/supertypes :card/keywords
+                :card/additional-costs :card/cast-restriction]))
 
 
 ;; === Validation Functions ===

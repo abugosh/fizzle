@@ -71,6 +71,13 @@
                  (:mode/additional-costs mode))))
 
 
+(defn has-pay-x-life-cost?
+  "Check if mode has a :pay-x-life additional cost"
+  [mode]
+  (some (fn [cost] (= :pay-x-life (:cost/type cost)))
+        (:mode/additional-costs mode)))
+
+
 (defn has-generic-mana-cost?
   "Check if a resolved cost has a generic mana portion (:colorless > 0).
    Cost must NOT contain :x (caller resolves X before calling)."
@@ -275,6 +282,35 @@
                 :selection/auto-confirm? true}))))}))
 
 
+(defn build-pay-x-life-selection
+  "Build pending selection for pay-x-life additional cost.
+   Player selects how much life to pay for X via accumulator stepper.
+
+   Arguments:
+     game-db - Datascript game database
+     player-id - Player casting the spell
+     object-id - Spell being cast
+     mode - Casting mode with :pay-x-life cost
+
+   Returns selection state for choosing X life payment."
+  [game-db player-id object-id mode]
+  (let [current-life (queries/get-life-total game-db player-id)
+        ;; Max X is current life (can pay down to 0)
+        max-x (max 0 current-life)]
+    {:selection/zone :life
+     :selection/type :pay-x-life
+     :selection/pattern :accumulator
+     :selection/lifecycle :finalized
+     :selection/clear-selected-card? true
+     :selection/player-id player-id
+     :selection/spell-id object-id
+     :selection/mode mode
+     :selection/max-x max-x
+     :selection/selected-x 0
+     :selection/validation :always
+     :selection/auto-confirm? false}))
+
+
 (defn build-mana-allocation-selection
   "Build pending selection for manual generic mana allocation.
    Player clicks mana symbols to allocate toward generic cost.
@@ -389,6 +425,33 @@
                              [[:db/add obj-eid :object/x-value selected-count]])
         db-after-cast (rules/cast-spell-mode db-with-x player-id object-id mode)]
     {:db db-after-cast}))
+
+
+(defmethod core/execute-confirmed-selection :pay-x-life
+  [game-db selection]
+  (let [x-value (:selection/selected-x selection)
+        player-id (:selection/player-id selection)
+        object-id (:selection/spell-id selection)
+        mode (:selection/mode selection)
+        ;; Deduct life from controller
+        player-eid (queries/get-player-eid game-db player-id)
+        current-life (queries/get-life-total game-db player-id)
+        new-life (- current-life x-value)
+        db-after-life (d/db-with game-db [[:db/add player-eid :player/life new-life]])
+        ;; Cast the spell
+        db-after-cast (rules/cast-spell-mode db-after-life player-id object-id mode)
+        ;; Store chosen-x on the stack item
+        obj-eid (queries/get-object-eid db-after-cast object-id)
+        stack-item-eid (when obj-eid
+                         (d/q '[:find ?e .
+                                :in $ ?obj-eid
+                                :where [?e :stack-item/object-ref ?obj-eid]]
+                              db-after-cast obj-eid))
+        db-final (if stack-item-eid
+                   (d/db-with db-after-cast
+                              [[:db/add stack-item-eid :stack-item/chosen-x x-value]])
+                   db-after-cast)]
+    {:db db-final}))
 
 
 (defmethod core/execute-confirmed-selection :x-mana-cost

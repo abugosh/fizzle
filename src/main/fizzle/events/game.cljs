@@ -273,7 +273,7 @@
   "Ordered vector of pre-cast step keywords. Evaluated left-to-right.
    Costs before targeting, targeting before mana allocation."
   [:exile-cards-cost :return-land-cost :discard-specific-cost
-   :x-mana-cost :targeting :mana-allocation])
+   :pay-x-life :x-mana-cost :targeting :mana-allocation])
 
 
 (defmethod evaluate-pre-cast-step :exile-cards-cost
@@ -301,6 +301,12 @@
           sel (sel-costs/build-discard-specific-selection game-db player-id object-id mode discard-cost)]
       (when sel
         {:selection sel}))))
+
+
+(defmethod evaluate-pre-cast-step :pay-x-life
+  [_ {:keys [game-db player-id object-id mode]}]
+  (when (sel-costs/has-pay-x-life-cost? mode)
+    {:selection (sel-costs/build-pay-x-life-selection game-db player-id object-id mode)}))
 
 
 (defmethod evaluate-pre-cast-step :x-mana-cost

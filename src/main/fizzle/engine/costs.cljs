@@ -361,3 +361,19 @@
   ;; Actual exile is deferred to the event layer's selection system.
   ;; Player must choose which cards to exile, so we return db unchanged.
   db)
+
+
+;; === :pay-x-life cost ===
+;; Used for costs like "pay X life" where X is chosen by the player.
+;; Cost format: {:pay-x-life true}
+;; Always payable (player can choose X=0).
+;; Actual payment deferred to selection system (accumulator UI).
+
+(defmethod can-pay? :pay-x-life [_db _object-id _cost]
+  true)
+
+
+(defmethod pay-cost :pay-x-life [db _object-id _cost]
+  ;; Actual payment deferred to the event layer's selection system.
+  ;; Player chooses X via accumulator UI, then life is deducted.
+  db)

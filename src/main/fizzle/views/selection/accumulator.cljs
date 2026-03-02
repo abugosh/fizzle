@@ -46,6 +46,38 @@
                                :extra-class "bg-gy-flashback-border"}]]]]))
 
 
+;; === Pay X Life Selection ===
+
+(defn pay-x-life-selection-modal
+  "Modal for selecting X value for a spell with pay-X-life cost."
+  [selection]
+  (let [selected-x (or (:selection/selected-x selection) 0)
+        max-x (or (:selection/max-x selection) 0)]
+    [:div {:class common/overlay-class}
+     [:div {:class (common/container-class {:max-width "400px" :border-color "gy-flashback-border"})}
+      [:h2 {:class "text-text m-0 mb-2 text-lg"} "Pay X Life"]
+      [:p {:class "text-health-good m-0 mb-4 text-sm"}
+       (str "Pay " selected-x " life (max " max-x ")")]
+      [:div {:class "flex items-center justify-center gap-5 mb-5"}
+       [:button {:class (common/stepper-button-class (pos? selected-x))
+                 :disabled (not (pos? selected-x))
+                 :on-click #(rf/dispatch [::cost-events/decrement-x-value])}
+        "-"]
+       [:div {:class "text-[32px] text-white font-bold min-w-[60px] text-center"}
+        (str "X = " selected-x)]
+       [:button {:class (common/stepper-button-class (< selected-x max-x))
+                 :disabled (not (< selected-x max-x))
+                 :on-click #(rf/dispatch [::cost-events/increment-x-value])}
+        "+"]]
+      [:div {:class "flex justify-end gap-3"}
+       [common/cancel-button {:label "Cancel"
+                              :on-cancel #(rf/dispatch [::cost-events/cancel-x-mana-selection])}]
+       [common/confirm-button {:label "Cast"
+                               :valid? true
+                               :on-confirm #(rf/dispatch [::selection-events/confirm-selection])
+                               :extra-class "bg-gy-flashback-border"}]]]]))
+
+
 ;; === Storm Split ===
 
 (defn storm-split-target-label
