@@ -15,7 +15,6 @@
     [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.stack :as stack]
-    [fizzle.engine.state-based :as sba]
     [fizzle.engine.zones :as zones]))
 
 
@@ -268,7 +267,7 @@
   ;;   - Amount <= 0: no-op (negative amount is NOT treated as heal)
   ;;   - Invalid player: no-op (returns db unchanged)
   ;;   - Life can go negative (no clamping at 0)
-  ;;   - Life reaching 0 or below sets :game/loss-condition :life-zero
+  ;;   - Life reaching 0 or below: SBA interceptor detects and sets loss condition
   ;;
   ;; Note: For Phase 1.5, behaves identically to :lose-life.
   ;; Kept separate for future damage prevention implementation.
@@ -282,12 +281,8 @@
       ;; Guard: invalid player is no-op
       (if-let [player-eid (q/get-player-eid db target)]
         (let [current-life (q/get-life-total db target)
-              new-life (- current-life amount)
-              db-after-damage (d/db-with db [[:db/add player-eid :player/life new-life]])]
-          ;; Check for loss condition
-          (if (<= new-life 0)
-            (sba/set-loss-condition db-after-damage :life-zero target)
-            db-after-damage))
+              new-life (- current-life amount)]
+          (d/db-with db [[:db/add player-eid :player/life new-life]]))
         db))))
 
 

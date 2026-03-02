@@ -617,7 +617,8 @@
           effect {:effect/type :deal-damage
                   :effect/amount 20
                   :effect/target :player-1}
-          db' (fx/execute-effect db :player-1 effect)]
+          db' (-> (fx/execute-effect db :player-1 effect)
+                  (sba/check-and-execute-sbas))]
       (is (= 0 (q/get-life-total db' :player-1)))
       (is (= :life-zero (get-loss-condition db'))))))
 
@@ -1201,7 +1202,8 @@
           effect {:effect/type :deal-damage
                   :effect/amount 20
                   :effect/target :player-1}
-          db' (fx/execute-effect db :player-1 effect)]
+          db' (-> (fx/execute-effect db :player-1 effect)
+                  (sba/check-and-execute-sbas))]
       (is (= 0 (q/get-life-total db' :player-1))
           "Life should be exactly 0")
       (is (= :life-zero (get-loss-condition db'))
@@ -1497,7 +1499,8 @@
           effect {:effect/type :deal-damage
                   :effect/amount 20
                   :effect/target :player-2}
-          db' (fx/execute-effect db :player-1 effect)]
+          db' (-> (fx/execute-effect db :player-1 effect)
+                  (sba/check-and-execute-sbas))]
       (is (= :life-zero (get-loss-condition db'))
           "Loss condition should be set")
       (is (= :player-1 (get-winner db'))

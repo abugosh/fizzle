@@ -19,6 +19,7 @@
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
+    [fizzle.engine.state-based :as sba]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.game :as game]
     [fizzle.events.selection.targeting :as sel-targeting]
@@ -259,7 +260,7 @@
                      :selection/selected #{:player-2}}
           db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)
           result (game/resolve-one-item db-cast)
-          db-resolved (:db result)]
+          db-resolved (sba/check-and-execute-sbas (:db result))]
       (is (= 0 (q/get-life-total db-resolved :player-2))
           "Opponent life should be 0")
       (is (= :life-zero (:game/loss-condition (q/get-game-state db-resolved)))
@@ -285,7 +286,7 @@
                      :selection/selected #{:player-2}}
           db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)
           result (game/resolve-one-item db-cast)
-          db-resolved (:db result)]
+          db-resolved (sba/check-and-execute-sbas (:db result))]
       (is (= -2 (q/get-life-total db-resolved :player-2))
           "Opponent life should be -2 (no clamping)")
       (is (= :life-zero (:game/loss-condition (q/get-game-state db-resolved)))
@@ -311,7 +312,7 @@
                      :selection/selected #{:player-2}}
           db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)
           result (game/resolve-one-item db-cast)
-          db-resolved (:db result)]
+          db-resolved (sba/check-and-execute-sbas (:db result))]
       (is (= -3 (q/get-life-total db-resolved :player-2))
           "Opponent life should be -3 (still deals damage)")
       (is (= :life-zero (:game/loss-condition (q/get-game-state db-resolved)))
