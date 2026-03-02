@@ -5,7 +5,6 @@
     [fizzle.events.game :as events]
     [fizzle.events.selection :as selection-events]
     [fizzle.subs.game :as subs]
-    [fizzle.views.card-styles :as card-styles]
     [fizzle.views.selection.common :as common]
     [re-frame.core :as rf]))
 
@@ -13,7 +12,6 @@
 ;; === Player Target ===
 
 (defn player-target-modal
-  "Modal for selecting a player as target."
   [selection confirm-event]
   (let [selected (or (:selection/selected selection) #{})
         valid? @(rf/subscribe [::subs/selection-valid?])
@@ -40,7 +38,6 @@
 ;; === Object Target ===
 
 (defn object-target-modal
-  "Modal for selecting an object as target."
   [selection cards {:keys [select-event confirm-event default-zone
                            selected-label unselected-label]}]
   (let [selected (or (:selection/selected selection) #{})
@@ -55,28 +52,19 @@
       [:div {:class "flex flex-wrap gap-2.5 mb-5 min-h-[60px]"}
        (if (seq cards)
          (for [obj cards]
-           (let [oid (:object/id obj)
-                 card-types (get-in obj [:object/card :card/types])
-                 card-colors (get-in obj [:object/card :card/colors])]
-             ^{:key oid}
-             [:div {:class (str "rounded-md px-3.5 py-2.5 cursor-pointer min-w-[90px] text-center "
-                                "select-none text-text transition-all duration-100 "
-                                (if (contains? selected oid)
-                                  "border-[3px] border-border-accent"
-                                  (str "border-2 " (card-styles/get-type-border-class card-types false)))
-                                " " (card-styles/get-color-identity-bg-class card-colors card-types))
-                    :on-click #(rf/dispatch [select-event oid])}
-              (get-in obj [:object/card :card/name])]))
+           ^{:key (:object/id obj)}
+           [common/selection-card-view obj
+            (contains? selected (:object/id obj))
+            select-event])
          [:div {:class "text-perm-text-tapped"} "No valid targets"])]
       [:div {:class "flex justify-end"}
        [common/confirm-button {:label "Confirm" :valid? valid?
                                :on-confirm #(rf/dispatch [confirm-event])}]]]]))
 
 
-;; === Ability Cast Targeting ===
+;; === Ability Cast Targeting (stack items, not cards) ===
 
 (defn ability-cast-targeting-modal
-  "Modal for targeting an ability (Stifle)."
   [selection]
   (let [targets @(rf/subscribe [::subs/ability-cast-targets])
         selected (or (:selection/selected selection) #{})
@@ -104,7 +92,7 @@
                                :on-confirm #(rf/dispatch [::selection-events/confirm-selection])}]]]]))
 
 
-;; === Mode Selector (Pre-cast) ===
+;; === Mode Selector / Spell Mode ===
 
 (def ^:private mode-btn-class
   (str "w-full py-3 px-4 mb-2 border-2 border-border-accent rounded-lg "
@@ -121,12 +109,10 @@
   [mc]
   (if (or (nil? mc) (empty? mc))
     "{0}"
-    (let [syms [[:colorless nil] [:white "W"] [:blue "U"] [:black "B"] [:red "R"] [:green "G"]]]
-      (apply str (for [[k s] syms
-                       :let [n (get mc k 0)]
-                       :when (pos? n)]
-                   (if s (apply str (repeat n (str "{" s "}")))
-                       (str "{" n "}")))))))
+    (apply str (for [[k s] [[:colorless nil] [:white "W"] [:blue "U"] [:black "B"] [:red "R"] [:green "G"]]
+                     :let [n (get mc k 0)]
+                     :when (pos? n)]
+                 (if s (apply str (repeat n (str "{" s "}"))) (str "{" n "}"))))))
 
 
 (defn- format-additional-costs
@@ -143,7 +129,6 @@
 
 
 (defn mode-selector-modal
-  "Modal for selecting casting mode (Normal Cast / Flashback)."
   []
   (let [pending @(rf/subscribe [::subs/pending-mode-selection])]
     (when pending
@@ -163,17 +148,13 @@
              (case (:mode/id mode) :primary "Normal Cast" :flashback "Flashback"
                    (name (:mode/id mode)))]
             [:div {:class "text-[13px] text-text-muted"}
-             fmana
-             (when fadd [:span {:class "ml-2 text-cost-text"} (str "+ " fadd)])]])]
+             fmana (when fadd [:span {:class "ml-2 text-cost-text"} (str "+ " fadd)])]])]
         [:button {:class dismiss-btn-class
                   :on-click #(rf/dispatch [::events/cancel-mode-selection])}
          "Cancel"]]])))
 
 
-;; === Spell Mode Selection ===
-
 (defn spell-mode-selection-modal
-  "Modal for spell-mode selection (REB, BEB). Auto-confirms on click."
   [selection _cards]
   [:div {:class common/overlay-class
          :on-click #(rf/dispatch [::selection-events/cancel-selection])}

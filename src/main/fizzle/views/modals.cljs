@@ -1,7 +1,6 @@
 (ns fizzle.views.modals
   "Selection modal router. Dispatches to pattern-based components
-   in views/selection/ directory. Preserves public API for consumers
-   (core.cljs, import_modal.cljs, game_over.cljs, tests)."
+   in views/selection/ directory."
   (:require
     [fizzle.events.selection :as selection-events]
     [fizzle.subs.game :as subs]
@@ -13,21 +12,16 @@
     [re-frame.core :as rf]))
 
 
-;; Re-exported for import_modal.cljs and game_over.cljs
+;; Re-exported for import_modal.cljs, game_over.cljs, storm_split_test.cljs
 (def modal-wrapper common/modal-wrapper)
 (def confirm-button common/confirm-button)
 (def cancel-button common/cancel-button)
-
-
-;; Re-exported for storm_split_test.cljs
 (def storm-split-target-label accumulator/storm-split-target-label)
 
 
-;; === Selection Modal Dispatch ===
+;; === Dispatch ===
 
 (defn- modal-dispatch-key
-  "Derive dispatch key. Pattern-tagged selections dispatch on pattern.
-   Player-targeting variants dispatch as :targeting-player."
   [selection]
   (let [sel-type (:selection/type selection)
         target-req (:selection/target-requirement selection)]
@@ -40,21 +34,18 @@
 
 
 (defmulti render-selection-modal
-  "Render the appropriate modal component for a selection type."
   (fn [selection _cards] (modal-dispatch-key selection)))
 
 
 (defn- object-target
-  [s c zone selected-label unselected-label]
+  [s c zone sel-label unsel-label]
   [custom/object-target-modal s c
    {:select-event ::selection-events/toggle-selection
     :confirm-event ::selection-events/confirm-selection
-    :default-zone zone
-    :selected-label selected-label
-    :unselected-label unselected-label}])
+    :default-zone zone :selected-label sel-label :unselected-label unsel-label}])
 
 
-;; Pattern-based generic components
+;; Pattern-based
 (defmethod render-selection-modal :zone-pick [s c] [zone-pick/zone-pick-modal s c])
 
 
@@ -72,7 +63,7 @@
     nil))
 
 
-;; Custom (unique)
+;; Custom
 (defmethod render-selection-modal :targeting-player [s _]
   [custom/player-target-modal s ::selection-events/confirm-selection])
 
@@ -106,7 +97,6 @@
 ;; === Public API ===
 
 (defn selection-modal
-  "Modal overlay for player selection."
   []
   (let [selection @(rf/subscribe [::subs/pending-selection])
         cards @(rf/subscribe [::subs/selection-cards])]

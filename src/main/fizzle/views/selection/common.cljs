@@ -1,7 +1,5 @@
 (ns fizzle.views.selection.common
-  "Shared helpers for selection modal components.
-   Contains layout primitives (overlay, container, buttons, wrapper)
-   and reusable card-view components."
+  "Shared helpers for selection modal components."
   (:require
     [fizzle.views.card-styles :as card-styles]
     [re-frame.core :as rf]))
@@ -18,8 +16,7 @@
        " rounded-xl p-6 w-[90%] max-w-[" max-width "]"))
 
 
-(def header-class
-  "text-text text-lg m-0 mb-4")
+(def header-class "text-text text-lg m-0 mb-4")
 
 
 (defn confirm-button
@@ -52,21 +49,26 @@
 
 
 (defn selection-card-view
-  "A card in a selection modal, showing selected state.
-   Dispatches generic ::toggle-selection via provided event keyword."
+  "A card in a selection modal. Supports optional selectable? param for
+   hand-reveal style (dimmed non-selectable cards)."
   ([obj selected? toggle-event]
+   (selection-card-view obj selected? toggle-event true))
+  ([obj selected? toggle-event selectable?]
    (let [card-name (get-in obj [:object/card :card/name])
          object-id (:object/id obj)
          card-types (get-in obj [:object/card :card/types])
          card-colors (get-in obj [:object/card :card/colors])
-         border-class (if selected?
-                        "border-[3px] border-border-accent"
-                        (str "border-2 " (card-styles/get-type-border-class card-types false)))
+         border-class (cond
+                        selected? "border-[3px] border-border-accent"
+                        (not selectable?) "border-2 border-border opacity-50"
+                        :else (str "border-2 " (card-styles/get-type-border-class card-types false)))
          bg-class (card-styles/get-color-identity-bg-class card-colors card-types)]
-     [:div {:class (str "rounded-md px-3.5 py-2.5 cursor-pointer min-w-[90px] text-center "
+     [:div {:class (str "rounded-md px-3.5 py-2.5 min-w-[90px] text-center "
                         "select-none text-text transition-all duration-100 "
+                        (if selectable? "cursor-pointer " "cursor-not-allowed ")
                         border-class " " bg-class)
-            :on-click #(rf/dispatch [toggle-event object-id])}
+            :on-click (when selectable?
+                        #(rf/dispatch [toggle-event object-id]))}
       card-name])))
 
 
