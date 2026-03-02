@@ -14,6 +14,7 @@
     [fizzle.cards.blue.accumulated-knowledge :as ak]
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
+    [fizzle.engine.state-based :as sba]
     [fizzle.events.game :as game]
     [fizzle.test-helpers :as th]))
 
@@ -235,8 +236,9 @@
       (is (= 1 (th/get-hand-count (:db result) :player-1))
           "Should draw available cards")
       ;; Loss condition should be set (tried to draw 3 but only 1 available)
-      (is (= :empty-library (:game/loss-condition (q/get-game-state (:db result))))
-          "Should set loss condition when library runs out"))))
+      (let [db-after-sba (sba/check-and-execute-sbas (:db result))]
+        (is (= :empty-library (:game/loss-condition (q/get-game-state db-after-sba)))
+            "Should set loss condition when library runs out")))))
 
 
 ;; After AK resolves and goes to graveyard, the next AK draw count increases

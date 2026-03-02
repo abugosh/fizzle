@@ -333,9 +333,9 @@
   ;;   - :effect/target is :any-player (player chooses target)
   ;;
   ;; Handles edge cases:
-  ;;   - Empty library: sets :game/loss-condition to :empty-library
-  ;;   - Partial library: draws all available, then sets loss condition
-  ;;   - Draw 0 or negative: no-op, no loss condition
+  ;;   - Empty library: sets :player/drew-from-empty flag (SBA detects loss)
+  ;;   - Partial library: draws all available, then sets flag
+  ;;   - Draw 0 or negative: no-op, no flag set
   ;;   - Invalid player: no-op (returns db unchanged)
   [db player-id effect object-id]
   (let [amount (resolve-dynamic-value db player-id (get effect :effect/amount 1) object-id)
@@ -354,9 +354,11 @@
                                         (zones/move-to-zone db' oid :hand))
                                       db
                                       cards-to-draw)]
-            ;; If we couldn't draw all requested cards, set loss condition
+            ;; If we couldn't draw all requested cards, set drew-from-empty flag.
+            ;; SBA interceptor detects and sets loss condition.
             (if (< actual-drawn amount)
-              (sba/set-loss-condition db-after-draw :empty-library target)
+              (let [target-eid (q/get-player-eid db-after-draw target)]
+                (d/db-with db-after-draw [[:db/add target-eid :player/drew-from-empty true]]))
               db-after-draw))
           ;; get-top-n-library returns nil if player doesn't exist
           db)))))

@@ -6,6 +6,7 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.stack :as stack]
+    [fizzle.engine.state-based :as sba]
     [fizzle.engine.turn-based :as turn-based]
     [fizzle.events.game :as game]))
 
@@ -594,7 +595,8 @@
                             [:db/add game-eid :game/phase :upkeep]
                             [:db/add game-eid :game/turn 2]])
           ;; Advance to draw — triggers draw from empty library
-          db' (game/advance-phase db :player-2)]
+          db' (-> (game/advance-phase db :player-2)
+                  (sba/check-and-execute-sbas))]
       (is (= :empty-library (get-loss-condition db'))
           "loss condition should be :empty-library")
       (is (= :player-1 (get-winner db'))
@@ -625,7 +627,8 @@
       (let [db-at-upkeep (d/db-with db-after-draw
                                     [[:db/add game-eid :game/phase :upkeep]
                                      [:db/add game-eid :game/turn 4]])
-            db-after-draw-2 (game/advance-phase db-at-upkeep :player-2)]
+            db-after-draw-2 (-> (game/advance-phase db-at-upkeep :player-2)
+                                (sba/check-and-execute-sbas))]
         (is (= :empty-library (get-loss-condition db-after-draw-2))
             "loss condition should fire on failed draw")
         (is (= :player-1 (get-winner db-after-draw-2))

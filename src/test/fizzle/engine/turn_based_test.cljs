@@ -6,6 +6,7 @@
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.events :as game-events]
+    [fizzle.engine.state-based :as sba]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.engine.turn-based :as turn-based]))
@@ -218,7 +219,8 @@
                  (set-turn 2)
                  (clear-library :player-1))
           event (game-events/phase-entered-event :draw 2 :player-1)
-          db' (dispatch/dispatch-event db event)]
+          db' (-> (dispatch/dispatch-event db event)
+                  (sba/check-and-execute-sbas))]
       (is (= :empty-library (get-loss-condition db'))
           "Loss condition should be set when drawing from empty library"))))
 

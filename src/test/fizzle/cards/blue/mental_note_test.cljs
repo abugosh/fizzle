@@ -15,6 +15,7 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.rules :as rules]
+    [fizzle.engine.state-based :as sba]
     [fizzle.test-helpers :as th]))
 
 
@@ -159,9 +160,10 @@
       ;; Graveyard has 2 milled + Mental Note
       (is (= 3 (th/get-zone-count db-after-resolve :graveyard :player-1))
           "Graveyard should have 3 cards (2 milled + Mental Note)")
-      ;; Draw from empty library should set loss condition
-      (is (= :empty-library (:game/loss-condition (q/get-game-state db-after-resolve)))
-          "Should set loss condition when drawing from empty library"))))
+      ;; Draw from empty library should set loss condition (via SBA)
+      (let [db-after-sba (sba/check-and-execute-sbas db-after-resolve)]
+        (is (= :empty-library (:game/loss-condition (q/get-game-state db-after-sba)))
+            "Should set loss condition when drawing from empty library")))))
 
 
 (deftest test-mental-note-contributes-to-threshold

@@ -19,6 +19,7 @@
     [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
+    [fizzle.engine.state-based :as sba]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.abilities :as ability-events]
     [fizzle.events.game :as game]
@@ -353,9 +354,10 @@
       (let [p2-grants (grants/get-player-grants db-resolved :player-2)]
         (is (= 2 (count p2-grants))
             "Player-2 should have restrictions even when draw triggers loss"))
-      ;; Loss condition set from empty library draw
-      (is (= :empty-library (:game/loss-condition (q/get-game-state db-resolved)))
-          "Should have loss condition from drawing on empty library"))))
+      ;; Loss condition set from empty library draw (via SBA)
+      (let [db-after-sba (sba/check-and-execute-sbas db-resolved)]
+        (is (= :empty-library (:game/loss-condition (q/get-game-state db-after-sba)))
+            "Should have loss condition from drawing on empty library")))))
 
 
 ;; Ruling (2008-08-01): "will have no effect on spells which were on the stack"

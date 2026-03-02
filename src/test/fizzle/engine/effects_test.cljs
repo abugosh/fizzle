@@ -7,6 +7,7 @@
     [fizzle.engine.effects :as fx]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.stack :as stack]
+    [fizzle.engine.state-based :as sba]
     [fizzle.engine.zones :as zones]
     [fizzle.test-helpers :as th]))
 
@@ -292,7 +293,8 @@
     (let [db (init-game-state) ; no library cards
           effect {:effect/type :draw
                   :effect/amount 1}
-          db' (fx/execute-effect db :player-1 effect)]
+          db' (-> (fx/execute-effect db :player-1 effect)
+                  (sba/check-and-execute-sbas))]
       (is (= :empty-library (get-loss-condition db'))))))
 
 
@@ -303,7 +305,8 @@
           initial-hand-size (count-zone db :player-1 :hand)
           effect {:effect/type :draw
                   :effect/amount 5}
-          db' (fx/execute-effect db :player-1 effect)]
+          db' (-> (fx/execute-effect db :player-1 effect)
+                  (sba/check-and-execute-sbas))]
       ;; Should draw all 2 available cards
       (is (= 0 (count-zone db' :player-1 :library)))
       (is (= (+ initial-hand-size 2) (count-zone db' :player-1 :hand)))
@@ -1162,7 +1165,8 @@
           initial-hand-size (count-zone db :player-1 :hand)
           effect {:effect/type :draw
                   :effect/amount 10000}  ; absurdly large
-          db' (fx/execute-effect db :player-1 effect)]
+          db' (-> (fx/execute-effect db :player-1 effect)
+                  (sba/check-and-execute-sbas))]
       ;; Should draw all 3 available cards
       (is (= 0 (count-zone db' :player-1 :library))
           "Library should be empty")
@@ -1504,7 +1508,8 @@
                  (add-opponent))
           effect {:effect/type :draw
                   :effect/amount 1}
-          db' (fx/execute-effect db :player-1 effect)]
+          db' (-> (fx/execute-effect db :player-1 effect)
+                  (sba/check-and-execute-sbas))]
       (is (= :empty-library (get-loss-condition db'))
           "Loss condition should be empty-library")
       (is (= :player-2 (get-winner db'))
