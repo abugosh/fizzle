@@ -33,7 +33,8 @@
   [game-db player-id object-id tutor-effect effects-after]
   (let [criteria (:effect/criteria tutor-effect)
         target-zone (or (:effect/target-zone tutor-effect) :hand)
-        matching-objs (queries/query-library-by-criteria game-db player-id criteria)
+        source-zone (or (:effect/source-zone tutor-effect) :library)
+        matching-objs (queries/query-zone-by-criteria game-db player-id source-zone criteria)
         candidate-ids (set (map :object/id matching-objs))
         ;; Multi-select support: default to 1 for backwards compat
         effect-select-count (max 1 (or (:effect/select-count tutor-effect) 1))
@@ -41,8 +42,8 @@
         actual-select-count (min effect-select-count (count candidate-ids))]
     (let [pile-choice-cfg (:effect/pile-choice tutor-effect)]
       (cond->
-        {:selection/zone :library
-         :selection/card-source :library
+        {:selection/zone source-zone
+         :selection/card-source source-zone
          :selection/select-count actual-select-count
          :selection/exact? true  ; Must select exactly this many (or fail-to-find)
          :selection/player-id player-id

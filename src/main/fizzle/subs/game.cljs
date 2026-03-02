@@ -432,6 +432,12 @@
                   library (queries/get-objects-in-zone game-db player-id :library)]
               (filterv #(contains? candidates (:object/id %)) library))
 
+            ;; Intersect candidates with sideboard (wish tutor)
+            :sideboard
+            (let [candidates (:selection/candidates selection)
+                  sideboard (queries/get-objects-in-zone game-db player-id :sideboard)]
+              (filterv #(contains? candidates (:object/id %)) sideboard))
+
             ;; Query hand directly (discard)
             :hand
             (queries/get-hand game-db player-id)
