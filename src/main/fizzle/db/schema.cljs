@@ -82,6 +82,7 @@
    :stack-item/description {}  ; String, human-readable for stack display
    :stack-item/is-copy     {}  ; Boolean, true for storm copies
    :stack-item/cast-mode   {}  ; Map, the casting mode used
+   :stack-item/chosen-x    {}  ; Integer, value of X chosen during cost payment (e.g., pay X life)
    :stack-item/object-ref  {:db/valueType :db.type/ref}  ; Reference to game object entity (spells only)
 
    ;; === Trigger Entities (trigger registry in Datascript) ===

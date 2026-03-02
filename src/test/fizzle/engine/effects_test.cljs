@@ -6,6 +6,7 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.effects :as fx]
     [fizzle.engine.grants :as grants]
+    [fizzle.engine.stack :as stack]
     [fizzle.engine.zones :as zones]
     [fizzle.test-helpers :as th]))
 
@@ -1795,6 +1796,50 @@
     (let [db (th/create-test-db)]
       (is (= 0 (fx/resolve-dynamic-value db :player-1 nil nil)))
       (is (= 0 (fx/resolve-dynamic-value db :player-1 "bad" nil))))))
+
+
+;; === resolve-dynamic-value :chosen-x tests ===
+
+(deftest resolve-dynamic-value-chosen-x-reads-from-stack-item
+  (testing ":chosen-x reads :stack-item/chosen-x from the spell's stack item"
+    (let [db (th/create-test-db {:mana {:black 5}})
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :stack :player-1)
+          obj-eid (q/get-object-eid db obj-id)
+          db (stack/create-stack-item db {:stack-item/type :spell
+                                          :stack-item/controller :player-1
+                                          :stack-item/source obj-id
+                                          :stack-item/object-ref obj-eid
+                                          :stack-item/chosen-x 7})
+          dynamic {:dynamic/type :chosen-x}]
+      (is (= 7 (fx/resolve-dynamic-value db :player-1 dynamic obj-id))))))
+
+
+(deftest resolve-dynamic-value-chosen-x-defaults-to-zero-when-missing
+  (testing ":chosen-x returns 0 when stack item has no :stack-item/chosen-x"
+    (let [db (th/create-test-db {:mana {:black 5}})
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :stack :player-1)
+          obj-eid (q/get-object-eid db obj-id)
+          db (stack/create-stack-item db {:stack-item/type :spell
+                                          :stack-item/controller :player-1
+                                          :stack-item/source obj-id
+                                          :stack-item/object-ref obj-eid})
+          dynamic {:dynamic/type :chosen-x}]
+      (is (= 0 (fx/resolve-dynamic-value db :player-1 dynamic obj-id))))))
+
+
+(deftest resolve-dynamic-value-chosen-x-no-stack-item-returns-zero
+  (testing ":chosen-x returns 0 when object has no associated stack item"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          dynamic {:dynamic/type :chosen-x}]
+      (is (= 0 (fx/resolve-dynamic-value db :player-1 dynamic obj-id))))))
+
+
+(deftest resolve-dynamic-value-chosen-x-nil-object-returns-zero
+  (testing ":chosen-x returns 0 when object-id is nil"
+    (let [db (th/create-test-db)
+          dynamic {:dynamic/type :chosen-x}]
+      (is (= 0 (fx/resolve-dynamic-value db :player-1 dynamic nil))))))
 
 
 ;; === draw with dynamic amount tests ===

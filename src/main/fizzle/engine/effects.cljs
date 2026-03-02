@@ -37,6 +37,18 @@
     (+ (q/count-cards-named-in-zone db card-name zone) plus)))
 
 
+(defmethod resolve-dynamic-impl :chosen-x
+  [db _player-id _dynamic object-id]
+  (let [obj-eid (q/get-object-eid db object-id)
+        chosen-x (when obj-eid
+                   (d/q '[:find ?x .
+                          :in $ ?obj-eid
+                          :where [?e :stack-item/object-ref ?obj-eid]
+                          [?e :stack-item/chosen-x ?x]]
+                        db obj-eid))]
+    (or chosen-x 0)))
+
+
 (defn resolve-dynamic-value
   "Resolve a potentially dynamic value to an integer.
    Static integers pass through. Maps with :dynamic/type are computed from game state."
