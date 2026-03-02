@@ -11,6 +11,7 @@
     [fizzle.cards.black.dark-ritual :as dark-ritual]
     [fizzle.cards.black.duress :as duress]
     [fizzle.cards.black.ill-gotten-gains :as ill-gotten-gains]
+    [fizzle.cards.black.necrologia :as necrologia]
     [fizzle.cards.blue.accumulated-knowledge :as accumulated-knowledge]
     [fizzle.cards.blue.annul :as annul]
     [fizzle.cards.blue.blue-elemental-blast :as blue-elemental-blast]
@@ -61,6 +62,7 @@
        cabal-ritual/card
        duress/card
        ill-gotten-gains/card
+       necrologia/card
        accumulated-knowledge/card
        annul/card
        blue-elemental-blast/card
