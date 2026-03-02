@@ -7,6 +7,7 @@
     [fizzle.cards.artifacts.lions-eye-diamond :as lions-eye-diamond]
     [fizzle.cards.artifacts.lotus-petal :as lotus-petal]
     [fizzle.cards.artifacts.tormods-crypt :as tormods-crypt]
+    [fizzle.cards.artifacts.urzas-bauble :as urzas-bauble]
     [fizzle.cards.black.cabal-ritual :as cabal-ritual]
     [fizzle.cards.black.dark-ritual :as dark-ritual]
     [fizzle.cards.black.duress :as duress]
@@ -101,6 +102,7 @@
        lotus-petal/card
        lions-eye-diamond/card
        tormods-crypt/card
+       urzas-bauble/card
        crumble/card]
       ;; Cycle cards
       basic-lands/cards

@@ -883,6 +883,22 @@
         db))))
 
 
+(defmethod execute-effect-impl :peek-random-hand
+  ;; Look at a card at random in target player's hand.
+  ;; This is informational only — no game state change.
+  ;;
+  ;; Effect keys:
+  ;;   :effect/target - Target player-id (pre-resolved from :effect/target-ref)
+  ;;
+  ;; Handles edge cases:
+  ;;   - Empty hand: no-op (returns db unchanged)
+  ;;   - Invalid player: no-op (returns db unchanged)
+  [db _player-id _effect _object-id]
+  ;; Peek is informational only. No state change.
+  ;; Future: log revealed card name to game log when log system exists.
+  db)
+
+
 (defmethod execute-effect-impl :chain-bounce
   ;; Chain mechanic for Chain of Vapor.
   ;; The bounced permanent's controller may sacrifice a land to create a copy.
