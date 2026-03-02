@@ -41,6 +41,7 @@
     [fizzle.cards.lands.fetch-lands :as fetch-lands]
     [fizzle.cards.lands.gemstone-mine :as gemstone-mine]
     [fizzle.cards.lands.pain-lands :as pain-lands]
+    [fizzle.cards.red.burning-wish :as burning-wish]
     [fizzle.cards.red.lightning-bolt :as lightning-bolt]
     [fizzle.cards.red.pyroblast :as pyroblast]
     [fizzle.cards.red.recoup :as recoup]
@@ -86,6 +87,7 @@
        orims-chant/card
        ray-of-revelation/card
        seal-of-cleansing/card
+       burning-wish/card
        lightning-bolt/card
        recoup/card
        pyroblast/card
