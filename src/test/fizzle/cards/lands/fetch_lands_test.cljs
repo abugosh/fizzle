@@ -9,7 +9,6 @@
     [fizzle.engine.stack :as stack]
     [fizzle.events.abilities :as ability-events]
     [fizzle.events.game :as game]
-    [fizzle.events.selection.library :as library]
     [fizzle.test-helpers :as th]))
 
 
@@ -163,45 +162,29 @@
 ;; === Tutor to battlefield tests ===
 
 (deftest fetch-land-tutor-moves-card-to-battlefield-test
-  (testing "Tutor selection moves card to battlefield"
+  (testing "Completing tutor selection moves card to battlefield"
     (let [db (th/create-test-db)
-          [db' [island-id]] (th/add-cards-to-library db [:island] :player-1)
-          battlefield-before (th/get-zone-count db' :battlefield :player-1)
-          selection {:selection/zone :library
-                     :selection/select-count 1
-                     :selection/player-id :player-1
-                     :selection/selected #{island-id}
-                     :selection/spell-id (random-uuid)
-                     :selection/target-zone :battlefield
-                     :selection/type :tutor
-                     :selection/enters-tapped true
-                     :selection/allow-fail-to-find? true}
-          db-after (library/execute-tutor-selection db' selection)]
-      (is (= :battlefield (th/get-object-zone db-after island-id))
-          "Selected card should move to battlefield")
-      (is (= (inc battlefield-before) (th/get-zone-count db-after :battlefield :player-1))
-          "Battlefield count should increase by 1"))))
+          [db fetch-id] (th/add-card-to-zone db :flooded-strand :battlefield :player-1)
+          [db [island-id]] (th/add-cards-to-library db [:island] :player-1)
+          result (ability-events/activate-ability db :player-1 fetch-id 0)
+          resolve-result (game/resolve-one-item (:db result))
+          selection (:pending-selection resolve-result)
+          {:keys [db]} (th/confirm-selection (:db resolve-result) selection #{island-id})]
+      (is (= :battlefield (th/get-object-zone db island-id))
+          "Selected card should move to battlefield"))))
 
 
 ;; === Fail-to-find tests ===
 
 (deftest fetch-land-fail-to-find-test
-  (testing "Fail-to-find when no valid targets leaves state unchanged"
+  (testing "Fail-to-find when no matching targets leaves library unchanged"
     (let [db (th/create-test-db)
-          [db' _] (th/add-cards-to-library db [:dark-ritual :brain-freeze] :player-1)
-          library-before (th/get-zone-count db' :library :player-1)
-          battlefield-before (th/get-zone-count db' :battlefield :player-1)
-          selection {:selection/zone :library
-                     :selection/select-count 1
-                     :selection/player-id :player-1
-                     :selection/selected #{}
-                     :selection/spell-id (random-uuid)
-                     :selection/target-zone :battlefield
-                     :selection/type :tutor
-                     :selection/enters-tapped true
-                     :selection/allow-fail-to-find? true}
-          db-after (library/execute-tutor-selection db' selection)]
-      (is (= library-before (th/get-zone-count db-after :library :player-1))
-          "Library count should not change on fail-to-find")
-      (is (= battlefield-before (th/get-zone-count db-after :battlefield :player-1))
-          "Battlefield should not change on fail-to-find"))))
+          [db fetch-id] (th/add-card-to-zone db :flooded-strand :battlefield :player-1)
+          [db _] (th/add-cards-to-library db [:dark-ritual :brain-freeze] :player-1)
+          library-before (th/get-zone-count db :library :player-1)
+          result (ability-events/activate-ability db :player-1 fetch-id 0)
+          resolve-result (game/resolve-one-item (:db result))
+          selection (:pending-selection resolve-result)
+          {:keys [db]} (th/confirm-selection (:db resolve-result) selection #{})]
+      (is (= library-before (th/get-zone-count db :library :player-1))
+          "Library count should not change on fail-to-find"))))

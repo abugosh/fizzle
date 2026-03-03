@@ -18,7 +18,6 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.game :as game]
-    [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
 
 
@@ -89,17 +88,7 @@
           ;; Lotus Petal (artifact, CMC 0) on opponent's battlefield
           [db petal-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-2)
           life-before (q/get-life-total db :player-2)
-          ;; Cast with targeting flow
-          target-req (first (:card/targeting crumble/card))
-          modes (rules/get-casting-modes db :player-1 crumble-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id crumble-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{petal-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
+          db-cast (th/cast-with-target db :player-1 crumble-id petal-id)
           result (game/resolve-one-item db-cast)
           db-resolved (:db result)]
       ;; Lotus Petal should be destroyed
@@ -154,16 +143,7 @@
           db (mana/add-mana db :player-1 {:green 1})
           [db target-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-2)
           storm-before (q/get-storm-count db :player-1)
-          target-req (first (:card/targeting crumble/card))
-          modes (rules/get-casting-modes db :player-1 crumble-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id crumble-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{target-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)]
+          db-cast (th/cast-with-target db :player-1 crumble-id target-id)]
       (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
           "Storm count should increment by 1"))))
 
@@ -268,16 +248,7 @@
           ;; Use gain-life-equal-to-cmc effect directly with a known CMC artifact
           [db petal-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-1)
           life-before (q/get-life-total db :player-1)
-          target-req (first (:card/targeting crumble/card))
-          modes (rules/get-casting-modes db :player-1 crumble-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id crumble-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{petal-id}}
-          db-cast (sel-targeting/confirm-cast-time-target db selection)
+          db-cast (th/cast-with-target db :player-1 crumble-id petal-id)
           result (game/resolve-one-item db-cast)
           db-resolved (:db result)]
       ;; Lotus Petal destroyed
