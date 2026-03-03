@@ -588,3 +588,233 @@
           "Object on battlefield should match the one we added")
       (is (= "Dark Ritual" (get-in (first objs) [:object/card :card/name]))
           "Card data should be pulled in for battlefield objects"))))
+
+
+;; === get-active-player-id ===
+
+(deftest get-active-player-id-returns-active-player-test
+  (testing "returns :player-1 when player-1 is active"
+    (let [db (th/create-test-db)]
+      (is (= :player-1 (q/get-active-player-id db))))))
+
+
+(deftest get-active-player-id-after-switching-test
+  (testing "returns :player-2 after switching active player to opponent"
+    (let [db (th/create-test-db)
+          db' (th/add-opponent db)
+          ;; Switch active player to :player-2
+          game-eid (d/q '[:find ?g . :where [?g :game/id _]] db')
+          p2-eid (q/get-player-eid db' :player-2)
+          db'' (d/db-with db' [[:db/add game-eid :game/active-player p2-eid]])]
+      (is (= :player-2 (q/get-active-player-id db''))))))
+
+
+(deftest get-active-player-id-no-game-state-test
+  (testing "returns nil when no game state exists"
+    (let [conn (d/create-conn schema)]
+      (is (nil? (q/get-active-player-id @conn))))))
+
+
+;; === get-human-player-id ===
+
+(deftest get-human-player-id-returns-stored-value-test
+  (testing "returns :player-1 from game/human-player-id"
+    (let [db (th/create-test-db)]
+      (is (= :player-1 (q/get-human-player-id db))))))
+
+
+(deftest get-human-player-id-fallback-test
+  (testing "returns :player-1 as fallback when game/human-player-id not set"
+    (let [conn (d/create-conn schema)
+          _ (d/transact! conn [{:player/id :player-1
+                                :player/name "Player"
+                                :player/life 20
+                                :player/mana-pool {:white 0 :blue 0 :black 0
+                                                   :red 0 :green 0 :colorless 0}
+                                :player/storm-count 0
+                                :player/land-plays-left 1}])
+          player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)
+          ;; Create game state WITHOUT :game/human-player-id
+          _ (d/transact! conn [{:game/id :game-1
+                                :game/turn 1
+                                :game/phase :main1
+                                :game/active-player player-eid
+                                :game/priority player-eid}])]
+      (is (= :player-1 (q/get-human-player-id @conn))))))
+
+
+(deftest get-human-player-id-no-game-state-test
+  (testing "returns :player-1 fallback when no game state exists"
+    (let [conn (d/create-conn schema)]
+      (is (= :player-1 (q/get-human-player-id @conn))))))
+
+
+;; === get-all-objects-in-zone ===
+
+(deftest get-all-objects-in-zone-single-player-test
+  (testing "returns objects from a single player's zone"
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :dark-ritual :battlefield :player-1)
+          objs (q/get-all-objects-in-zone db' :battlefield)]
+      (is (vector? objs))
+      (is (= 1 (count objs)))
+      (is (= obj-id (:object/id (first objs))))
+      (is (= "Dark Ritual" (get-in (first objs) [:object/card :card/name]))))))
+
+
+(deftest get-all-objects-in-zone-multiple-players-test
+  (testing "returns objects from ALL players' zones"
+    (let [db (th/create-test-db)
+          db' (th/add-opponent db)
+          [db'' p1-obj] (th/add-card-to-zone db' :dark-ritual :battlefield :player-1)
+          [db''' p2-obj] (th/add-card-to-zone db'' :island :battlefield :player-2)
+          objs (q/get-all-objects-in-zone db''' :battlefield)
+          obj-ids (set (map :object/id objs))]
+      (is (= 2 (count objs)))
+      (is (contains? obj-ids p1-obj))
+      (is (contains? obj-ids p2-obj)))))
+
+
+(deftest get-all-objects-in-zone-empty-zone-test
+  (testing "returns empty vector when no objects in zone"
+    (let [db (th/create-test-db)
+          objs (q/get-all-objects-in-zone db :battlefield)]
+      (is (vector? objs))
+      (is (= 0 (count objs))))))
+
+
+(deftest get-all-objects-in-zone-does-not-cross-zones-test
+  (testing "only returns objects from requested zone, not other zones"
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          [db'' bf-obj] (th/add-card-to-zone db' :island :battlefield :player-1)
+          objs (q/get-all-objects-in-zone db'' :battlefield)]
+      (is (= 1 (count objs)))
+      (is (= bf-obj (:object/id (first objs)))))))
+
+
+;; === count-cards-named-in-zone ===
+
+(deftest count-cards-named-in-zone-single-copy-test
+  (testing "returns 1 when one copy exists in zone"
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)]
+      (is (= 1 (q/count-cards-named-in-zone db' "Dark Ritual" :graveyard))))))
+
+
+(deftest count-cards-named-in-zone-multiple-copies-test
+  (testing "returns correct count for multiple copies"
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
+          [db'' _] (th/add-card-to-zone db' :dark-ritual :graveyard :player-1)
+          [db''' _] (th/add-card-to-zone db'' :dark-ritual :graveyard :player-1)]
+      (is (= 3 (q/count-cards-named-in-zone db''' "Dark Ritual" :graveyard))))))
+
+
+(deftest count-cards-named-in-zone-across-players-test
+  (testing "counts cards across all players"
+    (let [db (th/create-test-db)
+          db' (th/add-opponent db)
+          [db'' _] (th/add-card-to-zone db' :dark-ritual :graveyard :player-1)
+          [db''' _] (th/add-card-to-zone db'' :dark-ritual :graveyard :player-2)]
+      (is (= 2 (q/count-cards-named-in-zone db''' "Dark Ritual" :graveyard))))))
+
+
+(deftest count-cards-named-in-zone-zero-test
+  (testing "returns 0 when no copies in zone"
+    (let [db (th/create-test-db)]
+      (is (= 0 (q/count-cards-named-in-zone db "Dark Ritual" :graveyard))))))
+
+
+(deftest count-cards-named-in-zone-wrong-zone-test
+  (testing "returns 0 when card exists in different zone"
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)]
+      (is (= 0 (q/count-cards-named-in-zone db' "Dark Ritual" :graveyard))))))
+
+
+(deftest count-cards-named-in-zone-wrong-name-test
+  (testing "returns 0 when zone has cards but not the requested name"
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)]
+      (is (= 0 (q/count-cards-named-in-zone db' "Brain Freeze" :graveyard))))))
+
+
+;; === get-object-eid ===
+
+(deftest get-object-eid-valid-object-test
+  (testing "returns positive integer eid for existing object"
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          eid (q/get-object-eid db' obj-id)]
+      (is (integer? eid))
+      (is (pos? eid)))))
+
+
+(deftest get-object-eid-different-objects-unique-test
+  (testing "returns different eids for different objects"
+    (let [db (th/create-test-db)
+          [db' obj-id-1] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          [db'' obj-id-2] (th/add-card-to-zone db' :brain-freeze :hand :player-1)
+          eid-1 (q/get-object-eid db'' obj-id-1)
+          eid-2 (q/get-object-eid db'' obj-id-2)]
+      (is (integer? eid-1))
+      (is (integer? eid-2))
+      (is (not= eid-1 eid-2)))))
+
+
+(deftest get-object-eid-nonexistent-test
+  (testing "returns nil for nonexistent object-id"
+    (let [db (th/create-test-db)]
+      (is (nil? (q/get-object-eid db (random-uuid)))))))
+
+
+;; === get-grants ===
+
+(deftest get-grants-no-grants-test
+  (testing "returns empty vector when object has no grants"
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)]
+      (is (= [] (q/get-grants db' obj-id))))))
+
+
+(deftest get-grants-with-grants-test
+  (testing "returns grant vector when object has grants"
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
+          grant {:grant/id (random-uuid)
+                 :grant/type :keyword
+                 :grant/source (random-uuid)
+                 :grant/data {:keyword :flashback
+                              :flashback-cost {:black 1}}}
+          obj-eid (q/get-object-eid db' obj-id)
+          db'' (d/db-with db' [[:db/add obj-eid :object/grants [grant]]])
+          grants (q/get-grants db'' obj-id)]
+      (is (= 1 (count grants)))
+      (is (= :keyword (:grant/type (first grants))))
+      (is (= :flashback (get-in (first grants) [:grant/data :keyword]))))))
+
+
+(deftest get-grants-multiple-grants-test
+  (testing "returns all grants when object has multiple"
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
+          grant-1 {:grant/id (random-uuid)
+                   :grant/type :keyword
+                   :grant/source (random-uuid)
+                   :grant/data {:keyword :flashback}}
+          grant-2 {:grant/id (random-uuid)
+                   :grant/type :ability
+                   :grant/source (random-uuid)
+                   :grant/data {:ability/type :activated}}
+          obj-eid (q/get-object-eid db' obj-id)
+          db'' (d/db-with db' [[:db/add obj-eid :object/grants [grant-1 grant-2]]])
+          grants (q/get-grants db'' obj-id)]
+      (is (= 2 (count grants)))
+      (is (= #{:keyword :ability} (set (map :grant/type grants)))))))
+
+
+(deftest get-grants-nonexistent-object-test
+  (testing "returns empty vector for nonexistent object"
+    (let [db (th/create-test-db)]
+      (is (= [] (q/get-grants db (random-uuid)))))))

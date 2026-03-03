@@ -84,10 +84,10 @@
           result (interceptor/bot-decide-action game-db)]
       (is (= :cast-spell (:action result))
           "Action type should be :cast-spell")
-      (is (some? (:object-id result))
+      (is (uuid? (:object-id result))
           "Should include the bolt object-id")
-      (is (some? (:tap-sequence result))
-          "Should include a tap sequence")
+      (is (= 1 (count (:tap-sequence result)))
+          "Should include a tap sequence with 1 land")
       (is (= 1 (count (:tap-sequence result)))
           "Should tap exactly 1 mountain"))))
 
@@ -216,7 +216,7 @@
           app-db (assoc app-db :bot/action-count 20)
           result (interceptor/bot-decide-handler app-db)]
       ;; Should dispatch ::yield (pass) rather than another cast
-      (is (some? (:fx result))
+      (is (pos? (count (:fx result)))
           "Should have dispatches")
       (let [dispatches (mapv second (:fx result))]
         (is (some #(= ::game/yield (first %)) dispatches)

@@ -299,7 +299,6 @@
           result (sub-value {:game/db game-db
                              :game/pending-selection selection}
                             [::subs/mana-allocation-state])]
-      (is (some? result))
       (is (= :mana-allocation (:selection/type result)))
       (is (= 3 (:selection/generic-remaining result)))
       (is (= {} (:selection/allocation result)))
@@ -481,23 +480,6 @@
 
 
 ;; === human-player-id tests ===
-
-(deftest test-can-cast-uses-human-player-id
-  (testing "::can-cast? queries based on stored human-player-id, not hardcoded :player-1"
-    (let [game-db (make-game-db)
-          ;; Verify human-player-id is stored
-          human-pid (q/get-human-player-id game-db)]
-      (is (= :player-1 human-pid)
-          "human-player-id should be :player-1"))))
-
-
-(deftest test-can-play-land-uses-human-player-id
-  (testing "::can-play-land? queries based on stored human-player-id, not hardcoded :player-1"
-    (let [game-db (make-game-db)
-          human-pid (q/get-human-player-id game-db)]
-      (is (= :player-1 human-pid)
-          "human-player-id should be :player-1"))))
-
 
 ;; === ::human-player-id subscription tests ===
 

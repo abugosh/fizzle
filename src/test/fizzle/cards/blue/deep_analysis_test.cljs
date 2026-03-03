@@ -30,7 +30,11 @@
 ;; === Card Definition Tests ===
 
 (deftest deep-analysis-card-definition-test
-  (testing "Deep Analysis type, cost, and color"
+  (testing "Deep Analysis identity and core fields"
+    (is (= :deep-analysis (:card/id deep-analysis/card))
+        "Card id should be :deep-analysis")
+    (is (= "Deep Analysis" (:card/name deep-analysis/card))
+        "Card name should be 'Deep Analysis'")
     (is (= {:colorless 3 :blue 1} (:card/mana-cost deep-analysis/card))
         "Deep Analysis should cost {3}{U}")
     (is (= #{:sorcery} (:card/types deep-analysis/card))
@@ -38,7 +42,10 @@
     (is (= 4 (:card/cmc deep-analysis/card))
         "Deep Analysis should have CMC 4")
     (is (= #{:blue} (:card/colors deep-analysis/card))
-        "Deep Analysis should be blue"))
+        "Deep Analysis should be blue")
+    (is (= "Target player draws two cards. Flashback\u2014{1}{U}, Pay 3 life."
+           (:card/text deep-analysis/card))
+        "Card text should match"))
 
   (testing "Deep Analysis has flashback alternate cost"
     (let [flashback (first (:card/alternate-costs deep-analysis/card))]
@@ -204,14 +211,6 @@
           "Selection type should be :player-target")
       (is (= obj-id (:selection/spell-id (:pending-selection result)))
           "Should track spell id for cleanup"))))
-
-
-(deftest deep-analysis-any-player-effect-test
-  (testing "Deep Analysis draw effect has :any-player target requiring selection"
-    (let [effects (:card/effects deep-analysis/card)
-          draw-effect (first effects)]
-      (is (= :any-player (:effect/target draw-effect))
-          "Draw effect should have :any-player target"))))
 
 
 (deftest deep-analysis-player-target-selection-state-test

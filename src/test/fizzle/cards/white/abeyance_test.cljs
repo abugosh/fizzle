@@ -23,7 +23,6 @@
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.abilities :as ability-events]
     [fizzle.events.game :as game]
-    [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
 
 
@@ -93,25 +92,14 @@
 (deftest abeyance-cast-resolve-applies-restrictions-test
   (testing "Casting and resolving Abeyance applies both restrictions and draws a card"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [abeyance/card])
-          db (th/add-opponent @conn)
+          db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :abeyance :hand :player-1)
           db-with-mana (mana/add-mana db :player-1 {:colorless 1 :white 1})
           ;; Add library cards so draw doesn't trigger loss
           [db-with-lib _] (th/add-cards-to-library db-with-mana [:dark-ritual :dark-ritual] :player-1)
           hand-before (th/get-hand-count db-with-lib :player-1)
-          ;; Cast with targeting flow
-          target-req (first (:card/targeting abeyance/card))
-          modes (rules/get-casting-modes db-with-lib :player-1 obj-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id obj-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{:player-2}}
-          db-cast (sel-targeting/confirm-cast-time-target db-with-lib selection)
+          ;; Cast with targeting flow via production helper
+          db-cast (th/cast-with-target db-with-lib :player-1 obj-id :player-2)
           _ (is (= :stack (:object/zone (q/get-object db-cast obj-id)))
                 "Precondition: Abeyance on stack")
           result (game/resolve-one-item db-cast)
@@ -163,23 +151,11 @@
 (deftest abeyance-increments-storm-count-test
   (testing "Casting Abeyance increments storm count"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [abeyance/card])
-          db (th/add-opponent @conn)
+          db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :abeyance :hand :player-1)
           db-with-mana (mana/add-mana db :player-1 {:colorless 1 :white 1})
           storm-before (q/get-storm-count db-with-mana :player-1)
-          ;; Cast with targeting flow
-          target-req (first (:card/targeting abeyance/card))
-          modes (rules/get-casting-modes db-with-mana :player-1 obj-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id obj-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{:player-2}}
-          db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)]
+          db-cast (th/cast-with-target db-with-mana :player-1 obj-id :player-2)]
       (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
           "Storm count should increment by 1"))))
 
@@ -303,23 +279,12 @@
 (deftest abeyance-can-target-self-test
   (testing "Abeyance can target self (common play: draw a card)"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [abeyance/card])
-          db (th/add-opponent @conn)
+          db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :abeyance :hand :player-1)
           db-with-mana (mana/add-mana db :player-1 {:colorless 1 :white 1})
           [db-with-lib _] (th/add-cards-to-library db-with-mana [:dark-ritual] :player-1)
-          target-req (first (:card/targeting abeyance/card))
-          modes (rules/get-casting-modes db-with-lib :player-1 obj-id)
-          mode (first modes)
-          ;; Target SELF
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id obj-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{:player-1}}
-          db-cast (sel-targeting/confirm-cast-time-target db-with-lib selection)
+          ;; Target SELF via production helper
+          db-cast (th/cast-with-target db-with-lib :player-1 obj-id :player-1)
           result (game/resolve-one-item db-cast)
           db-resolved (:db result)]
       ;; Player-1 should have the restrictions (targeting self)
@@ -332,22 +297,11 @@
 (deftest abeyance-draw-with-empty-library-test
   (testing "Abeyance draw triggers loss condition on empty library"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [abeyance/card])
-          db (th/add-opponent @conn)
+          db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :abeyance :hand :player-1)
           db-with-mana (mana/add-mana db :player-1 {:colorless 1 :white 1})
           ;; NO library cards — draw should trigger loss
-          target-req (first (:card/targeting abeyance/card))
-          modes (rules/get-casting-modes db-with-mana :player-1 obj-id)
-          mode (first modes)
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id obj-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{:player-2}}
-          db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)
+          db-cast (th/cast-with-target db-with-mana :player-1 obj-id :player-2)
           result (game/resolve-one-item db-cast)
           db-resolved (:db result)]
       ;; Restrictions should still be applied (effects execute sequentially)

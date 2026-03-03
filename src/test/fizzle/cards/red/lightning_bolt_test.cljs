@@ -22,7 +22,6 @@
     [fizzle.engine.state-based :as sba]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.game :as game]
-    [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
 
 
@@ -80,22 +79,10 @@
 (deftest cast-bolt-targeting-opponent-deals-3-damage-test
   (testing "casting and resolving Lightning Bolt deals 3 damage to opponent"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [lightning-bolt/card])
-          db (th/add-opponent @conn)
+          db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :lightning-bolt :hand :player-1)
           db-with-mana (mana/add-mana db :player-1 {:red 1})
-          ;; Build cast-time targeting selection
-          target-req (first (:card/targeting lightning-bolt/card))
-          modes (rules/get-casting-modes db-with-mana :player-1 obj-id)
-          mode (first (filter #(= :primary (:mode/id %)) modes))
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id obj-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{:player-2}}
-          db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)]
+          db-cast (th/cast-with-target db-with-mana :player-1 obj-id :player-2)]
       ;; Spell should be on stack
       (is (= :stack (:object/zone (q/get-object db-cast obj-id)))
           "Lightning Bolt should be on stack after casting")
@@ -116,21 +103,10 @@
 (deftest cast-bolt-targeting-self-deals-3-damage-test
   (testing "casting and resolving Lightning Bolt targeting self deals 3 damage to self"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [lightning-bolt/card])
-          db (th/add-opponent @conn)
+          db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :lightning-bolt :hand :player-1)
           db-with-mana (mana/add-mana db :player-1 {:red 1})
-          target-req (first (:card/targeting lightning-bolt/card))
-          modes (rules/get-casting-modes db-with-mana :player-1 obj-id)
-          mode (first (filter #(= :primary (:mode/id %)) modes))
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id obj-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{:player-1}}
-          db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)
+          db-cast (th/cast-with-target db-with-mana :player-1 obj-id :player-1)
           result (game/resolve-one-item db-cast)
           db-resolved (:db result)]
       (is (= :graveyard (:object/zone (q/get-object db-resolved obj-id)))
@@ -181,23 +157,12 @@
 (deftest casting-bolt-increments-storm-count-test
   (testing "casting Lightning Bolt increments storm count"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [lightning-bolt/card])
-          db (th/add-opponent @conn)
+          db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :lightning-bolt :hand :player-1)
           db-with-mana (mana/add-mana db :player-1 {:red 1})
           _ (is (= 0 (q/get-storm-count db-with-mana :player-1))
                 "Precondition: storm count starts at 0")
-          target-req (first (:card/targeting lightning-bolt/card))
-          modes (rules/get-casting-modes db-with-mana :player-1 obj-id)
-          mode (first (filter #(= :primary (:mode/id %)) modes))
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id obj-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{:player-2}}
-          db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)]
+          db-cast (th/cast-with-target db-with-mana :player-1 obj-id :player-2)]
       (is (= 1 (q/get-storm-count db-cast :player-1))
           "Storm count should be 1 after casting Lightning Bolt"))))
 
@@ -244,21 +209,10 @@
 (deftest bolt-kills-at-exactly-3-life-test
   (testing "bolt kills opponent at exactly 3 life"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [lightning-bolt/card])
-          db (set-player-life (th/add-opponent @conn) :player-2 3)
+          db (set-player-life (th/add-opponent db) :player-2 3)
           [db obj-id] (th/add-card-to-zone db :lightning-bolt :hand :player-1)
           db-with-mana (mana/add-mana db :player-1 {:red 1})
-          target-req (first (:card/targeting lightning-bolt/card))
-          modes (rules/get-casting-modes db-with-mana :player-1 obj-id)
-          mode (first (filter #(= :primary (:mode/id %)) modes))
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id obj-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{:player-2}}
-          db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)
+          db-cast (th/cast-with-target db-with-mana :player-1 obj-id :player-2)
           result (game/resolve-one-item db-cast)
           db-resolved (sba/check-and-execute-sbas (:db result))]
       (is (= 0 (q/get-life-total db-resolved :player-2))
@@ -270,21 +224,10 @@
 (deftest bolt-overkills-below-zero-test
   (testing "bolt overkills below zero (no clamping)"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [lightning-bolt/card])
-          db (set-player-life (th/add-opponent @conn) :player-2 1)
+          db (set-player-life (th/add-opponent db) :player-2 1)
           [db obj-id] (th/add-card-to-zone db :lightning-bolt :hand :player-1)
           db-with-mana (mana/add-mana db :player-1 {:red 1})
-          target-req (first (:card/targeting lightning-bolt/card))
-          modes (rules/get-casting-modes db-with-mana :player-1 obj-id)
-          mode (first (filter #(= :primary (:mode/id %)) modes))
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id obj-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{:player-2}}
-          db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)
+          db-cast (th/cast-with-target db-with-mana :player-1 obj-id :player-2)
           result (game/resolve-one-item db-cast)
           db-resolved (sba/check-and-execute-sbas (:db result))]
       (is (= -2 (q/get-life-total db-resolved :player-2))
@@ -296,21 +239,10 @@
 (deftest bolt-on-already-dead-opponent-test
   (testing "bolt on already-dead opponent still deals damage"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [lightning-bolt/card])
-          db (set-player-life (th/add-opponent @conn) :player-2 0)
+          db (set-player-life (th/add-opponent db) :player-2 0)
           [db obj-id] (th/add-card-to-zone db :lightning-bolt :hand :player-1)
           db-with-mana (mana/add-mana db :player-1 {:red 1})
-          target-req (first (:card/targeting lightning-bolt/card))
-          modes (rules/get-casting-modes db-with-mana :player-1 obj-id)
-          mode (first (filter #(= :primary (:mode/id %)) modes))
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id obj-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{:player-2}}
-          db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)
+          db-cast (th/cast-with-target db-with-mana :player-1 obj-id :player-2)
           result (game/resolve-one-item db-cast)
           db-resolved (sba/check-and-execute-sbas (:db result))]
       (is (= -3 (q/get-life-total db-resolved :player-2))
@@ -324,21 +256,10 @@
 (deftest confirm-cast-time-target-stores-on-stack-item-test
   (testing "cast-time targeting stores targets on stack-item"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [lightning-bolt/card])
-          db (th/add-opponent @conn)
+          db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :lightning-bolt :hand :player-1)
           db-with-mana (mana/add-mana db :player-1 {:red 1})
-          target-req (first (:card/targeting lightning-bolt/card))
-          modes (rules/get-casting-modes db-with-mana :player-1 obj-id)
-          mode (first (filter #(= :primary (:mode/id %)) modes))
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id obj-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{:player-2}}
-          db-after (sel-targeting/confirm-cast-time-target db-with-mana selection)]
+          db-after (th/cast-with-target db-with-mana :player-1 obj-id :player-2)]
       ;; Spell should be on stack
       (is (= :stack (:object/zone (q/get-object db-after obj-id)))
           "Lightning Bolt should be on stack after casting")

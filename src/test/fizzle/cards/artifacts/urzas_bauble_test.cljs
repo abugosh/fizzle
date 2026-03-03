@@ -207,8 +207,8 @@
           db (th/add-opponent db)
           ability (first (:card/abilities urzas-bauble/card))
           target-req (first (:ability/targeting ability))]
-      (is (seq (targeting/find-valid-targets db :player-1 target-req))
-          "Should find valid player targets"))))
+      (is (= 2 (count (targeting/find-valid-targets db :player-1 target-req)))
+          "Should find both players as valid targets"))))
 
 
 ;; === F. Effect Tests ===
@@ -290,7 +290,6 @@
           ;; Generate description using the same function the history interceptor uses
           event [:fizzle.events.game/resolve-top]
           desc (descriptions/describe-event event pre-game-db game-db-after)]
-      (is (string? desc) "Description should be a string")
       (is (re-find #"Resolve Urza's Bauble ability" desc)
           "Description should mention the card")
       (is (re-find #"revealed Dark Ritual" desc)

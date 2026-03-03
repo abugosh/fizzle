@@ -42,9 +42,22 @@
 ;; === Card Definition Tests ===
 
 (deftest test-cephalid-coliseum-card-definition
-  (testing "Cephalid Coliseum type, abilities, and keywords"
+  (testing "Cephalid Coliseum identity and core fields"
+    (is (= :cephalid-coliseum (:card/id coliseum/card))
+        "Card id should be :cephalid-coliseum")
+    (is (= "Cephalid Coliseum" (:card/name coliseum/card))
+        "Card name should be 'Cephalid Coliseum'")
+    (is (= 0 (:card/cmc coliseum/card))
+        "CMC should be 0")
+    (is (= {} (:card/mana-cost coliseum/card))
+        "Mana cost should be empty map")
+    (is (= #{} (:card/colors coliseum/card))
+        "Colors should be empty set (colorless land)")
     (is (= #{:land} (:card/types coliseum/card))
         "Cephalid Coliseum should be a land")
+    (is (= "{T}: Add {U}. Cephalid Coliseum deals 1 damage to you.\nThreshold — {U}, {T}, Sacrifice Cephalid Coliseum: Target player draws three cards, then discards three cards. Activate only if seven or more cards are in your graveyard."
+           (:card/text coliseum/card))
+        "Card text should match")
     (is (= 2 (count (:card/abilities coliseum/card)))
         "Cephalid Coliseum should have exactly 2 abilities (mana + threshold)")
     (is (= #{:threshold} (:card/keywords coliseum/card))

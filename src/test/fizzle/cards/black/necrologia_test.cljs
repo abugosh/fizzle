@@ -45,7 +45,8 @@
       (is (= {:colorless 3 :black 2} (:card/mana-cost card)))
       (is (= #{:black} (:card/colors card)))
       (is (= #{:instant} (:card/types card)))
-      (is (string? (:card/text card)))))
+      (is (= "Cast this spell only during your end step. As an additional cost to cast this spell, pay X life. Draw X cards."
+             (:card/text card)))))
 
   (testing "Cast restriction requires end step"
     (let [restriction (:card/cast-restriction necrologia/card)]
@@ -174,18 +175,6 @@
       (is (false? (:selection/auto-confirm? sel))))))
 
 
-(deftest necrologia-pay-x-life-increments-via-selection-events-test
-  (testing "X value can be incremented and decremented"
-    (let [db (th/create-test-db {:mana {:black 2 :colorless 3} :life 20})
-          [db obj-id] (th/add-card-to-zone db :necrologia :hand :player-1)
-          db (set-phase db :end)
-          mode (first (rules/get-casting-modes db :player-1 obj-id))
-          sel (sel-costs/build-pay-x-life-selection db :player-1 obj-id mode)]
-      ;; Manually simulate increment
-      (let [sel-after (assoc sel :selection/selected-x 5)]
-        (is (= 5 (:selection/selected-x sel-after)))))))
-
-
 ;; === G. Edge Cases ===
 
 (deftest necrologia-x-zero-draws-nothing-test
@@ -245,8 +234,8 @@
           mode (first (rules/get-casting-modes db :player-1 obj-id))
           ctx {:game-db db :player-id :player-1 :object-id obj-id :mode mode :target nil}
           result (game/evaluate-pre-cast-step :pay-x-life ctx)]
-      (is (some? result) "Pipeline should return a result for pay-x-life")
-      (is (some? (:selection result)) "Result should contain a selection")
+      (is (map? result) "Pipeline should return a result for pay-x-life")
+      (is (= :pay-x-life (:selection/type (:selection result))) "Result should contain a pay-x-life selection")
       (is (= :pay-x-life (:selection/type (:selection result)))))))
 
 

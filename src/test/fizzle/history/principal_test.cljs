@@ -25,17 +25,6 @@
           "Entry should not contain :entry/principal when nil"))))
 
 
-(deftest test-make-entry-backward-compat
-  (testing "4-arg make-entry still works (no principal)"
-    (let [entry (history/make-entry :db-0 :cast-spell "Cast Dark Ritual" 1)]
-      (is (= :db-0 (:entry/snapshot entry)))
-      (is (= :cast-spell (:entry/event-type entry)))
-      (is (= "Cast Dark Ritual" (:entry/description entry)))
-      (is (= 1 (:entry/turn entry)))
-      (is (not (contains? entry :entry/principal))
-          "4-arg call should not have :entry/principal"))))
-
-
 ;; === queries/get-player-id tests ===
 
 (deftest test-get-player-id

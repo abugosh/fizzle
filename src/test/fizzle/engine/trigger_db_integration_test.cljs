@@ -53,13 +53,13 @@
         (when (seq draw-triggers)
           (is (= :draw (:event/phase (:trigger/filter (first draw-triggers))))
               "Draw trigger filter should match draw phase")
-          (is (some? (:event/player (:trigger/filter (first draw-triggers))))
-              "Draw trigger filter should include player"))
+          (is (= :player-1 (:event/player (:trigger/filter (first draw-triggers))))
+              "Draw trigger filter should include player-1"))
         (when (seq untap-triggers)
           (is (= :untap (:event/phase (:trigger/filter (first untap-triggers))))
               "Untap trigger filter should match untap phase")
-          (is (some? (:event/player (:trigger/filter (first untap-triggers))))
-              "Untap trigger filter should include player"))))))
+          (is (= :player-1 (:event/player (:trigger/filter (first untap-triggers))))
+              "Untap trigger filter should include player-1"))))))
 
 
 ;; === Object-trigger component ref tests ===

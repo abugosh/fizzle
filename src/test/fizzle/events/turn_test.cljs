@@ -461,7 +461,7 @@
           app-db (make-app-db game-db)
           result (game/maybe-continue-cleanup app-db)]
       ;; Should NOT re-run begin-cleanup while stack has items
-      (is (seq (grants/get-player-grants (:game/db result) :player-1))
+      (is (= 1 (count (grants/get-player-grants (:game/db result) :player-1)))
           "grants should NOT be expired - stack still has items"))))
 
 
@@ -475,7 +475,7 @@
           result (game/maybe-continue-cleanup app-db)]
       (is (= game-db (:game/db result))
           "game-db should be unchanged during non-cleanup phase")
-      (is (seq (grants/get-player-grants (:game/db result) :player-1))
+      (is (= 1 (count (grants/get-player-grants (:game/db result) :player-1)))
           "grants should NOT be expired during non-cleanup phase"))))
 
 

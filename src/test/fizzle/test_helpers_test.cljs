@@ -11,15 +11,15 @@
   (testing "create-test-db returns db with player entity, game entity, card definitions"
     (let [db (th/create-test-db)]
       ;; Player entity exists
-      (is (some? (q/get-player-eid db :player-1))
+      (is (pos-int? (q/get-player-eid db :player-1))
           "Player :player-1 should exist")
       ;; Game entity exists
-      (is (some? (q/get-game-state db))
+      (is (map? (q/get-game-state db))
           "Game state should exist")
       ;; Card definitions loaded
-      (is (some? (d/q '[:find ?e .
-                        :where [?e :card/id :dark-ritual]]
-                      db))
+      (is (pos-int? (d/q '[:find ?e .
+                           :where [?e :card/id :dark-ritual]]
+                         db))
           "Dark Ritual card def should be loaded")
       ;; Default mana pool is all zeros
       (let [pool (q/get-mana-pool db :player-1)]
@@ -106,7 +106,7 @@
   (testing "add-opponent creates :player-2 with is-opponent true"
     (let [db (th/create-test-db)
           db' (th/add-opponent db)]
-      (is (some? (q/get-player-eid db' :player-2))
+      (is (pos-int? (q/get-player-eid db' :player-2))
           "Player :player-2 should exist")
       (let [player-eid (q/get-player-eid db' :player-2)
             player (d/pull db' '[:player/is-opponent :player/life] player-eid)]

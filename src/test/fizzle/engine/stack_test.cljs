@@ -554,8 +554,8 @@
         (is (= :activated-ability (:stack-item/type item)))
         (is (= :player-1 (:stack-item/controller item)))
         (is (= delta-id (:stack-item/source item)))
-        (is (seq (:stack-item/effects item))
-            "Stack-item should have effects from the ability")))))
+        (is (= 1 (count (:stack-item/effects item)))
+            "Stack-item should have exactly 1 effect from the ability")))))
 
 
 (deftest test-dispatch-stacked-trigger-creates-stack-item
@@ -594,8 +594,8 @@
         (is (= :permanent-tapped (:stack-item/type item)))
         (is (= :player-1 (:stack-item/controller item)))
         (is (= source-id (:stack-item/source item)))
-        (is (seq (:stack-item/effects item))
-            "Stack-item should have effects")))))
+        (is (= 1 (count (:stack-item/effects item)))
+            "Stack-item should have exactly 1 effect")))))
 
 
 (deftest test-resolve-top-handles-ability-stack-item

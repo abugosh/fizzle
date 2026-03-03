@@ -17,7 +17,6 @@
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.events.game :as game]
-    [fizzle.events.selection.core :as sel-core]
     [fizzle.events.selection.costs :as sel-costs]
     [fizzle.test-helpers :as th]))
 
@@ -96,11 +95,11 @@
           db (mana/add-mana db :player-1 {:blue 1 :colorless 1})
           db-cast (cast-daze-targeting db daze-id ritual-id)
           ;; Resolve
-          result (game/resolve-one-item db-cast)
-          selection (:pending-selection result)
-          sel-decline (assoc selection :selection/selected #{:decline})
-          exec-result (sel-core/execute-confirmed-selection (:db result) sel-decline)]
-      (is (= :graveyard (:object/zone (q/get-object (:db exec-result) ritual-id)))
+          resolve-result (th/resolve-top db-cast)
+          selection (:selection resolve-result)
+          ;; Decline payment via production helper
+          decline-result (th/confirm-selection (:db resolve-result) selection #{:decline})]
+      (is (= :graveyard (:object/zone (q/get-object (:db decline-result) ritual-id)))
           "Spell should be countered when payment declined"))))
 
 
@@ -114,11 +113,11 @@
           [db daze-id] (th/add-card-to-zone db :daze :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1 :colorless 1})
           db-cast (cast-daze-targeting db daze-id ritual-id)
-          result (game/resolve-one-item db-cast)
-          selection (:pending-selection result)
-          sel-pay (assoc selection :selection/selected #{:pay})
-          exec-result (sel-core/execute-confirmed-selection (:db result) sel-pay)]
-      (is (= :stack (:object/zone (q/get-object (:db exec-result) ritual-id)))
+          resolve-result (th/resolve-top db-cast)
+          selection (:selection resolve-result)
+          ;; Pay via production helper
+          pay-result (th/confirm-selection (:db resolve-result) selection #{:pay})]
+      (is (= :stack (:object/zone (q/get-object (:db pay-result) ritual-id)))
           "Spell should remain on stack when payment made"))))
 
 

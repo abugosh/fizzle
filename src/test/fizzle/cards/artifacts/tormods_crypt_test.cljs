@@ -220,8 +220,8 @@
           db (th/add-opponent db)
           ability (first (:card/abilities tormods-crypt/card))
           target-req (first (:ability/targeting ability))]
-      (is (seq (targeting/find-valid-targets db :player-1 target-req))
-          "Should find valid player targets"))))
+      (is (= 2 (count (targeting/find-valid-targets db :player-1 target-req)))
+          "Should find both players as valid targets"))))
 
 
 ;; === F. exile-zone Effect Tests ===

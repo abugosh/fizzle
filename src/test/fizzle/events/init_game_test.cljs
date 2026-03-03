@@ -141,10 +141,10 @@
       (is (instance? ds-db/DB game-db)
           "Game db must be a datascript database")
       ;; Essential player state must exist
-      (is (some? (q/get-player-eid game-db :player-1))
+      (is (pos-int? (q/get-player-eid game-db :player-1))
           "Player 1 must exist in initialized db")
       ;; Game state entity must exist
-      (is (some? (first (q/get-game-state game-db)))
+      (is (map? (q/get-game-state game-db))
           "Game state must exist in initialized db"))))
 
 

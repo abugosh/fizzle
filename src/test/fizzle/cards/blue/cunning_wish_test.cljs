@@ -167,8 +167,8 @@
           [db wish-id] (th/add-card-to-zone db :cunning-wish :hand :player-1)
           db-cast (rules/cast-spell db :player-1 wish-id)
           {:keys [db selection]} (th/resolve-top db-cast)
-          _ (is (seq (:selection/candidates selection))
-                "Should have candidates available")
+          _ (is (= 1 (count (:selection/candidates selection)))
+                "Should have exactly 1 candidate available")
           ;; Confirm with empty selection (player declines)
           {:keys [db]} (th/confirm-selection db selection #{})]
       ;; Brain Freeze stays in sideboard

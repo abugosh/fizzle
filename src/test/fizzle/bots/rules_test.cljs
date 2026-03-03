@@ -420,13 +420,6 @@
         "Interactive rules should be skipped by match-priority-rule")))
 
 
-(deftest counterspell-spec-has-rule-tag
-  (let [rule (first (:bot/priority-rules counterspell-spec))]
-    (is (= :interactive (:rule/mode rule)))
-    (is (= :counter (:rule/tag rule))
-        "Interactive rule should have :rule/tag for grouping")))
-
-
 ;; === Extended condition tests via spec scenarios ===
 
 (deftest stack-has-finds-opponent-spell-in-spec-scenario

@@ -111,7 +111,7 @@
           result (run-interceptor context)
           result-db (get-in result [:effects :db])]
       ;; Should have forked — current-branch should be non-nil
-      (is (some? (:history/current-branch result-db))
+      (is (uuid? (:history/current-branch result-db))
           "Should have auto-forked to a new branch")
       ;; Main should still have 3 entries (unchanged)
       (is (= 3 (count (:history/main result-db)))
@@ -168,8 +168,9 @@
             result (run-interceptor context)
             result-db (get-in result [:effects :db])
             entry (first (:history/main result-db))]
-        (is (string? (:entry/description entry))
-            (str (first event) " should have a description"))
+        (is (and (string? (:entry/description entry))
+                 (pos? (count (:entry/description entry))))
+            (str (first event) " should have a non-empty description"))
         (is (not= (name (first event)) (:entry/description entry))
             (str (first event) " should not use fallback name")))))
   (testing "Selection confirm events with priority selection types produce descriptions"
@@ -182,8 +183,9 @@
             result (run-interceptor context)
             result-db (get-in result [:effects :db])
             entry (first (:history/main result-db))]
-        (is (string? (:entry/description entry))
-            (str "confirm-selection with " selection-type " should have a description"))
+        (is (and (string? (:entry/description entry))
+                 (pos? (count (:entry/description entry))))
+            (str "confirm-selection with " selection-type " should have a non-empty description"))
         (is (not= "confirm-selection" (:entry/description entry))
             (str "confirm-selection with " selection-type " should not use fallback name"))))))
 

@@ -117,7 +117,7 @@
                   (card-spec/validate-cards! [bad-card])
                   nil
                   (catch :default e e))]
-      (is (some? error) "validate-cards! should throw on invalid card")
+      (is (instance? js/Error error) "validate-cards! should throw on invalid card")
       (is (re-find #"Bad Card" (ex-message error))
           "Error message should include card name"))))
 

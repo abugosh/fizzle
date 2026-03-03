@@ -17,7 +17,6 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.game :as game]
-    [fizzle.events.selection.core :as sel-core]
     [fizzle.test-helpers :as th]))
 
 
@@ -94,21 +93,19 @@
           db (mana/add-mana db :player-1 {:blue 1 :colorless 1})
           db-cast (cast-mana-leak-targeting db ml-id ritual-id)
           ;; Resolve Mana Leak -> should get unless-pay selection
-          result (game/resolve-one-item db-cast)]
+          resolve-result (th/resolve-top db-cast)]
       ;; Should get a pending selection for unless-pay
-      (is (some? (:pending-selection result))
+      (is (some? (:selection resolve-result))
           "Should create unless-pay selection")
-      (let [selection (:pending-selection result)
+      (let [selection (:selection resolve-result)
             _ (is (= :unless-pay (:selection/type selection))
                   "Selection type should be :unless-pay")
             _ (is (= :player-2 (:selection/player-id selection))
                   "Choosing player should be the targeted spell's controller")
-            ;; Decline payment
-            db-after-resolve (:db result)
-            sel-with-decline (assoc selection :selection/selected #{:decline})
-            exec-result (sel-core/execute-confirmed-selection db-after-resolve sel-with-decline)]
+            ;; Decline payment via production helper
+            decline-result (th/confirm-selection (:db resolve-result) selection #{:decline})]
         ;; Ritual should be countered -> graveyard
-        (is (= :graveyard (:object/zone (q/get-object (:db exec-result) ritual-id)))
+        (is (= :graveyard (:object/zone (q/get-object (:db decline-result) ritual-id)))
             "Spell should be countered when payment declined")))))
 
 
@@ -125,17 +122,15 @@
           db (mana/add-mana db :player-1 {:blue 1 :colorless 1})
           db-cast (cast-mana-leak-targeting db ml-id ritual-id)
           ;; Resolve Mana Leak
-          result (game/resolve-one-item db-cast)
-          selection (:pending-selection result)
-          db-after-resolve (:db result)
-          ;; Pay the {3}
-          sel-with-pay (assoc selection :selection/selected #{:pay})
-          exec-result (sel-core/execute-confirmed-selection db-after-resolve sel-with-pay)]
+          resolve-result (th/resolve-top db-cast)
+          selection (:selection resolve-result)
+          ;; Pay the {3} via production helper
+          pay-result (th/confirm-selection (:db resolve-result) selection #{:pay})]
       ;; Ritual should still be on the stack (not countered)
-      (is (= :stack (:object/zone (q/get-object (:db exec-result) ritual-id)))
+      (is (= :stack (:object/zone (q/get-object (:db pay-result) ritual-id)))
           "Spell should remain on stack when payment is made")
       ;; Controller's mana should be reduced by 3
-      (let [pool (q/get-mana-pool (:db exec-result) :player-2)]
+      (let [pool (q/get-mana-pool (:db pay-result) :player-2)]
         (is (= 0 (get pool :colorless 0))
             "Controller should have paid 3 colorless mana")))))
 
@@ -231,8 +226,8 @@
           [db ml-id] (th/add-card-to-zone db :mana-leak :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1 :colorless 1})
           db-cast (cast-mana-leak-targeting db ml-id ritual-id)
-          result (game/resolve-one-item db-cast)
-          selection (:pending-selection result)]
+          resolve-result (th/resolve-top db-cast)
+          selection (:selection resolve-result)]
       (is (= [:pay :decline] (:selection/valid-targets selection))
           "Should offer both pay and decline"))))
 
@@ -248,8 +243,8 @@
           [db ml-id] (th/add-card-to-zone db :mana-leak :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1 :colorless 1})
           db-cast (cast-mana-leak-targeting db ml-id ritual-id)
-          result (game/resolve-one-item db-cast)
-          selection (:pending-selection result)]
+          resolve-result (th/resolve-top db-cast)
+          selection (:selection resolve-result)]
       (is (= [:pay :decline] (:selection/valid-targets selection))
           "Should always offer both options — affordability is checked reactively in view"))))
 
@@ -285,8 +280,8 @@
           [db ml-id] (th/add-card-to-zone db :mana-leak :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1 :colorless 1})
           db-cast (cast-mana-leak-targeting db ml-id ritual-id)
-          result (game/resolve-one-item db-cast)
-          selection (:pending-selection result)]
+          resolve-result (th/resolve-top db-cast)
+          selection (:selection resolve-result)]
       ;; Both options always offered — affordability checked reactively in view
       (is (= [:pay :decline] (:selection/valid-targets selection))
           "Should always offer both options"))))

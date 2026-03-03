@@ -188,8 +188,8 @@
           [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
           game-db (rules/cast-spell db' :player-1 obj-id)]
       ;; After casting, spell should be on stack, not resolved
-      (is (seq (q/get-all-stack-items game-db))
-          "Stack should have items after casting")
+      (is (= 1 (count (q/get-all-stack-items game-db)))
+          "Stack should have exactly 1 item after casting")
       ;; Mana should have been spent, not gained
       (is (= 0 (:black (q/get-mana-pool game-db :player-1)))
           "Mana should be spent on casting, not refunded by resolution"))))
@@ -392,44 +392,6 @@
           "Opponent should have 1 land on battlefield")
       (is (= 0 (count (q/get-hand result-db :player-2)))
           "Opponent hand should be empty after playing land"))))
-
-
-(deftest debug-goldfish-land-trace
-  (testing "DEBUG: trace goldfish land play step by step"
-    (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
-                 (h/add-opponent {:bot-archetype :goldfish}))
-          [db' _] (h/add-card-to-zone db :plains :hand :player-2)
-          game-db (-> db'
-                      (game/advance-phase :player-1)
-                      (game/advance-phase :player-1))
-          app-db (merge (history/init-history) {:game/db game-db})
-          ;; Manually step through yield-all + bot actions
-          _ (reset! rf-db/app-db app-db)
-          _ (rf/dispatch-sync [::game/yield-all])
-          ;; Step through the loop manually, collecting state at each step
-          states (loop [n 20 acc []]
-                   (let [current @rf-db/app-db
-                         game-db (:game/db current)
-                         gs (when game-db (q/get-game-state game-db))
-                         state {:turn (:game/turn gs)
-                                :phase (:game/phase gs)
-                                :active (when game-db (q/get-active-player-id game-db))
-                                :bot-act? (when game-db (bot-interceptor/bot-should-act? game-db))
-                                :hand-count (when game-db (count (q/get-hand game-db :player-2)))
-                                :bf-count (when game-db (count (q/get-objects-in-zone game-db :player-2 :battlefield)))
-                                :step-count (:yield/step-count current)}]
-                     (if (or (zero? n)
-                             (:game/pending-selection current)
-                             (not (contains? current :yield/step-count)))
-                       (conj acc state)
-                       (do
-                         (rf/dispatch-sync [::game/yield])
-                         (process-bot-action!)
-                         (recur (dec n) (conj acc state))))))]
-      ;; Print the trace
-      (doseq [[i s] (map-indexed vector states)]
-        (println (str "Step " i ": " (pr-str s))))
-      (is (= 1 1) "debug test"))))
 
 
 (deftest goldfish-no-land-in-hand-passes

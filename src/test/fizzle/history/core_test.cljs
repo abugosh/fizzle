@@ -187,7 +187,7 @@
           db' (history/auto-fork db new-entry)
           fork-id (:history/current-branch db')
           fork (history/get-fork db' fork-id)]
-      (is (some? fork-id))
+      (is (uuid? fork-id) "Fork ID should be a UUID")
       (is (= 3 (:fork/branch-point fork)))
       (is (nil? (:fork/parent fork)))
       (is (= 1 (count (:fork/entries fork))))
@@ -209,7 +209,8 @@
                  (history/step-to 3))
           new-entry (history/make-entry :db-fork :fork-action "Fork action" 2)
           db' (history/auto-fork db new-entry)]
-      (is (some? (:history/current-branch db'))))))
+      (is (uuid? (:history/current-branch db'))
+          "current-branch should be set to a fork UUID"))))
 
 
 (deftest test-auto-fork-entry-in-effective-entries
@@ -514,8 +515,10 @@
           db' (history/delete-fork db-main fork-c-id)]
       (is (nil? (:history/current-branch db')))
       ;; Fork A and B still exist
-      (is (some? (history/get-fork db' fork-a-id)))
-      (is (some? (history/get-fork db' fork-b-id)))
+      (is (map? (history/get-fork db' fork-a-id))
+          "Fork A should still exist")
+      (is (map? (history/get-fork db' fork-b-id))
+          "Fork B should still exist")
       (is (nil? (history/get-fork db' fork-c-id))))))
 
 
@@ -792,7 +795,8 @@
           db-main (history/switch-branch db-forked nil)
           db' (history/pop-entry db-main)]
       ;; Fork at position 1 should be preserved
-      (is (some? (history/get-fork db' fork-id)))
+      (is (map? (history/get-fork db' fork-id))
+          "Fork at position 1 should still exist after pop")
       ;; Main should have 2 entries, position 1
       (is (= 2 (count (:history/main db'))))
       (is (= 1 (:history/position db'))))))
@@ -820,7 +824,8 @@
       ;; Fork B branched from position 4 of Fork A — that's the first
       ;; fork entry. Since we popped the second entry (position 5),
       ;; Fork B is at position 4 which still exists, so it's preserved
-      (is (some? (history/get-fork db-pop1 fork-b-id)))
+      (is (map? (history/get-fork db-pop1 fork-b-id))
+          "Fork B should still exist after popping Fork A's second entry")
       ;; Pop the last entry on Fork A
       (let [db-pop2 (history/pop-entry db-pop1)]
         ;; Now Fork A is empty and gets deleted

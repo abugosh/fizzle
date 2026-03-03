@@ -16,7 +16,6 @@
     [fizzle.engine.stack :as stack]
     [fizzle.engine.triggers :as triggers]
     [fizzle.events.game :as game]
-    [fizzle.events.selection.core :as sel-core]
     [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
 
@@ -200,10 +199,11 @@
           db3m (mana/add-mana db3 :player-1 {:blue 1 :colorless 1})
           db3c (cast-brain-freeze-with-target db3m :player-1 bf-id :player-2)
           ;; Resolve storm stack-item via storm-split selection
-          storm-result (game/resolve-one-item db3c)
-          storm-sel (:pending-selection storm-result)
-          ;; Confirm storm-split (all copies to opponent)
-          confirm-result (sel-core/execute-confirmed-selection (:db storm-result) storm-sel)
+          storm-result (th/resolve-top db3c)
+          storm-sel (:selection storm-result)
+          ;; Confirm storm-split (all copies to opponent) via production helper
+          confirm-result (th/confirm-selection (:db storm-result) storm-sel
+                                               (:selection/selected storm-sel))
           db4 (:db confirm-result)
           ;; Find the copies on the stack (is-copy = true)
           stack-objects (q/get-objects-in-zone db4 :player-1 :stack)
@@ -246,12 +246,13 @@
           db2m (mana/add-mana db2 :player-1 {:blue 1 :colorless 1})
           db2c (cast-brain-freeze-with-target db2m :player-1 bf-id :player-1)
           ;; Resolve storm stack-item via storm-split selection
-          storm-result (game/resolve-one-item db2c)
-          storm-sel (:pending-selection storm-result)
-          ;; Confirm storm-split (all copies to self)
-          storm-sel (assoc storm-sel :selection/allocation
-                           {:player-1 1 :player-2 0})
-          confirm-result (sel-core/execute-confirmed-selection (:db storm-result) storm-sel)
+          storm-result (th/resolve-top db2c)
+          storm-sel (:selection storm-result)
+          ;; Confirm storm-split (all copies to self) via production helper
+          storm-sel-modified (assoc storm-sel :selection/allocation
+                                    {:player-1 1 :player-2 0})
+          confirm-result (th/confirm-selection (:db storm-result) storm-sel-modified
+                                               (:selection/selected storm-sel-modified))
           db3 (:db confirm-result)
           stack-objects (q/get-objects-in-zone db3 :player-1 :stack)
           copies (filter :object/is-copy stack-objects)

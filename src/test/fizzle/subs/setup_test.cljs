@@ -57,9 +57,9 @@
     (let [db (setup/init-setup-handler {})
           grouped (sub-value db [::subs/current-main-grouped])]
       ;; Should have land, instant, and sorcery groups at minimum
-      (is (some? (:instant grouped))
+      (is (pos? (count (:instant grouped)))
           "Should have instant group")
-      (is (some? (:sorcery grouped))
+      (is (pos? (count (:sorcery grouped)))
           "Should have sorcery group")
       ;; Verify a specific card appears in the right group
       (let [land-ids (set (map :card/id (:land grouped)))]

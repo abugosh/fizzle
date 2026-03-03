@@ -59,8 +59,8 @@
           "Targeted Orim's Chant should not need selection when targets stored")
       ;; Player-2 should have restriction
       (let [p2-grants (grants/get-player-grants (:db result) :player-2)]
-        (is (seq p2-grants)
-            "Player-2 should have grants after resolution")
+        (is (= 1 (count p2-grants))
+            "Player-2 should have exactly one grant after resolution")
         (is (some #(= :cannot-cast-spells (:restriction/type (:grant/data %))) p2-grants)
             "Player-2 should have cannot-cast-spells restriction")))))
 

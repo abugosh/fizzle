@@ -637,31 +637,3 @@
           (let [obj (q/get-object (:db result) obj-id)]
             (is (true? (:object/tapped obj))
                 "Should be tapped before any mana allocation clicks")))))))
-
-
-;; =====================================================
-;; 16. Cancel allocation returns to normal
-;; =====================================================
-
-(deftest test-cancel-allocation-returns-to-normal
-  (testing "Canceling allocation clears selection, leaves mana unchanged"
-    (let [db (create-allocation-test-db)
-          db (mana/add-mana db :player-1 {:black 5 :blue 3})
-          initial-pool (q/get-mana-pool db :player-1)
-          app-db {:game/db db
-                  :game/pending-selection
-                  {:selection/type :mana-allocation
-                   :selection/player-id :player-1
-                   :selection/spell-id (random-uuid)
-                   :selection/generic-remaining 2
-                   :selection/allocation {:black 1}
-                   :selection/remaining-pool {:black 3 :blue 3 :white 0
-                                              :red 0 :green 0 :colorless 0}}}
-          ;; Cancel handler just dissocs :game/pending-selection
-          result (dissoc app-db :game/pending-selection)]
-      ;; Selection cleared
-      (is (nil? (:game/pending-selection result))
-          "Pending selection should be cleared")
-      ;; Mana unchanged (allocation only tracked in selection, not in pool)
-      (is (= initial-pool (q/get-mana-pool (:game/db result) :player-1))
-          "Mana pool should be unchanged after cancel"))))

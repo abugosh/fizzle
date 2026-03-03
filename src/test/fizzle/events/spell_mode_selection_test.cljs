@@ -114,24 +114,6 @@
           "Should no longer be in spell-mode selection"))))
 
 
-;; === Cancel Selection ===
-
-(deftest cancel-spell-mode-selection-clears-state-test
-  (testing "Canceling spell mode selection clears standard selection"
-    (let [db (th/create-test-db)
-          db (th/add-opponent db)
-          [db reb-id] (th/add-card-to-zone db :red-elemental-blast :hand :player-1)
-          app-db {:game/db db
-                  :game/pending-selection {:selection/type :spell-mode
-                                           :selection/object-id reb-id
-                                           :selection/candidates (:card/modes reb/card)}}
-          result-db (dissoc app-db :game/pending-selection)]
-      (is (nil? (:game/pending-selection result-db))
-          "Selection should be cleared")
-      (is (= :hand (:object/zone (q/get-object (:game/db result-db) reb-id)))
-          "Card should still be in hand"))))
-
-
 ;; === Non-Modal Card Not Affected ===
 
 (deftest non-modal-card-unaffected-test

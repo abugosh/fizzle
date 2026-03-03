@@ -653,8 +653,8 @@
           "Should tag as imported")
       (is (= :my-storm (:setup/selected-deck db-after))
           "Should select the imported deck")
-      (is (seq (:setup/main-deck db-after))
-          "Should populate main deck")
+      (is (= 2 (count (:setup/main-deck db-after)))
+          "Should populate main deck with 2 card entries")
       (is (= {} (:setup/must-contain db-after))
           "Should clear must-contain"))))
 
@@ -666,8 +666,8 @@
                  (setup/set-import-name-handler "Bad Deck")
                  (setup/set-import-text-handler "4 Nonexistent Card"))
           db-after (setup/confirm-import-handler db)]
-      (is (seq (get-in db-after [:setup/import-modal :errors]))
-          "Should have error list")
+      (is (= ["Nonexistent Card"] (get-in db-after [:setup/import-modal :errors]))
+          "Should have error list with unrecognized card")
       (is (not (contains? (:setup/imported-decks db-after) :bad-deck))
           "Should not save deck on error"))))
 
@@ -761,8 +761,9 @@
                  (setup/open-edit-modal-handler :my-storm))]
       (is (= "My Storm" (get-in db [:setup/import-modal :name]))
           "Should pre-fill name")
-      (is (string? (get-in db [:setup/import-modal :text]))
-          "Should have regenerated text")
+      (is (= "// My Storm - Main Deck (4)\n//\n// Instants (4)\n4 Dark Ritual"
+             (get-in db [:setup/import-modal :text]))
+          "Should have regenerated text from deck contents")
       (is (= :my-storm (get-in db [:setup/import-modal :editing-deck-id]))
           "Should set editing-deck-id"))))
 

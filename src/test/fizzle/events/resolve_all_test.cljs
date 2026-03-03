@@ -106,7 +106,7 @@
           ;; Filter to spell stack-items only (storm also creates a :storm item)
           spell-items (filter #(:stack-item/object-ref %) (queries/get-all-stack-items db'))]
       ;; Should have a spell stack-item with object-ref
-      (is (seq spell-items) "Should have spell stack-item")
+      (is (= 1 (count spell-items)) "Should have exactly 1 spell stack-item")
       ;; Resolve via resolve-one-item (resolves top item which is :storm)
       ;; Keep resolving until stack is empty (storm meta-item + spell)
       (loop [db db'
@@ -199,7 +199,7 @@
           db-cast (rules/cast-spell-mode db :player-1 obj-id mode)
           ;; Find the spell stack-item (not the storm meta-item)
           spell-items (filter #(:stack-item/object-ref %) (queries/get-all-stack-items db-cast))]
-      (is (seq spell-items) "Spell should be on stack")
+      (is (= 1 (count spell-items)) "Should have exactly 1 spell stack-item")
       ;; Resolve - should trigger tutor selection
       (let [result (game/resolve-one-item db-cast)]
         (is (some? (:pending-selection result))
@@ -301,7 +301,7 @@
         (is (some? (:game/pending-selection result))
             "Should stop at selection")
         ;; The trigger item should still be on the stack (wasn't reached)
-        (is (seq (queries/get-all-stack-items (:game/db result)))
+        (is (pos? (count (queries/get-all-stack-items (:game/db result))))
             "Items below selection should remain on stack")))))
 
 
