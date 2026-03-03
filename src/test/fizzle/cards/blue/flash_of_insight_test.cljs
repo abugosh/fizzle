@@ -99,6 +99,14 @@
           "Should not be castable with only 1 blue"))))
 
 
+(deftest flash-of-insight-cannot-cast-from-exile-test
+  (testing "Cannot cast Flash of Insight from exile"
+    (let [db (th/create-test-db {:mana {:colorless 1 :blue 1}})
+          [db obj-id] (th/add-card-to-zone db :flash-of-insight :exile :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable from exile"))))
+
+
 ;; === D. Storm Count ===
 
 (deftest flash-of-insight-increments-storm-count-test
@@ -209,3 +217,71 @@
         ;; Cast mode should be stored on the object
         (is (= :exile (get-in foi-obj [:object/cast-mode :mode/on-resolve]))
             "Stored cast mode should have :exile on-resolve")))))
+
+
+;; === G. Edge Cases ===
+
+(deftest flash-of-insight-castable-with-minimum-mana-test
+  (testing "Flash of Insight castable with {1}{U} (X=0)"
+    (let [db (th/create-test-db {:mana {:colorless 1 :blue 1}})
+          [db obj-id] (th/add-card-to-zone db :flash-of-insight :hand :player-1)]
+      (is (rules/can-cast? db :player-1 obj-id)
+          "Should be castable with {1}{U} for X=0"))))
+
+
+(deftest flash-of-insight-selected-card-goes-to-hand-test
+  (testing "Confirming peek-and-select moves selected card to hand"
+    (let [db (th/create-test-db {:mana {:colorless 3 :blue 1}})
+          [db [top-id second-id _third-id]] (th/add-cards-to-library db
+                                                                     [:dark-ritual :cabal-ritual :brain-freeze]
+                                                                     :player-1)
+          [db foi-id] (th/add-card-to-zone db :flash-of-insight :hand :player-1)
+          db-cast (rules/cast-spell db :player-1 foi-id)
+          foi-eid (d/q '[:find ?e . :in $ ?oid
+                         :where [?e :object/id ?oid]]
+                       db-cast foi-id)
+          db-with-x (d/db-with db-cast [[:db/add foi-eid :object/x-value 2]])
+          {:keys [db selection]} (th/resolve-top db-with-x)
+          ;; Select the top card
+          {:keys [db]} (th/confirm-selection db selection #{top-id})]
+      ;; Selected card should be in hand
+      (is (= :hand (th/get-object-zone db top-id))
+          "Selected card should be in hand")
+      ;; Non-selected card should NOT be in hand
+      (is (not= :hand (th/get-object-zone db second-id))
+          "Non-selected peeked card should not be in hand")
+      ;; Spell should be in graveyard
+      (is (= :graveyard (th/get-object-zone db foi-id))
+          "Flash of Insight should be in graveyard after resolution"))))
+
+
+(deftest flash-of-insight-peek-library-smaller-than-x-test
+  (testing "Flash of Insight with X=3 but only 1 card in library peeks 1 card"
+    (let [db (th/create-test-db {:mana {:colorless 4 :blue 1}})
+          ;; Only 1 card in library
+          [db [_lib-id]] (th/add-cards-to-library db [:dark-ritual] :player-1)
+          [db foi-id] (th/add-card-to-zone db :flash-of-insight :hand :player-1)
+          db-cast (rules/cast-spell db :player-1 foi-id)
+          ;; Set X=3
+          foi-eid (d/q '[:find ?e . :in $ ?oid
+                         :where [?e :object/id ?oid]]
+                       db-cast foi-id)
+          db-with-x (d/db-with db-cast [[:db/add foi-eid :object/x-value 3]])
+          result (game/resolve-one-item db-with-x)
+          sel (:pending-selection result)]
+      ;; Should peek at only 1 card (all that's available)
+      (is (some? sel)
+          "Should have pending selection")
+      (is (<= (count (:selection/candidates sel)) 1)
+          "Should have at most 1 candidate (library only has 1 card)"))))
+
+
+(deftest flash-of-insight-flashback-not-castable-from-exile-test
+  (testing "Flash of Insight flashback only works from graveyard, not exile"
+    (let [db (th/create-test-db {:mana {:colorless 1 :blue 1}})
+          [db obj-id] (th/add-card-to-zone db :flash-of-insight :exile :player-1)
+          ;; Add blue cards for potential exile cost
+          [db _] (th/add-cards-to-graveyard db [:careful-study :opt] :player-1)
+          modes (rules/get-casting-modes db :player-1 obj-id)]
+      (is (empty? modes)
+          "No casting modes should be available from exile"))))
