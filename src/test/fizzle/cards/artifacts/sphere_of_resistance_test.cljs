@@ -11,6 +11,7 @@
     [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.static-abilities :as static-abilities]
+    [fizzle.events.game :as game]
     [fizzle.test-helpers :as th]))
 
 
@@ -397,3 +398,34 @@
       ;; (started with 2 colorless + 1 black, paid 2 colorless for Sphere, black remains)
       (is (false? (rules/can-cast? db :player-1 dr-id))
           "Dark Ritual should NOT be castable with only {B} after Sphere resolves"))))
+
+
+;; =====================================================
+;; Event-Layer: Mana Allocation Triggered by Effective Cost
+;; =====================================================
+
+(deftest sphere-triggers-mana-allocation-for-no-base-generic-test
+  (testing "Dark Ritual (no base generic) triggers mana allocation when Sphere adds generic"
+    (let [db (th/create-test-db)
+          ;; Sphere on battlefield
+          [db _] (th/add-card-to-zone db :sphere-of-resistance :battlefield :player-1)
+          ;; Dark Ritual in hand — base cost {B}, effective cost {B}{1} with Sphere
+          [db dr-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          db (mana/add-mana db :player-1 {:black 2})
+          app-db {:game/db db :game/selected-card dr-id}
+          result (game/cast-spell-handler app-db)
+          sel (:game/pending-selection result)]
+      (is (some? sel)
+          "Should have pending selection (mana allocation needed)")
+      (is (= :mana-allocation (:selection/type sel))
+          "Selection type should be :mana-allocation")))
+
+  (testing "Dark Ritual without Sphere casts immediately (no allocation needed)"
+    (let [db (th/create-test-db {:mana {:black 1}})
+          [db dr-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          app-db {:game/db db :game/selected-card dr-id}
+          result (game/cast-spell-handler app-db)]
+      (is (nil? (:game/pending-selection result))
+          "Should NOT have pending selection (no generic in base cost)")
+      (is (= :stack (:object/zone (q/get-object (:game/db result) dr-id)))
+          "Dark Ritual should be on stack (cast immediately)"))))
