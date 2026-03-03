@@ -4,6 +4,7 @@
    Every card namespace is required explicitly here. No build-time magic.
    Consumers access cards through engine/cards.cljs, not this namespace directly."
   (:require
+    [fizzle.cards.artifacts.defense-grid :as defense-grid]
     [fizzle.cards.artifacts.lions-eye-diamond :as lions-eye-diamond]
     [fizzle.cards.artifacts.lotus-petal :as lotus-petal]
     [fizzle.cards.artifacts.sphere-of-resistance :as sphere-of-resistance]
@@ -21,6 +22,7 @@
     [fizzle.cards.blue.brain-freeze :as brain-freeze]
     [fizzle.cards.blue.careful-study :as careful-study]
     [fizzle.cards.blue.chain-of-vapor :as chain-of-vapor]
+    [fizzle.cards.blue.chill :as chill]
     [fizzle.cards.blue.counterspell :as counterspell]
     [fizzle.cards.blue.cunning-wish :as cunning-wish]
     [fizzle.cards.blue.daze :as daze]
@@ -73,6 +75,7 @@
        annul/card
        blue-elemental-blast/card
        hydroblast/card
+       chill/card
        brain-freeze/card
        chain-of-vapor/card
        counterspell/card
@@ -107,6 +110,7 @@
        cephalid-coliseum/card
        lotus-petal/card
        lions-eye-diamond/card
+       defense-grid/card
        sphere-of-resistance/card
        tormods-crypt/card
        urzas-bauble/card

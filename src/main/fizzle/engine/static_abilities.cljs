@@ -59,7 +59,7 @@
           (case criteria-type
             :spell-color (let [required-colors (:criteria/colors criteria)
                                spell-colors (set (:card/colors spell-card))]
-                           (some spell-colors required-colors))
+                           (boolean (some spell-colors required-colors)))
             ;; Default: no match for unknown criteria
             false))
         ;; No criteria = applies to all spells
