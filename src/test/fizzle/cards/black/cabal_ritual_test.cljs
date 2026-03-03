@@ -32,6 +32,46 @@
         (is (= {:black 5} (:effect/mana (first threshold-effects))))))))
 
 
+;; === C. Cannot-Cast Guards ===
+
+(deftest cabal-ritual-cannot-cast-without-mana-test
+  (testing "Cannot cast Cabal Ritual without mana"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :cabal-ritual :hand :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable without mana"))))
+
+
+(deftest cabal-ritual-cannot-cast-with-insufficient-mana-test
+  (testing "Cannot cast Cabal Ritual with only 1 black (needs {1}{B})"
+    (let [db (th/create-test-db {:mana {:black 1}})
+          [db obj-id] (th/add-card-to-zone db :cabal-ritual :hand :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable with only 1 black"))))
+
+
+(deftest cabal-ritual-cannot-cast-from-graveyard-test
+  (testing "Cannot cast Cabal Ritual from graveyard"
+    (let [db (th/create-test-db {:mana {:colorless 1 :black 1}})
+          [db obj-id] (th/add-card-to-zone db :cabal-ritual :graveyard :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable from graveyard"))))
+
+
+;; === D. Storm Count ===
+
+(deftest cabal-ritual-increments-storm-count-test
+  (testing "Casting Cabal Ritual increments storm count"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :cabal-ritual :hand :player-1)
+          db (mana/add-mana db :player-1 {:black 2})
+          _ (is (= 0 (q/get-storm-count db :player-1))
+                "Storm count should start at 0")
+          db-cast (rules/cast-spell db :player-1 obj-id)]
+      (is (= 1 (q/get-storm-count db-cast :player-1))
+          "Storm count should be 1 after casting Cabal Ritual"))))
+
+
 ;; === Cast-resolve integration tests ===
 
 (deftest cabal-ritual-produces-bbb-without-threshold-test

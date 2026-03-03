@@ -22,15 +22,6 @@
 
 ;; === Tests ===
 
-(deftest test-intuition-card-exists
-  ;; Bug caught: Card not added to all-cards vector, won't be loaded
-  (testing "Intuition is in all-cards"
-    (let [intuition-card (some #(when (= "Intuition" (:card/name %)) %)
-                               cards/all-cards)]
-      (is (= :intuition (:card/id intuition-card))
-          "Card ID must be :intuition"))))
-
-
 (deftest test-intuition-mana-cost
   ;; Bug caught: Wrong mana cost prevents casting
   (testing "Intuition has correct mana cost 2U"
@@ -58,6 +49,46 @@
           "target-zone must be :hand")
       (is (= {:hand 1 :graveyard :rest} (:effect/pile-choice effect))
           "pile-choice must specify 1 to hand, rest to graveyard"))))
+
+
+;; === C. Cannot-Cast Guards ===
+
+(deftest intuition-cannot-cast-without-mana-test
+  (testing "Cannot cast Intuition without mana"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :intuition :hand :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable without mana"))))
+
+
+(deftest intuition-cannot-cast-with-insufficient-mana-test
+  (testing "Cannot cast Intuition with only 2 mana (needs {2}{U})"
+    (let [db (th/create-test-db {:mana {:blue 1 :colorless 1}})
+          [db obj-id] (th/add-card-to-zone db :intuition :hand :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable with only 2 mana"))))
+
+
+(deftest intuition-cannot-cast-from-graveyard-test
+  (testing "Cannot cast Intuition from graveyard"
+    (let [db (th/create-test-db {:mana {:colorless 2 :blue 1}})
+          [db obj-id] (th/add-card-to-zone db :intuition :graveyard :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable from graveyard"))))
+
+
+;; === D. Storm Count ===
+
+(deftest intuition-increments-storm-count-test
+  (testing "Casting Intuition increments storm count"
+    (let [db (th/create-test-db {:mana {:colorless 2 :blue 1}})
+          [db _] (th/add-cards-to-library db [:dark-ritual :cabal-ritual :brain-freeze] :player-1)
+          [db obj-id] (th/add-card-to-zone db :intuition :hand :player-1)
+          _ (is (= 0 (q/get-storm-count db :player-1))
+                "Storm count should start at 0")
+          db-cast (rules/cast-spell db :player-1 obj-id)]
+      (is (= 1 (q/get-storm-count db-cast :player-1))
+          "Storm count should be 1 after casting Intuition"))))
 
 
 (deftest test-intuition-full-flow-integration

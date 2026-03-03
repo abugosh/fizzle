@@ -13,7 +13,6 @@
     [cljs.test :refer-macros [deftest testing is]]
     [fizzle.cards.blue.mental-note :as mental-note]
     [fizzle.db.queries :as q]
-    [fizzle.engine.effects :as effects]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.state-based :as sba]
     [fizzle.test-helpers :as th]))
@@ -22,11 +21,22 @@
 ;; === Card Definition Tests ===
 
 (deftest test-mental-note-card-definition
-  (testing "Mental Note type and cost"
+  (testing "Mental Note identity and core fields"
+    (is (= :mental-note (:card/id mental-note/card))
+        "Card id should be :mental-note")
+    (is (= "Mental Note" (:card/name mental-note/card))
+        "Card name should be 'Mental Note'")
+    (is (= 1 (:card/cmc mental-note/card))
+        "CMC should be 1")
+    (is (= #{:blue} (:card/colors mental-note/card))
+        "Colors should be #{:blue}")
     (is (= #{:instant} (:card/types mental-note/card))
         "Mental Note should be an instant")
     (is (= {:blue 1} (:card/mana-cost mental-note/card))
-        "Mental Note should cost {U}"))
+        "Mental Note should cost {U}")
+    (is (= "Put the top two cards of your library into your graveyard, then draw a card."
+           (:card/text mental-note/card))
+        "Card text should match"))
 
   (testing "Mental Note has mill 2 and draw 1 effects in correct order"
     (let [card-effects (:card/effects mental-note/card)]
@@ -44,65 +54,64 @@
             "Draw effect should draw 1")))))
 
 
-;; === Mill Effect Tests ===
+;; === C. Cannot-Cast Guards ===
 
-(deftest test-mental-note-mills-from-own-library
-  (testing "Mental Note mills 2 cards from caster's own library"
+(deftest mental-note-cannot-cast-without-mana-test
+  (testing "Cannot cast Mental Note without blue mana"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :mental-note :hand :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable without mana"))))
+
+
+(deftest mental-note-cannot-cast-from-graveyard-test
+  (testing "Cannot cast Mental Note from graveyard"
     (let [db (th/create-test-db {:mana {:blue 1}})
-          [db' _lib-ids] (th/add-cards-to-library db
-                                                  [:dark-ritual :cabal-ritual :brain-freeze :island]
-                                                  :player-1)
-          _ (is (= 4 (th/get-zone-count db' :library :player-1)) "Precondition: 4 cards in library")
-          _ (is (= 0 (th/get-zone-count db' :graveyard :player-1)) "Precondition: graveyard empty")
-          ;; Execute mill effect directly
-          mill-effect {:effect/type :mill
-                       :effect/amount 2}
-          db-after-mill (effects/execute-effect db' :player-1 mill-effect)]
-      (is (= 2 (th/get-zone-count db-after-mill :library :player-1))
-          "Library should have 2 cards remaining")
-      (is (= 2 (th/get-zone-count db-after-mill :graveyard :player-1))
-          "Graveyard should have 2 cards"))))
+          [db obj-id] (th/add-card-to-zone db :mental-note :graveyard :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable from graveyard"))))
 
 
-(deftest test-mental-note-mills-top-cards
-  (testing "Mental Note mills from top of library (lowest position)"
+;; === D. Storm Count ===
+
+(deftest mental-note-increments-storm-count-test
+  (testing "Casting Mental Note increments storm count"
     (let [db (th/create-test-db {:mana {:blue 1}})
-          [db' lib-ids] (th/add-cards-to-library db
-                                                 [:dark-ritual :cabal-ritual :brain-freeze]
-                                                 :player-1)
+          [db _] (th/add-cards-to-library db [:dark-ritual :cabal-ritual :island] :player-1)
+          [db obj-id] (th/add-card-to-zone db :mental-note :hand :player-1)
+          _ (is (= 0 (q/get-storm-count db :player-1))
+                "Storm count should start at 0")
+          db-cast (rules/cast-spell db :player-1 obj-id)]
+      (is (= 1 (q/get-storm-count db-cast :player-1))
+          "Storm count should be 1 after casting Mental Note"))))
+
+
+;; === Mill Position Tests ===
+
+(deftest test-mental-note-mills-top-cards-via-production-path
+  (testing "Mental Note mills the top 2 cards (not bottom) and draws the next"
+    (let [db (th/create-test-db {:mana {:blue 1}})
+          [db lib-ids] (th/add-cards-to-library db
+                                                [:dark-ritual :cabal-ritual :brain-freeze :island]
+                                                :player-1)
           top-card-id (first lib-ids)
           second-card-id (second lib-ids)
-          bottom-card-id (nth lib-ids 2)
-          ;; Execute mill effect
-          mill-effect {:effect/type :mill
-                       :effect/amount 2}
-          db-after-mill (effects/execute-effect db' :player-1 mill-effect)]
-      ;; Top 2 cards should be in graveyard
-      (is (= :graveyard (th/get-object-zone db-after-mill top-card-id))
+          third-card-id (nth lib-ids 2)
+          bottom-card-id (nth lib-ids 3)
+          [db mn-id] (th/add-card-to-zone db :mental-note :hand :player-1)
+          db-after-cast (rules/cast-spell db :player-1 mn-id)
+          db-after-resolve (rules/resolve-spell db-after-cast :player-1 mn-id)]
+      ;; Top 2 cards should be milled to graveyard
+      (is (= :graveyard (th/get-object-zone db-after-resolve top-card-id))
           "Top card should be milled to graveyard")
-      (is (= :graveyard (th/get-object-zone db-after-mill second-card-id))
+      (is (= :graveyard (th/get-object-zone db-after-resolve second-card-id))
           "Second card should be milled to graveyard")
+      ;; Third card should be drawn to hand
+      (is (= :hand (th/get-object-zone db-after-resolve third-card-id))
+          "Third card should be drawn to hand")
       ;; Bottom card should still be in library
-      (is (= :library (th/get-object-zone db-after-mill bottom-card-id))
+      (is (= :library (th/get-object-zone db-after-resolve bottom-card-id))
           "Bottom card should remain in library"))))
-
-
-;; === Draw Effect Tests ===
-
-(deftest test-mental-note-draws-one-card
-  (testing "Mental Note draws 1 card after milling"
-    (let [db (th/create-test-db {:mana {:blue 1}})
-          [db' _lib-ids] (th/add-cards-to-library db
-                                                  [:dark-ritual :cabal-ritual :brain-freeze]
-                                                  :player-1)
-          initial-hand-count (th/get-hand-count db' :player-1)
-          _ (is (= 0 initial-hand-count) "Precondition: hand empty")
-          ;; Execute draw effect directly
-          draw-effect {:effect/type :draw
-                       :effect/amount 1}
-          db-after-draw (effects/execute-effect db' :player-1 draw-effect)]
-      (is (= 1 (th/get-hand-count db-after-draw :player-1))
-          "Hand should have 1 card after drawing"))))
 
 
 ;; === Combined Effect Tests ===

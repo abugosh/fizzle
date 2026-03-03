@@ -26,11 +26,21 @@
 ;; === Card Definition Tests ===
 
 (deftest test-careful-study-card-definition
-  (testing "Careful Study type and cost"
+  (testing "Careful Study identity and core fields"
+    (is (= :careful-study (:card/id careful-study/card))
+        "Card id should be :careful-study")
+    (is (= "Careful Study" (:card/name careful-study/card))
+        "Card name should be 'Careful Study'")
+    (is (= 1 (:card/cmc careful-study/card))
+        "CMC should be 1")
+    (is (= #{:blue} (:card/colors careful-study/card))
+        "Colors should be #{:blue}")
     (is (= #{:sorcery} (:card/types careful-study/card))
         "Careful Study should be a sorcery")
     (is (= {:blue 1} (:card/mana-cost careful-study/card))
-        "Careful Study should cost {U}"))
+        "Careful Study should cost {U}")
+    (is (= "Draw two cards, then discard two cards." (:card/text careful-study/card))
+        "Card text should match"))
 
   (testing "Careful Study has draw 2 and discard 2 effects"
     (let [card-effects (:card/effects careful-study/card)]
@@ -48,6 +58,38 @@
             "Discard effect should discard 2")
         (is (= :player (:effect/selection discard-effect))
             "Discard effect should require player selection")))))
+
+
+;; === C. Cannot-Cast Guards ===
+
+(deftest careful-study-cannot-cast-without-mana-test
+  (testing "Cannot cast Careful Study without blue mana"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :careful-study :hand :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable without mana"))))
+
+
+(deftest careful-study-cannot-cast-from-graveyard-test
+  (testing "Cannot cast Careful Study from graveyard"
+    (let [db (th/create-test-db {:mana {:blue 1}})
+          [db obj-id] (th/add-card-to-zone db :careful-study :graveyard :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable from graveyard"))))
+
+
+;; === D. Storm Count ===
+
+(deftest careful-study-increments-storm-count-test
+  (testing "Casting Careful Study increments storm count"
+    (let [db (th/create-test-db {:mana {:blue 1}})
+          [db _] (th/add-cards-to-library db [:dark-ritual :cabal-ritual] :player-1)
+          [db obj-id] (th/add-card-to-zone db :careful-study :hand :player-1)
+          _ (is (= 0 (q/get-storm-count db :player-1))
+                "Storm count should start at 0")
+          db-cast (rules/cast-spell db :player-1 obj-id)]
+      (is (= 1 (q/get-storm-count db-cast :player-1))
+          "Storm count should be 1 after casting Careful Study"))))
 
 
 ;; === Draw Effect Tests ===

@@ -30,6 +30,46 @@
     (into {} (map (fn [obj] [(:object/id obj) (:object/position obj)]) lib-cards))))
 
 
+;; === C. Cannot-Cast Guards ===
+
+(deftest merchant-scroll-cannot-cast-without-mana-test
+  (testing "Cannot cast Merchant Scroll without mana"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :merchant-scroll :hand :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable without mana"))))
+
+
+(deftest merchant-scroll-cannot-cast-with-insufficient-mana-test
+  (testing "Cannot cast Merchant Scroll with only 1 blue (needs {1}{U})"
+    (let [db (th/create-test-db {:mana {:blue 1}})
+          [db obj-id] (th/add-card-to-zone db :merchant-scroll :hand :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable with only 1 blue"))))
+
+
+(deftest merchant-scroll-cannot-cast-from-graveyard-test
+  (testing "Cannot cast Merchant Scroll from graveyard"
+    (let [db (th/create-test-db {:mana {:colorless 1 :blue 1}})
+          [db obj-id] (th/add-card-to-zone db :merchant-scroll :graveyard :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable from graveyard"))))
+
+
+;; === D. Storm Count ===
+
+(deftest merchant-scroll-increments-storm-count-test
+  (testing "Casting Merchant Scroll increments storm count"
+    (let [db (th/create-test-db {:mana {:colorless 1 :blue 1}})
+          [db _] (th/add-cards-to-library db [:brain-freeze] :player-1)
+          [db obj-id] (th/add-card-to-zone db :merchant-scroll :hand :player-1)
+          _ (is (= 0 (q/get-storm-count db :player-1))
+                "Storm count should start at 0")
+          db-cast (rules/cast-spell db :player-1 obj-id)]
+      (is (= 1 (q/get-storm-count db-cast :player-1))
+          "Storm count should be 1 after casting Merchant Scroll"))))
+
+
 ;; === query-library-by-criteria Tests ===
 
 (deftest test-query-library-single-match
@@ -242,11 +282,22 @@
 ;; === Merchant Scroll Card Definition Tests ===
 
 (deftest test-merchant-scroll-card-definition
-  (testing "Merchant Scroll type and cost"
+  (testing "Merchant Scroll identity and core fields"
+    (is (= :merchant-scroll (:card/id merchant-scroll/card))
+        "Card id should be :merchant-scroll")
+    (is (= "Merchant Scroll" (:card/name merchant-scroll/card))
+        "Card name should be 'Merchant Scroll'")
+    (is (= 2 (:card/cmc merchant-scroll/card))
+        "CMC should be 2")
+    (is (= #{:blue} (:card/colors merchant-scroll/card))
+        "Colors should be #{:blue}")
     (is (= #{:sorcery} (:card/types merchant-scroll/card))
         "Merchant Scroll should be a sorcery")
     (is (= {:colorless 1 :blue 1} (:card/mana-cost merchant-scroll/card))
-        "Merchant Scroll should cost {1}{U}"))
+        "Merchant Scroll should cost {1}{U}")
+    (is (= "Search your library for a blue instant card, reveal it, put it into your hand, then shuffle."
+           (:card/text merchant-scroll/card))
+        "Card text should match"))
 
   (testing "Merchant Scroll has tutor effect for blue instant"
     (let [effects (:card/effects merchant-scroll/card)]

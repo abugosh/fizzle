@@ -22,7 +22,6 @@
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.game :as game]
-    [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
 
 
@@ -81,6 +80,42 @@
       (is (= #{:cannot-cast-spells :cannot-attack}
              (set (map :restriction/type effects)))
           "Should include both restriction types"))))
+
+
+;; === C. Cannot-Cast Guards ===
+
+(deftest orims-chant-cannot-cast-without-mana-test
+  (testing "Cannot cast Orim's Chant without white mana"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db obj-id] (th/add-card-to-zone db :orims-chant :hand :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable without mana"))))
+
+
+(deftest orims-chant-cannot-cast-from-graveyard-test
+  (testing "Cannot cast Orim's Chant from graveyard"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db obj-id] (th/add-card-to-zone db :orims-chant :graveyard :player-1)
+          db (mana/add-mana db :player-1 {:white 1})]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable from graveyard"))))
+
+
+;; === D. Storm Count ===
+
+(deftest orims-chant-increments-storm-count-test
+  (testing "Casting Orim's Chant increments storm count"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db obj-id] (th/add-card-to-zone db :orims-chant :hand :player-1)
+          db (mana/add-mana db :player-1 {:white 1})
+          _ (is (= 0 (q/get-storm-count db :player-1))
+                "Storm count should start at 0")
+          db-cast (th/cast-with-target db :player-1 obj-id :player-2)]
+      (is (= 1 (q/get-storm-count db-cast :player-1))
+          "Storm count should be 1 after casting Orim's Chant"))))
 
 
 ;; === Kicker Mode Tests ===
@@ -153,24 +188,13 @@
   ;; Bug caught: restriction never applied during spell resolution
   (testing "Casting and resolving Orim's Chant adds cannot-cast-spells restriction"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [orims-chant/card])
-          db (th/add-opponent @conn)
+          db (th/add-opponent db)
           ;; Add Orim's Chant to hand
           [db obj-id] (th/add-card-to-zone db :orims-chant :hand :player-1)
           ;; Add white mana to cast
           db-with-mana (mana/add-mana db :player-1 {:white 1})
-          ;; Cast with targeting flow (stores target on stack-item)
-          target-req (first (:card/targeting orims-chant/card))
-          modes (rules/get-casting-modes db-with-mana :player-1 obj-id)
-          mode (first (filter #(= :primary (:mode/id %)) modes))
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id obj-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{:player-2}}
-          db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)
+          ;; Cast with targeting flow via production helper
+          db-cast (th/cast-with-target db-with-mana :player-1 obj-id :player-2)
           _ (is (= :stack (:object/zone (q/get-object db-cast obj-id)))
                 "Precondition: Orim's Chant on stack")
           ;; Resolve via production path (resolve-one-item)
@@ -181,8 +205,8 @@
           "Orim's Chant should be in graveyard after resolution")
       ;; Player-2 should have a restriction grant
       (let [player2-grants (grants/get-player-grants db-resolved :player-2)]
-        (is (seq player2-grants)
-            "Player-2 should have at least one grant after resolution")
+        (is (= 1 (count player2-grants))
+            "Player-2 should have exactly one grant after resolution")
         (is (some #(= :cannot-cast-spells (:restriction/type (:grant/data %))) player2-grants)
             "Player-2 should have :cannot-cast-spells restriction")))))
 
@@ -222,23 +246,11 @@
 (deftest confirm-cast-time-target-stores-on-stack-item-test
   (testing "cast-time targeting stores targets on stack-item, not object"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [orims-chant/card])
-          db (th/add-opponent @conn)
+          db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :orims-chant :hand :player-1)
           db-with-mana (mana/add-mana db :player-1 {:white 1})
-          ;; Build cast-time target selection (simulates UI)
-          target-req (first (:card/targeting orims-chant/card))
-          modes (rules/get-casting-modes db-with-mana :player-1 obj-id)
-          mode (first (filter #(= :primary (:mode/id %)) modes))
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id obj-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{:player-2}}
-          ;; Confirm cast with target
-          db-after (sel-targeting/confirm-cast-time-target db-with-mana selection)]
+          ;; Cast with target via production helper
+          db-after (th/cast-with-target db-with-mana :player-1 obj-id :player-2)]
       ;; Spell should be on stack
       (is (= :stack (:object/zone (q/get-object db-after obj-id)))
           "Orim's Chant should be on stack after casting")
@@ -260,22 +272,11 @@
 (deftest resolve-spell-with-selection-uses-stack-item-targets-test
   (testing "spell resolution reads targets from stack-item and applies effects"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [orims-chant/card])
-          db (th/add-opponent @conn)
+          db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :orims-chant :hand :player-1)
           db-with-mana (mana/add-mana db :player-1 {:white 1})
-          ;; Cast and store target on stack-item
-          target-req (first (:card/targeting orims-chant/card))
-          modes (rules/get-casting-modes db-with-mana :player-1 obj-id)
-          mode (first (filter #(= :primary (:mode/id %)) modes))
-          selection {:selection/type :cast-time-targeting
-                     :selection/player-id :player-1
-                     :selection/object-id obj-id
-                     :selection/mode mode
-                     :selection/target-requirement target-req
-                     :selection/selected #{:player-2}}
-          db-cast (sel-targeting/confirm-cast-time-target db-with-mana selection)
+          ;; Cast with target via production helper
+          db-cast (th/cast-with-target db-with-mana :player-1 obj-id :player-2)
           ;; Resolve via production path
           result (game/resolve-one-item db-cast)]
       ;; Spell should be resolved (in graveyard)
@@ -283,7 +284,7 @@
           "Orim's Chant should be in graveyard after resolution")
       ;; Player-2 should have restriction
       (let [p2-grants (grants/get-player-grants (:db result) :player-2)]
-        (is (seq p2-grants)
-            "Player-2 should have grants after resolution")
+        (is (= 1 (count p2-grants))
+            "Player-2 should have exactly one grant after resolution")
         (is (some #(= :cannot-cast-spells (:restriction/type (:grant/data %))) p2-grants)
             "Player-2 should have cannot-cast-spells restriction")))))

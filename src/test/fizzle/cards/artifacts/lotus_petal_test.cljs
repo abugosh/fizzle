@@ -5,7 +5,39 @@
     [fizzle.cards.artifacts.lotus-petal :as lotus-petal]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana-activation :as engine-mana]
+    [fizzle.engine.rules :as rules]
     [fizzle.test-helpers :as th]))
+
+
+;; === C. Cannot-Cast Guards ===
+
+(deftest lotus-petal-cannot-cast-from-graveyard-test
+  (testing "Cannot cast Lotus Petal from graveyard"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :lotus-petal :graveyard :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable from graveyard"))))
+
+
+(deftest lotus-petal-cannot-cast-from-battlefield-test
+  (testing "Cannot cast Lotus Petal from battlefield"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable from battlefield"))))
+
+
+;; === D. Storm Count ===
+
+(deftest lotus-petal-cast-increments-storm-count-test
+  (testing "Casting Lotus Petal increments storm count"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :lotus-petal :hand :player-1)
+          _ (is (= 0 (q/get-storm-count db :player-1))
+                "Storm count should start at 0")
+          db-cast (rules/cast-spell db :player-1 obj-id)]
+      (is (= 1 (q/get-storm-count db-cast :player-1))
+          "Storm count should be 1 after casting Lotus Petal"))))
 
 
 ;; === Lotus Petal sacrifice for mana tests ===

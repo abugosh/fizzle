@@ -6,7 +6,39 @@
     [fizzle.cards.artifacts.lions-eye-diamond :as lions-eye-diamond]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana-activation :as engine-mana]
+    [fizzle.engine.rules :as rules]
     [fizzle.test-helpers :as th]))
+
+
+;; === C. Cannot-Cast Guards ===
+
+(deftest led-cannot-cast-from-graveyard-test
+  (testing "Cannot cast LED from graveyard"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :lions-eye-diamond :graveyard :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable from graveyard"))))
+
+
+(deftest led-cannot-cast-from-battlefield-test
+  (testing "Cannot cast LED from battlefield"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :lions-eye-diamond :battlefield :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable from battlefield"))))
+
+
+;; === D. Storm Count ===
+
+(deftest led-cast-increments-storm-count-test
+  (testing "Casting LED increments storm count"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :lions-eye-diamond :hand :player-1)
+          _ (is (= 0 (q/get-storm-count db :player-1))
+                "Storm count should start at 0")
+          db-cast (rules/cast-spell db :player-1 obj-id)]
+      (is (= 1 (q/get-storm-count db-cast :player-1))
+          "Storm count should be 1 after casting LED"))))
 
 
 ;; === LED sacrifice + discard for mana tests ===

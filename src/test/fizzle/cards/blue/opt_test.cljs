@@ -21,11 +21,21 @@
 ;; === Card Definition Tests ===
 
 (deftest test-opt-card-definition
-  (testing "Opt type and cost"
+  (testing "Opt identity and core fields"
+    (is (= :opt (:card/id opt/card))
+        "Card id should be :opt")
+    (is (= "Opt" (:card/name opt/card))
+        "Card name should be 'Opt'")
+    (is (= 1 (:card/cmc opt/card))
+        "CMC should be 1")
+    (is (= #{:blue} (:card/colors opt/card))
+        "Colors should be #{:blue}")
     (is (= #{:instant} (:card/types opt/card))
         "Opt should be an instant")
     (is (= {:blue 1} (:card/mana-cost opt/card))
-        "Opt should cost {U}"))
+        "Opt should cost {U}")
+    (is (= "Scry 1, then draw a card." (:card/text opt/card))
+        "Card text should match"))
 
   (testing "Opt has scry 1 first, then draw 1"
     (let [effects (:card/effects opt/card)]
@@ -41,6 +51,38 @@
             "Second effect should be :draw")
         (is (= 1 (:effect/amount draw-effect))
             "Draw effect should draw 1")))))
+
+
+;; === C. Cannot-Cast Guards ===
+
+(deftest opt-cannot-cast-without-mana-test
+  (testing "Cannot cast Opt without blue mana"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :opt :hand :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable without mana"))))
+
+
+(deftest opt-cannot-cast-from-graveyard-test
+  (testing "Cannot cast Opt from graveyard"
+    (let [db (th/create-test-db {:mana {:blue 1}})
+          [db obj-id] (th/add-card-to-zone db :opt :graveyard :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable from graveyard"))))
+
+
+;; === D. Storm Count ===
+
+(deftest opt-increments-storm-count-test
+  (testing "Casting Opt increments storm count"
+    (let [db (th/create-test-db {:mana {:blue 1}})
+          [db _] (th/add-cards-to-library db [:dark-ritual :cabal-ritual] :player-1)
+          [db obj-id] (th/add-card-to-zone db :opt :hand :player-1)
+          _ (is (= 0 (q/get-storm-count db :player-1))
+                "Storm count should start at 0")
+          db-cast (rules/cast-spell db :player-1 obj-id)]
+      (is (= 1 (q/get-storm-count db-cast :player-1))
+          "Storm count should be 1 after casting Opt"))))
 
 
 ;; === Scry Selection Tests ===

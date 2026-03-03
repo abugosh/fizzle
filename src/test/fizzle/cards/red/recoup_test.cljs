@@ -90,6 +90,36 @@
           "Flashback should exile on resolve"))))
 
 
+;; === C. Cannot-Cast Guards ===
+
+(deftest recoup-cannot-cast-without-mana-test
+  (testing "Cannot cast Recoup without mana"
+    (let [db (-> (th/create-test-db) th/add-opponent)
+          [db recoup-id] (th/add-card-to-zone db :recoup :hand :player-1)
+          ;; Add a valid sorcery target
+          [db _] (th/add-cards-to-graveyard db [:careful-study] :player-1)]
+      (is (false? (rules/can-cast? db :player-1 recoup-id))
+          "Should not be castable without mana"))))
+
+
+;; === D. Storm Count ===
+
+(deftest recoup-increments-storm-count-test
+  (testing "Casting Recoup increments storm count"
+    (let [db (-> (th/create-test-db) th/add-opponent)
+          [db recoup-id] (th/add-card-to-zone db :recoup :hand :player-1)
+          [db [sorcery-id]] (th/add-cards-to-graveyard db [:careful-study] :player-1)
+          db (set-mana-pool db :player-1 {:colorless 1 :red 1})
+          _ (is (= 0 (q/get-storm-count db :player-1))
+                "Storm count should start at 0")
+          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
+          selection (assoc (:pending-target-selection result)
+                           :selection/selected #{sorcery-id})
+          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)]
+      (is (= 1 (q/get-storm-count db-cast :player-1))
+          "Storm count should be 1 after casting Recoup"))))
+
+
 ;; === Cast Requirements Tests ===
 
 (deftest test-recoup-requires-valid-target
@@ -424,8 +454,8 @@
                 "Careful Study should still be in graveyard")
           modes (rules/get-casting-modes db-resolved :player-1 sorcery-id)]
       ;; Should have granted flashback mode available
-      (is (seq modes)
-          "Careful Study should have casting modes from graveyard")
+      (is (= 1 (count modes))
+          "Careful Study should have exactly 1 casting mode from graveyard")
       (is (some #(= :granted-flashback (:mode/id %)) modes)
           "One mode should be :granted-flashback"))))
 

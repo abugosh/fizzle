@@ -81,6 +81,38 @@
           "Exile count is X (player chooses)"))))
 
 
+;; === C. Cannot-Cast Guards ===
+
+(deftest flash-of-insight-cannot-cast-without-mana-test
+  (testing "Cannot cast Flash of Insight without mana"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :flash-of-insight :hand :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable without mana"))))
+
+
+(deftest flash-of-insight-cannot-cast-with-insufficient-mana-test
+  (testing "Cannot cast Flash of Insight with only 1 blue (needs {X}{1}{U}, minimum {1}{U})"
+    (let [db (th/create-test-db {:mana {:blue 1}})
+          [db obj-id] (th/add-card-to-zone db :flash-of-insight :hand :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))
+          "Should not be castable with only 1 blue"))))
+
+
+;; === D. Storm Count ===
+
+(deftest flash-of-insight-increments-storm-count-test
+  (testing "Casting Flash of Insight increments storm count"
+    (let [db (th/create-test-db {:mana {:colorless 1 :blue 1}})
+          [db _] (th/add-cards-to-library db [:dark-ritual :cabal-ritual] :player-1)
+          [db obj-id] (th/add-card-to-zone db :flash-of-insight :hand :player-1)
+          _ (is (= 0 (q/get-storm-count db :player-1))
+                "Storm count should start at 0")
+          db-cast (rules/cast-spell db :player-1 obj-id)]
+      (is (= 1 (q/get-storm-count db-cast :player-1))
+          "Storm count should be 1 after casting Flash of Insight"))))
+
+
 ;; === Integration Test: Peek-and-Select with X=2 ===
 
 (deftest flash-of-insight-peek-and-select-x2-test
