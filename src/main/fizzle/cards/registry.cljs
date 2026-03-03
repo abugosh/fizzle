@@ -6,6 +6,7 @@
   (:require
     [fizzle.cards.artifacts.lions-eye-diamond :as lions-eye-diamond]
     [fizzle.cards.artifacts.lotus-petal :as lotus-petal]
+    [fizzle.cards.artifacts.sphere-of-resistance :as sphere-of-resistance]
     [fizzle.cards.artifacts.tormods-crypt :as tormods-crypt]
     [fizzle.cards.artifacts.urzas-bauble :as urzas-bauble]
     [fizzle.cards.black.cabal-ritual :as cabal-ritual]
@@ -106,6 +107,7 @@
        cephalid-coliseum/card
        lotus-petal/card
        lions-eye-diamond/card
+       sphere-of-resistance/card
        tormods-crypt/card
        urzas-bauble/card
        crumble/card

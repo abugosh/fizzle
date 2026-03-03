@@ -15,6 +15,7 @@
     [fizzle.engine.resolution :as engine-resolution]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
+    [fizzle.engine.static-abilities :as static-abilities]
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
@@ -353,12 +354,14 @@
 
 (defmethod evaluate-pre-cast-step :mana-allocation
   [_ {:keys [game-db player-id object-id mode]}]
-  (when (sel-costs/has-generic-mana-cost? (:mode/mana-cost mode))
-    (if-let [sel (sel-costs/build-mana-allocation-selection
-                   game-db player-id object-id mode (:mode/mana-cost mode))]
-      {:selection sel}
-      ;; nil from builder means 0 generic (defensive fallback) — cast directly
-      {:db (rules/cast-spell-mode game-db player-id object-id mode)})))
+  (let [effective-cost (static-abilities/get-effective-mana-cost
+                         game-db player-id object-id mode)]
+    (when (sel-costs/has-generic-mana-cost? effective-cost)
+      (if-let [sel (sel-costs/build-mana-allocation-selection
+                     game-db player-id object-id mode effective-cost)]
+        {:selection sel}
+        ;; nil from builder means 0 generic (defensive fallback) — cast directly
+        {:db (rules/cast-spell-mode game-db player-id object-id mode)}))))
 
 
 (defn- initiate-cast-with-mode

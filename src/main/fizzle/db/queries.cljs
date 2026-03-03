@@ -292,6 +292,18 @@
         (filterv #(matches-criteria? % criteria) zone-objs)))))
 
 
+(defn get-all-objects-in-zone
+  "Get all game objects in a specific zone across all players.
+   Returns vector of objects with card data.
+   Used for scanning battlefield for static abilities."
+  [db zone]
+  (->> (d/q '[:find [(pull ?obj [* {:object/card [*]}]) ...]
+              :in $ ?zone
+              :where [?obj :object/zone ?zone]]
+            db zone)
+       (vec)))
+
+
 (defn count-cards-named-in-zone
   "Count objects with the given card name in the specified zone across all players."
   [db card-name zone]

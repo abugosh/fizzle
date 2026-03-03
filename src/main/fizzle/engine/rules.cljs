@@ -13,6 +13,7 @@
     [fizzle.engine.mana :as mana]
     [fizzle.engine.priority :as priority]
     [fizzle.engine.stack :as stack]
+    [fizzle.engine.static-abilities :as static-abilities]
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.zones :as zones]))
 
@@ -157,9 +158,10 @@
 
 (defn can-cast-mode?
   "Check if player can pay all costs for a specific casting mode.
-   Checks mana cost AND all additional costs."
+   Checks effective mana cost (with battlefield cost modifiers) AND all additional costs."
   [db player-id object-id mode]
-  (let [mana-payable (mana/can-pay? db player-id (:mode/mana-cost mode))
+  (let [effective-cost (static-abilities/get-effective-mana-cost db player-id object-id mode)
+        mana-payable (mana/can-pay? db player-id effective-cost)
         additional-costs (:mode/additional-costs mode)
         additional-payable (every? #(can-pay-additional-cost? db player-id object-id %)
                                    additional-costs)]
@@ -336,7 +338,7 @@
 (defn cast-spell-mode
   "Cast a spell using a specific mode.
 
-   - Pays mana cost from mode
+   - Pays effective mana cost (base cost + battlefield cost modifiers)
    - Pays additional costs (life, etc.)
    - Moves card to stack (with stack order for LIFO resolution)
    - Stores casting mode on object for resolution
@@ -345,14 +347,15 @@
 
    Precondition: Caller should verify can-cast-mode? first."
   [db player-id object-id mode]
-  (-> db
-      (mana/pay-mana player-id (:mode/mana-cost mode))
-      (pay-additional-costs player-id object-id (:mode/additional-costs mode))
-      (zones/move-to-zone object-id :stack)
-      (create-spell-stack-item player-id object-id)
-      (set-cast-mode object-id mode)
-      (increment-storm player-id)
-      (maybe-create-storm-trigger player-id object-id)))
+  (let [effective-cost (static-abilities/get-effective-mana-cost db player-id object-id mode)]
+    (-> db
+        (mana/pay-mana player-id effective-cost)
+        (pay-additional-costs player-id object-id (:mode/additional-costs mode))
+        (zones/move-to-zone object-id :stack)
+        (create-spell-stack-item player-id object-id)
+        (set-cast-mode object-id mode)
+        (increment-storm player-id)
+        (maybe-create-storm-trigger player-id object-id))))
 
 
 (defn cast-spell-mode-with-allocation
@@ -364,14 +367,15 @@
 
    Precondition: Caller should verify can-cast-mode? first."
   [db player-id object-id mode allocation]
-  (-> db
-      (mana/pay-mana-with-allocation player-id (:mode/mana-cost mode) allocation)
-      (pay-additional-costs player-id object-id (:mode/additional-costs mode))
-      (zones/move-to-zone object-id :stack)
-      (create-spell-stack-item player-id object-id)
-      (set-cast-mode object-id mode)
-      (increment-storm player-id)
-      (maybe-create-storm-trigger player-id object-id)))
+  (let [effective-cost (static-abilities/get-effective-mana-cost db player-id object-id mode)]
+    (-> db
+        (mana/pay-mana-with-allocation player-id effective-cost allocation)
+        (pay-additional-costs player-id object-id (:mode/additional-costs mode))
+        (zones/move-to-zone object-id :stack)
+        (create-spell-stack-item player-id object-id)
+        (set-cast-mode object-id mode)
+        (increment-storm player-id)
+        (maybe-create-storm-trigger player-id object-id))))
 
 
 (defn cast-spell

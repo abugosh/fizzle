@@ -220,6 +220,31 @@
   (s/map-of keyword? ::effects))
 
 
+;; === Static Ability Spec ===
+
+(def valid-static-types
+  #{:cost-modifier})
+
+
+(def valid-modifier-directions
+  #{:increase})
+
+
+(s/def :static/type valid-static-types)
+(s/def :modifier/amount pos-int?)
+(s/def :modifier/direction valid-modifier-directions)
+(s/def :modifier/condition map?)
+(s/def :modifier/criteria map?)
+
+
+(s/def ::static-ability
+  (s/keys :req [:static/type :modifier/amount :modifier/direction]
+          :opt [:modifier/condition :modifier/criteria]))
+
+
+(s/def :card/static-abilities (s/coll-of ::static-ability :kind vector?))
+
+
 ;; === Top-level Card Spec ===
 
 (s/def :card/id keyword?)
@@ -252,7 +277,8 @@
                 :card/triggers :card/targeting :card/alternate-costs
                 :card/conditional-effects :card/kicker :card/kicked-effects
                 :card/subtypes :card/supertypes :card/keywords
-                :card/additional-costs :card/cast-restriction]))
+                :card/additional-costs :card/cast-restriction
+                :card/static-abilities]))
 
 
 ;; === Validation Functions ===
