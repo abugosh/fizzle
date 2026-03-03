@@ -5,6 +5,7 @@
    Consumers access cards through engine/cards.cljs, not this namespace directly."
   (:require
     [fizzle.cards.artifacts.defense-grid :as defense-grid]
+    [fizzle.cards.artifacts.helm-of-awakening :as helm-of-awakening]
     [fizzle.cards.artifacts.lions-eye-diamond :as lions-eye-diamond]
     [fizzle.cards.artifacts.lotus-petal :as lotus-petal]
     [fizzle.cards.artifacts.medallions :as medallions]
@@ -112,6 +113,7 @@
        lotus-petal/card
        lions-eye-diamond/card
        defense-grid/card
+       helm-of-awakening/card
        sphere-of-resistance/card
        tormods-crypt/card
        urzas-bauble/card
