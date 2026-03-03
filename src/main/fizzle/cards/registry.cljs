@@ -7,6 +7,7 @@
     [fizzle.cards.artifacts.defense-grid :as defense-grid]
     [fizzle.cards.artifacts.lions-eye-diamond :as lions-eye-diamond]
     [fizzle.cards.artifacts.lotus-petal :as lotus-petal]
+    [fizzle.cards.artifacts.medallions :as medallions]
     [fizzle.cards.artifacts.sphere-of-resistance :as sphere-of-resistance]
     [fizzle.cards.artifacts.tormods-crypt :as tormods-crypt]
     [fizzle.cards.artifacts.urzas-bauble :as urzas-bauble]
@@ -119,4 +120,5 @@
       ;; Cycle cards
       basic-lands/cards
       pain-lands/cards
-      fetch-lands/cards)))
+      fetch-lands/cards
+      medallions/cards)))
