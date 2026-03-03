@@ -41,7 +41,8 @@
 
 (defn modifier-applies?
   "Check if a cost modifier applies to a given spell being cast.
-   Evaluates :modifier/criteria (spell matching) and :modifier/condition (game state).
+   Evaluates :modifier/applies-to (ownership), :modifier/criteria (spell matching),
+   and :modifier/condition (game state).
 
    Arguments:
      db - Datascript game database
@@ -50,9 +51,14 @@
      modifier-entry - Map with :static-ability and source metadata"
   [db caster-id spell-card modifier-entry]
   (let [ability (:static-ability modifier-entry)
+        applies-to (get ability :modifier/applies-to :all)
         criteria (:modifier/criteria ability)
         condition (:modifier/condition ability)]
     (and
+      ;; Check ownership filter
+      (case applies-to
+        :controller (= caster-id (:source/controller modifier-entry))
+        :all true)
       ;; Check criteria (spell matching)
       (if criteria
         (let [criteria-type (:criteria/type criteria)]
@@ -78,7 +84,8 @@
 
 (defn apply-cost-modifiers
   "Compute effective mana cost by applying all applicable cost modifiers.
-   Sums all applicable :increase modifiers and adds to :colorless key of base-cost.
+   Applies increases first (adds to :colorless), then decreases (subtracts from :colorless,
+   floored at 0). This matches official MTG cost calculation rules.
 
    Arguments:
      db - Datascript game database
@@ -96,10 +103,20 @@
                                      (+ sum (:modifier/amount ability))
                                      sum)))
                                0
-                               applicable)]
-    (if (pos? total-increase)
-      (update base-cost :colorless (fnil + 0) total-increase)
-      base-cost)))
+                               applicable)
+        total-decrease (reduce (fn [sum mod-entry]
+                                 (let [ability (:static-ability mod-entry)]
+                                   (if (= :decrease (:modifier/direction ability))
+                                     (+ sum (:modifier/amount ability))
+                                     sum)))
+                               0
+                               applicable)
+        cost (if (pos? total-increase)
+               (update base-cost :colorless (fnil + 0) total-increase)
+               base-cost)]
+    (if (pos? total-decrease)
+      (update cost :colorless (fn [c] (max 0 (- (or c 0) total-decrease))))
+      cost)))
 
 
 (defn get-effective-mana-cost

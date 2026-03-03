@@ -227,7 +227,11 @@
 
 
 (def valid-modifier-directions
-  #{:increase})
+  #{:increase :decrease})
+
+
+(def valid-applies-to
+  #{:controller :all})
 
 
 (s/def :static/type valid-static-types)
@@ -235,11 +239,12 @@
 (s/def :modifier/direction valid-modifier-directions)
 (s/def :modifier/condition map?)
 (s/def :modifier/criteria map?)
+(s/def :modifier/applies-to valid-applies-to)
 
 
 (s/def ::static-ability
   (s/keys :req [:static/type :modifier/amount :modifier/direction]
-          :opt [:modifier/condition :modifier/criteria]))
+          :opt [:modifier/condition :modifier/criteria :modifier/applies-to]))
 
 
 (s/def :card/static-abilities (s/coll-of ::static-ability :kind vector?))

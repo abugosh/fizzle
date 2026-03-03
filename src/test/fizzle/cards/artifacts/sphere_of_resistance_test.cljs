@@ -5,14 +5,54 @@
    Spells cost {1} more to cast."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
+    [datascript.core :as d]
     [fizzle.cards.artifacts.sphere-of-resistance :as sphere]
     [fizzle.db.queries :as q]
+    [fizzle.engine.card-spec :as card-spec]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.static-abilities :as static-abilities]
     [fizzle.events.game :as game]
     [fizzle.test-helpers :as th]))
+
+
+(defn- add-decrease-modifier
+  "Add a test permanent with a cost-decrease static ability to the battlefield.
+   Returns [db object-id]."
+  ([db player-id amount]
+   (add-decrease-modifier db player-id amount :all nil))
+  ([db player-id amount applies-to]
+   (add-decrease-modifier db player-id amount applies-to nil))
+  ([db player-id amount applies-to criteria]
+   (let [conn (d/conn-from-db db)
+         player-eid (q/get-player-eid db player-id)
+         card-id (keyword (str "test-decrease-" (random-uuid)))
+         ability (cond-> {:static/type :cost-modifier
+                          :modifier/amount amount
+                          :modifier/direction :decrease
+                          :modifier/applies-to applies-to}
+                   criteria (assoc :modifier/criteria criteria))
+         _ (d/transact! conn [{:card/id card-id
+                               :card/name "Test Decrease Card"
+                               :card/cmc 0
+                               :card/mana-cost {}
+                               :card/colors #{}
+                               :card/types #{:artifact}
+                               :card/text "Test"
+                               :card/static-abilities [ability]}])
+         card-eid (d/q '[:find ?e .
+                         :in $ ?cid
+                         :where [?e :card/id ?cid]]
+                       @conn card-id)
+         object-id (random-uuid)
+         _ (d/transact! conn [{:object/id object-id
+                               :object/card card-eid
+                               :object/zone :battlefield
+                               :object/owner player-eid
+                               :object/controller player-eid
+                               :object/tapped false}])]
+     [@conn object-id])))
 
 
 ;; =====================================================
@@ -398,6 +438,222 @@
       ;; (started with 2 colorless + 1 black, paid 2 colorless for Sphere, black remains)
       (is (false? (rules/can-cast? db :player-1 dr-id))
           "Dark Ritual should NOT be castable with only {B} after Sphere resolves"))))
+
+
+;; =====================================================
+;; Decrease Mechanics (cost reduction engine)
+;; =====================================================
+
+(deftest decrease-reduces-generic-mana-test
+  (testing "Decrease modifier reduces :colorless portion of cost"
+    (let [db (th/create-test-db)
+          [db _] (add-decrease-modifier db :player-1 1)
+          [db obj-id] (th/add-card-to-zone db :counterspell :hand :player-1)
+          spell-card (:object/card (q/get-object db obj-id))
+          ;; Counterspell base cost {:blue 2}, but let's test with a cost that has :colorless
+          result (static-abilities/apply-cost-modifiers db :player-1 spell-card {:colorless 2 :blue 1})]
+      (is (= {:colorless 1 :blue 1} result)
+          "Decrease by 1 should reduce :colorless from 2 to 1"))))
+
+
+(deftest decrease-floors-colorless-at-zero-test
+  (testing "Decrease cannot make :colorless negative — floors at 0"
+    (let [db (th/create-test-db)
+          [db _] (add-decrease-modifier db :player-1 2)
+          [db obj-id] (th/add-card-to-zone db :counterspell :hand :player-1)
+          spell-card (:object/card (q/get-object db obj-id))
+          result (static-abilities/apply-cost-modifiers db :player-1 spell-card {:colorless 1})]
+      (is (= {:colorless 0} result)
+          "Decrease by 2 on {:colorless 1} should floor at 0, not go negative"))))
+
+
+(deftest decrease-on-pure-colored-cost-is-noop-test
+  (testing "Decrease on spell with only colored mana has no practical effect"
+    (let [db (th/create-test-db)
+          [db _] (add-decrease-modifier db :player-1 1)
+          [db obj-id] (th/add-card-to-zone db :counterspell :hand :player-1)
+          spell-card (:object/card (q/get-object db obj-id))
+          result (static-abilities/apply-cost-modifiers db :player-1 spell-card {:blue 2})]
+      (is (= {:blue 2 :colorless 0} result)
+          "Decrease on pure-colored cost results in {:colorless 0} — functionally no change"))))
+
+
+(deftest multiple-decreases-stack-test
+  (testing "Multiple decrease modifiers stack additively"
+    (let [db (th/create-test-db)
+          [db _] (add-decrease-modifier db :player-1 1)
+          [db _] (add-decrease-modifier db :player-1 1)
+          [db obj-id] (th/add-card-to-zone db :counterspell :hand :player-1)
+          spell-card (:object/card (q/get-object db obj-id))
+          result (static-abilities/apply-cost-modifiers db :player-1 spell-card {:colorless 3 :blue 1})]
+      (is (= {:colorless 1 :blue 1} result)
+          "Two decrease-1 modifiers should reduce :colorless by 2 total"))))
+
+
+;; =====================================================
+;; Increase-then-Decrease Ordering
+;; =====================================================
+
+(deftest increase-and-decrease-cancel-test
+  (testing "Sphere increase + decrease cancel out (net 0)"
+    (let [db (th/create-test-db)
+          ;; Sphere adds 1, decrease modifier subtracts 1
+          [db _] (th/add-card-to-zone db :sphere-of-resistance :battlefield :player-1)
+          [db _] (add-decrease-modifier db :player-1 1)
+          [db obj-id] (th/add-card-to-zone db :counterspell :hand :player-1)
+          spell-card (:object/card (q/get-object db obj-id))
+          result (static-abilities/apply-cost-modifiers db :player-1 spell-card {:blue 2})]
+      (is (= {:blue 2 :colorless 0} result)
+          "Sphere +1 and decrease -1 should cancel: {:blue 2 :colorless 0}"))))
+
+
+(deftest increase-before-decrease-matters-for-floor-test
+  (testing "Increases applied before decreases — order matters for floor"
+    ;; Sphere adds 1 to colorless (0 → 1), then decrease-2 subtracts 2 (1 → floor 0)
+    ;; If decrease applied first: colorless stays 0 (floor), then increase adds 1 → colorless=1
+    ;; Correct MTG behavior: increase first, then decrease → colorless=0
+    (let [db (th/create-test-db)
+          [db _] (th/add-card-to-zone db :sphere-of-resistance :battlefield :player-1)
+          [db _] (add-decrease-modifier db :player-1 2)
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          spell-card (:object/card (q/get-object db obj-id))
+          result (static-abilities/apply-cost-modifiers db :player-1 spell-card {:black 1})]
+      (is (= {:black 1 :colorless 0} result)
+          "Increase +1 then decrease -2: colorless goes 0→1→0 (floor), not 0→0→1"))))
+
+
+;; =====================================================
+;; :applies-to Ownership Filtering
+;; =====================================================
+
+(deftest applies-to-controller-blocks-opponent-test
+  (testing ":applies-to :controller does NOT apply when caster != source controller"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          ;; Modifier entry with :applies-to :controller on player-1's side
+          modifier-entry {:static-ability {:static/type :cost-modifier
+                                           :modifier/amount 1
+                                           :modifier/direction :decrease
+                                           :modifier/applies-to :controller}
+                          :source/controller :player-1}
+          ;; Player-2 is casting — should NOT apply
+          spell-card {:card/colors #{:blue}}]
+      (is (false? (static-abilities/modifier-applies? db :player-2 spell-card modifier-entry))
+          ":controller modifier should not apply to opponent's spells"))))
+
+
+(deftest applies-to-controller-allows-own-spells-test
+  (testing ":applies-to :controller applies when caster == source controller"
+    (let [db (th/create-test-db)
+          modifier-entry {:static-ability {:static/type :cost-modifier
+                                           :modifier/amount 1
+                                           :modifier/direction :decrease
+                                           :modifier/applies-to :controller}
+                          :source/controller :player-1}
+          spell-card {:card/colors #{:blue}}]
+      (is (static-abilities/modifier-applies? db :player-1 spell-card modifier-entry)
+          ":controller modifier should apply to own spells"))))
+
+
+(deftest applies-to-all-applies-to-both-players-test
+  (testing ":applies-to :all applies to both players (like Sphere)"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          modifier-entry {:static-ability {:static/type :cost-modifier
+                                           :modifier/amount 1
+                                           :modifier/direction :increase
+                                           :modifier/applies-to :all}
+                          :source/controller :player-1}
+          spell-card {:card/colors #{:blue}}]
+      (is (static-abilities/modifier-applies? db :player-1 spell-card modifier-entry)
+          ":all modifier should apply to controller's spells")
+      (is (static-abilities/modifier-applies? db :player-2 spell-card modifier-entry)
+          ":all modifier should apply to opponent's spells"))))
+
+
+(deftest applies-to-absent-defaults-to-all-test
+  (testing "Absent :applies-to defaults to :all — backward compat with existing Sphere"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          ;; Sphere-style modifier — no :modifier/applies-to field
+          modifier-entry {:static-ability {:static/type :cost-modifier
+                                           :modifier/amount 1
+                                           :modifier/direction :increase}
+                          :source/controller :player-1}
+          spell-card {:card/colors #{:blue}}]
+      (is (static-abilities/modifier-applies? db :player-1 spell-card modifier-entry)
+          "Absent :applies-to should apply to controller")
+      (is (static-abilities/modifier-applies? db :player-2 spell-card modifier-entry)
+          "Absent :applies-to should apply to opponent (backward compat)"))))
+
+
+;; =====================================================
+;; Mixed Criteria + :applies-to
+;; =====================================================
+
+(deftest controller-plus-color-criteria-test
+  (testing ":applies-to :controller + :spell-color criteria must both match"
+    (let [db (th/create-test-db)
+          ;; Medallion-like: controller's blue spells only
+          modifier-entry {:static-ability {:static/type :cost-modifier
+                                           :modifier/amount 1
+                                           :modifier/direction :decrease
+                                           :modifier/applies-to :controller
+                                           :modifier/criteria {:criteria/type :spell-color
+                                                               :criteria/colors #{:blue}}}
+                          :source/controller :player-1}]
+      ;; Controller casting blue spell → applies
+      (is (static-abilities/modifier-applies? db :player-1 {:card/colors #{:blue}} modifier-entry)
+          "Controller's blue spell should match")
+      ;; Controller casting red spell → does NOT apply (color mismatch)
+      (is (false? (static-abilities/modifier-applies? db :player-1 {:card/colors #{:red}} modifier-entry))
+          "Controller's red spell should not match (wrong color)")
+      ;; Controller casting colorless spell → does NOT apply
+      (is (false? (static-abilities/modifier-applies? db :player-1 {:card/colors #{}} modifier-entry))
+          "Controller's colorless spell should not match"))))
+
+
+;; =====================================================
+;; Spec Validation
+;; =====================================================
+
+(deftest spec-decrease-direction-valid-test
+  (testing "Card with :modifier/direction :decrease passes spec validation"
+    (let [test-card {:card/id :test-decrease
+                     :card/name "Test Decrease"
+                     :card/cmc 2
+                     :card/mana-cost {:colorless 2}
+                     :card/colors #{}
+                     :card/types #{:artifact}
+                     :card/text "Test"
+                     :card/static-abilities [{:static/type :cost-modifier
+                                              :modifier/amount 1
+                                              :modifier/direction :decrease}]}]
+      (is (card-spec/valid-card? test-card)
+          ":decrease direction should be valid"))))
+
+
+(deftest spec-applies-to-controller-valid-test
+  (testing "Card with :modifier/applies-to :controller passes spec validation"
+    (let [test-card {:card/id :test-applies-to
+                     :card/name "Test Applies To"
+                     :card/cmc 2
+                     :card/mana-cost {:colorless 2}
+                     :card/colors #{}
+                     :card/types #{:artifact}
+                     :card/text "Test"
+                     :card/static-abilities [{:static/type :cost-modifier
+                                              :modifier/amount 1
+                                              :modifier/direction :decrease
+                                              :modifier/applies-to :controller}]}]
+      (is (card-spec/valid-card? test-card)
+          ":applies-to :controller should be valid"))))
+
+
+(deftest spec-existing-cards-still-valid-test
+  (testing "Existing cards without :applies-to still pass validation"
+    (is (card-spec/valid-card? sphere/card)
+        "Sphere of Resistance should still be valid without :applies-to")))
 
 
 ;; =====================================================
