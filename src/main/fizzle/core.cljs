@@ -1,6 +1,7 @@
 (ns fizzle.core
   (:require
     [fizzle.bots.interceptor :as bot-interceptor]
+    [fizzle.engine.effects-registry]
     [fizzle.events.game :as events]
     [fizzle.events.opening-hand]
     [fizzle.events.selection]

@@ -13,6 +13,7 @@
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.cards :as cards]
+    [fizzle.engine.effects-registry]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.turn-based :as turn-based]
