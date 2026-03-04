@@ -182,7 +182,9 @@
        [render-tree-node node current-branch 1])]))
 
 
-(defn- fork-list
+(defn fork-list-data
+  "Pure rendering logic for the fork/branch list.
+   Extracted for testability — takes no args, reads subscriptions."
   []
   (let [forks @(rf/subscribe [::subs/forks])
         current-branch @(rf/subscribe [::subs/current-branch])]
@@ -192,7 +194,9 @@
      [:div {:class (str "text-xs px-2 py-0.5 "
                         (if (nil? current-branch)
                           "cursor-default text-accent font-bold"
-                          "cursor-pointer text-perm-text"))}
+                          "cursor-pointer text-perm-text"))
+            :on-click (when (some? current-branch)
+                        #(rf/dispatch [::events/switch-branch nil]))}
       "main"]
      (for [fork forks]
        (let [fork-id (:fork/id fork)
@@ -214,4 +218,4 @@
     "History"]
    [step-controls]
    [action-log]
-   [fork-list]])
+   [fork-list-data]])
