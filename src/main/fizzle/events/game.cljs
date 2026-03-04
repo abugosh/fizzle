@@ -3,26 +3,18 @@
     [datascript.core :as d]
     [fizzle.bots.protocol :as bot-protocol]
     [fizzle.db.queries :as queries]
-    [fizzle.db.schema :refer [schema]]
-    [fizzle.db.storage :as storage]
-    [fizzle.engine.card-spec :as card-spec]
-    [fizzle.engine.cards :as cards]
-    [fizzle.engine.effects :as effects]
-    [fizzle.engine.events :as game-events]
-    [fizzle.engine.grants :as grants]
-    [fizzle.engine.mana :as mana]
     [fizzle.engine.priority :as priority]
     [fizzle.engine.resolution :as engine-resolution]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.static-abilities :as static-abilities]
     [fizzle.engine.targeting :as targeting]
-    [fizzle.engine.trigger-db :as trigger-db]
-    [fizzle.engine.trigger-dispatch :as dispatch]
-    [fizzle.engine.turn-based :as turn-based]
-    [fizzle.engine.zones :as zones]
     [fizzle.events.abilities]
+    [fizzle.events.cleanup :as cleanup]
+    [fizzle.events.init :as init]
     [fizzle.events.interceptors.sba :as sba-interceptor]
+    [fizzle.events.lands :as lands]
+    [fizzle.events.phases :as phases]
     [fizzle.events.selection]
     [fizzle.events.selection.core :as sel-core]
     [fizzle.events.selection.costs :as sel-costs]
@@ -30,223 +22,25 @@
     [fizzle.events.selection.storm :as sel-storm]
     [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.events.selection.zone-ops]
+    [fizzle.events.ui :as ui]
     [re-frame.core :as rf]))
 
 
-(defn- deck-to-card-ids
-  "Expand a deck main list [{:card/id :count}] into a flat shuffled vector of card-ids."
-  [main-deck]
-  (shuffle
-    (into []
-          (mapcat (fn [{:keys [card/id count]}]
-                    (repeat count id))
-                  main-deck))))
-
-
-(defn- extract-sculpted-card-ids
-  "Extract sculpted card-ids from a shuffled deck.
-   Returns [sculpted-card-ids remaining-card-ids].
-   For each {card-id count} in must-contain, removes count occurrences from deck.
-   Takes min(requested, available) to handle edge cases defensively."
-  [shuffled-deck must-contain]
-  (if (empty? must-contain)
-    [[] shuffled-deck]
-    (reduce
-      (fn [[sculpted remaining] [card-id cnt]]
-        (loop [r remaining
-               s sculpted
-               n cnt]
-          (if (or (zero? n) (empty? r))
-            [s r]
-            (let [idx (.indexOf r card-id)]
-              (if (neg? idx)
-                [s r]
-                (recur (into (subvec r 0 idx) (subvec r (inc idx)))
-                       (conj s card-id)
-                       (dec n)))))))
-      [[] (vec shuffled-deck)]
-      must-contain)))
-
-
-(defn- get-card-eid
-  "Look up a card's entity ID by its :card/id keyword."
-  [db card-id]
-  (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] db card-id))
-
-
-(defn- get-player-eid
-  "Look up a player's entity ID by :player/id."
-  [db player-id]
-  (d/q '[:find ?e . :in $ ?pid :where [?e :player/id ?pid]] db player-id))
-
-
-(def ^:private empty-mana-pool
-  {:white 0 :blue 0 :black 0 :red 0 :green 0 :colorless 0})
-
-
-(defn- player-tx
-  "Return transaction data for a player entity."
-  [player-id name life land-plays opts]
-  [(merge {:player/id player-id
-           :player/name name
-           :player/life life
-           :player/mana-pool empty-mana-pool
-           :player/storm-count 0
-           :player/land-plays-left land-plays}
-          opts)])
-
-
-(defn- objects-tx
-  "Return transaction data for game objects in a zone.
-   For :hand, uses provided UUIDs. For :library, generates UUIDs and sets position."
-  [db card-ids zone owner-eid uuids]
-  (vec (map-indexed
-         (fn [i [uuid card-id]]
-           {:object/id uuid
-            :object/card (get-card-eid db card-id)
-            :object/zone zone
-            :object/owner owner-eid
-            :object/controller owner-eid
-            :object/tapped false
-            :object/position (if (= zone :library) i 0)})
-         (map vector uuids card-ids))))
-
-
-(defn- opponent-deck-tx
-  "Return transaction data for opponent's library and opening hand from a deck list.
-   Shuffles the deck, draws 7 for hand, rest goes in library.
-   deck-list: vector of {:card/id :count} maps (from bot-deck multimethod)."
-  [db opp-eid deck-list]
-  (let [card-ids (shuffle
-                   (into []
-                         (mapcat (fn [{:keys [card/id count]}]
-                                   (repeat count id)))
-                         deck-list))
-        hand-ids (take 7 card-ids)
-        library-ids (drop 7 card-ids)
-        make-obj (fn [card-id zone position]
-                   {:object/id (random-uuid)
-                    :object/card (get-card-eid db card-id)
-                    :object/zone zone
-                    :object/owner opp-eid
-                    :object/controller opp-eid
-                    :object/tapped false
-                    :object/position position})]
-    (into (vec (map #(make-obj % :hand 0) hand-ids))
-          (map-indexed (fn [i card-id] (make-obj card-id :library i)) library-ids))))
-
-
-(defn init-game-state
-  "Initialize a fresh game state from config.
-   Config keys:
-     :main-deck     - vec of {:card/id :count} maps (required)
-     :must-contain  - map of {card-id count} for sculpted opening hand (default {})
-     :sideboard     - vec of {:card/id :count} maps for sideboard zone (default [])
-
-   Returns app-db map with :game/db, :active-screen :opening-hand,
-   and opening-hand state keys."
-  [{:keys [main-deck bot-archetype bot-deck must-contain sideboard]
-    :or {bot-archetype :goldfish must-contain {} sideboard []}}]
-  (card-spec/validate-cards! cards/all-cards)
-  (let [conn (d/create-conn schema)
-        _ (d/transact! conn cards/all-cards)
-        _ (d/transact! conn (player-tx :player-1 "Player" 20 1 {:player/max-hand-size 7}))
-        _ (d/transact! conn (player-tx :opponent "Opponent" 20 0
-                                       {:player/is-opponent true
-                                        :player/bot-archetype bot-archetype}))
-        db @conn
-        player-eid (get-player-eid db :player-1)
-        opp-eid (get-player-eid db :opponent)
-        stops (storage/load-stops)
-        shuffled-deck (deck-to-card-ids main-deck)
-        [sculpted-ids remaining] (extract-sculpted-card-ids shuffled-deck must-contain)
-        draw-count (- 7 (count sculpted-ids))
-        hand-ids (concat sculpted-ids (take draw-count remaining))
-        library-ids (drop draw-count remaining)
-        hand-uuids (repeatedly (count hand-ids) random-uuid)
-        sculpted-id-set (set (take (count sculpted-ids) hand-uuids))]
-    (d/transact! conn (objects-tx @conn hand-ids :hand player-eid hand-uuids))
-    (d/transact! conn (objects-tx @conn library-ids :library player-eid
-                                  (repeatedly (count library-ids) random-uuid)))
-    (d/transact! conn (opponent-deck-tx @conn opp-eid (or bot-deck [])))
-    (let [sb-card-ids (mapcat (fn [{:keys [card/id count]}] (repeat count id)) sideboard)]
-      (when (seq sb-card-ids)
-        (d/transact! conn (objects-tx @conn sb-card-ids :sideboard player-eid
-                                      (repeatedly (count sb-card-ids) random-uuid)))))
-    (d/transact! conn [{:game/id :game-1 :game/turn 1 :game/phase :main1
-                        :game/active-player player-eid :game/priority player-eid
-                        :game/human-player-id :player-1}])
-    (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid :player-1))
-    (d/transact! conn (turn-based/create-turn-based-triggers-tx opp-eid :opponent))
-    (d/transact! conn [[:db/add player-eid :player/stops (:player stops)]
-                       [:db/add opp-eid :player/stops (:opponent stops)]])
-    (merge {:game/db @conn :active-screen :opening-hand
-            :opening-hand/mulligan-count 0 :opening-hand/sculpted-ids sculpted-id-set
-            :opening-hand/must-contain (or must-contain {})
-            :opening-hand/phase :viewing :game/game-over-dismissed false
-            :ui/stack-collapsed false
-            :ui/gy-collapsed false
-            :ui/history-collapsed false}
-           {:history/main [] :history/forks {}
-            :history/current-branch nil :history/position -1})))
-
-
-(rf/reg-event-db
-  ::init-game
-  (fn [_ [_ config]]
-    (init-game-state config)))
-
-
-(defn set-active-screen-handler
-  "Set the active screen in app-db.
-   Pure function: (app-db, screen) -> app-db"
-  [db screen]
-  (assoc db :active-screen screen))
-
-
-(rf/reg-event-db
-  ::toggle-graveyard-sort
-  (fn [db _]
-    (let [current (get db :graveyard/sort-mode :entry)]
-      (assoc db :graveyard/sort-mode (if (= current :entry) :sorted :entry)))))
-
-
-(rf/reg-event-db
-  ::set-active-screen
-  (fn [db [_ screen]]
-    (set-active-screen-handler db screen)))
-
-
-(rf/reg-event-db
-  ::dismiss-game-over
-  (fn [db _]
-    (assoc db :game/game-over-dismissed true)))
-
-
-(rf/reg-event-db
-  ::toggle-stack-collapsed
-  (fn [db _]
-    (update db :ui/stack-collapsed not)))
-
-
-(rf/reg-event-db
-  ::toggle-gy-collapsed
-  (fn [db _]
-    (update db :ui/gy-collapsed not)))
-
-
-(rf/reg-event-db
-  ::toggle-history-collapsed
-  (fn [db _]
-    (update db :ui/history-collapsed not)))
-
-
-(rf/reg-event-db
-  ::select-card
-  (fn [db [_ object-id]]
-    (let [currently-selected (:game/selected-card db)]
-      (assoc db :game/selected-card
-             (when (not= currently-selected object-id) object-id)))))
+;; Re-export public API from extracted modules for backward compatibility
+(def init-game-state init/init-game-state)
+(def set-active-screen-handler ui/set-active-screen-handler)
+(def begin-cleanup cleanup/begin-cleanup)
+(def complete-cleanup-discard cleanup/complete-cleanup-discard)
+(def maybe-continue-cleanup cleanup/maybe-continue-cleanup)
+(def phases phases/phases)
+(def next-phase phases/next-phase)
+(def advance-phase phases/advance-phase)
+(def untap-all-permanents phases/untap-all-permanents)
+(def start-turn phases/start-turn)
+(def land-card? lands/land-card?)
+(def can-play-land? lands/can-play-land?)
+(def play-land lands/play-land)
+(def tap-permanent lands/tap-permanent)
 
 
 ;; =====================================================
@@ -563,90 +357,6 @@
           {:db (stack/remove-stack-item (:db result) (:db/id top))})))))
 
 
-;; === Cleanup Step (MTG Rule 514) ===
-;; Cleanup is a multi-step process:
-;;   1. Discard to hand size (514.1) - interactive, may require player selection
-;;   2. Expire grants / "until end of turn" effects (514.2)
-;; Grant expiration is NOT an auto-trigger; it's called explicitly after discard.
-
-(defn- build-cleanup-discard-selection
-  "Build pending selection state for cleanup discard-to-hand-size.
-   Uses unified :discard type with :selection/cleanup? flag."
-  [player-id discard-count]
-  {:selection/zone :hand
-   :selection/card-source :hand
-   :selection/select-count discard-count
-   :selection/player-id player-id
-   :selection/selected #{}
-   :selection/type :discard
-   :selection/lifecycle :finalized
-   :selection/cleanup? true
-   :selection/validation :exact
-   :selection/auto-confirm? false})
-
-
-(defn begin-cleanup
-  "Begin the cleanup step on a db already at :cleanup phase.
-   Checks hand size against max and either:
-   - Returns {:db db'} if no discard needed (grants already expired)
-   - Returns {:db db' :pending-selection selection} if discard needed
-
-   Caller is responsible for advancing phase to :cleanup first.
-   Grant expiration is only done if no discard is needed;
-   otherwise it happens after discard confirmation.
-
-   Pure function: (db, player-id) -> {:db db, :pending-selection ...}"
-  [db player-id]
-  (let [hand (queries/get-hand db player-id)
-        hand-count (count hand)
-        max-hand-size (queries/get-max-hand-size db player-id)
-        discard-count (- hand-count max-hand-size)]
-    (if (pos? discard-count)
-      ;; Need to discard - don't expire grants yet (Rule 514.1 before 514.2)
-      {:db db
-       :pending-selection (build-cleanup-discard-selection player-id discard-count)}
-      ;; No discard needed - expire grants immediately (Rule 514.2)
-      (let [game-state (queries/get-game-state db)
-            current-turn (:game/turn game-state)]
-        {:db (grants/expire-grants db current-turn :cleanup)}))))
-
-
-(defn complete-cleanup-discard
-  "Complete the cleanup discard step: move selected cards to graveyard,
-   then expire grants.
-   Pure function: (db, player-id, selected-ids) -> {:db db}"
-  [db _player-id selected-ids]
-  (let [;; Move selected cards to graveyard
-        db-after-discard (reduce (fn [d obj-id]
-                                   (zones/move-to-zone d obj-id :graveyard))
-                                 db
-                                 selected-ids)
-        ;; Now expire grants (Rule 514.2 - after discard)
-        game-state (queries/get-game-state db-after-discard)
-        current-turn (:game/turn game-state)]
-    {:db (grants/expire-grants db-after-discard current-turn :cleanup)}))
-
-
-(defn maybe-continue-cleanup
-  "After stack resolution during cleanup, check if cleanup should restart.
-   If stack is now empty, phase is :cleanup, and no pending selection,
-   re-runs begin-cleanup to recheck hand size and re-expire grants.
-   Pure function: (app-db) -> app-db"
-  [app-db]
-  (let [game-db (:game/db app-db)]
-    (if (and (= :cleanup (:game/phase (queries/get-game-state game-db)))
-             (queries/stack-empty? game-db)
-             (not (:game/pending-selection app-db)))
-      (let [active-player-id (queries/get-active-player-id game-db)
-            result (begin-cleanup game-db active-player-id)]
-        (if (:pending-selection result)
-          (-> app-db
-              (assoc :game/db (:db result))
-              (assoc :game/pending-selection (:pending-selection result)))
-          (assoc app-db :game/db (:db result))))
-      app-db)))
-
-
 (rf/reg-event-db
   ::resolve-top
   [sba-interceptor/sba-interceptor]
@@ -656,7 +366,7 @@
         (-> db
             (assoc :game/db (:db result))
             (assoc :game/pending-selection (:pending-selection result)))
-        (maybe-continue-cleanup
+        (cleanup/maybe-continue-cleanup
           (assoc db :game/db (:db result)))))))
 
 
@@ -678,141 +388,7 @@
                 {:db (assoc db :game/db (:db result))
                  :fx [[:dispatch [::resolve-all initial-ids]]]}))
             ;; Stack empty or new item on top — done, check cleanup
-            {:db (maybe-continue-cleanup (assoc db :game/db game-db))}))))))
-
-
-;; === Turn Structure ===
-
-(def phases
-  "MTG turn phases in order. Delegates to engine/rules."
-  rules/phases)
-
-
-(defn next-phase
-  "Get the next phase in the turn sequence.
-   Returns the same phase if at cleanup (requires explicit start-turn for new turn)."
-  [current-phase]
-  (let [idx (.indexOf phases current-phase)]
-    (if (or (neg? idx) (= idx (dec (count phases))))
-      current-phase  ; Stay at cleanup or unknown phase
-      (nth phases (inc idx)))))
-
-
-(defn advance-phase
-  "Advance to the next phase, clear mana pool, and dispatch phase-entered event.
-   Pure function: (db, player-id) -> db
-
-   Returns db unchanged if the stack is non-empty.
-   At cleanup phase, stays at cleanup (user must call start-turn for new turn).
-   Dispatches :phase-entered event to fire turn-based actions (draw, etc.).
-   Fires delayed-effect grants when entering upkeep."
-  [db player-id]
-  (if-not (queries/stack-empty? db)
-    db
-    (let [game-state (queries/get-game-state db)
-          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
-          current-phase (:game/phase game-state)
-          new-phase (next-phase current-phase)
-          turn (:game/turn game-state)]
-      (-> db
-          (mana/empty-pool player-id)
-          (d/db-with [[:db/add game-eid :game/phase new-phase]])
-          ;; Fire delayed-effect grants when entering upkeep (for both players)
-          ;; Delayed triggers fire based on game timing, not turn ownership.
-          (cond-> (= new-phase :upkeep)
-            (as-> db'
-              (let [other-id (queries/get-other-player-id db' player-id)]
-                (cond-> (turn-based/fire-delayed-effects db' player-id)
-                  other-id (turn-based/fire-delayed-effects other-id)))))
-          ;; Dispatch phase-entered event to fire turn-based actions
-          (dispatch/dispatch-event (game-events/phase-entered-event new-phase turn player-id))))))
-
-
-(defn untap-all-permanents
-  "Untap all permanents controlled by a player on the battlefield.
-   Pure function: (db, player-id) -> db"
-  [db player-id]
-  (let [player-eid (queries/get-player-eid db player-id)
-        ;; Find all tapped permanents controlled by player on battlefield
-        tapped-permanents (d/q '[:find ?e
-                                 :in $ ?controller
-                                 :where [?e :object/controller ?controller]
-                                 [?e :object/zone :battlefield]
-                                 [?e :object/tapped true]]
-                               db player-eid)]
-    (if (seq tapped-permanents)
-      (d/db-with db (mapv (fn [[eid]] [:db/add eid :object/tapped false])
-                          tapped-permanents))
-      db)))
-
-
-(defn start-turn
-  "Start a new turn: switch active player, increment turn counter,
-   set phase to untap, reset storm count and land plays, clear mana pool.
-   Pure function: (db, player-id) -> db
-
-   player-id is the player whose turn just ended (active player before switch).
-   The next player is determined by alternating: player-id's opponent becomes
-   the new active player.
-
-   Returns db unchanged if the stack is non-empty.
-   Untap happens via :untap-step trigger when phase changes to :untap.
-   Draw happens via :draw-step trigger when phase changes to :draw."
-  [db player-id]
-  (if-not (queries/stack-empty? db)
-    db
-    (let [game-state (queries/get-game-state db)
-          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
-          ;; Switch active player to the other player
-          next-player-id (or (queries/get-other-player-id db player-id) player-id)
-          next-player-eid (queries/get-player-eid db next-player-id)
-          current-turn (or (:game/turn game-state) 0)
-          new-turn (inc current-turn)]
-      (-> db
-          (mana/empty-pool next-player-id)
-          (d/db-with [[:db/add game-eid :game/turn new-turn]
-                      [:db/add game-eid :game/phase :untap]
-                      [:db/add game-eid :game/active-player next-player-eid]
-                      [:db/add game-eid :game/priority next-player-eid]
-                      [:db/add next-player-eid :player/storm-count 0]
-                      [:db/add next-player-eid :player/land-plays-left 1]])
-          ;; Dispatch untap phase event to fire turn-based actions
-          (dispatch/dispatch-event (game-events/phase-entered-event :untap new-turn next-player-id))))))
-
-
-(rf/reg-event-db
-  ::advance-phase
-  (fn [db _]
-    (let [game-db (:game/db db)]
-      ;; Block advance if pending selection exists (e.g., cleanup discard in progress)
-      (if (:game/pending-selection db)
-        db
-        (let [active-player-id (queries/get-active-player-id game-db)
-              game-state (queries/get-game-state game-db)
-              current-phase (:game/phase game-state)
-              new-phase (next-phase current-phase)]
-          (if (= new-phase :cleanup)
-            ;; Special cleanup handling: advance phase first, then begin cleanup
-            (let [advanced-db (advance-phase game-db active-player-id)
-                  result (begin-cleanup advanced-db active-player-id)]
-              (if (:pending-selection result)
-                (-> db
-                    (assoc :game/db (:db result))
-                    (assoc :game/pending-selection (:pending-selection result)))
-                (assoc db :game/db (:db result))))
-            ;; Normal phase advancement
-            (assoc db :game/db (advance-phase game-db active-player-id))))))))
-
-
-(rf/reg-event-db
-  ::start-turn
-  (fn [db _]
-    (let [game-db (:game/db db)]
-      ;; Block start-turn if pending selection exists (e.g., cleanup discard)
-      (if (:game/pending-selection db)
-        db
-        (let [active-player-id (queries/get-active-player-id game-db)]
-          (assoc db :game/db (start-turn game-db active-player-id)))))))
+            {:db (cleanup/maybe-continue-cleanup (assoc db :game/db game-db))}))))))
 
 
 ;; === Priority System ===
@@ -833,11 +409,11 @@
     (loop [gdb game-db]
       (let [game-state (queries/get-game-state gdb)
             current-phase (:game/phase game-state)
-            nxt (next-phase current-phase)]
+            nxt (phases/next-phase current-phase)]
         (if (= nxt :cleanup)
           ;; Advancing to cleanup: advance phase, begin cleanup, then cross turn boundary
-          (let [advanced-db (advance-phase gdb active-player-id)
-                cleanup-result (begin-cleanup advanced-db active-player-id)]
+          (let [advanced-db (phases/advance-phase gdb active-player-id)
+                cleanup-result (cleanup/begin-cleanup advanced-db active-player-id)]
             (if (:pending-selection cleanup-result)
               ;; Cleanup needs discard — pause with pending-selection
               {:app-db (-> app-db
@@ -845,12 +421,12 @@
                            (assoc :game/pending-selection (:pending-selection cleanup-result)))}
               ;; No discard needed — cross turn boundary (start-turn switches active player)
               (let [db-after-cleanup (:db cleanup-result)
-                    db-after-turn (start-turn db-after-cleanup active-player-id)]
+                    db-after-turn (phases/start-turn db-after-cleanup active-player-id)]
                 ;; Always return at turn boundary — yield-impl handles continuation
                 ;; via recursive ::yield dispatch (re-reads active player from db)
                 {:app-db (assoc app-db :game/db db-after-turn)})))
           ;; Normal phase advance
-          (let [advanced-db (advance-phase gdb active-player-id)]
+          (let [advanced-db (phases/advance-phase gdb active-player-id)]
             ;; Check if new phase triggers anything on the stack
             (if (not (queries/stack-empty? advanced-db))
               ;; Stack triggered — stop and give priority
@@ -890,7 +466,7 @@
           (let [resolved-db (if (= :resolving auto-mode)
                               (priority/clear-auto-mode resolved-db)
                               resolved-db)]
-            {:app-db (maybe-continue-cleanup
+            {:app-db (cleanup/maybe-continue-cleanup
                        (assoc app-db :game/db resolved-db))}))))))
 
 
@@ -923,20 +499,20 @@
         active-player-id (queries/get-active-player-id game-db)
         game-state (queries/get-game-state game-db)
         current-phase (:game/phase game-state)
-        nxt (next-phase current-phase)]
+        nxt (phases/next-phase current-phase)]
     (if (= nxt :cleanup)
       ;; Advancing to cleanup: advance, begin cleanup, cross turn boundary
-      (let [advanced-db (advance-phase game-db active-player-id)
-            cleanup-result (begin-cleanup advanced-db active-player-id)]
+      (let [advanced-db (phases/advance-phase game-db active-player-id)
+            cleanup-result (cleanup/begin-cleanup advanced-db active-player-id)]
         (if (:pending-selection cleanup-result)
           {:app-db (-> app-db
                        (assoc :game/db (:db cleanup-result))
                        (assoc :game/pending-selection (:pending-selection cleanup-result)))}
           (let [db-after-cleanup (:db cleanup-result)
-                db-after-turn (start-turn db-after-cleanup active-player-id)]
+                db-after-turn (phases/start-turn db-after-cleanup active-player-id)]
             {:app-db (assoc app-db :game/db db-after-turn)})))
       ;; Normal: advance one phase
-      {:app-db (assoc app-db :game/db (advance-phase game-db active-player-id))})))
+      {:app-db (assoc app-db :game/db (phases/advance-phase game-db active-player-id))})))
 
 
 (defn- yield-advance-phase
@@ -1200,115 +776,6 @@
   ::cast-and-yield-resolve
   (fn [db _]
     (resolve-one-and-stop db)))
-
-
-;; === Play Land ===
-
-(def land-card?
-  "Check if an object's card has :land in its types. Delegates to engine/rules."
-  rules/land-card?)
-
-
-(def can-play-land?
-  "Check if a player can play a land from their hand. Delegates to engine/rules."
-  rules/can-play-land?)
-
-
-(defn play-land
-  "Play a land from hand to battlefield.
-   Pure function: (db, player-id, object-id) -> db
-
-   Validates via rules/can-play-land?, then:
-   1. Moves land to battlefield and decrements land plays
-   2. Registers card triggers
-   3. Fires ETB effects from :card/etb-effects
-   4. Dispatches :land-entered event for triggers like City of Traitors
-
-   Returns unchanged db if validation fails."
-  [db player-id object-id]
-  (if-not (rules/can-play-land? db player-id object-id)
-    db
-    (let [player-eid (queries/get-player-eid db player-id)
-          land-plays (d/q '[:find ?plays .
-                            :in $ ?pid
-                            :where [?e :player/id ?pid]
-                            [?e :player/land-plays-left ?plays]]
-                          db player-id)
-          db-after-move (-> db
-                            (zones/move-to-zone object-id :battlefield)
-                            (d/db-with [[:db/add player-eid :player/land-plays-left (dec land-plays)]]))
-          obj-after (queries/get-object db-after-move object-id)
-          card (:object/card obj-after)
-          etb-effects (:card/etb-effects card)
-          db-after-triggers (if (seq (:card/triggers card))
-                              (let [obj-eid (queries/get-object-eid db-after-move object-id)
-                                    tx (trigger-db/create-triggers-for-card-tx
-                                         db-after-move obj-eid player-eid (:card/triggers card))]
-                                (d/db-with db-after-move tx))
-                              db-after-move)
-          db-after-etb (if (seq etb-effects)
-                         (reduce (fn [db' effect]
-                                   (let [resolved-effect (if (= :self (:effect/target effect))
-                                                           (assoc effect :effect/target object-id)
-                                                           effect)]
-                                     (effects/execute-effect db' player-id resolved-effect)))
-                                 db-after-triggers
-                                 etb-effects)
-                         db-after-triggers)]
-      (dispatch/dispatch-event db-after-etb (game-events/land-entered-event object-id player-id)))))
-
-
-(rf/reg-event-db
-  ::play-land
-  (fn [db [_ object-id player-id]]
-    (let [game-db (:game/db db)
-          pid (or player-id (queries/get-human-player-id game-db))]
-      (assoc db :game/db (play-land game-db pid object-id)))))
-
-
-;; === Phase Stops ===
-
-(rf/reg-event-db
-  ::toggle-stop
-  (fn [db [_ role phase]]
-    (let [game-db (:game/db db)
-          human-pid (queries/get-human-player-id game-db)
-          player-id (if (= role :opponent)
-                      (queries/get-opponent-id game-db human-pid)
-                      human-pid)
-          storage-key (if (= role :opponent) :opponent :player)
-          player-eid (queries/get-player-eid game-db player-id)
-          current-stops (or (:player/stops (d/pull game-db [:player/stops] player-eid)) #{})
-          new-stops (if (contains? current-stops phase)
-                      (disj current-stops phase)
-                      (conj current-stops phase))
-          all-stops (storage/load-stops)
-          updated-stops (assoc all-stops storage-key new-stops)]
-      (storage/save-stops! updated-stops)
-      (assoc db :game/db (priority/set-player-stops game-db player-eid new-stops)))))
-
-
-;; === Tap Permanent ===
-
-(defn tap-permanent
-  "Tap a permanent on the battlefield.
-   Pure function: (db, object-id) -> db
-
-   Sets :object/tapped to true for the given object.
-   Returns unchanged db if object doesn't exist."
-  [db object-id]
-  (let [obj (queries/get-object db object-id)]
-    (if obj
-      (let [obj-eid (queries/get-object-eid db object-id)]
-        (d/db-with db [[:db/add obj-eid :object/tapped true]]))
-      db)))
-
-
-(rf/reg-event-db
-  ::tap-permanent
-  (fn [db [_ object-id]]
-    (let [game-db (:game/db db)]
-      (assoc db :game/db (tap-permanent game-db object-id)))))
 
 
 ;; === Mode Selection System ===
