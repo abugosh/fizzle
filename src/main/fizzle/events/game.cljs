@@ -12,7 +12,6 @@
     [fizzle.events.abilities]
     [fizzle.events.cleanup :as cleanup]
     [fizzle.events.init :as init]
-    [fizzle.events.interceptors.sba :as sba-interceptor]
     [fizzle.events.lands :as lands]
     [fizzle.events.phases :as phases]
     [fizzle.events.selection]
@@ -359,7 +358,6 @@
 
 (rf/reg-event-db
   ::resolve-top
-  [sba-interceptor/sba-interceptor]
   (fn [db _]
     (let [result (resolve-one-item (:game/db db))]
       (if (:pending-selection result)
@@ -678,7 +676,6 @@
 
 (rf/reg-event-fx
   ::yield
-  [sba-interceptor/sba-interceptor]
   (fn [{:keys [db]} _]
     (if (:game/pending-selection db)
       {:db db}

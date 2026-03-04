@@ -3,6 +3,7 @@
     [fizzle.bots.interceptor :as bot-interceptor]
     [fizzle.engine.effects-registry]
     [fizzle.events.game :as events]
+    [fizzle.events.interceptors.sba :as sba-interceptor]
     [fizzle.events.opening-hand]
     [fizzle.events.selection]
     [fizzle.events.setup :as setup]
@@ -125,5 +126,6 @@
   []
   (history-interceptor/register!)
   (bot-interceptor/register!)
+  (sba-interceptor/register!)
   (rf/dispatch-sync [::setup/init-setup])
   (mount-root))
