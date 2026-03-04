@@ -144,6 +144,17 @@
        (vec)))
 
 
+(defn get-top-stack-item
+  "Get the stack-item with the highest position (top of stack).
+   Returns entity map or nil if stack is empty."
+  [db]
+  (->> (d/q '[:find [(pull ?e [*]) ...]
+              :where [?e :stack-item/position _]]
+            db)
+       (sort-by :stack-item/position >)
+       (first)))
+
+
 (defn get-grants
   "Get all grants on an object.
    Returns empty vector if object has no grants."
@@ -182,6 +193,15 @@
          :in $ ?e
          :where [?e :player/id ?pid]]
        db eid))
+
+
+(defn get-priority-holder-eid
+  "Get the entity ID of the player who currently holds priority."
+  [db]
+  (d/q '[:find ?p .
+         :where [?g :game/id _]
+         [?g :game/priority ?p]]
+       db))
 
 
 (defn get-human-player-id

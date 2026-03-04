@@ -1,7 +1,6 @@
 (ns fizzle.history.descriptions
   (:require
-    [fizzle.db.queries :as queries]
-    [fizzle.engine.stack :as stack]))
+    [fizzle.db.queries :as queries]))
 
 
 (def ^:private phase-names
@@ -31,7 +30,7 @@
   [db]
   (when db
     (try
-      (stack/get-top-stack-item db)
+      (queries/get-top-stack-item db)
       (catch :default _ nil))))
 
 

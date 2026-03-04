@@ -1,7 +1,6 @@
 (ns fizzle.history.interceptor
   (:require
     [fizzle.db.queries :as queries]
-    [fizzle.engine.priority :as priority]
     [fizzle.history.core :as history]
     [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
@@ -32,7 +31,7 @@
   "Get the :player/id keyword of the player currently holding priority.
    Returns nil if no priority holder."
   [game-db]
-  (when-let [holder-eid (priority/get-priority-holder-eid game-db)]
+  (when-let [holder-eid (queries/get-priority-holder-eid game-db)]
     (queries/get-player-id game-db holder-eid)))
 
 
