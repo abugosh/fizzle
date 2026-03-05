@@ -47,6 +47,44 @@
       (d/db-with db (vec txs)))))
 
 
+
+(defn get-attacking-creatures
+  "Get object-ids of all attacking creatures on the battlefield."
+  [db]
+  (let [eids (d/q '[:find [?e ...]
+                     :where [?e :object/zone :battlefield]
+                     [?e :object/attacking true]]
+                   db)]
+    (mapv (fn [eid] (:object/id (d/pull db [:object/id] eid))) eids)))
+
+
+(defn get-eligible-blockers
+  "Get object-ids of creatures that can legally block a specific attacker.
+   Checks: creature, not tapped, not already blocking, flying/reach rules."
+  [db defender-player-id attacker-id]
+  (let [bf (q/get-objects-in-zone db defender-player-id :battlefield)]
+    (->> bf
+         (filter (fn [obj]
+                   (let [obj-id (:object/id obj)]
+                     (and (creatures/can-block? db obj-id attacker-id)
+                          (nil? (:object/blocking obj))))))
+         (mapv :object/id))))
+
+
+(defn mark-blockers
+  "Mark selected blockers as blocking a specific attacker.
+   Pure function: (db, blocker-ids, attacker-id) -> db"
+  [db blocker-ids attacker-id]
+  (if (empty? blocker-ids)
+    db
+    (let [atk-eid (q/get-object-eid db attacker-id)
+          txs (mapv (fn [obj-id]
+                      (let [obj-eid (q/get-object-eid db obj-id)]
+                        [:db/add obj-eid :object/blocking atk-eid]))
+                    blocker-ids)]
+      (d/db-with db txs))))
+
+
 (defn clear-combat-state
   "Clear all attacking/blocking flags from battlefield creatures.
    Called at end of combat or cleanup."
