@@ -66,6 +66,10 @@
                               (q/get-objects-in-zone db player-id zone))]
         (->> objects-in-zone
              (filter #(q/matches-criteria? % criteria))
+             ;; Shroud: objects with shroud cannot be targeted
+             (remove (fn [obj]
+                       (let [card-keywords (set (or (:card/keywords (:object/card obj)) #{}))]
+                         (contains? card-keywords :shroud))))
              (mapv :object/id)))
 
       ;; Ability targeting
@@ -132,14 +136,16 @@
       (= :player target-type)
       true
 
-      ;; Object targets - check zone and criteria
+      ;; Object targets - check zone, criteria, and shroud
       (= :object target-type)
       (if-let [obj (q/get-object db target-id)]
         (let [required-zone (:target/zone target-requirement)
               current-zone (:object/zone obj)
-              criteria (:target/criteria target-requirement)]
+              criteria (:target/criteria target-requirement)
+              card-keywords (set (or (:card/keywords (:object/card obj)) #{}))]
           (and (= current-zone required-zone)
-               (q/matches-criteria? obj criteria)))
+               (q/matches-criteria? obj criteria)
+               (not (contains? card-keywords :shroud))))
         ;; Object not found - target is illegal
         false)
 

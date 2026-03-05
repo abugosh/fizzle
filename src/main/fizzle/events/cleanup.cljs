@@ -2,9 +2,24 @@
   "Cleanup step (MTG Rule 514): discard to hand size, expire grants.
    Pure functions used by phase advancement and resolution."
   (:require
+    [datascript.core :as d]
     [fizzle.db.queries :as queries]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.zones :as zones]))
+
+
+(defn- clear-damage-marks
+  "Clear :object/damage-marked on all creatures on the battlefield."
+  [db]
+  (let [damaged (d/q '[:find ?e ?dmg
+                       :where [?e :object/zone :battlefield]
+                       [?e :object/damage-marked ?dmg]
+                       [(> ?dmg 0)]]
+                     db)]
+    (if (seq damaged)
+      (d/db-with db (mapv (fn [[eid _]] [:db/add eid :object/damage-marked 0])
+                          damaged))
+      db)))
 
 
 ;; === Cleanup Step (MTG Rule 514) ===
@@ -49,10 +64,12 @@
       ;; Need to discard - don't expire grants yet (Rule 514.1 before 514.2)
       {:db db
        :pending-selection (build-cleanup-discard-selection player-id discard-count)}
-      ;; No discard needed - expire grants immediately (Rule 514.2)
+      ;; No discard needed - expire grants immediately (Rule 514.2), clear damage
       (let [game-state (queries/get-game-state db)
             current-turn (:game/turn game-state)]
-        {:db (grants/expire-grants db current-turn :cleanup)}))))
+        {:db (-> db
+                 (grants/expire-grants current-turn :cleanup)
+                 (clear-damage-marks))}))))
 
 
 (defn complete-cleanup-discard
@@ -65,10 +82,12 @@
                                    (zones/move-to-zone d obj-id :graveyard))
                                  db
                                  selected-ids)
-        ;; Now expire grants (Rule 514.2 - after discard)
+        ;; Now expire grants (Rule 514.2 - after discard) and clear damage
         game-state (queries/get-game-state db-after-discard)
         current-turn (:game/turn game-state)]
-    {:db (grants/expire-grants db-after-discard current-turn :cleanup)}))
+    {:db (-> db-after-discard
+             (grants/expire-grants current-turn :cleanup)
+             (clear-damage-marks))}))
 
 
 (defn maybe-continue-cleanup

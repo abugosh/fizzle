@@ -72,6 +72,36 @@
                                         :where [?obj :object/triggers ?t]]
                                       db obj-eid)]
                 (mapv (fn [teid] [:db.fn/retractEntity teid]) trigger-eids)))
+            ;; Retract creature fields when leaving battlefield
+            creature-leave-txs
+            (when (= current-zone :battlefield)
+              (let [obj (d/pull db [:object/power :object/toughness
+                                    :object/summoning-sick :object/damage-marked
+                                    :object/attacking :object/blocking] obj-eid)]
+                (cond-> []
+                  (some? (:object/power obj))
+                  (conj [:db/retract obj-eid :object/power (:object/power obj)])
+                  (some? (:object/toughness obj))
+                  (conj [:db/retract obj-eid :object/toughness (:object/toughness obj)])
+                  (some? (:object/summoning-sick obj))
+                  (conj [:db/retract obj-eid :object/summoning-sick (:object/summoning-sick obj)])
+                  (some? (:object/damage-marked obj))
+                  (conj [:db/retract obj-eid :object/damage-marked (:object/damage-marked obj)])
+                  (some? (:object/attacking obj))
+                  (conj [:db/retract obj-eid :object/attacking (:object/attacking obj)])
+                  (some? (:object/blocking obj))
+                  (conj [:db/retract obj-eid :object/blocking (:object/blocking obj)]))))
+            ;; Add creature fields when entering battlefield
+            creature-enter-txs
+            (when (= new-zone :battlefield)
+              (let [card (d/pull db [{:object/card [:card/types :card/power :card/toughness]}] obj-eid)
+                    card-data (:object/card card)
+                    card-types (set (:card/types card-data))]
+                (when (contains? card-types :creature)
+                  [[:db/add obj-eid :object/power (:card/power card-data)]
+                   [:db/add obj-eid :object/toughness (:card/toughness card-data)]
+                   [:db/add obj-eid :object/summoning-sick true]
+                   [:db/add obj-eid :object/damage-marked 0]])))
             ;; Reset tapped state when entering or leaving battlefield
             ;; Leaving: card loses memory of being tapped
             ;; Entering: permanents enter untapped per MTG rule 110.6
@@ -80,7 +110,10 @@
                        [[:db/add obj-eid :object/zone new-zone]
                         [:db/add obj-eid :object/tapped false]]
                        [[:db/add obj-eid :object/zone new-zone]])
-            txs (into base-txs trigger-retract-txs)]
+            txs (-> base-txs
+                    (into trigger-retract-txs)
+                    (into creature-leave-txs)
+                    (into creature-enter-txs))]
         (d/db-with db txs)))))
 
 

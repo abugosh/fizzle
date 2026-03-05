@@ -223,7 +223,7 @@
 ;; === Static Ability Spec ===
 
 (def valid-static-types
-  #{:cost-modifier})
+  #{:cost-modifier :pt-modifier})
 
 
 (def valid-modifier-directions
@@ -231,7 +231,7 @@
 
 
 (def valid-applies-to
-  #{:controller :all})
+  #{:controller :all :self})
 
 
 (s/def :static/type valid-static-types)
@@ -240,11 +240,27 @@
 (s/def :modifier/condition map?)
 (s/def :modifier/criteria map?)
 (s/def :modifier/applies-to valid-applies-to)
+(s/def :modifier/power int?)
+(s/def :modifier/toughness int?)
+
+
+(defn- valid-static-ability?
+  "Cross-field validation: cost-modifier needs amount+direction, pt-modifier needs power+toughness."
+  [sa]
+  (case (:static/type sa)
+    :cost-modifier (and (contains? sa :modifier/amount)
+                        (contains? sa :modifier/direction))
+    :pt-modifier (and (contains? sa :modifier/power)
+                      (contains? sa :modifier/toughness))
+    true))
 
 
 (s/def ::static-ability
-  (s/keys :req [:static/type :modifier/amount :modifier/direction]
-          :opt [:modifier/condition :modifier/criteria :modifier/applies-to]))
+  (s/and (s/keys :req [:static/type]
+                 :opt [:modifier/amount :modifier/direction
+                       :modifier/condition :modifier/criteria :modifier/applies-to
+                       :modifier/power :modifier/toughness])
+         valid-static-ability?))
 
 
 (s/def :card/static-abilities (s/coll-of ::static-ability :kind vector?))
@@ -273,17 +289,29 @@
 (s/def :card/cast-restriction map?)
 (s/def :card/kicker ::mana-cost)
 (s/def :card/kicked-effects ::effects)
+(s/def :card/power int?)
+(s/def :card/toughness pos-int?)
+
+
+(defn- creature-has-pt?
+  "Cross-field validation: creature cards require power and toughness."
+  [card]
+  (if (contains? (set (:card/types card)) :creature)
+    (and (contains? card :card/power)
+         (contains? card :card/toughness))
+    true))
 
 
 (s/def ::card
-  (s/keys :req [:card/id :card/name :card/cmc :card/mana-cost
-                :card/colors :card/types :card/text]
-          :opt [:card/effects :card/abilities :card/etb-effects
-                :card/triggers :card/targeting :card/alternate-costs
-                :card/conditional-effects :card/kicker :card/kicked-effects
-                :card/subtypes :card/supertypes :card/keywords
-                :card/additional-costs :card/cast-restriction
-                :card/static-abilities]))
+  (s/and (s/keys :req [:card/id :card/name :card/cmc :card/mana-cost
+                       :card/colors :card/types :card/text]
+                 :opt [:card/effects :card/abilities :card/etb-effects
+                       :card/triggers :card/targeting :card/alternate-costs
+                       :card/conditional-effects :card/kicker :card/kicked-effects
+                       :card/subtypes :card/supertypes :card/keywords
+                       :card/additional-costs :card/cast-restriction
+                       :card/static-abilities :card/power :card/toughness])
+         creature-has-pt?))
 
 
 ;; === Validation Functions ===

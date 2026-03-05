@@ -121,7 +121,26 @@
       db)))
 
 
+(defn- clear-summoning-sickness
+  "Clear summoning sickness for all creatures controlled by a player on battlefield.
+   Only clears for the active player's creatures at their untap step."
+  [db player-id]
+  (let [player-eid (q/get-player-eid db player-id)
+        sick-creatures (d/q '[:find ?e
+                              :in $ ?controller
+                              :where [?e :object/controller ?controller]
+                              [?e :object/zone :battlefield]
+                              [?e :object/summoning-sick true]]
+                            db player-eid)]
+    (if (seq sick-creatures)
+      (d/db-with db (mapv (fn [[eid]] [:db/retract eid :object/summoning-sick true])
+                          sick-creatures))
+      db)))
+
+
 (defmethod resolve-trigger :untap-step
   [db trigger]
   (let [active-player (:trigger/controller trigger)]
-    (untap-all-permanents db active-player)))
+    (-> db
+        (untap-all-permanents active-player)
+        (clear-summoning-sickness active-player))))

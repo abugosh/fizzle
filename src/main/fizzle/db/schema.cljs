@@ -43,6 +43,13 @@
    :object/x-value    {}  ; Integer, value of X for spells with X in cost
    :object/cast-mode  {}  ; Map storing the casting mode used (for flashback, etc.)
    :object/chosen-mode {}  ; Map storing the chosen spell mode for modal spells (REB, BEB, etc.)
+   :object/power           {}  ; integer — base power (from card definition)
+   :object/toughness       {}  ; integer — base toughness (from card definition)
+   :object/damage-marked   {}  ; integer — damage taken this turn (default 0)
+   :object/summoning-sick  {}  ; boolean — entered battlefield this turn
+   :object/attacking       {}  ; boolean — declared as attacker this combat
+   :object/blocking        {}  ; ref — eid of attacker being blocked
+   :object/is-token        {}  ; boolean — token creature
 
    ;; === Players ===
    :player/id              {:db/unique :db.unique/identity}

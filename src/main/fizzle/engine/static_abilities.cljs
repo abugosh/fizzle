@@ -7,7 +7,9 @@
    Currently supports :cost-modifier type for cards like Sphere of Resistance,
    Defense Grid, and Chill."
   (:require
-    [fizzle.db.queries :as q]))
+    [datascript.core :as d]
+    [fizzle.db.queries :as q]
+    [fizzle.engine.conditions :as conditions]))
 
 
 (defn- get-static-abilities-from-battlefield
@@ -117,6 +119,27 @@
     (if (pos? total-decrease)
       (update cost :colorless (fn [c] (max 0 (- (or c 0) total-decrease))))
       cost)))
+
+
+(defn get-self-pt-modifiers
+  "Get :pt-modifier static abilities on a specific object that apply to :self.
+   Checks conditions (e.g., threshold) against the object's controller.
+   Returns vector of {:power N :toughness N} maps for applicable modifiers."
+  [db object-eid]
+  (let [obj (d/pull db '[{:object/card [:card/static-abilities]}
+                         {:object/controller [:player/id]}] object-eid)
+        abilities (get-in obj [:object/card :card/static-abilities])
+        controller-id (get-in obj [:object/controller :player/id])]
+    (if (seq abilities)
+      (->> abilities
+           (filter (fn [sa]
+                     (and (= :pt-modifier (:static/type sa))
+                          (= :self (:modifier/applies-to sa))
+                          (conditions/check-condition db controller-id (:modifier/condition sa)))))
+           (mapv (fn [sa]
+                   {:power (:modifier/power sa)
+                    :toughness (:modifier/toughness sa)})))
+      [])))
 
 
 (defn get-effective-mana-cost
