@@ -8,4 +8,5 @@
     [fizzle.engine.effects.selection]
     [fizzle.engine.effects.simple]
     [fizzle.engine.effects.stack]
+    [fizzle.engine.effects.tokens]
     [fizzle.engine.effects.zones]))

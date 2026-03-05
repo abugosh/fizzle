@@ -19,7 +19,7 @@
     :grant-flashback :grant-delayed-draw :add-restriction :storm-copies
     :exile-zone :gain-life-equal-to-cmc :discard-from-revealed-hand
     :bounce :chain-bounce :counter-spell :counter-ability
-    :peek-random-hand :grant-mana-ability})
+    :peek-random-hand :grant-mana-ability :create-token})
 
 
 (def valid-cost-types

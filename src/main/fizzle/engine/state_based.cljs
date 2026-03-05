@@ -144,3 +144,31 @@
         db' (set-loss-condition db :empty-library player-id)]
     ;; Clear the flag
     (d/db-with db' [[:db/retract player-eid :player/drew-from-empty true]])))
+
+
+;; === :token-cleanup SBA ===
+;; Tokens in non-battlefield zones cease to exist (entity retracted).
+
+(defmethod check-sba :token-cleanup
+  [db _type]
+  (let [tokens-outside-bf (d/q '[:find ?oid ?zone
+                                 :where [?e :object/is-token true]
+                                 [?e :object/id ?oid]
+                                 [?e :object/zone ?zone]
+                                 [(not= ?zone :battlefield)]]
+                               db)]
+    (mapv (fn [[oid _zone]] {:sba/type :token-cleanup :sba/target oid})
+          tokens-outside-bf)))
+
+
+(defmethod execute-sba :token-cleanup
+  [db sba]
+  (let [token-id (:sba/target sba)]
+    (if-let [token-eid (q/get-object-eid db token-id)]
+      ;; Retract the token entity and its synthetic card entity
+      (let [obj (d/pull db [{:object/card [:db/id]}] token-eid)
+            card-eid (get-in obj [:object/card :db/id])
+            txs (cond-> [[:db.fn/retractEntity token-eid]]
+                  card-eid (conj [:db.fn/retractEntity card-eid]))]
+        (d/db-with db txs))
+      db)))
