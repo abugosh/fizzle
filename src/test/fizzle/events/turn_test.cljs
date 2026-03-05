@@ -155,12 +155,12 @@
 
 ;; === advance-phase tests ===
 
-(deftest test-advance-phase-from-main1-to-combat
-  (testing "advance-phase from main1 goes to combat"
+(deftest test-advance-phase-from-main1-skips-combat-without-creatures
+  (testing "advance-phase from main1 skips combat to main2 when no creatures"
     (let [db (-> (init-game-state)
                  (set-phase :main1))
           db' (game/advance-phase db :player-1)]
-      (is (= :combat (get-phase db'))))))
+      (is (= :main2 (get-phase db'))))))
 
 
 (deftest test-advance-phase-from-combat-to-main2
@@ -237,22 +237,21 @@
 
 ;; === Full phase sequence test ===
 
-(deftest test-full-phase-sequence
-  (testing "phases advance in correct order: untap → upkeep → draw → main1 → combat → main2 → end → cleanup"
+(deftest test-full-phase-sequence-no-creatures
+  (testing "phases advance with combat skipped when no creatures: untap → upkeep → draw → main1 → main2 → end → cleanup"
     (let [db (-> (init-game-state)
                  (set-phase :untap))
-          ;; Advance through all phases
+          ;; Advance through all phases (combat skipped — no creatures)
           after-upkeep (game/advance-phase db :player-1)
           after-draw (game/advance-phase after-upkeep :player-1)
           after-main1 (game/advance-phase after-draw :player-1)
-          after-combat (game/advance-phase after-main1 :player-1)
-          after-main2 (game/advance-phase after-combat :player-1)
+          ;; main1 -> main2 (combat skipped)
+          after-main2 (game/advance-phase after-main1 :player-1)
           after-end (game/advance-phase after-main2 :player-1)
           after-cleanup (game/advance-phase after-end :player-1)]
       (is (= :upkeep (get-phase after-upkeep)))
       (is (= :draw (get-phase after-draw)))
       (is (= :main1 (get-phase after-main1)))
-      (is (= :combat (get-phase after-combat)))
       (is (= :main2 (get-phase after-main2)))
       (is (= :end (get-phase after-end)))
       (is (= :cleanup (get-phase after-cleanup))))))

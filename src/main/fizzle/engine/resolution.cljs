@@ -14,6 +14,7 @@
   (:require
     [datascript.core :as d]
     [fizzle.db.queries :as queries]
+    [fizzle.engine.combat :as combat]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
@@ -291,3 +292,32 @@
                          (effects/execute-effect d controller resolved source-id))))
                    db
                    effects-list)})))
+
+
+;; =====================================================
+;; Combat Resolution
+;; =====================================================
+
+(defmethod resolve-stack-item :declare-attackers
+  [db stack-item]
+  (let [controller (:stack-item/controller stack-item)
+        eligible (combat/get-eligible-attackers db controller)]
+    (if (empty? eligible)
+      ;; No eligible attackers — skip to post-combat
+      {:db db}
+      ;; Signal that attacker selection is needed
+      {:db db
+       :needs-attackers true
+       :eligible-attackers eligible})))
+
+
+(defmethod resolve-stack-item :declare-blockers
+  [db _stack-item]
+  ;; Stub — blocker assignment is a follow-up task
+  {:db db})
+
+
+(defmethod resolve-stack-item :combat-damage
+  [db _stack-item]
+  ;; Stub — damage calculation is a follow-up task
+  {:db (combat/clear-combat-state db)})

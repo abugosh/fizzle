@@ -739,8 +739,8 @@
           app-db {:game/db game-db}
           result (game/yield-impl app-db)
           result-db (:game/db (:app-db result))]
-      (is (= :combat (:game/phase (q/get-game-state result-db)))
-          "Should have advanced from main1 to combat")
+      (is (= :main2 (:game/phase (q/get-game-state result-db)))
+          "Should have advanced from main1 to main2 (combat skipped — no creatures)")
       (is (not (:continue-yield? result))
           "Bot turn should pause for bot interceptor to dispatch ::bot-decide"))))
 

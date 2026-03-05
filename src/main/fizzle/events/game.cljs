@@ -15,6 +15,7 @@
     [fizzle.events.lands :as lands]
     [fizzle.events.phases :as phases]
     [fizzle.events.selection]
+    [fizzle.events.selection.combat :as sel-combat]
     [fizzle.events.selection.core :as sel-core]
     [fizzle.events.selection.costs :as sel-costs]
     [fizzle.events.selection.library]
@@ -349,6 +350,22 @@
             {:db game-db :pending-selection sel}
             {:db (stack/remove-stack-item game-db (:db/id top))})
 
+          (:needs-attackers result)
+          (let [eligible (:eligible-attackers result)
+                is-bot (bot-protocol/get-bot-archetype game-db controller)]
+            (if is-bot
+              ;; Bot auto-selects all eligible attackers
+              (let [sel (sel-combat/build-attacker-selection
+                          eligible controller (:db/id top))
+                    sel (assoc sel :selection/selected (set eligible))
+                    app-db {:game/db game-db :game/pending-selection sel}
+                    result-db (sel-core/confirm-selection-impl app-db)]
+                {:db (:game/db result-db)})
+              ;; Human gets attacker selection UI
+              {:db game-db
+               :pending-selection (sel-combat/build-attacker-selection
+                                    eligible controller (:db/id top))}))
+
           (:needs-selection result)
           (build-selection-from-result game-db controller top result)
 
@@ -424,14 +441,17 @@
                 ;; via recursive ::yield dispatch (re-reads active player from db)
                 {:app-db (assoc app-db :game/db db-after-turn)})))
           ;; Normal phase advance
-          (let [advanced-db (phases/advance-phase gdb active-player-id)]
+          (let [advanced-db (phases/advance-phase gdb active-player-id)
+                ;; Read actual phase from advanced-db (may differ from nxt
+                ;; when combat is skipped due to no creatures)
+                actual-phase (:game/phase (queries/get-game-state advanced-db))]
             ;; Check if new phase triggers anything on the stack
             (if (not (queries/stack-empty? advanced-db))
               ;; Stack triggered — stop and give priority
               {:app-db (assoc app-db :game/db advanced-db)}
               ;; Check stop (skipped in F6 mode)
               (if (and (not ignore-stops?)
-                       (priority/check-stop advanced-db player-eid nxt))
+                       (priority/check-stop advanced-db player-eid actual-phase))
                 ;; Stop hit — pause here
                 {:app-db (assoc app-db :game/db advanced-db)}
                 ;; No stop or F6 — continue advancing

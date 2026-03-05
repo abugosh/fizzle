@@ -4,6 +4,7 @@
   (:require
     [datascript.core :as d]
     [fizzle.db.queries :as queries]
+    [fizzle.engine.combat :as combat]
     [fizzle.engine.events :as game-events]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
@@ -43,6 +44,11 @@
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
           current-phase (:game/phase game-state)
           new-phase (next-phase current-phase)
+          ;; Skip combat when no creatures exist on battlefield
+          new-phase (if (and (= new-phase :combat)
+                             (not (combat/has-creatures-on-battlefield? db)))
+                      (next-phase :combat)
+                      new-phase)
           turn (:game/turn game-state)]
       (-> db
           (mana/empty-pool player-id)
@@ -54,6 +60,9 @@
               (let [other-id (queries/get-other-player-id db' player-id)]
                 (cond-> (turn-based/fire-delayed-effects db' player-id)
                   other-id (turn-based/fire-delayed-effects other-id)))))
+          ;; Push combat stack items when entering combat
+          (cond-> (= new-phase :combat)
+            (combat/begin-combat player-id))
           ;; Dispatch phase-entered event to fire turn-based actions
           (dispatch/dispatch-event (game-events/phase-entered-event new-phase turn player-id))))))
 
