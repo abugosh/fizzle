@@ -1,7 +1,6 @@
 (ns fizzle.events.selection.combat
   "Combat selection types: attacker and blocker selection."
   (:require
-    [fizzle.db.queries :as q]
     [fizzle.engine.combat :as combat]
     [fizzle.engine.stack :as stack]
     [fizzle.events.selection.core :as sel-core]))

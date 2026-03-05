@@ -47,14 +47,13 @@
       (d/db-with db (vec txs)))))
 
 
-
 (defn get-attacking-creatures
   "Get object-ids of all attacking creatures on the battlefield."
   [db]
   (let [eids (d/q '[:find [?e ...]
-                     :where [?e :object/zone :battlefield]
-                     [?e :object/attacking true]]
-                   db)]
+                    :where [?e :object/zone :battlefield]
+                    [?e :object/attacking true]]
+                  db)]
     (mapv (fn [eid] (:object/id (d/pull db [:object/id] eid))) eids)))
 
 
