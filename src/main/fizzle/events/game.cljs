@@ -352,12 +352,13 @@
 
           (:needs-attackers result)
           (let [eligible (:eligible-attackers result)
-                is-bot (bot-protocol/get-bot-archetype game-db controller)]
-            (if is-bot
-              ;; Bot auto-selects all eligible attackers
-              (let [sel (sel-combat/build-attacker-selection
+                archetype (bot-protocol/get-bot-archetype game-db controller)]
+            (if archetype
+              ;; Bot chooses attackers via configurable rules
+              (let [chosen (bot-protocol/bot-choose-attackers archetype eligible)
+                    sel (sel-combat/build-attacker-selection
                           eligible controller (:db/id top))
-                    sel (assoc sel :selection/selected (set eligible))
+                    sel (assoc sel :selection/selected (set chosen))
                     app-db {:game/db game-db :game/pending-selection sel}
                     result-db (sel-core/confirm-selection-impl app-db)]
                 {:db (:game/db result-db)})
@@ -365,13 +366,6 @@
               {:db game-db
                :pending-selection (sel-combat/build-attacker-selection
                                     eligible controller (:db/id top))}))
-
-          (:needs-blockers result)
-          (let [attackers (:attackers result)
-                defender-id (:defender-id result)]
-            {:db game-db
-             :pending-selection (sel-combat/build-blocker-selection
-                                  game-db attackers defender-id (:db/id top))})
 
           (:needs-selection result)
           (build-selection-from-result game-db controller top result)

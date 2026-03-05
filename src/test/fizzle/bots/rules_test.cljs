@@ -450,3 +450,25 @@
                   {:check :zone-count :zone :graveyard :player :self :gte 7}
                   {:db (th/create-test-db) :player-id :player-1}))
         "Threshold not met: 0 cards in graveyard < 7")))
+
+
+;; === choose-attackers ===
+
+(deftest choose-attackers-all-strategy-selects-all-eligible
+  (let [eligible [:obj-1 :obj-2 :obj-3]]
+    (is (= (set eligible)
+           (set (rules/choose-attackers {:bot/attack-strategy :all} eligible)))
+        "Strategy :all should select all eligible attackers")))
+
+
+(deftest choose-attackers-nil-strategy-selects-none
+  (let [eligible [:obj-1 :obj-2]]
+    (is (empty? (rules/choose-attackers {} eligible))
+        "No attack strategy should return empty (don't attack)")
+    (is (empty? (rules/choose-attackers {:bot/attack-strategy nil} eligible))
+        "Nil attack strategy should return empty")))
+
+
+(deftest choose-attackers-empty-eligible-returns-empty
+  (is (empty? (rules/choose-attackers {:bot/attack-strategy :all} []))
+      "No eligible attackers returns empty even with :all strategy"))

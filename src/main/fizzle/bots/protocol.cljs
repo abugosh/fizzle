@@ -45,6 +45,17 @@
       {:action :pass})))
 
 
+(defn bot-choose-attackers
+  "Choose which eligible creatures a bot attacks with.
+   Returns a vector of object-ids. Empty = don't attack.
+   Pure function: (archetype, eligible-attacker-ids) -> [object-ids]"
+  [archetype eligible-attackers]
+  (let [spec (definitions/get-spec archetype)]
+    (if spec
+      (rules/choose-attackers spec eligible-attackers)
+      [])))
+
+
 (defn bot-deck
   "Return the deck list for a bot archetype.
    Returns a vector of {:card/id keyword :count int} maps.

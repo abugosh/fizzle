@@ -164,3 +164,16 @@
   (if-let [action (get-in spec [:bot/phase-actions phase])]
     {:action action}
     {:action :pass}))
+
+
+(defn choose-attackers
+  "Choose which eligible creatures to attack with based on bot spec.
+   Returns a vector of object-ids to declare as attackers.
+   Dispatches on :bot/attack-strategy in spec:
+     :all — attack with all eligible creatures
+     nil  — don't attack (return empty)
+   Pure function: (spec, eligible-attacker-ids) -> [object-ids]"
+  [spec eligible-attackers]
+  (case (:bot/attack-strategy spec)
+    :all (vec eligible-attackers)
+    []))

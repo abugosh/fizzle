@@ -22,6 +22,7 @@
    :bot/deck [{:card/id :mountain :count 20}
               {:card/id :lightning-bolt :count 40}]
    :bot/phase-actions {:main1 :play-land}
+   :bot/attack-strategy :all
    :bot/priority-rules
    [{:rule/mode :auto
      :rule/conditions [{:check :zone-contains :zone :hand :player :self :card-id :lightning-bolt}
