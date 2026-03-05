@@ -1,0 +1,70 @@
+// Part of fizzle
+
+model {
+  extend fizzle {
+    events_selection = component 'Selection Events' {
+      description 're-frame event handlers managing player choice interactions — build selection state, toggle choices, confirm selections. Uses multimethod dispatch with 21 selection types across zone-pick, accumulator, reorder, and custom patterns.'
+      link ./events_selection.md 'Documentation'
+      link ../../../src/main/fizzle/events/selection/ 'Source'
+      metadata {
+        layer 'orchestration'
+        stability_state 'exploring'
+      }
+
+      sel_core = component 'Selection Core' {
+        description 'Multimethod dispatch hub — defines build-selection-for-effect, execute-confirmed-selection, and build-chain-selection multimethods. All other selection modules register defmethods against these.'
+        metadata {
+          layer 'orchestration'
+          stability_state 'exploring'
+        }
+      }
+
+      sel_library = component 'Library Operations' {
+        description 'Tutor, scry, peek-and-select, and peek-and-reorder selection builders and executors. Handles library ordering and pile assignment.'
+        metadata {
+          layer 'orchestration'
+          stability_state 'exploring'
+        }
+      }
+
+      sel_costs = component 'Cost Selections' {
+        description 'X-mana-cost, mana-allocation, exile-cards-cost, return-land-cost, and discard-specific-cost selection builders and executors. Handles payment interactions before spells resolve.'
+        metadata {
+          layer 'orchestration'
+          stability_state 'exploring'
+        }
+      }
+
+      sel_zone_ops = component 'Zone Operations' {
+        description 'Discard, graveyard-return, hand-reveal-discard, and chain-bounce selection builders and executors. Handles card movement between zones triggered by effects.'
+        metadata {
+          layer 'orchestration'
+          stability_state 'exploring'
+        }
+      }
+
+      sel_storm = component 'Storm Copies' {
+        description 'Storm copy creation and split selection. Builds storm copy stack items and handles target allocation across copies.'
+        metadata {
+          layer 'orchestration'
+          stability_state 'exploring'
+        }
+      }
+
+      sel_targeting = component 'Targeting' {
+        description 'Cast-time targeting, ability targeting, and player targeting selection builders and executors. Validates legal targets and stores targeting decisions on stack items.'
+        metadata {
+          layer 'orchestration'
+          stability_state 'exploring'
+        }
+      }
+
+      // Internal relationships
+      sel_library -> sel_core 'registers defmethods for library selection types'
+      sel_costs -> sel_core 'registers defmethods for cost selection types'
+      sel_zone_ops -> sel_core 'registers defmethods for zone selection types'
+      sel_storm -> sel_core 'registers defmethods for storm selection type'
+      sel_targeting -> sel_core 'registers defmethods for targeting selection types'
+    }
+  }
+}

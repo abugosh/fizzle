@@ -1,0 +1,15 @@
+// Part of fizzle
+
+model {
+  extend fizzle {
+    events_abilities = component 'Ability Events' {
+      description 're-frame event handlers for activated and triggered abilities — ability activation, cost processing, ability targeting.'
+      link ./events_abilities.md 'Documentation'
+      link ../../../src/main/fizzle/events/abilities.cljs 'Source'
+      metadata {
+        layer 'orchestration'
+        stability_state 'exploring'
+      }
+    }
+  }
+}

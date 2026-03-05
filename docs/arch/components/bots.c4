@@ -1,0 +1,52 @@
+// Part of fizzle
+
+model {
+  extend fizzle {
+    bots = component 'Opponent AI' {
+      description 'Bot system for opponent simulation — IBot multimethod protocol dispatching on archetype, bot definitions (goldfish, burn), behavior rules, global re-frame interceptor driving bot turns. Bots dispatch the same events as human players.'
+      link ./bots.md 'Documentation'
+      link ../../../src/main/fizzle/bots/ 'Source'
+      metadata {
+        layer 'orchestration'
+        stability_state 'exploring'
+      }
+
+      bot_protocol = component 'IBot Protocol' {
+        description 'Multimethod protocol dispatching on archetype. Defines should-act? and choose-action as the bot contract that all archetypes implement.'
+        metadata {
+          layer 'orchestration'
+          stability_state 'exploring'
+        }
+      }
+
+      bot_definitions = component 'Bot Definitions' {
+        description 'Archetype implementations — goldfish (passes everything) and burn (20 Mountains + 40 Bolts, bolts face). Each registers defmethods against IBot protocol.'
+        metadata {
+          layer 'orchestration'
+          stability_state 'exploring'
+        }
+      }
+
+      bot_rules = component 'Behavior Rules' {
+        description 'Decision-making rules for evaluating bot actions. Encodes heuristics for when a bot should act and what action to choose given game state.'
+        metadata {
+          layer 'orchestration'
+          stability_state 'exploring'
+        }
+      }
+
+      bot_interceptor = component 'Turn Driver' {
+        description 'Global re-frame interceptor driving bot turns automatically. Fires after priority passes, evaluates should-act?/choose-action, and dispatches the chosen event.'
+        metadata {
+          layer 'orchestration'
+          stability_state 'exploring'
+        }
+      }
+
+      // Internal relationships
+      bot_interceptor -> bot_protocol 'dispatches should-act?/choose-action'
+      bot_definitions -> bot_protocol 'implements IBot archetypes'
+      bot_definitions -> bot_rules 'evaluates behavior rules'
+    }
+  }
+}

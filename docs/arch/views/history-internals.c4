@@ -1,0 +1,6 @@
+views {
+  view history_internals of fizzle.history {
+    title 'History / Fork-Replay — Internal Components'
+    include *
+  }
+}

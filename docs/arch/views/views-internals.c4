@@ -1,0 +1,6 @@
+views {
+  view views_internals of fizzle.views_ui {
+    title 'Views / UI — Internal Components'
+    include *
+  }
+}

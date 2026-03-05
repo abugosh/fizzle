@@ -1,0 +1,6 @@
+views {
+  view landscape of fizzle {
+    title 'Fizzle — MTG Combo Practice Tool — Landscape'
+    include * -> *
+  }
+}

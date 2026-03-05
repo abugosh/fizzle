@@ -1,0 +1,6 @@
+views {
+  view selection_internals of fizzle.events_selection {
+    title 'Selection Events — Internal Components'
+    include *
+  }
+}

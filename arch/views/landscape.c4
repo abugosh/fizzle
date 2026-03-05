@@ -1,9 +1,0 @@
-// System Architecture Views
-views {
-    view landscape {
-        title 'Fizzle Architecture'
-        description 'Volatility-based decomposition of the MTG combo practice tool'
-
-        include *
-    }
-}

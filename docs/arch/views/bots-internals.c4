@@ -1,0 +1,6 @@
+views {
+  view bots_internals of fizzle.bots {
+    title 'Opponent AI — Internal Components'
+    include *
+  }
+}

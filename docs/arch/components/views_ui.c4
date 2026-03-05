@@ -1,0 +1,67 @@
+// Part of fizzle
+
+model {
+  extend fizzle {
+    views_ui = component 'Views / UI' {
+      description 'Reagent components rendering game state — board, hand, stack, mana pool, selection modals, history navigation. Pure render functions subscribing to re-frame subscriptions.'
+      link ./views_ui.md 'Documentation'
+      link ../../../src/main/fizzle/views/ 'Source'
+      metadata {
+        layer 'presentation'
+        stability_state 'exploring'
+      }
+
+      game_board = component 'Game Board' {
+        description 'Battlefield, hand, stack, graveyard, mana pool, and zone count renders. Core play surface components subscribing to zone and state subscriptions.'
+        metadata {
+          layer 'presentation'
+          stability_state 'exploring'
+        }
+      }
+
+      selection_ui = component 'Selection Modals' {
+        description 'Selection interaction views split by pattern — zone-pick, accumulator, reorder, and custom modal components. Renders active selection state and dispatches toggle/confirm events.'
+        metadata {
+          layer 'presentation'
+          stability_state 'exploring'
+        }
+      }
+
+      game_controls = component 'Game Controls' {
+        description 'Phase bar, control buttons, and game-over screen. Dispatches phase-advance and game-reset events.'
+        metadata {
+          layer 'presentation'
+          stability_state 'exploring'
+        }
+      }
+
+      setup_ui = component 'Setup & Import' {
+        description 'Deck setup, opening hand, and deck import modal. Entry-point views before a game session starts.'
+        metadata {
+          layer 'presentation'
+          stability_state 'exploring'
+        }
+      }
+
+      history_ui = component 'History Navigation' {
+        description 'Fork/replay UI and branch navigation controls. Renders history tree and dispatches history events.'
+        metadata {
+          layer 'presentation'
+          stability_state 'exploring'
+        }
+      }
+
+      opponent_ui = component 'Opponent Display' {
+        description "Opponent's board state display — life total, graveyard size, and permanents."
+        metadata {
+          layer 'presentation'
+          stability_state 'exploring'
+        }
+      }
+
+      // Internal relationships
+      game_board -> selection_ui 'board clicks trigger selection modals'
+      game_controls -> game_board 'phase transitions update board display'
+    }
+  }
+}

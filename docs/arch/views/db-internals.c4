@@ -1,0 +1,6 @@
+views {
+  view db_internals of fizzle.db {
+    title 'Data Foundation — Internal Components'
+    include *
+  }
+}

@@ -1,0 +1,6 @@
+views {
+  view engine_internals of fizzle.engine {
+    title 'Engine — Internal Components'
+    include *
+  }
+}

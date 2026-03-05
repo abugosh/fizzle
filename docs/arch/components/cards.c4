@@ -1,0 +1,15 @@
+// Part of fizzle
+
+model {
+  extend fizzle {
+    cards = component 'Card Pool' {
+      description 'Card definitions as pure EDN data — per-card files organized by color identity (black, blue, white, red, green, multicolor, lands, artifacts). Each file exports a card def or cards vector. Registry aggregates all cards.'
+      link ./cards.md 'Documentation'
+      link ../../../src/main/fizzle/cards/ 'Source'
+      metadata {
+        layer 'data'
+        stability_state 'exploring'
+      }
+    }
+  }
+}

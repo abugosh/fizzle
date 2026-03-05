@@ -1,0 +1,15 @@
+// Part of fizzle
+
+model {
+  extend fizzle {
+    events_game = component 'Game Events' {
+      description 're-frame event handlers orchestrating game flow — casting spells, resolving stack, phase/turn transitions, priority passing. Decomposed into focused modules (cast, resolve, stack, phase, turn).'
+      link ./events_game.md 'Documentation'
+      link ../../../src/main/fizzle/events/game/ 'Source'
+      metadata {
+        layer 'orchestration'
+        stability_state 'exploring'
+      }
+    }
+  }
+}

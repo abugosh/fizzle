@@ -1,0 +1,15 @@
+// Part of fizzle
+
+model {
+  extend fizzle {
+    subs = component 'Subscriptions' {
+      description 're-frame subscriptions computing derived state from Datascript db — castable cards, mana pool totals, zone contents, threshold status. Pure query functions.'
+      link ./subs.md 'Documentation'
+      link ../../../src/main/fizzle/subs/ 'Source'
+      metadata {
+        layer 'presentation'
+        stability_state 'exploring'
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+model {
+  fizzle = system 'Fizzle — MTG Combo Practice Tool' {
+    // Component definitions live in docs/arch/components/
+    // Each component file uses `model { extend fizzle { ... } }` to attach to this system
+  }
+
+  extend fizzle {
+    // Top-level relationships between components
+    views_ui -> subs 'subscribes to derived game state'
+    views_ui -> events_game 'dispatches game action events'
+    views_ui -> events_selection 'dispatches selection interaction events'
+    views_ui -> events_abilities 'dispatches ability activation events'
+    subs -> db 'queries Datascript entities for derived state'
+    events_game -> engine 'calls engine functions for game rules'
+    events_game -> db 'reads and writes Datascript game state'
+    events_selection -> engine 'calls engine for effect processing and validation'
+    events_selection -> db 'reads and writes Datascript game state'
+    events_abilities -> engine 'calls engine for ability processing'
+    events_abilities -> db 'reads and writes Datascript game state'
+    engine -> db 'reads Datascript for rules evaluation'
+    engine -> cards 'looks up card definitions from registry'
+    bots -> events_game 'dispatches same events as human players'
+    bots -> engine 'queries game state for decision making'
+    history -> events_game 'intercepts events for history tracking (orthogonal, transparent)'
+  }
+}

@@ -1,0 +1,52 @@
+// Part of fizzle
+
+model {
+  extend fizzle {
+    db = component 'Data Foundation' {
+      description 'Datascript schema definitions, entity queries, and database operations. Defines the game state schema — zones, cards, players, mana pool, stack items, grants, restrictions.'
+      link ./db.md 'Documentation'
+      link ../../../src/main/fizzle/db/ 'Source'
+      metadata {
+        layer 'data'
+        stability_state 'exploring'
+      }
+
+      db_schema = component 'Schema' {
+        description 'Datascript schema definitions — attribute types, cardinalities, and indexes for all game state entities.'
+        metadata {
+          layer 'data'
+          stability_state 'exploring'
+        }
+      }
+
+      db_queries = component 'Queries' {
+        description 'Entity queries and Datalog patterns for reading game state — zone contents, card attributes, player state, grants, restrictions.'
+        metadata {
+          layer 'data'
+          stability_state 'exploring'
+        }
+      }
+
+      db_init = component 'Initialization' {
+        description 'Initial db creation with schema. Builds the blank Datascript database that bootstraps each game session.'
+        metadata {
+          layer 'data'
+          stability_state 'exploring'
+        }
+      }
+
+      db_storage = component 'Persistence' {
+        description 'LocalStorage save/load. I/O boundary that serializes and deserializes the full Datascript db for session persistence.'
+        metadata {
+          layer 'data'
+          stability_state 'exploring'
+        }
+      }
+
+      // Internal relationships
+      db_queries -> db_schema 'queries defined against schema'
+      db_init -> db_schema 'creates db from schema'
+      db_storage -> db_init 'loads/saves full db state'
+    }
+  }
+}

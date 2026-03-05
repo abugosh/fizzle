@@ -1,0 +1,52 @@
+// Part of fizzle
+
+model {
+  extend fizzle {
+    history = component 'History / Fork-Replay' {
+      description 'Fork and replay system — event history tracking via re-frame interceptor, state snapshots, branch management, undo/redo. Leverages ClojureScript immutability for zero-cost forking.'
+      link ./history.md 'Documentation'
+      link ../../../src/main/fizzle/history/ 'Source'
+      metadata {
+        layer 'infrastructure'
+        stability_state 'exploring'
+      }
+
+      hist_core = component 'State Management' {
+        description 'Immutable state snapshots and branch data structures. Maintains the history tree of db snapshots indexed by branch and position.'
+        metadata {
+          layer 'infrastructure'
+          stability_state 'exploring'
+        }
+      }
+
+      hist_events = component 'History Events' {
+        description 're-frame event handlers for undo, redo, fork, and branch switching. Navigates the history tree and restores db snapshots.'
+        metadata {
+          layer 'infrastructure'
+          stability_state 'exploring'
+        }
+      }
+
+      hist_interceptor = component 'Event Interceptor' {
+        description 're-frame interceptor that captures events for history tracking. Transparently observes all re-frame events and stores db snapshots after state-changing events.'
+        metadata {
+          layer 'infrastructure'
+          stability_state 'exploring'
+        }
+      }
+
+      hist_descriptions = component 'Action Descriptions' {
+        description 'Human-readable descriptions of game actions for history display. Maps event types and payloads to display strings shown in the history UI.'
+        metadata {
+          layer 'infrastructure'
+          stability_state 'exploring'
+        }
+      }
+
+      // Internal relationships
+      hist_events -> hist_core 'manages history state'
+      hist_interceptor -> hist_core 'stores snapshots'
+      hist_events -> hist_descriptions 'formats action labels'
+    }
+  }
+}

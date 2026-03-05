@@ -1,0 +1,80 @@
+// Part of fizzle
+
+model {
+  extend fizzle {
+    engine = component 'Engine' {
+      description 'Core game rules engine — mana system, stack operations, zone management, effect interpretation, resolution dispatch, priority system, trigger evaluation, validation. 24 files. Interprets card effect data structures; contains no card-specific logic.'
+      link ./engine.md 'Documentation'
+      link ../../../src/main/fizzle/engine/ 'Source'
+      metadata {
+        layer 'domain'
+        stability_state 'exploring'
+      }
+
+      mana_system = component 'Mana System' {
+        description 'Mana pool operations, mana activation, and cost calculation. Tracks floating mana per color and validates payment against card costs.'
+        metadata {
+          layer 'domain'
+          stability_state 'exploring'
+        }
+      }
+
+      stack_resolution = component 'Stack & Resolution' {
+        description 'Stack operations and resolution dispatch via multimethod on stack-item type. Manages priority between players and drives the resolution loop.'
+        metadata {
+          layer 'domain'
+          stability_state 'exploring'
+        }
+      }
+
+      effects_pipeline = component 'Effects Pipeline' {
+        description 'Effect interpretation and registry. Reduce-effects walks an effect list, pausing at interactive effects. Decomposed into domain modules: grants, life, selection, simple, stack, zones.'
+        metadata {
+          layer 'domain'
+          stability_state 'exploring'
+        }
+      }
+
+      zone_mgmt = component 'Zone Management' {
+        description 'Card zone movement and zone content queries. Moves cards between hand, library, graveyard, battlefield, stack, and exile.'
+        metadata {
+          layer 'domain'
+          stability_state 'exploring'
+        }
+      }
+
+      trigger_system = component 'Trigger System' {
+        description 'Trigger registration, evaluation, and dispatch. Fires triggers when zone changes or game events match registered trigger conditions.'
+        metadata {
+          layer 'domain'
+          stability_state 'exploring'
+        }
+      }
+
+      rules_validation = component 'Rules & Validation' {
+        description 'Game rules, casting conditions, state-based actions, static abilities, grants, and selection validation. Encodes what is and is not legal at any game state.'
+        metadata {
+          layer 'domain'
+          stability_state 'exploring'
+        }
+      }
+
+      card_services = component 'Card Services' {
+        description 'Card lookup gateway, card spec definitions, targeting helpers, and ability definitions. Sole entry point for card data — no other module reads from cards directly.'
+        metadata {
+          layer 'domain'
+          stability_state 'exploring'
+        }
+      }
+
+      // Internal relationships
+      stack_resolution -> effects_pipeline 'triggers effect reduction on resolve'
+      effects_pipeline -> zone_mgmt 'moves cards between zones'
+      effects_pipeline -> mana_system 'adds mana via add-mana effects'
+      effects_pipeline -> trigger_system 'zone changes fire triggers'
+      stack_resolution -> mana_system 'validates mana costs before cast'
+      card_services -> rules_validation 'checks casting conditions'
+      rules_validation -> zone_mgmt 'queries zones for state-based actions'
+    }
+  }
+}
