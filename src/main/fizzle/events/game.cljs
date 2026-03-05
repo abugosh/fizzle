@@ -366,6 +366,13 @@
                :pending-selection (sel-combat/build-attacker-selection
                                     eligible controller (:db/id top))}))
 
+          (:needs-blockers result)
+          (let [attackers (:attackers result)
+                defender-id (:defender-id result)]
+            {:db game-db
+             :pending-selection (sel-combat/build-blocker-selection
+                                  game-db attackers defender-id (:db/id top))})
+
           (:needs-selection result)
           (build-selection-from-result game-db controller top result)
 

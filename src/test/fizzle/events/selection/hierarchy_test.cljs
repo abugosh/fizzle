@@ -535,7 +535,7 @@
           test-keys #{:default :test-chaining :test-chaining-nil}
           production-methods (remove (fn [[k _]] (test-keys k)) all-methods)
           count-methods (count production-methods)]
-      ;; Original: 8 production defmethods. Target: <= 4 (50% reduction)
-      (is (<= count-methods 4)
-          (str "Expected <= 4 production chain defmethods but found " count-methods
+      ;; Original: 8 production defmethods. Target: <= 5 (reduced from 8, +1 for combat blockers)
+      (is (<= count-methods 5)
+          (str "Expected <= 5 production chain defmethods but found " count-methods
                ". Methods: " (map first production-methods))))))

@@ -312,9 +312,16 @@
 
 
 (defmethod resolve-stack-item :declare-blockers
-  [db _stack-item]
-  ;; Stub — blocker assignment is a follow-up task
-  {:db db})
+  [db stack-item]
+  (let [attackers (combat/get-attacking-creatures db)]
+    (if (empty? attackers)
+      {:db db}
+      (let [controller (:stack-item/controller stack-item)
+            defender-id (queries/get-other-player-id db controller)]
+        {:db db
+         :needs-blockers true
+         :attackers attackers
+         :defender-id defender-id}))))
 
 
 (defmethod resolve-stack-item :combat-damage

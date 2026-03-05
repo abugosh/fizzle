@@ -356,3 +356,137 @@
             "Bot's creature should be tapped")
         (is (true? (:object/attacking obj))
             "Bot's creature should be marked attacking")))))
+
+
+;; === get-eligible-blockers ===
+
+(deftest test-get-eligible-blockers-basic
+  (testing "Untapped creatures can block"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db atk-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          db (clear-summoning-sickness db atk-id)
+          [db blk-id] (add-creature-to-battlefield db :nimble-mongoose :player-2)]
+      (is (= [blk-id] (combat/get-eligible-blockers db :player-2 atk-id))))))
+
+
+(deftest test-tapped-creature-cannot-block
+  (testing "Tapped creature cannot block"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db atk-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          db (clear-summoning-sickness db atk-id)
+          [db blk-id] (add-creature-to-battlefield db :nimble-mongoose :player-2)
+          obj-eid (q/get-object-eid db blk-id)
+          db (d/db-with db [[:db/add obj-eid :object/tapped true]])]
+      (is (empty? (combat/get-eligible-blockers db :player-2 atk-id))))))
+
+
+(deftest test-already-blocking-creature-not-eligible
+  (testing "Creature already assigned as blocker is not eligible for another attacker"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db atk1-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          db (clear-summoning-sickness db atk1-id)
+          [db _atk2-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          [db blk-id] (add-creature-to-battlefield db :nimble-mongoose :player-2)
+          blk-eid (q/get-object-eid db blk-id)
+          atk1-eid (q/get-object-eid db atk1-id)
+          db (d/db-with db [[:db/add blk-eid :object/blocking atk1-eid]])]
+      (is (empty? (combat/get-eligible-blockers db :player-2 _atk2-id))))))
+
+
+(deftest test-declare-blockers-resolution-returns-selection
+  (testing ":declare-blockers resolution returns blocker selection"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db atk-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          db (clear-summoning-sickness db atk-id)
+          db (combat/tap-and-mark-attackers db [atk-id])
+          [db _blk-id] (add-creature-to-battlefield db :nimble-mongoose :player-2)
+          db (stack/create-stack-item db {:stack-item/type :declare-blockers
+                                          :stack-item/controller :player-1
+                                          :stack-item/description "Declare Blockers"})
+          result (game/resolve-one-item db)]
+      (is (some? (:pending-selection result)))
+      (is (= :assign-blockers (:selection/type (:pending-selection result)))))))
+
+
+(deftest test-declare-blockers-no-attackers-skips
+  (testing ":declare-blockers with no attackers returns db unchanged"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          stack-item {:stack-item/type :declare-blockers
+                      :stack-item/controller :player-1}
+          result (resolution/resolve-stack-item db stack-item)]
+      (is (nil? (:needs-blockers result)))
+      (is (some? (:db result))))))
+
+
+(deftest test-blocker-confirm-marks-blocking
+  (testing "Confirming blocker assignment marks creature as blocking attacker"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db atk-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          db (clear-summoning-sickness db atk-id)
+          db (combat/tap-and-mark-attackers db [atk-id])
+          [db blk-id] (add-creature-to-battlefield db :nimble-mongoose :player-2)
+          db (stack/create-stack-item db {:stack-item/type :declare-blockers
+                                          :stack-item/controller :player-1
+                                          :stack-item/description "Declare Blockers"})
+          result (game/resolve-one-item db)
+          selection (:pending-selection result)
+          confirmed (th/confirm-selection (:db result) selection #{blk-id})
+          db-after (:db confirmed)
+          blk-obj (q/get-object db-after blk-id)
+          atk-eid (q/get-object-eid db-after atk-id)]
+      (is (= atk-eid (:object/blocking blk-obj))))))
+
+
+(deftest test-blocker-confirm-empty-skips
+  (testing "Confirming with no blockers leaves attacker unblocked"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db atk-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          db (clear-summoning-sickness db atk-id)
+          db (combat/tap-and-mark-attackers db [atk-id])
+          [db blk-id] (add-creature-to-battlefield db :nimble-mongoose :player-2)
+          db (stack/create-stack-item db {:stack-item/type :declare-blockers
+                                          :stack-item/controller :player-1
+                                          :stack-item/description "Declare Blockers"})
+          result (game/resolve-one-item db)
+          selection (:pending-selection result)
+          confirmed (th/confirm-selection (:db result) selection #{})
+          db-after (:db confirmed)
+          blk-obj (q/get-object db-after blk-id)]
+      (is (nil? (:object/blocking blk-obj))))))
+
+
+(deftest test-blocker-chaining-multiple-attackers
+  (testing "Serial blocker assignment chains through multiple attackers"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db atk1-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          db (clear-summoning-sickness db atk1-id)
+          [db atk2-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          db (clear-summoning-sickness db atk2-id)
+          db (combat/tap-and-mark-attackers db [atk1-id atk2-id])
+          [db blk1-id] (add-creature-to-battlefield db :nimble-mongoose :player-2)
+          [db blk2-id] (add-creature-to-battlefield db :nimble-mongoose :player-2)
+          db (stack/create-stack-item db {:stack-item/type :declare-blockers
+                                          :stack-item/controller :player-1
+                                          :stack-item/description "Declare Blockers"})
+          result (game/resolve-one-item db)
+          sel1 (:pending-selection result)
+          _ (is (= :assign-blockers (:selection/type sel1)))
+          confirmed1 (th/confirm-selection (:db result) sel1 #{blk1-id})
+          sel2 (:pending-selection confirmed1)]
+      (is (some? sel2))
+      (is (= :assign-blockers (:selection/type sel2)))
+      (let [confirmed2 (th/confirm-selection (:db confirmed1) sel2 #{blk2-id})
+            db-after (:db confirmed2)]
+        (is (nil? (:pending-selection confirmed2)))
+        (let [blk1-obj (q/get-object db-after blk1-id)
+              blk2-obj (q/get-object db-after blk2-id)]
+          (is (some? (:object/blocking blk1-obj)))
+          (is (some? (:object/blocking blk2-obj))))))))
