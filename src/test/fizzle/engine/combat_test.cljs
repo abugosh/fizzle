@@ -480,12 +480,12 @@
           sel1 (:pending-selection result)
           _ (is (= :assign-blockers (:selection/type sel1)))
           confirmed1 (th/confirm-selection (:db result) sel1 #{blk1-id})
-          sel2 (:pending-selection confirmed1)]
+          sel2 (:selection confirmed1)]
       (is (some? sel2))
       (is (= :assign-blockers (:selection/type sel2)))
       (let [confirmed2 (th/confirm-selection (:db confirmed1) sel2 #{blk2-id})
             db-after (:db confirmed2)]
-        (is (nil? (:pending-selection confirmed2)))
+        (is (nil? (:selection confirmed2)))
         (let [blk1-obj (q/get-object db-after blk1-id)
               blk2-obj (q/get-object db-after blk2-id)]
           (is (some? (:object/blocking blk1-obj)))
