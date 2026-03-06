@@ -8,6 +8,7 @@
     [fizzle.engine.card-spec :as card-spec]
     [fizzle.engine.creatures :as creatures]
     [fizzle.engine.rules :as rules]
+    [fizzle.engine.targeting :as targeting]
     [fizzle.engine.zones :as zones]
     [fizzle.test-helpers :as th]))
 
@@ -153,12 +154,19 @@
 ;; === F. Shroud ===
 
 (deftest nimble-mongoose-shroud-blocks-targeting-test
-  (testing "Nimble Mongoose cannot be targeted due to shroud"
+  (testing "Nimble Mongoose is excluded from valid targets due to shroud"
     (let [db (th/create-test-db {:mana {:green 1}})
           [db obj-id] (th/add-card-to-zone db :nimble-mongoose :hand :player-1)
-          db (th/cast-and-resolve db :player-1 obj-id)]
+          db (th/cast-and-resolve db :player-1 obj-id)
+          target-req {:target/type :object
+                      :target/zone :battlefield
+                      :target/controller :self
+                      :target/criteria {}}
+          valid (targeting/find-valid-targets db :player-1 target-req)]
       (is (true? (creatures/has-keyword? db obj-id :shroud))
-          "Should have shroud keyword"))))
+          "Should have shroud keyword")
+      (is (not (contains? (set valid) obj-id))
+          "Mongoose should not appear in valid targets"))))
 
 
 ;; === G. Edge cases ===

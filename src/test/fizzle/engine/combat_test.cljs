@@ -9,9 +9,12 @@
     [fizzle.engine.creatures :as creatures]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.effects.tokens]
+    [fizzle.engine.grants :as grants]
     [fizzle.engine.resolution :as resolution]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.state-based :as sba]
+    [fizzle.engine.targeting :as targeting]
+    [fizzle.engine.triggers :as triggers]
     [fizzle.engine.zones :as zones]
     [fizzle.events.game :as game]
     [fizzle.events.phases :as phases]
@@ -212,14 +215,17 @@
           "Should return {:db db}"))))
 
 
-(deftest test-declare-blockers-resolution-stub
-  (testing ":declare-blockers resolution is a no-op stub for now"
+(deftest test-declare-blockers-no-attackers-returns-db
+  (testing ":declare-blockers with no attacking creatures returns {:db db}"
     (let [db (th/create-test-db)
+          db (th/add-opponent db)
           stack-item {:stack-item/type :declare-blockers
                       :stack-item/controller :player-1}
           result (resolution/resolve-stack-item db stack-item)]
       (is (some? (:db result))
-          "Should return {:db db}"))))
+          "Should return {:db db}")
+      (is (nil? (:needs-blockers result))
+          "Should not need blockers when no attackers"))))
 
 
 (deftest test-combat-damage-resolution-no-attackers
@@ -793,3 +799,79 @@
       ;; 1/1 attacker took 4 damage — dies
       (is (= :graveyard (:object/zone (q/get-object db atk-id)))
           "1/1 attacker should die from 4 damage"))))
+
+
+;; === Trample ===
+
+(deftest test-trample-excess-damage-to-player
+  (testing "Trampling attacker deals excess damage beyond lethal to defending player"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          ;; 4/4 beast token as attacker with trample
+          db (effects/execute-effect db :player-1 beast-token-effect)
+          atk-id (->> (q/get-objects-in-zone db :player-1 :battlefield)
+                      (filter :object/is-token) first :object/id)
+          db (clear-summoning-sickness db atk-id)
+          ;; Grant trample
+          db (grants/add-grant db atk-id
+                               {:grant/id :test-trample
+                                :grant/type :keyword
+                                :grant/data {:grant/keyword :trample}})
+          ;; 1/1 Mongoose as blocker
+          [db blk-id] (add-creature-to-battlefield db :nimble-mongoose :player-2)
+          life-before (q/get-life-total db :player-2)
+          db (combat/tap-and-mark-attackers db [atk-id])
+          db (combat/mark-blockers db [blk-id] atk-id)
+          db (combat/deal-combat-damage db :player-1)]
+      ;; 4/4 trample: 1 lethal to blocker, 3 excess to player
+      (is (= 1 (:object/damage-marked (q/get-object db blk-id)))
+          "Blocker should receive lethal damage")
+      (is (= (- life-before 3) (q/get-life-total db :player-2))
+          "Defending player should take 3 trample damage"))))
+
+
+;; === Granted shroud blocks targeting ===
+
+(deftest test-granted-shroud-prevents-targeting
+  (testing "Creature with granted shroud keyword cannot be targeted"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          ;; 4/4 beast token (no innate shroud)
+          db (effects/execute-effect db :player-1 beast-token-effect)
+          token-id (->> (q/get-objects-in-zone db :player-1 :battlefield)
+                        (filter :object/is-token) first :object/id)
+          ;; Grant shroud via keyword grant
+          db (grants/add-grant db token-id
+                               {:grant/id :test-shroud
+                                :grant/type :keyword
+                                :grant/data {:grant/keyword :shroud}})
+          ;; Targeting requirement for battlefield creature
+          target-req {:target/type :object
+                      :target/zone :battlefield
+                      :target/controller :self
+                      :target/criteria {}}
+          valid (targeting/find-valid-targets db :player-1 target-req)]
+      (is (not (contains? (set valid) token-id))
+          "Creature with granted shroud should not be a valid target"))))
+
+
+;; === Opponent summoning sickness not cleared on active player's untap ===
+
+(deftest test-opponent-summoning-sickness-not-cleared-on-untap
+  (testing "Opponent's creatures keep summoning sickness during active player's untap"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          ;; Player 1's creature
+          [db p1-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          ;; Player 2's creature
+          [db p2-id] (add-creature-to-battlefield db :nimble-mongoose :player-2)
+          ;; Both should be summoning sick
+          _ (is (true? (creatures/summoning-sick? db p1-id)))
+          _ (is (true? (creatures/summoning-sick? db p2-id)))
+          ;; Resolve untap trigger for player 1
+          db (triggers/resolve-trigger db {:trigger/type :untap-step
+                                           :trigger/controller :player-1})]
+      (is (false? (creatures/summoning-sick? db p1-id))
+          "Active player's creature should lose summoning sickness")
+      (is (true? (creatures/summoning-sick? db p2-id))
+          "Opponent's creature should keep summoning sickness"))))

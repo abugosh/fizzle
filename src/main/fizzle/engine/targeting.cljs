@@ -8,7 +8,8 @@
    - target-still-legal?: Check if chosen target is still valid
    - all-targets-legal?: Check all targets on resolution"
   (:require
-    [fizzle.db.queries :as q]))
+    [fizzle.db.queries :as q]
+    [fizzle.engine.creatures :as creatures]))
 
 
 (defn get-targeting-requirements
@@ -67,9 +68,9 @@
         (->> objects-in-zone
              (filter #(q/matches-criteria? % criteria))
              ;; Shroud: objects with shroud cannot be targeted
+             ;; Uses creatures/has-keyword? to check both card keywords and grants
              (remove (fn [obj]
-                       (let [card-keywords (set (or (:card/keywords (:object/card obj)) #{}))]
-                         (contains? card-keywords :shroud))))
+                       (creatures/has-keyword? db (:object/id obj) :shroud)))
              (mapv :object/id)))
 
       ;; Ability targeting
@@ -141,11 +142,10 @@
       (if-let [obj (q/get-object db target-id)]
         (let [required-zone (:target/zone target-requirement)
               current-zone (:object/zone obj)
-              criteria (:target/criteria target-requirement)
-              card-keywords (set (or (:card/keywords (:object/card obj)) #{}))]
+              criteria (:target/criteria target-requirement)]
           (and (= current-zone required-zone)
                (q/matches-criteria? obj criteria)
-               (not (contains? card-keywords :shroud))))
+               (not (creatures/has-keyword? db target-id :shroud))))
         ;; Object not found - target is illegal
         false)
 
