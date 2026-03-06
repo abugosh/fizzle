@@ -325,6 +325,6 @@
 
 
 (defmethod resolve-stack-item :combat-damage
-  [db _stack-item]
-  ;; Stub — damage calculation is a follow-up task
-  {:db (combat/clear-combat-state db)})
+  [db stack-item]
+  (let [controller (:stack-item/controller stack-item)]
+    {:db (combat/deal-combat-damage db controller)}))

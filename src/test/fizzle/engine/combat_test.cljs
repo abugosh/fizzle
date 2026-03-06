@@ -1,14 +1,17 @@
 (ns fizzle.engine.combat-test
-  "Tests for combat system: stack items, declare attackers, phase skipping."
+  "Tests for combat system: stack items, declare attackers, phase skipping,
+   combat damage, and creature death SBAs."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.combat :as combat]
+    [fizzle.engine.creatures :as creatures]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.effects.tokens]
     [fizzle.engine.resolution :as resolution]
     [fizzle.engine.stack :as stack]
+    [fizzle.engine.state-based :as sba]
     [fizzle.engine.zones :as zones]
     [fizzle.events.game :as game]
     [fizzle.events.phases :as phases]
@@ -219,9 +222,10 @@
           "Should return {:db db}"))))
 
 
-(deftest test-combat-damage-resolution-stub
-  (testing ":combat-damage resolution is a no-op stub for now"
+(deftest test-combat-damage-resolution-no-attackers
+  (testing ":combat-damage with no attackers returns db with cleared combat state"
     (let [db (th/create-test-db)
+          db (th/add-opponent db)
           stack-item {:stack-item/type :combat-damage
                       :stack-item/controller :player-1}
           result (resolution/resolve-stack-item db stack-item)]
@@ -490,3 +494,302 @@
               blk2-obj (q/get-object db-after blk2-id)]
           (is (some? (:object/blocking blk1-obj)))
           (is (some? (:object/blocking blk2-obj))))))))
+
+
+;; === Combat Damage ===
+
+(deftest test-unblocked-attacker-deals-damage-to-player
+  (testing "Unblocked attacker deals effective power to defending player"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db atk-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          db (clear-summoning-sickness db atk-id)
+          db (combat/tap-and-mark-attackers db [atk-id])
+          life-before (q/get-life-total db :player-2)
+          power (creatures/effective-power db atk-id)
+          db (combat/deal-combat-damage db :player-1)]
+      (is (= (- life-before power) (q/get-life-total db :player-2))
+          "Defending player should lose life equal to attacker's power"))))
+
+
+(deftest test-blocked-attacker-deals-damage-to-blocker
+  (testing "Blocked attacker marks damage on blocker creature"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          ;; Use a 4/4 token as attacker
+          db (effects/execute-effect db :player-1 beast-token-effect)
+          atk-id (->> (q/get-objects-in-zone db :player-1 :battlefield)
+                      (filter :object/is-token) first :object/id)
+          db (clear-summoning-sickness db atk-id)
+          ;; Nimble Mongoose 1/1 as blocker
+          [db blk-id] (add-creature-to-battlefield db :nimble-mongoose :player-2)
+          db (combat/tap-and-mark-attackers db [atk-id])
+          db (combat/mark-blockers db [blk-id] atk-id)
+          db (combat/deal-combat-damage db :player-1)
+          blk-obj (q/get-object db blk-id)]
+      ;; 4/4 deals 1 lethal damage to 1/1 blocker (auto-lethal)
+      (is (= 1 (:object/damage-marked blk-obj))
+          "Blocker should receive lethal damage (toughness worth)"))))
+
+
+(deftest test-blocker-deals-damage-to-attacker
+  (testing "Blocker deals its effective power as damage to attacker"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          ;; Nimble Mongoose 1/1 as attacker
+          [db atk-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          db (clear-summoning-sickness db atk-id)
+          ;; 4/4 beast token as blocker
+          db (effects/execute-effect db :player-2 beast-token-effect)
+          blk-id (->> (q/get-objects-in-zone db :player-2 :battlefield)
+                      (filter :object/is-token) first :object/id)
+          db (combat/tap-and-mark-attackers db [atk-id])
+          db (combat/mark-blockers db [blk-id] atk-id)
+          db (combat/deal-combat-damage db :player-1)
+          atk-obj (q/get-object db atk-id)]
+      ;; 4/4 blocker deals 4 damage to 1/1 attacker
+      (is (= 4 (:object/damage-marked atk-obj))
+          "Attacker should receive blocker's power as damage"))))
+
+
+(deftest test-blocked-attacker-no-damage-to-player
+  (testing "Blocked attacker does not deal damage to defending player (no trample)"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          ;; 4/4 beast attacks
+          db (effects/execute-effect db :player-1 beast-token-effect)
+          atk-id (->> (q/get-objects-in-zone db :player-1 :battlefield)
+                      (filter :object/is-token) first :object/id)
+          db (clear-summoning-sickness db atk-id)
+          ;; 1/1 Mongoose blocks
+          [db blk-id] (add-creature-to-battlefield db :nimble-mongoose :player-2)
+          life-before (q/get-life-total db :player-2)
+          db (combat/tap-and-mark-attackers db [atk-id])
+          db (combat/mark-blockers db [blk-id] atk-id)
+          db (combat/deal-combat-damage db :player-1)]
+      (is (= life-before (q/get-life-total db :player-2))
+          "Defending player life should be unchanged when attacker is blocked"))))
+
+
+(deftest test-combat-damage-clears-combat-state
+  (testing "deal-combat-damage clears attacking/blocking flags"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db atk-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          db (clear-summoning-sickness db atk-id)
+          db (combat/tap-and-mark-attackers db [atk-id])
+          _ (is (true? (:object/attacking (q/get-object db atk-id))))
+          db (combat/deal-combat-damage db :player-1)
+          obj (q/get-object db atk-id)]
+      (is (nil? (:object/attacking obj))
+          "Attacking flag should be cleared after combat damage"))))
+
+
+(deftest test-mark-damage-accumulates
+  (testing "mark-damage adds to existing damage-marked"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db obj-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          db (combat/mark-damage db obj-id 2)
+          db (combat/mark-damage db obj-id 3)
+          obj (q/get-object db obj-id)]
+      (is (= 5 (:object/damage-marked obj))
+          "Damage should accumulate"))))
+
+
+(deftest test-get-blockers-for-attacker
+  (testing "get-blockers-for-attacker returns blocking creature ids"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db atk-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          db (clear-summoning-sickness db atk-id)
+          [db blk-id] (add-creature-to-battlefield db :nimble-mongoose :player-2)
+          db (combat/tap-and-mark-attackers db [atk-id])
+          db (combat/mark-blockers db [blk-id] atk-id)]
+      (is (= [blk-id] (combat/get-blockers-for-attacker db atk-id))))))
+
+
+(deftest test-get-blockers-for-unblocked-attacker
+  (testing "get-blockers-for-attacker returns empty for unblocked attacker"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db atk-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          db (clear-summoning-sickness db atk-id)
+          db (combat/tap-and-mark-attackers db [atk-id])]
+      (is (empty? (combat/get-blockers-for-attacker db atk-id))))))
+
+
+(deftest test-multiple-attackers-mixed-blocked-unblocked
+  (testing "Multiple attackers: blocked deals damage to blocker, unblocked to player"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          ;; Two 1/1 Mongooses attack
+          [db atk1-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          db (clear-summoning-sickness db atk1-id)
+          [db atk2-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          db (clear-summoning-sickness db atk2-id)
+          ;; One 1/1 blocker
+          [db blk-id] (add-creature-to-battlefield db :nimble-mongoose :player-2)
+          life-before (q/get-life-total db :player-2)
+          db (combat/tap-and-mark-attackers db [atk1-id atk2-id])
+          ;; Only block first attacker
+          db (combat/mark-blockers db [blk-id] atk1-id)
+          db (combat/deal-combat-damage db :player-1)]
+      ;; Unblocked atk2 deals 1 damage to player
+      (is (= (- life-before 1) (q/get-life-total db :player-2))
+          "Only unblocked attacker should deal damage to player")
+      ;; Blocked blocker gets 1 damage
+      (is (= 1 (:object/damage-marked (q/get-object db blk-id)))
+          "Blocker should have damage marked"))))
+
+
+(deftest test-combat-damage-resolution-deals-damage
+  (testing ":combat-damage resolution deals damage and clears combat state"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db atk-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          db (clear-summoning-sickness db atk-id)
+          db (combat/tap-and-mark-attackers db [atk-id])
+          life-before (q/get-life-total db :player-2)
+          stack-item {:stack-item/type :combat-damage
+                      :stack-item/controller :player-1}
+          result (resolution/resolve-stack-item db stack-item)
+          db-after (:db result)]
+      (is (= (- life-before 1) (q/get-life-total db-after :player-2))
+          "Defending player should lose life from combat damage")
+      (is (nil? (:object/attacking (q/get-object db-after atk-id)))
+          "Attacking flags should be cleared after resolution"))))
+
+
+;; === Creature Death SBAs ===
+
+(deftest test-lethal-damage-sba-detects-lethal
+  (testing "Lethal damage SBA fires when damage-marked >= toughness"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db obj-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          ;; Mongoose is 1/1, mark 1 damage
+          db (combat/mark-damage db obj-id 1)
+          sbas (sba/check-sba db :lethal-damage)]
+      (is (= 1 (count sbas)))
+      (is (= :lethal-damage (:sba/type (first sbas))))
+      (is (= obj-id (:sba/target (first sbas)))))))
+
+
+(deftest test-lethal-damage-sba-no-false-positive
+  (testing "Lethal damage SBA does not fire when damage < toughness"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          ;; 4/4 beast token with 3 damage
+          db (effects/execute-effect db :player-1 beast-token-effect)
+          token-id (->> (q/get-objects-in-zone db :player-1 :battlefield)
+                        (filter :object/is-token)
+                        first :object/id)
+          db (combat/mark-damage db token-id 3)
+          sbas (sba/check-sba db :lethal-damage)]
+      (is (empty? sbas)
+          "Should not fire when damage < toughness"))))
+
+
+(deftest test-lethal-damage-sba-executes-moves-to-graveyard
+  (testing "Executing lethal damage SBA moves creature to graveyard"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db obj-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          db (combat/mark-damage db obj-id 1)
+          db (sba/execute-sba db {:sba/type :lethal-damage :sba/target obj-id})
+          obj (q/get-object db obj-id)]
+      (is (= :graveyard (:object/zone obj))
+          "Creature should be in graveyard after lethal damage SBA"))))
+
+
+(deftest test-zero-toughness-sba-detects
+  (testing "Zero toughness SBA fires when effective toughness <= 0"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db obj-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          ;; Give it a -1/-1 counter to make toughness 0
+          obj-eid (q/get-object-eid db obj-id)
+          db (d/db-with db [[:db/add obj-eid :object/counters {:-1/-1 1}]])
+          sbas (sba/check-sba db :zero-toughness)]
+      (is (= 1 (count sbas)))
+      (is (= :zero-toughness (:sba/type (first sbas))))
+      (is (= obj-id (:sba/target (first sbas)))))))
+
+
+(deftest test-zero-toughness-sba-executes-moves-to-graveyard
+  (testing "Executing zero toughness SBA moves creature to graveyard"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db obj-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          obj-eid (q/get-object-eid db obj-id)
+          db (d/db-with db [[:db/add obj-eid :object/counters {:-1/-1 1}]])
+          db (sba/execute-sba db {:sba/type :zero-toughness :sba/target obj-id})
+          obj (q/get-object db obj-id)]
+      (is (= :graveyard (:object/zone obj))
+          "Creature should be in graveyard after zero toughness SBA"))))
+
+
+(deftest test-zero-toughness-sba-ignores-non-creatures
+  (testing "Zero toughness SBA does not fire for non-creature objects"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          ;; Lotus Petal is an artifact, not a creature
+          [db _obj-id] (th/add-card-to-zone db :lotus-petal :hand :player-1)
+          db (zones/move-to-zone db _obj-id :battlefield)
+          sbas (sba/check-sba db :zero-toughness)]
+      (is (empty? sbas)
+          "Non-creature should not trigger zero toughness SBA"))))
+
+
+(deftest test-check-and-execute-sbas-kills-lethal-creatures
+  (testing "Full SBA loop kills creatures with lethal damage"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db obj-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          db (combat/mark-damage db obj-id 1)
+          db (sba/check-and-execute-sbas db)
+          obj (q/get-object db obj-id)]
+      (is (= :graveyard (:object/zone obj))
+          "Creature should be in graveyard after SBA loop"))))
+
+
+(deftest test-combat-damage-with-blocker-both-die
+  (testing "1/1 attacker and 1/1 blocker both die in combat"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db atk-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          db (clear-summoning-sickness db atk-id)
+          [db blk-id] (add-creature-to-battlefield db :nimble-mongoose :player-2)
+          db (combat/tap-and-mark-attackers db [atk-id])
+          db (combat/mark-blockers db [blk-id] atk-id)
+          db (combat/deal-combat-damage db :player-1)
+          ;; Both 1/1 creatures dealt 1 damage to each other
+          db (sba/check-and-execute-sbas db)]
+      (is (= :graveyard (:object/zone (q/get-object db atk-id)))
+          "Attacker should die from blocker damage")
+      (is (= :graveyard (:object/zone (q/get-object db blk-id)))
+          "Blocker should die from attacker damage"))))
+
+
+(deftest test-combat-damage-big-blocker-survives
+  (testing "4/4 blocker survives combat with 1/1 attacker"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db atk-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          db (clear-summoning-sickness db atk-id)
+          ;; 4/4 beast token as blocker
+          db (effects/execute-effect db :player-2 beast-token-effect)
+          blk-id (->> (q/get-objects-in-zone db :player-2 :battlefield)
+                      (filter :object/is-token)
+                      first :object/id)
+          db (combat/tap-and-mark-attackers db [atk-id])
+          db (combat/mark-blockers db [blk-id] atk-id)
+          db (combat/deal-combat-damage db :player-1)
+          db (sba/check-and-execute-sbas db)]
+      ;; 4/4 blocker took 1 damage — survives
+      (is (= :battlefield (:object/zone (q/get-object db blk-id)))
+          "4/4 blocker should survive 1 damage")
+      ;; 1/1 attacker took 4 damage — dies
+      (is (= :graveyard (:object/zone (q/get-object db atk-id)))
+          "1/1 attacker should die from 4 damage"))))

@@ -2,8 +2,8 @@
   "Combat system for Fizzle.
 
    Pure functions for combat phase initiation, attacker selection,
-   and combat state management. Combat uses the existing stack and
-   priority system — no separate state machine."
+   combat damage assignment, and combat state management. Combat uses
+   the existing stack and priority system — no separate state machine."
   (:require
     [datascript.core :as d]
     [fizzle.db.queries :as q]
@@ -102,6 +102,111 @@
     (if (seq txs)
       (d/db-with db (vec txs))
       db)))
+
+
+(defn get-blockers-for-attacker
+  "Get object-ids of creatures blocking a specific attacker.
+   Pure function: (db, attacker-id) -> [blocker-ids]"
+  [db attacker-id]
+  (let [atk-eid (q/get-object-eid db attacker-id)
+        blocker-eids (d/q '[:find [?e ...]
+                            :in $ ?atk-eid
+                            :where [?e :object/zone :battlefield]
+                            [?e :object/blocking ?atk-eid]]
+                          db atk-eid)]
+    (mapv (fn [eid] (:object/id (d/pull db [:object/id] eid)))
+          (or blocker-eids []))))
+
+
+(defn mark-damage
+  "Add damage to a creature's damage-marked counter.
+   Pure function: (db, object-id, amount) -> db"
+  [db object-id amount]
+  (if (<= amount 0)
+    db
+    (let [obj-eid (q/get-object-eid db object-id)
+          current (or (:object/damage-marked (q/get-object db object-id)) 0)]
+      (d/db-with db [[:db/add obj-eid :object/damage-marked (+ current amount)]]))))
+
+
+(defn deal-damage-to-player
+  "Deal damage to a player by reducing life total.
+   Pure function: (db, player-id, amount) -> db"
+  [db player-id amount]
+  (if (<= amount 0)
+    db
+    (let [player-eid (q/get-player-eid db player-id)
+          current-life (q/get-life-total db player-id)]
+      (d/db-with db [[:db/add player-eid :player/life (- current-life amount)]]))))
+
+
+(defn assign-combat-damage-for-attacker
+  "Assign combat damage for a single attacker.
+   - If unblocked, deals effective power to defending player.
+   - If blocked, auto-assigns lethal damage to each blocker in order.
+     With trample, excess damage goes to defending player.
+   Returns updated db."
+  [db attacker-id defender-id]
+  (let [power (creatures/effective-power db attacker-id)
+        blockers (get-blockers-for-attacker db attacker-id)]
+    (if (empty? blockers)
+      ;; Unblocked — deal damage to defending player
+      (deal-damage-to-player db defender-id (or power 0))
+      ;; Blocked — auto-assign lethal to blockers in order
+      (let [has-trample (creatures/has-keyword? db attacker-id :trample)
+            result (reduce (fn [{:keys [db remaining-damage]} blocker-id]
+                             (let [toughness (or (creatures/effective-toughness db blocker-id) 0)
+                                   existing-dmg (or (:object/damage-marked (q/get-object db blocker-id)) 0)
+                                   lethal (max 0 (- toughness existing-dmg))
+                                   assigned (min remaining-damage lethal)]
+                               {:db (mark-damage db blocker-id assigned)
+                                :remaining-damage (- remaining-damage assigned)}))
+                           {:db db :remaining-damage (or power 0)}
+                           blockers)]
+        ;; Blockers also deal damage back to attacker
+        ;; Trample: excess goes to defending player
+        (cond-> (:db result)
+          (and has-trample (pos? (:remaining-damage result)))
+          (deal-damage-to-player defender-id (:remaining-damage result)))))))
+
+
+(defn assign-blocker-damage-to-attacker
+  "Each blocker deals its effective power as damage to the attacker it blocks.
+   Pure function: (db, blocker-id) -> db"
+  [db blocker-id]
+  (let [obj (q/get-object db blocker-id)
+        atk-eid (:object/blocking obj)]
+    (if-not atk-eid
+      db
+      (let [atk-id (:object/id (d/pull db [:object/id] atk-eid))
+            power (or (creatures/effective-power db blocker-id) 0)]
+        (mark-damage db atk-id power)))))
+
+
+(defn deal-combat-damage
+  "Deal all combat damage for the current combat.
+   1. Each attacker deals damage (to player or blockers).
+   2. Each blocker deals damage to its attacker.
+   3. Clear combat state (attacking/blocking flags).
+   Pure function: (db, controller) -> db"
+  [db controller]
+  (let [attackers (get-attacking-creatures db)
+        defender-id (q/get-other-player-id db controller)
+        ;; All blockers on the battlefield
+        all-blockers (d/q '[:find [?e ...]
+                            :where [?e :object/zone :battlefield]
+                            [?e :object/blocking _]]
+                          db)
+        blocker-ids (mapv (fn [eid] (:object/id (d/pull db [:object/id] eid)))
+                          (or all-blockers []))
+        ;; Step 1: Attackers deal damage
+        db (reduce (fn [d atk-id]
+                     (assign-combat-damage-for-attacker d atk-id defender-id))
+                   db attackers)
+        ;; Step 2: Blockers deal damage to attackers
+        db (reduce assign-blocker-damage-to-attacker db blocker-ids)]
+    ;; Step 3: Clear combat state
+    (clear-combat-state db)))
 
 
 (defn begin-combat

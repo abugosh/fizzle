@@ -11,7 +11,9 @@
    All functions are pure: (db, args) -> db"
   (:require
     [datascript.core :as d]
-    [fizzle.db.queries :as q]))
+    [fizzle.db.queries :as q]
+    [fizzle.engine.creatures :as creatures]
+    [fizzle.engine.zones :as zones]))
 
 
 (defmulti check-sba
@@ -171,4 +173,58 @@
             txs (cond-> [[:db.fn/retractEntity token-eid]]
                   card-eid (conj [:db.fn/retractEntity card-eid]))]
         (d/db-with db txs))
+      db)))
+
+
+;; === :lethal-damage SBA ===
+;; Creatures with damage-marked >= effective toughness move to graveyard.
+
+(defmethod check-sba :lethal-damage
+  [db _type]
+  (let [damaged (d/q '[:find ?oid ?dmg
+                       :where [?e :object/zone :battlefield]
+                       [?e :object/id ?oid]
+                       [?e :object/damage-marked ?dmg]
+                       [(> ?dmg 0)]]
+                     db)]
+    (into []
+          (comp
+            (filter (fn [[oid dmg]]
+                      (when-let [toughness (creatures/effective-toughness db oid)]
+                        (>= dmg toughness))))
+            (map (fn [[oid _]] {:sba/type :lethal-damage :sba/target oid})))
+          damaged)))
+
+
+(defmethod execute-sba :lethal-damage
+  [db sba]
+  (let [object-id (:sba/target sba)]
+    (if (q/get-object-eid db object-id)
+      (zones/move-to-zone db object-id :graveyard)
+      db)))
+
+
+;; === :zero-toughness SBA ===
+;; Creatures with effective toughness <= 0 move to graveyard.
+
+(defmethod check-sba :zero-toughness
+  [db _type]
+  (let [bf-creatures (d/q '[:find [?oid ...]
+                            :where [?e :object/zone :battlefield]
+                            [?e :object/id ?oid]]
+                          db)]
+    (into []
+          (comp
+            (filter (fn [oid]
+                      (when-let [toughness (creatures/effective-toughness db oid)]
+                        (<= toughness 0))))
+            (map (fn [oid] {:sba/type :zero-toughness :sba/target oid})))
+          (or bf-creatures []))))
+
+
+(defmethod execute-sba :zero-toughness
+  [db sba]
+  (let [object-id (:sba/target sba)]
+    (if (q/get-object-eid db object-id)
+      (zones/move-to-zone db object-id :graveyard)
       db)))
