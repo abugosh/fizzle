@@ -93,6 +93,17 @@
 (defmethod render-selection-modal :spell-mode [s c] [custom/spell-mode-selection-modal s c])
 (defmethod render-selection-modal :discard-specific-cost [s c] [zone-pick/zone-pick-modal s c])
 (defmethod render-selection-modal :unless-pay [_ _] nil)
+
+
+;; Combat
+(defmethod render-selection-modal :select-attackers [s c]
+  (object-target s c :battlefield "Attackers selected" "Select creatures to attack with"))
+
+
+(defmethod render-selection-modal :assign-blockers [s c]
+  (object-target s c :battlefield "Blockers assigned" "Select blockers (or confirm with none)"))
+
+
 (defmethod render-selection-modal :default [s c] [zone-pick/zone-pick-modal s c])
 
 

@@ -15,6 +15,7 @@
    :selection/player-id controller
    :selection/selected #{}
    :selection/valid-targets (vec eligible-attackers)
+   :selection/card-source :valid-targets
    :selection/validation :at-most
    :selection/select-count (count eligible-attackers)
    :selection/auto-confirm? false})
@@ -54,6 +55,7 @@
      :selection/remaining-attackers (vec (rest remaining-attackers))
      :selection/selected #{}
      :selection/valid-targets (vec eligible)
+     :selection/card-source :valid-targets
      :selection/validation :at-most
      :selection/select-count (count eligible)
      :selection/auto-confirm? (empty? eligible)}))

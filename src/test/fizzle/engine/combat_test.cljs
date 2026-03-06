@@ -272,7 +272,9 @@
       (is (= :select-attackers (:selection/type (:pending-selection result)))
           "Selection type should be :select-attackers")
       (is (= #{obj-id} (set (:selection/valid-targets (:pending-selection result))))
-          "Valid targets should include eligible attackers"))))
+          "Valid targets should include eligible attackers")
+      (is (= :valid-targets (:selection/card-source (:pending-selection result)))
+          "Card source should be :valid-targets so view shows creatures, not hand"))))
 
 
 (deftest test-attacker-selection-confirm-taps-and-marks
@@ -419,7 +421,9 @@
                                           :stack-item/description "Declare Blockers"})
           result (game/resolve-one-item db)]
       (is (some? (:pending-selection result)))
-      (is (= :assign-blockers (:selection/type (:pending-selection result)))))))
+      (is (= :assign-blockers (:selection/type (:pending-selection result))))
+      (is (= :valid-targets (:selection/card-source (:pending-selection result)))
+          "Card source should be :valid-targets so view shows creatures, not hand"))))
 
 
 (deftest test-declare-blockers-no-attackers-skips
