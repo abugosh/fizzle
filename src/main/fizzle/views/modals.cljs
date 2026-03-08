@@ -97,11 +97,11 @@
 
 ;; Combat
 (defmethod render-selection-modal :select-attackers [s c]
-  (object-target s c :battlefield "Attackers selected" "Select creatures to attack with"))
+  [custom/attacker-selection-modal s c])
 
 
 (defmethod render-selection-modal :assign-blockers [s c]
-  (object-target s c :battlefield "Blockers assigned" "Select blockers (or confirm with none)"))
+  [custom/blocker-selection-modal s c])
 
 
 (defmethod render-selection-modal :default [s c] [zone-pick/zone-pick-modal s c])

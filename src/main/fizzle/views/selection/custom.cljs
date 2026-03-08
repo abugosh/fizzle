@@ -9,6 +9,65 @@
     [re-frame.core :as rf]))
 
 
+;; === Combat Modals ===
+
+(defn attacker-selection-modal
+  [selection cards]
+  (let [selected (or (:selection/selected selection) #{})
+        valid? @(rf/subscribe [::subs/selection-valid?])]
+    [:div {:class common/overlay-class}
+     [:div {:class (common/container-class {})}
+      [:h2 {:class "text-text m-0 mb-2 text-lg"} "Declare Attackers"]
+      [:p {:class (str "m-0 mb-4 text-sm "
+                       (if valid? "text-health-good" "text-health-danger"))}
+       (if valid? "Attackers selected" "Select creatures to attack with")]
+      [:div {:class "flex flex-wrap gap-2.5 mb-5 min-h-[60px]"}
+       (if (seq cards)
+         (for [obj cards]
+           ^{:key (:object/id obj)}
+           [common/selection-card-view obj
+            (contains? selected (:object/id obj))
+            ::selection-events/toggle-selection])
+         [:div {:class "text-perm-text-tapped"} "No eligible attackers"])]
+      [:div {:class "flex justify-end"}
+       [common/confirm-button {:label "Confirm" :valid? valid?
+                               :on-confirm #(rf/dispatch [::selection-events/confirm-selection])}]]]]))
+
+
+(defn blocker-selection-modal
+  [selection cards]
+  (let [selected (or (:selection/selected selection) #{})
+        valid? @(rf/subscribe [::subs/selection-valid?])
+        attacker-display @(rf/subscribe [::subs/blocker-attacker-display])
+        attacker-toughness (:effective-toughness attacker-display)
+        attacker-name (:card-name attacker-display)]
+    [:div {:class common/overlay-class}
+     [:div {:class (common/container-class {})}
+      [:h2 {:class "text-text m-0 mb-2 text-lg"}
+       (str "Assign Blockers" (when attacker-name (str " for " attacker-name)))]
+      (when attacker-display
+        [:p {:class "m-0 mb-2 text-sm text-text-dim"}
+         (str "Attacker: "
+              (:effective-power attacker-display) "/"
+              attacker-toughness)])
+      [:p {:class (str "m-0 mb-4 text-sm "
+                       (if valid? "text-health-good" "text-health-danger"))}
+       (if valid? "Blockers assigned" "Select blockers (or confirm with none)")]
+      [:div {:class "flex flex-wrap gap-2.5 mb-5 min-h-[60px]"}
+       (if (seq cards)
+         (for [obj cards]
+           ^{:key (:object/id obj)}
+           [common/selection-card-view obj
+            (contains? selected (:object/id obj))
+            ::selection-events/toggle-selection
+            true
+            attacker-toughness])
+         [:div {:class "text-perm-text-tapped"} "No eligible blockers"])]
+      [:div {:class "flex justify-end"}
+       [common/confirm-button {:label "Confirm" :valid? valid?
+                               :on-confirm #(rf/dispatch [::selection-events/confirm-selection])}]]]]))
+
+
 ;; === Player Target ===
 
 (defn player-target-modal

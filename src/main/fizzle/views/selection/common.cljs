@@ -48,16 +48,38 @@
          children)])
 
 
+(defn- pt-display
+  "Inline P/T display for a creature object in a selection card.
+   Shows 'P/T' with power and toughness values.
+   Also shows combat math preview (power vs opposing toughness) when context is provided."
+  [creature-display opposing-toughness]
+  (let [p (:effective-power creature-display)
+        t (:effective-toughness creature-display)]
+    [:div {:class "text-[12px] font-bold mt-1"}
+     (str p "/" t)
+     (when (and opposing-toughness (some? p))
+       [:span {:class (str " text-[11px] ml-1 "
+                           (if (>= p opposing-toughness)
+                             "text-green-400"
+                             "text-red-400"))}
+        (str "(" p " vs " opposing-toughness ")")])]))
+
+
 (defn selection-card-view
   "A card in a selection modal. Supports optional selectable? param for
-   hand-reveal style (dimmed non-selectable cards)."
+   hand-reveal style (dimmed non-selectable cards).
+   When obj has :creature/display, shows effective P/T below card name.
+   When opposing-toughness is provided, shows combat math preview."
   ([obj selected? toggle-event]
-   (selection-card-view obj selected? toggle-event true))
+   (selection-card-view obj selected? toggle-event true nil))
   ([obj selected? toggle-event selectable?]
+   (selection-card-view obj selected? toggle-event selectable? nil))
+  ([obj selected? toggle-event selectable? opposing-toughness]
    (let [card-name (get-in obj [:object/card :card/name])
          object-id (:object/id obj)
          card-types (get-in obj [:object/card :card/types])
          card-colors (get-in obj [:object/card :card/colors])
+         creature-display (:creature/display obj)
          border-class (cond
                         selected? "border-[3px] border-border-accent"
                         (not selectable?) "border-2 border-border opacity-50"
@@ -69,7 +91,9 @@
                         border-class " " bg-class)
             :on-click (when selectable?
                         #(rf/dispatch [toggle-event object-id]))}
-      card-name])))
+      card-name
+      (when creature-display
+        [pt-display creature-display opposing-toughness])])))
 
 
 (defn stepper-button-class

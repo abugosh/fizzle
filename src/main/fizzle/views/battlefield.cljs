@@ -140,12 +140,24 @@
            [:span {:class "mr-1.5"}
             (str (name counter-type) ": " count)])])
       (when creature-display
-        [:div {:class "text-[13px] font-bold mb-1"}
+        [:div {:class "text-[13px] font-bold mb-1 flex items-center justify-center gap-1"}
          [:span {:class (pt-text-class (:power-mod creature-display))}
           (str (:effective-power creature-display))]
          "/"
          [:span {:class (pt-text-class (:toughness-mod creature-display))}
-          (str (:effective-toughness creature-display))]])
+          (str (:effective-toughness creature-display))]
+         (when (pos? (:damage-marked creature-display))
+           [:span {:class "ml-1 px-1 rounded bg-red-700 text-white text-[11px] font-bold"}
+            (str (:damage-marked creature-display))])
+         (when (:summoning-sick creature-display)
+           [:span {:class "ml-1 px-1 rounded text-[10px] text-text-dim border border-text-dim"
+                   :title "Summoning sickness"} "sick"])
+         (when (:attacking creature-display)
+           [:span {:class "ml-1 px-1 rounded bg-red-600 text-white text-[10px] font-bold"
+                   :title "Attacking"} "ATK"])
+         (when (:blocking creature-display)
+           [:span {:class "ml-1 px-1 rounded bg-blue-600 text-white text-[10px] font-bold"
+                   :title "Blocking"} "BLK"])])
       (when (and show-buttons? (seq producible-colors))
         [:div {:class "flex justify-center flex-wrap"}
          (for [color producible-colors]

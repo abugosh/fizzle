@@ -449,48 +449,69 @@
     (when (and game-db selection)
       (let [player-id (:selection/player-id selection)
             card-source (:selection/card-source selection)
-            zone (:selection/zone selection)]
+            zone (:selection/zone selection)
+            combat-selection? (#{:select-attackers :assign-blockers}
+                               (:selection/type selection))
+            raw-cards
+            (case card-source
+              ;; Map candidate IDs to card objects (pile-choice, exile-cards-cost, peek-and-select)
+              :candidates
+              (->> (:selection/candidates selection)
+                   (map #(queries/get-object game-db %))
+                   (filterv some?))
+
+              ;; Map valid-target IDs to card objects (cast-time-targeting, ability-targeting)
+              :valid-targets
+              (->> (set (:selection/valid-targets selection))
+                   (map #(queries/get-object game-db %))
+                   (filterv some?))
+
+              ;; Intersect candidates with library (tutor)
+              :library
+              (let [candidates (:selection/candidates selection)
+                    library (queries/get-objects-in-zone game-db player-id :library)]
+                (filterv #(contains? candidates (:object/id %)) library))
+
+              ;; Intersect candidates with sideboard (wish tutor)
+              :sideboard
+              (let [candidates (:selection/candidates selection)
+                    sideboard (queries/get-objects-in-zone game-db player-id :sideboard)]
+                (filterv #(contains? candidates (:object/id %)) sideboard))
+
+              ;; Query hand directly (discard)
+              :hand
+              (queries/get-hand game-db player-id)
+
+              ;; Query target player's hand (hand-reveal-discard: Duress)
+              :opponent-hand
+              (let [target-player (:selection/target-player selection)]
+                (queries/get-objects-in-zone game-db target-player :hand))
+
+              ;; Query by zone from selection metadata (graveyard-return, default)
+              :zone
+              (queries/get-objects-in-zone game-db player-id (or zone :hand))
+
+              ;; Fallback for selections without card-source metadata
+              (queries/get-objects-in-zone game-db player-id (or zone :hand)))]
         (sorting/sort-cards
-          (case card-source
-            ;; Map candidate IDs to card objects (pile-choice, exile-cards-cost, peek-and-select)
-            :candidates
-            (->> (:selection/candidates selection)
-                 (map #(queries/get-object game-db %))
-                 (filterv some?))
+          (if combat-selection?
+            (mapv #(enrich-creature game-db %) raw-cards)
+            raw-cards))))))
 
-            ;; Map valid-target IDs to card objects (cast-time-targeting, ability-targeting)
-            :valid-targets
-            (->> (set (:selection/valid-targets selection))
-                 (map #(queries/get-object game-db %))
-                 (filterv some?))
 
-            ;; Intersect candidates with library (tutor)
-            :library
-            (let [candidates (:selection/candidates selection)
-                  library (queries/get-objects-in-zone game-db player-id :library)]
-              (filterv #(contains? candidates (:object/id %)) library))
-
-            ;; Intersect candidates with sideboard (wish tutor)
-            :sideboard
-            (let [candidates (:selection/candidates selection)
-                  sideboard (queries/get-objects-in-zone game-db player-id :sideboard)]
-              (filterv #(contains? candidates (:object/id %)) sideboard))
-
-            ;; Query hand directly (discard)
-            :hand
-            (queries/get-hand game-db player-id)
-
-            ;; Query target player's hand (hand-reveal-discard: Duress)
-            :opponent-hand
-            (let [target-player (:selection/target-player selection)]
-              (queries/get-objects-in-zone game-db target-player :hand))
-
-            ;; Query by zone from selection metadata (graveyard-return, default)
-            :zone
-            (queries/get-objects-in-zone game-db player-id (or zone :hand))
-
-            ;; Fallback for selections without card-source metadata
-            (queries/get-objects-in-zone game-db player-id (or zone :hand))))))))
+;; Current attacker display data for blocker assignment combat math.
+;; Returns {:effective-power int :effective-toughness int :card-name string} or nil.
+(rf/reg-sub
+  ::blocker-attacker-display
+  :<- [::game-db]
+  :<- [::pending-selection]
+  (fn [[game-db selection] _]
+    (when (and game-db selection (= :assign-blockers (:selection/type selection)))
+      (when-let [attacker-id (:selection/current-attacker selection)]
+        (when-let [obj (queries/get-object game-db attacker-id)]
+          (let [display (compute-creature-display game-db obj)]
+            (when display
+              (assoc display :card-name (get-in obj [:object/card :card/name])))))))))
 
 
 ;; Storm split source spell name

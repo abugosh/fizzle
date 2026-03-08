@@ -649,3 +649,39 @@
           result (sub-value {:game/db game-db} [::subs/battlefield])
           land (first (:lands result))]
       (is (nil? (:creature/display land)) "non-creature should not have :creature/display"))))
+
+
+;; === ::blocker-attacker-display tests ===
+
+(deftest test-blocker-attacker-display-nil-when-no-selection
+  (testing "blocker-attacker-display returns nil when no pending selection"
+    (let [game-db (make-game-db)
+          result (sub-value {:game/db game-db} [::subs/blocker-attacker-display])]
+      (is (nil? result)))))
+
+
+(deftest test-blocker-attacker-display-nil-for-non-blocker-selection
+  (testing "blocker-attacker-display returns nil for non-assign-blockers selection type"
+    (let [game-db (make-game-db)
+          selection {:selection/type :select-attackers
+                     :selection/player-id :player-1}
+          result (sub-value {:game/db game-db
+                             :game/pending-selection selection}
+                            [::subs/blocker-attacker-display])]
+      (is (nil? result)))))
+
+
+(deftest test-blocker-attacker-display-returns-attacker-data
+  (testing "blocker-attacker-display returns attacker's display data when assign-blockers active"
+    (let [[game-db attacker-id] (add-battlefield-creature (make-game-db) :opponent "Grizzly Bears" 2 2)
+          selection {:selection/type :assign-blockers
+                     :selection/player-id :player-1
+                     :selection/current-attacker attacker-id
+                     :selection/valid-targets []}
+          result (sub-value {:game/db game-db
+                             :game/pending-selection selection}
+                            [::subs/blocker-attacker-display])]
+      (is (some? result))
+      (is (= 2 (:effective-power result)))
+      (is (= 2 (:effective-toughness result)))
+      (is (= "Grizzly Bears" (:card-name result))))))
