@@ -208,3 +208,20 @@
     (is (= "bg-identity-colorless" (card-styles/get-color-identity-bg-class #{} #{:artifact})))
     (is (= "bg-identity-colorless" (card-styles/get-color-identity-bg-class #{} nil)))
     (is (= "bg-identity-colorless" (card-styles/get-color-identity-bg-class nil nil)))))
+
+
+;; === pt-text-class ===
+
+(deftest pt-text-class-buffed
+  (testing ":buffed modification returns green text class"
+    (is (= "text-green-400" (battlefield/pt-text-class :buffed)))))
+
+
+(deftest pt-text-class-debuffed
+  (testing ":debuffed modification returns red text class"
+    (is (= "text-red-400" (battlefield/pt-text-class :debuffed)))))
+
+
+(deftest pt-text-class-nil-returns-empty
+  (testing "nil modification (unmodified) returns empty string"
+    (is (= "" (battlefield/pt-text-class nil)))))

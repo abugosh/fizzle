@@ -4,6 +4,7 @@
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
+    [fizzle.engine.grants :as grants]
     [fizzle.subs.game :as subs]
     [re-frame.core :as rf]
     [re-frame.db :as rf-db]))
@@ -494,3 +495,157 @@
   (testing "::human-player-id returns nil when game-db is nil"
     (let [result (sub-value {} [::subs/human-player-id])]
       (is (nil? result)))))
+
+
+;; === compute-creature-display tests ===
+
+(defn- add-battlefield-creature
+  "Add a creature to a player's battlefield with P/T. Returns [game-db obj-id]."
+  [game-db player-id card-name power toughness]
+  (let [conn (d/conn-from-db game-db)
+        player-eid (q/get-player-eid game-db player-id)
+        card-id (keyword (str "card-" (random-uuid)))
+        _ (d/transact! conn [{:card/id card-id
+                              :card/name card-name
+                              :card/cmc 1
+                              :card/types #{:creature}}])
+        card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] @conn card-id)
+        obj-id (random-uuid)
+        _ (d/transact! conn [{:object/id obj-id
+                              :object/card card-eid
+                              :object/zone :battlefield
+                              :object/owner player-eid
+                              :object/controller player-eid
+                              :object/tapped false
+                              :object/power power
+                              :object/toughness toughness}])]
+    [@conn obj-id]))
+
+
+(deftest test-compute-creature-display-base-pt
+  (testing "compute-creature-display returns base P/T with no modifications"
+    (let [[game-db obj-id] (add-battlefield-creature (make-game-db) :player-1 "Bear" 2 2)
+          obj (q/get-object game-db obj-id)
+          result (subs/compute-creature-display game-db obj)]
+      (is (= 2 (:effective-power result)))
+      (is (= 2 (:effective-toughness result)))
+      (is (= 2 (:base-power result)))
+      (is (= 2 (:base-toughness result)))
+      (is (nil? (:power-mod result)))
+      (is (nil? (:toughness-mod result)))
+      (is (= 0 (:damage-marked result)))
+      (is (false? (:attacking result)))
+      (is (false? (:blocking result)))
+      (is (false? (:summoning-sick result))))))
+
+
+(deftest test-compute-creature-display-buffed-by-counters
+  (testing "compute-creature-display returns :buffed mod when +1/+1 counter present"
+    (let [[game-db obj-id] (add-battlefield-creature (make-game-db) :player-1 "Bear" 2 2)
+          obj-eid (q/get-object-eid game-db obj-id)
+          game-db (d/db-with game-db [[:db/add obj-eid :object/counters {:+1/+1 1}]])
+          obj (q/get-object game-db obj-id)
+          result (subs/compute-creature-display game-db obj)]
+      (is (= 3 (:effective-power result)))
+      (is (= 3 (:effective-toughness result)))
+      (is (= 2 (:base-power result)))
+      (is (= 2 (:base-toughness result)))
+      (is (= :buffed (:power-mod result)))
+      (is (= :buffed (:toughness-mod result))))))
+
+
+(deftest test-compute-creature-display-debuffed-by-counters
+  (testing "compute-creature-display returns :debuffed mod when -1/-1 counter present"
+    (let [[game-db obj-id] (add-battlefield-creature (make-game-db) :player-1 "Bear" 2 2)
+          obj-eid (q/get-object-eid game-db obj-id)
+          game-db (d/db-with game-db [[:db/add obj-eid :object/counters {:-1/-1 1}]])
+          obj (q/get-object game-db obj-id)
+          result (subs/compute-creature-display game-db obj)]
+      (is (= 1 (:effective-power result)))
+      (is (= 1 (:effective-toughness result)))
+      (is (= :debuffed (:power-mod result)))
+      (is (= :debuffed (:toughness-mod result))))))
+
+
+(deftest test-compute-creature-display-mixed-mods-cancel
+  (testing "compute-creature-display returns nil mod when +1/+1 and -1/-1 counters cancel"
+    (let [[game-db obj-id] (add-battlefield-creature (make-game-db) :player-1 "Bear" 2 2)
+          obj-eid (q/get-object-eid game-db obj-id)
+          game-db (d/db-with game-db [[:db/add obj-eid :object/counters {:+1/+1 1 :-1/-1 1}]])
+          obj (q/get-object game-db obj-id)
+          result (subs/compute-creature-display game-db obj)]
+      (is (= 2 (:effective-power result)))
+      (is (= 2 (:effective-toughness result)))
+      (is (nil? (:power-mod result)))
+      (is (nil? (:toughness-mod result))))))
+
+
+(deftest test-compute-creature-display-split-mods
+  (testing "compute-creature-display colors power and toughness mods independently"
+    (let [[game-db obj-id] (add-battlefield-creature (make-game-db) :player-1 "Bear" 2 2)
+          ;; Grant +2/+0 to buff only power
+          game-db (grants/add-grant game-db obj-id
+                                    {:grant/id (random-uuid)
+                                     :grant/type :pt-modifier
+                                     :grant/source obj-id
+                                     :grant/data {:grant/power 2 :grant/toughness 0}})
+          obj (q/get-object game-db obj-id)
+          result (subs/compute-creature-display game-db obj)]
+      (is (= 4 (:effective-power result)))
+      (is (= 2 (:effective-toughness result)))
+      (is (= :buffed (:power-mod result)))
+      (is (nil? (:toughness-mod result))))))
+
+
+(deftest test-compute-creature-display-non-creature-returns-nil
+  (testing "compute-creature-display returns nil for non-creature objects"
+    (let [game-db (make-game-db)
+          conn (d/conn-from-db game-db)
+          player-eid (q/get-player-eid game-db :player-1)
+          card-id (keyword (str "card-" (random-uuid)))
+          _ (d/transact! conn [{:card/id card-id
+                                :card/name "Swamp"
+                                :card/cmc 0
+                                :card/types #{:land}}])
+          card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] @conn card-id)
+          obj-id (random-uuid)
+          _ (d/transact! conn [{:object/id obj-id
+                                :object/card card-eid
+                                :object/zone :battlefield
+                                :object/owner player-eid
+                                :object/controller player-eid
+                                :object/tapped false}])
+          game-db @conn
+          obj (q/get-object game-db obj-id)
+          result (subs/compute-creature-display game-db obj)]
+      (is (nil? result)))))
+
+
+(deftest test-compute-creature-display-with-damage
+  (testing "compute-creature-display includes damage-marked when > 0"
+    (let [[game-db obj-id] (add-battlefield-creature (make-game-db) :player-1 "Bear" 2 2)
+          obj-eid (q/get-object-eid game-db obj-id)
+          game-db (d/db-with game-db [[:db/add obj-eid :object/damage-marked 1]])
+          obj (q/get-object game-db obj-id)
+          result (subs/compute-creature-display game-db obj)]
+      (is (= 1 (:damage-marked result))))))
+
+
+;; === battlefield subscription includes creature-display data ===
+
+(deftest test-battlefield-creatures-have-display-data
+  (testing "battlefield subscription enriches creatures with :creature/display"
+    (let [[game-db _obj-id] (add-battlefield-creature (make-game-db) :player-1 "Bear" 2 2)
+          result (sub-value {:game/db game-db} [::subs/battlefield])
+          creature (first (:creatures result))]
+      (is (some? (:creature/display creature)) "creature should have :creature/display data")
+      (is (= 2 (:effective-power (:creature/display creature))))
+      (is (= 2 (:effective-toughness (:creature/display creature)))))))
+
+
+(deftest test-battlefield-non-creatures-no-display-data
+  (testing "battlefield subscription does not add :creature/display to non-creatures"
+    (let [game-db (add-battlefield-permanent (make-game-db) :player-1 "Swamp" 0 #{:land})
+          result (sub-value {:game/db game-db} [::subs/battlefield])
+          land (first (:lands result))]
+      (is (nil? (:creature/display land)) "non-creature should not have :creature/display"))))

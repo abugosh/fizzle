@@ -99,6 +99,15 @@
    label])
 
 
+(defn pt-text-class
+  "Returns Tailwind text color class for a P/T modification."
+  [mod]
+  (case mod
+    :buffed "text-green-400"
+    :debuffed "text-red-400"
+    ""))
+
+
 (defn- permanent-view
   "Render a permanent card. Set show-buttons? false for opponent cards."
   ([obj] (permanent-view obj true))
@@ -116,7 +125,8 @@
          bg-class (if tapped?
                     "bg-perm-bg-tapped"
                     (card-styles/get-color-identity-bg-class card-colors card-types))
-         text-class (if tapped? "text-perm-text-tapped" "text-perm-text")]
+         text-class (if tapped? "text-perm-text-tapped" "text-perm-text")
+         creature-display (:creature/display obj)]
      [:div {:class (str "border-2 rounded-md p-2 mr-1.5 mb-1.5 min-w-[100px] text-center "
                         border-class " " bg-class " " text-class
                         (when tapped? " rotate-[6deg]"))}
@@ -129,6 +139,13 @@
            ^{:key counter-type}
            [:span {:class "mr-1.5"}
             (str (name counter-type) ": " count)])])
+      (when creature-display
+        [:div {:class "text-[13px] font-bold mb-1"}
+         [:span {:class (pt-text-class (:power-mod creature-display))}
+          (str (:effective-power creature-display))]
+         "/"
+         [:span {:class (pt-text-class (:toughness-mod creature-display))}
+          (str (:effective-toughness creature-display))]])
       (when (and show-buttons? (seq producible-colors))
         [:div {:class "flex justify-center flex-wrap"}
          (for [color producible-colors]

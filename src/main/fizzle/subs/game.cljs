@@ -2,6 +2,7 @@
   (:require
     [datascript.core :as d]
     [fizzle.db.queries :as queries]
+    [fizzle.engine.creatures :as creatures]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.sorting :as sorting]
     [fizzle.engine.validation :as validation]
@@ -211,6 +212,43 @@
     (when game-db (queries/get-life-total game-db :opponent))))
 
 
+(defn compute-creature-display
+  "Compute display data for a creature object. Returns nil for non-creatures.
+   Bundles effective P/T, base P/T, modification status, damage, combat state, and
+   summoning sickness into a single map to avoid per-field subscription overhead."
+  [game-db obj]
+  (let [object-id (:object/id obj)
+        eff-power (creatures/effective-power game-db object-id)]
+    (when (some? eff-power)
+      (let [eff-toughness (creatures/effective-toughness game-db object-id)
+            base-power (or (:object/power obj) 0)
+            base-toughness (or (:object/toughness obj) 0)
+            power-mod (cond (> eff-power base-power) :buffed
+                            (< eff-power base-power) :debuffed
+                            :else nil)
+            toughness-mod (cond (> eff-toughness base-toughness) :buffed
+                                (< eff-toughness base-toughness) :debuffed
+                                :else nil)]
+        {:effective-power eff-power
+         :effective-toughness eff-toughness
+         :base-power base-power
+         :base-toughness base-toughness
+         :power-mod power-mod
+         :toughness-mod toughness-mod
+         :damage-marked (or (:object/damage-marked obj) 0)
+         :attacking (boolean (:object/attacking obj))
+         :blocking (some? (:object/blocking obj))
+         :summoning-sick (creatures/summoning-sick? game-db object-id)}))))
+
+
+(defn- enrich-creature
+  "Assoc :creature/display onto creature objects; returns obj unchanged for non-creatures."
+  [game-db obj]
+  (if-let [display (compute-creature-display game-db obj)]
+    (assoc obj :creature/display display)
+    obj))
+
+
 (rf/reg-sub
   ::battlefield
   :<- [::game-db]
@@ -219,7 +257,7 @@
       (let [human-pid (queries/get-human-player-id game-db)
             all (queries/get-objects-in-zone game-db human-pid :battlefield)
             {:keys [creatures other lands]} (sorting/group-by-type all)]
-        {:creatures (sorting/sort-cards creatures)
+        {:creatures (mapv #(enrich-creature game-db %) (sorting/sort-cards creatures))
          :other (sorting/sort-cards other)
          :lands (sorting/sort-cards lands)}))))
 
@@ -231,7 +269,7 @@
     (when game-db
       (let [all (queries/get-objects-in-zone game-db :opponent :battlefield)
             {:keys [creatures other lands]} (sorting/group-by-type all)]
-        {:creatures (sorting/sort-cards creatures)
+        {:creatures (mapv #(enrich-creature game-db %) (sorting/sort-cards creatures))
          :other (sorting/sort-cards other)
          :lands (sorting/sort-cards lands)}))))
 
