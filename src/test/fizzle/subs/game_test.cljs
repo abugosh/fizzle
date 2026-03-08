@@ -631,6 +631,40 @@
       (is (= 1 (:damage-marked result))))))
 
 
+(deftest test-compute-creature-display-summoning-sick-true
+  (testing "compute-creature-display returns summoning-sick true when creature has :object/summoning-sick"
+    (let [[game-db obj-id] (add-battlefield-creature (make-game-db) :player-1 "Bear" 2 2)
+          obj-eid (q/get-object-eid game-db obj-id)
+          game-db (d/db-with game-db [[:db/add obj-eid :object/summoning-sick true]])
+          obj (q/get-object game-db obj-id)
+          result (subs/compute-creature-display game-db obj)]
+      (is (true? (:summoning-sick result))))))
+
+
+(deftest test-compute-creature-display-attacking-true
+  (testing "compute-creature-display returns attacking true when :object/attacking is set"
+    (let [[game-db obj-id] (add-battlefield-creature (make-game-db) :player-1 "Bear" 2 2)
+          obj-eid (q/get-object-eid game-db obj-id)
+          game-db (d/db-with game-db [[:db/add obj-eid :object/attacking true]])
+          obj (q/get-object game-db obj-id)
+          result (subs/compute-creature-display game-db obj)]
+      (is (true? (:attacking result))))))
+
+
+(deftest test-compute-creature-display-blocking-true
+  (testing "compute-creature-display returns blocking true when :object/blocking ref is set"
+    (let [game-db (make-game-db)
+          ;; Create the attacker object to use as the blocking ref
+          [game-db attacker-id] (add-battlefield-creature game-db :opponent "Attacker" 3 3)
+          attacker-eid (q/get-object-eid game-db attacker-id)
+          [game-db blocker-id] (add-battlefield-creature game-db :player-1 "Blocker" 2 2)
+          blocker-eid (q/get-object-eid game-db blocker-id)
+          game-db (d/db-with game-db [[:db/add blocker-eid :object/blocking attacker-eid]])
+          obj (q/get-object game-db blocker-id)
+          result (subs/compute-creature-display game-db obj)]
+      (is (true? (:blocking result))))))
+
+
 ;; === battlefield subscription includes creature-display data ===
 
 (deftest test-battlefield-creatures-have-display-data
@@ -638,7 +672,6 @@
     (let [[game-db _obj-id] (add-battlefield-creature (make-game-db) :player-1 "Bear" 2 2)
           result (sub-value {:game/db game-db} [::subs/battlefield])
           creature (first (:creatures result))]
-      (is (some? (:creature/display creature)) "creature should have :creature/display data")
       (is (= 2 (:effective-power (:creature/display creature))))
       (is (= 2 (:effective-toughness (:creature/display creature)))))))
 
@@ -681,7 +714,52 @@
           result (sub-value {:game/db game-db
                              :game/pending-selection selection}
                             [::subs/blocker-attacker-display])]
-      (is (some? result))
       (is (= 2 (:effective-power result)))
       (is (= 2 (:effective-toughness result)))
       (is (= "Grizzly Bears" (:card-name result))))))
+
+
+;; === ::selection-cards combat enrichment tests ===
+
+(deftest test-selection-cards-enriches-creatures-for-combat-selection
+  (testing "selection-cards enriches creatures with :creature/display for select-attackers"
+    (let [[game-db obj-id] (add-battlefield-creature (make-game-db) :player-1 "Bear" 2 2)
+          selection {:selection/type :select-attackers
+                     :selection/player-id :player-1
+                     :selection/card-source :valid-targets
+                     :selection/valid-targets [obj-id]}
+          result (sub-value {:game/db game-db
+                             :game/pending-selection selection}
+                            [::subs/selection-cards])
+          card (first result)]
+      (is (= 2 (:effective-power (:creature/display card))))
+      (is (= 2 (:effective-toughness (:creature/display card)))))))
+
+
+(deftest test-selection-cards-enriches-creatures-for-assign-blockers
+  (testing "selection-cards enriches creatures with :creature/display for assign-blockers"
+    (let [[game-db obj-id] (add-battlefield-creature (make-game-db) :player-1 "Bear" 2 2)
+          selection {:selection/type :assign-blockers
+                     :selection/player-id :player-1
+                     :selection/card-source :valid-targets
+                     :selection/valid-targets [obj-id]}
+          result (sub-value {:game/db game-db
+                             :game/pending-selection selection}
+                            [::subs/selection-cards])
+          card (first result)]
+      (is (= 2 (:effective-power (:creature/display card))))
+      (is (= 2 (:effective-toughness (:creature/display card)))))))
+
+
+(deftest test-selection-cards-does-not-enrich-for-non-combat-selection
+  (testing "selection-cards does not add :creature/display for non-combat selections"
+    (let [[game-db obj-id] (add-battlefield-creature (make-game-db) :player-1 "Bear" 2 2)
+          selection {:selection/type :ability-targeting
+                     :selection/player-id :player-1
+                     :selection/card-source :valid-targets
+                     :selection/valid-targets [obj-id]}
+          result (sub-value {:game/db game-db
+                             :game/pending-selection selection}
+                            [::subs/selection-cards])
+          card (first result)]
+      (is (nil? (:creature/display card))))))
