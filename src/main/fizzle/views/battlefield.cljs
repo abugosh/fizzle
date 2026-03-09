@@ -131,8 +131,7 @@
                         border-class " " bg-class " " text-class
                         (when tapped? " rotate-[6deg]"))}
       [:div {:class "text-[13px] mb-1"}
-       card-name
-       (when tapped? " (tapped)")]
+       card-name]
       (when (and counters (seq counters))
         [:div {:class "text-[11px] text-text-dim mb-1"}
          (for [[counter-type count] counters]
