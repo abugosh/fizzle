@@ -65,7 +65,7 @@
           "Should have exactly one trigger")
       (let [t (first triggers)]
         (is (= :creature-attacks (:trigger/type t)))
-        (is (string? (:trigger/description t)))
+        (is (= "defending player can't cast spells this turn" (:trigger/description t)))
         (is (= 1 (count (:trigger/effects t))))
         (let [effect (first (:trigger/effects t))]
           (is (= :add-restriction (:effect/type effect)))
@@ -310,6 +310,24 @@
           eligible (combat/get-eligible-blockers db :player-2 atk-id)]
       (is (contains? (set eligible) blk-id)
           "Flying creature can block a flying attacker"))))
+
+
+(deftest xantid-swarm-blocked-by-reach-test
+  (testing "Xantid Swarm can be blocked by a creature with reach"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db atk-id] (add-creature-to-battlefield db :xantid-swarm :player-1)
+          db (clear-summoning-sickness db atk-id)
+          ;; Nimble Mongoose has no reach — grant :reach keyword via grants system
+          [db blk-id] (add-creature-to-battlefield db :nimble-mongoose :player-2)
+          db (grants/add-grant db blk-id
+                               {:grant/id (random-uuid)
+                                :grant/type :keyword
+                                :grant/source blk-id
+                                :grant/data {:grant/keyword :reach}})
+          eligible (combat/get-eligible-blockers db :player-2 atk-id)]
+      (is (contains? (set eligible) blk-id)
+          "Creature with reach can block a flying attacker"))))
 
 
 (deftest xantid-swarm-not-blocked-by-non-flying-test
