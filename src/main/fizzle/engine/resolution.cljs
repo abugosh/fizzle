@@ -19,6 +19,7 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
+    [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.triggers :as triggers]
     [fizzle.engine.zones :as zones]))
 
@@ -106,6 +107,9 @@
    Copies cease to exist when leaving the stack (per MTG rules 707.2).
    Non-copies go to: cast-mode destination > permanent-type battlefield > graveyard.
 
+   When a permanent enters the battlefield and has card triggers, registers
+   those triggers in Datascript so they fire on future events.
+
    This is the SINGLE SOURCE OF TRUTH for spell-off-stack zone transitions.
    Both direct resolution (resolve-spell-type) and selection cleanup
    (cleanup-selection-source) must use this function.
@@ -123,8 +127,17 @@
           destination (cond
                         mode-destination mode-destination
                         (rules/permanent-type? card-types) :battlefield
-                        :else :graveyard)]
-      (zones/move-to-zone db object-id destination))))
+                        :else :graveyard)
+          db-after-move (zones/move-to-zone db object-id destination)
+          card (:object/card obj)]
+      (if (and (= destination :battlefield) (seq (:card/triggers card)))
+        (let [obj-eid (queries/get-object-eid db-after-move object-id)
+              controller-ref (:object/controller obj)
+              controller-eid (if (map? controller-ref) (:db/id controller-ref) controller-ref)
+              tx (trigger-db/create-triggers-for-card-tx
+                   db-after-move obj-eid controller-eid (:card/triggers card))]
+          (d/db-with db-after-move tx))
+        db-after-move))))
 
 
 (defn- resolve-spell-effects

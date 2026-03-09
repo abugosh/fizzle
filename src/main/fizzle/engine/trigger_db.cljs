@@ -14,6 +14,7 @@
 
 (defmethod trigger-type->event-type :becomes-tapped [_] :permanent-tapped)
 (defmethod trigger-type->event-type :land-entered [_] :land-entered)
+(defmethod trigger-type->event-type :creature-attacks [_] :creature-attacked)
 (defmethod trigger-type->event-type :default [type] type)
 
 

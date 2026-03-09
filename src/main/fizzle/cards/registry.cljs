@@ -44,6 +44,7 @@
     [fizzle.cards.blue.words-of-wisdom :as words-of-wisdom]
     [fizzle.cards.green.crumble :as crumble]
     [fizzle.cards.green.nimble-mongoose :as nimble-mongoose]
+    [fizzle.cards.green.xantid-swarm :as xantid-swarm]
     [fizzle.cards.lands.basic-lands :as basic-lands]
     [fizzle.cards.lands.cephalid-coliseum :as cephalid-coliseum]
     [fizzle.cards.lands.city-of-brass :as city-of-brass]
@@ -120,6 +121,7 @@
        urzas-bauble/card
        crumble/card
        nimble-mongoose/card
+       xantid-swarm/card
        diabolic-vision/card]
       ;; Cycle cards
       basic-lands/cards

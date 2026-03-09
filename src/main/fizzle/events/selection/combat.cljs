@@ -2,7 +2,9 @@
   "Combat selection types: attacker and blocker selection."
   (:require
     [fizzle.engine.combat :as combat]
+    [fizzle.engine.events :as game-events]
     [fizzle.engine.stack :as stack]
+    [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.events.selection.core :as sel-core]))
 
 
@@ -38,7 +40,13 @@
             db (stack/create-stack-item db
                                         {:stack-item/type :declare-blockers
                                          :stack-item/controller controller
-                                         :stack-item/description "Declare Blockers"})]
+                                         :stack-item/description "Declare Blockers"})
+            ;; Dispatch attack triggers AFTER creating combat stack items
+            ;; so triggers go on top of stack (resolve before blockers)
+            db (reduce (fn [d atk-id]
+                         (dispatch/dispatch-event d
+                                                  (game-events/creature-attacked-event atk-id controller)))
+                       db attacker-ids)]
         {:db db}))))
 
 

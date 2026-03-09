@@ -76,7 +76,7 @@
   (let [target-raw (:effect/target effect)
         target-player (case target-raw
                         :self player-id
-                        :opponent (q/get-opponent-id db player-id)
+                        :opponent (q/get-other-player-id db player-id)
                         (or target-raw player-id))
         game (q/get-game-state db)
         current-turn (or (:game/turn game) 1)]

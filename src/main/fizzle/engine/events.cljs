@@ -67,3 +67,18 @@
   {:event/type :land-entered
    :event/object-id object-id
    :event/controller controller-id})
+
+
+(defn creature-attacked-event
+  "Create a creature-attacked event.
+
+   Arguments:
+     object-id     - ID of the attacking creature
+     controller-id - ID of the creature's controller
+
+   Returns:
+     Event map with :event/type :creature-attacked"
+  [object-id controller-id]
+  {:event/type :creature-attacked
+   :event/object-id object-id
+   :event/controller controller-id})
