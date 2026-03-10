@@ -24,7 +24,8 @@
    :card/effects    {}  ; EDN vector of effect maps
    :card/abilities    {}  ; EDN for activated abilities
    :card/etb-effects  {}  ; EDN vector of effects to execute on entering battlefield
-   :card/triggers     {}  ; EDN vector of triggered abilities {:trigger/type :becomes-tapped ...}
+   :card/triggers       {}  ; EDN vector of triggered abilities {:trigger/type :becomes-tapped ...}
+   :card/state-triggers {}  ; EDN vector of state-check triggers {:state/condition ... :state/effects ...}
    :card/keywords     {:db/cardinality :db.cardinality/many}  ; #{:storm :threshold}
 
    ;; === Game Objects (instances) ===
@@ -50,6 +51,7 @@
    :object/attacking       {}  ; boolean — declared as attacker this combat
    :object/blocking        {}  ; ref — eid of attacker being blocked
    :object/is-token        {}  ; boolean — token creature
+   :object/last-exiled-cmc {}  ; integer — CMC of last card exiled as exile-library-top cost
 
    ;; === Players ===
    :player/id              {:db/unique :db.unique/identity}

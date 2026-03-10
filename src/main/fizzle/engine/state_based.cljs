@@ -12,7 +12,9 @@
   (:require
     [datascript.core :as d]
     [fizzle.db.queries :as q]
+    [fizzle.engine.conditions :as conditions]
     [fizzle.engine.creatures :as creatures]
+    [fizzle.engine.stack :as stack]
     [fizzle.engine.zones :as zones]))
 
 
@@ -227,4 +229,102 @@
   (let [object-id (:sba/target sba)]
     (if (q/get-object-eid db object-id)
       (zones/move-to-zone db object-id :graveyard)
+      db)))
+
+
+;; === :state-check-trigger SBA ===
+;; Finds battlefield permanents with :card/state-triggers whose conditions are met.
+;; Unlike immediate SBAs (life-zero, lethal-damage), state-check triggers go on
+;; the stack so players can respond.
+;;
+;; State trigger format in card data:
+;;   {:state/condition {:condition/type :power-gte
+;;                      :condition/object-id <resolved-at-runtime>
+;;                      :condition/threshold 7}
+;;    :state/effects [{:effect/type :sacrifice :effect/target :self}]
+;;    :state/description "Sacrifice when power >= 7"}
+;;
+;; Guard: only fires if the trigger is NOT already on the stack for this source.
+;; This prevents re-triggering every time SBAs are checked.
+
+(defn- state-trigger-already-on-stack?
+  "Check if a state-check trigger for a given object is already on the stack.
+   Prevents duplicate triggers from firing every SBA cycle."
+  [db object-id _description]
+  (boolean
+    (d/q '[:find ?e .
+           :in $ ?src
+           :where [?e :stack-item/type :state-check-trigger]
+           [?e :stack-item/source ?src]]
+         db object-id)))
+
+
+(defn- check-state-condition
+  "Check a state trigger condition. Handles condition types that need
+   creature stats (power-gte) directly to avoid circular deps with conditions.cljs."
+  [db object-id condition]
+  (case (:condition/type condition)
+    :power-gte
+    (let [threshold (:condition/threshold condition)
+          power (creatures/effective-power db object-id)]
+      (and power threshold (>= power threshold)))
+    ;; Fallback: delegate to conditions module for non-creature conditions
+    (conditions/check-condition db nil condition)))
+
+
+(defn- check-state-triggers-for-object
+  "Check all state triggers for a battlefield permanent.
+   Returns seq of SBA events for triggers whose conditions are met and aren't
+   already on the stack."
+  [db object-id card]
+  (let [state-triggers (:card/state-triggers card)]
+    (when (seq state-triggers)
+      (into []
+            (comp
+              (filter
+                (fn [st]
+                  (let [cond (:state/condition st)
+                        description (:state/description st)]
+                    (and (check-state-condition db object-id cond)
+                         (not (state-trigger-already-on-stack? db object-id description))))))
+              (map (fn [st]
+                     {:sba/type :state-check-trigger
+                      :sba/target object-id
+                      :sba/state-trigger st})))
+            state-triggers))))
+
+
+(defmethod check-sba :state-check-trigger
+  [db _type]
+  ;; Find all battlefield objects and check their state triggers
+  (let [bf-objects (d/q '[:find [?oid ...]
+                          :where [?e :object/zone :battlefield]
+                          [?e :object/id ?oid]]
+                        db)]
+    (into []
+          (mapcat (fn [oid]
+                    (let [obj (q/get-object db oid)
+                          card (:object/card obj)]
+                      (check-state-triggers-for-object db oid card))))
+          (or bf-objects []))))
+
+
+(defmethod execute-sba :state-check-trigger
+  [db sba]
+  (let [object-id (:sba/target sba)
+        st (:sba/state-trigger sba)
+        effects-list (:state/effects st)
+        description (:state/description st)
+        obj-eid (q/get-object-eid db object-id)]
+    (if obj-eid
+      (let [obj (q/get-object db object-id)
+            controller-ref (:object/controller obj)
+            raw-controller-eid (if (map? controller-ref) (:db/id controller-ref) controller-ref)
+            controller-id (q/get-player-id db raw-controller-eid)]
+        (stack/create-stack-item db
+                                 (cond-> {:stack-item/type :state-check-trigger
+                                          :stack-item/controller controller-id
+                                          :stack-item/source object-id
+                                          :stack-item/effects effects-list}
+                                   description (assoc :stack-item/description description))))
       db)))

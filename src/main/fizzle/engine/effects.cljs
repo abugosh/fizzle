@@ -50,6 +50,19 @@
     (or chosen-x 0)))
 
 
+(defmethod resolve-dynamic-impl :cost-exiled-card-mana-value
+  [db _player-id _dynamic object-id]
+  ;; Reads the CMC of the card(s) exiled as an exile-library-top cost.
+  ;; The CMC is stored on the source object as :object/last-exiled-cmc by pay-cost.
+  (if-let [obj-eid (q/get-object-eid db object-id)]
+    (or (d/q '[:find ?cmc .
+               :in $ ?e
+               :where [?e :object/last-exiled-cmc ?cmc]]
+             db obj-eid)
+        0)
+    0))
+
+
 (defn resolve-dynamic-value
   "Resolve a potentially dynamic value to an integer.
    Static integers pass through. Maps with :dynamic/type are computed from game state."

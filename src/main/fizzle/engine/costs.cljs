@@ -379,6 +379,53 @@
   db)
 
 
+;; === :exile-library-top cost ===
+;; Used for costs like "Exile the top card of your library" (Phyrexian Devourer).
+;; Cost format: {:exile-library-top N} where N is the number of cards to exile.
+;; pay-cost exiles the top N cards and stores the total CMC on the source object
+;; as :object/last-exiled-cmc so cost-exiled-card-mana-value can read it.
+
+(defmethod can-pay? :exile-library-top [db object-id cost]
+  ;; Can pay exile-library-top if:
+  ;; 1. Object exists (to find controller)
+  ;; 2. Controller has at least N cards in library
+  (if-let [controller-eid (get-controller-eid db object-id)]
+    (let [n (:exile-library-top cost)
+          controller-id (get-player-id-from-eid db controller-eid)
+          library-cards (or (q/get-top-n-library db controller-id (max 1 n)) [])]
+      (>= (count library-cards) (max 1 n)))
+    false))
+
+
+(defmethod pay-cost :exile-library-top [db object-id cost]
+  ;; Exile the top N cards of the controller's library.
+  ;; Stores the exiled card(s) CMC total on the source object as :object/last-exiled-cmc
+  ;; so cost-exiled-card-mana-value dynamic value can read it.
+  (if-let [controller-eid (get-controller-eid db object-id)]
+    (let [n (:exile-library-top cost)
+          controller-id (get-player-id-from-eid db controller-eid)
+          top-card-ids (or (q/get-top-n-library db controller-id n) [])
+          ;; Compute total CMC of exiled cards
+          total-cmc (reduce (fn [sum card-id]
+                              (let [obj (q/get-object db card-id)
+                                    cmc (or (:card/cmc (:object/card obj)) 0)]
+                                (+ sum cmc)))
+                            0
+                            top-card-ids)
+          ;; Exile the cards
+          db-after-exile (reduce (fn [d card-id]
+                                   (d/db-with d [[:db/add (q/get-object-eid d card-id)
+                                                  :object/zone :exile]]))
+                                 db
+                                 top-card-ids)
+          ;; Store the CMC on the source object for dynamic value resolution
+          obj-eid (q/get-object-eid db-after-exile object-id)]
+      (if obj-eid
+        (d/db-with db-after-exile [[:db/add obj-eid :object/last-exiled-cmc total-cmc]])
+        db-after-exile))
+    db))
+
+
 ;; === :sacrifice-permanent cost ===
 ;; Used for costs like "sacrifice an artifact" (Tinker), "sacrifice a creature" (Goblin Bombardment).
 ;; Cost format: {:sacrifice-permanent {:match/types #{:artifact}}}

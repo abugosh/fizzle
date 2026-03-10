@@ -9,6 +9,7 @@
     [fizzle.cards.artifacts.lions-eye-diamond :as lions-eye-diamond]
     [fizzle.cards.artifacts.lotus-petal :as lotus-petal]
     [fizzle.cards.artifacts.medallions :as medallions]
+    [fizzle.cards.artifacts.phyrexian-devourer :as phyrexian-devourer]
     [fizzle.cards.artifacts.sphere-of-resistance :as sphere-of-resistance]
     [fizzle.cards.artifacts.tormods-crypt :as tormods-crypt]
     [fizzle.cards.artifacts.urzas-bauble :as urzas-bauble]
@@ -120,6 +121,7 @@
        lotus-petal/card
        lions-eye-diamond/card
        defense-grid/card
+       phyrexian-devourer/card
        helm-of-awakening/card
        sphere-of-resistance/card
        tormods-crypt/card

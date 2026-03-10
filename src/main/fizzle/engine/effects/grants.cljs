@@ -9,9 +9,15 @@
 
 
 (defmethod effects/execute-effect-impl :add-counters
-  [db _player-id effect _object-id]
+  [db player-id effect object-id]
   (let [target-id (:effect/target effect)
-        counters-to-add (:effect/counters effect)]
+        raw-counters (:effect/counters effect)
+        ;; Resolve dynamic counter values (e.g., {:+1/+1 {:dynamic/type :cost-exiled-card-mana-value}})
+        counters-to-add (into {}
+                              (map (fn [[counter-type count-val]]
+                                     [counter-type (effects/resolve-dynamic-value
+                                                     db player-id count-val object-id)]))
+                              raw-counters)]
     (if-let [obj-eid (q/get-object-eid db target-id)]
       (let [existing (or (d/q '[:find ?c .
                                 :in $ ?e

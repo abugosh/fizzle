@@ -31,7 +31,7 @@
 
 
 (def valid-condition-types
-  #{:threshold :no-counters})
+  #{:threshold :no-counters :target-is-color :power-gte})
 
 
 (def valid-colors
@@ -296,6 +296,23 @@
 (s/def :card/toughness pos-int?)
 
 
+;; === State Trigger Spec ===
+;; State triggers fire when a condition is true (e.g., power >= 7).
+;; They go on the stack (respondable), unlike immediate SBAs.
+
+(s/def :state/condition map?)
+(s/def :state/effects ::effects)
+(s/def :state/description string?)
+
+
+(s/def ::state-trigger
+  (s/keys :req [:state/condition :state/effects]
+          :opt [:state/description]))
+
+
+(s/def :card/state-triggers (s/coll-of ::state-trigger :kind vector?))
+
+
 (defn- creature-has-pt?
   "Cross-field validation: creature cards require power and toughness."
   [card]
@@ -313,7 +330,8 @@
                        :card/conditional-effects :card/kicker :card/kicked-effects
                        :card/subtypes :card/supertypes :card/keywords
                        :card/additional-costs :card/cast-restriction
-                       :card/static-abilities :card/power :card/toughness])
+                       :card/static-abilities :card/power :card/toughness
+                       :card/state-triggers])
          creature-has-pt?))
 
 
