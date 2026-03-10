@@ -58,6 +58,7 @@
     [fizzle.cards.lands.pain-lands :as pain-lands]
     [fizzle.cards.multicolor.diabolic-vision :as diabolic-vision]
     [fizzle.cards.red.burning-wish :as burning-wish]
+    [fizzle.cards.red.goblin-welder :as goblin-welder]
     [fizzle.cards.red.lightning-bolt :as lightning-bolt]
     [fizzle.cards.red.pyroblast :as pyroblast]
     [fizzle.cards.red.recoup :as recoup]
@@ -110,6 +111,7 @@
        ray-of-revelation/card
        seal-of-cleansing/card
        burning-wish/card
+       goblin-welder/card
        lightning-bolt/card
        recoup/card
        pyroblast/card

@@ -19,7 +19,8 @@
     :grant-flashback :grant-delayed-draw :add-restriction :storm-copies
     :exile-zone :gain-life-equal-to-cmc :discard-from-revealed-hand
     :bounce :chain-bounce :counter-spell :counter-ability
-    :peek-random-hand :grant-mana-ability :create-token :apply-pt-modifier})
+    :peek-random-hand :grant-mana-ability :create-token :apply-pt-modifier
+    :welder-swap})
 
 
 (def valid-cost-types
@@ -80,6 +81,7 @@
 (s/def :effect/count (s/or :int int? :keyword keyword? :dynamic map?))
 (s/def :effect/target keyword?)
 (s/def :effect/target-ref keyword?)
+(s/def :effect/graveyard-ref keyword?)
 (s/def :effect/selection keyword?)
 (s/def :effect/criteria map?)
 (s/def :effect/destination keyword?)
@@ -107,7 +109,7 @@
 (s/def ::effect
   (s/keys :req [:effect/type]
           :opt [:effect/mana :effect/amount :effect/count
-                :effect/target :effect/target-ref
+                :effect/target :effect/target-ref :effect/graveyard-ref
                 :effect/selection :effect/criteria
                 :effect/destination :effect/counter-type
                 :effect/condition :effect/x
@@ -136,13 +138,14 @@
 (s/def :target/criteria map?)
 (s/def :target/options (s/coll-of keyword?))
 (s/def :target/required boolean?)
+(s/def :target/same-controller-as keyword?)
 
 
 (s/def ::targeting
   (s/keys :req [:target/id :target/type]
           :opt [:target/zone :target/controller
                 :target/criteria :target/options
-                :target/required]))
+                :target/required :target/same-controller-as]))
 
 
 (s/def ::targeting-vec (s/coll-of ::targeting :kind vector?))

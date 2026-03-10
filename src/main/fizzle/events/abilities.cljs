@@ -31,7 +31,7 @@
 
 ;; === Activate Non-Mana Ability ===
 
-(defn- build-ability-target-selection
+(defn build-ability-target-selection
   "Build pending selection state for ability targeting.
    Used when an ability has :ability/targeting requirements.
 
@@ -40,65 +40,88 @@
      player-id - Activating player
      object-id - Permanent being activated
      ability-index - Index of ability in :card/abilities
-     target-req - First targeting requirement (player target for now)
+     target-req - Current targeting requirement
+     chosen-targets - Map of already-chosen {target-ref -> target-id} (for multi-target chains)
+     remaining-reqs - Vector of remaining target requirements after this one
 
    Returns selection state map."
-  [db player-id object-id ability-index target-req]
-  (let [valid-targets (targeting/find-valid-targets db player-id target-req)]
-    (cond->
-      {:selection/type :ability-targeting
-       :selection/lifecycle :finalized
-       :selection/player-id player-id
-       :selection/object-id object-id
-       :selection/ability-index ability-index
-       :selection/target-requirement target-req
-       :selection/valid-targets valid-targets
-       :selection/selected #{}
-       :selection/select-count 1
-       :selection/validation :exact
-       :selection/auto-confirm? true}
-      (= :object (:target/type target-req))
-      (assoc :selection/card-source :valid-targets))))
+  ([db player-id object-id ability-index target-req]
+   (build-ability-target-selection db player-id object-id ability-index target-req {} []))
+  ([db player-id object-id ability-index target-req chosen-targets remaining-reqs]
+   (let [valid-targets (targeting/find-valid-targets db player-id target-req chosen-targets)
+         ;; If more requirements remain, lifecycle is :chaining to collect all targets before paying costs
+         lifecycle (if (seq remaining-reqs) :chaining :finalized)]
+     (cond->
+       {:selection/type :ability-targeting
+        :selection/lifecycle lifecycle
+        :selection/player-id player-id
+        :selection/object-id object-id
+        :selection/ability-index ability-index
+        :selection/target-requirement target-req
+        :selection/chosen-targets chosen-targets
+        :selection/remaining-target-reqs remaining-reqs
+        :selection/valid-targets valid-targets
+        :selection/selected #{}
+        :selection/select-count 1
+        :selection/validation :exact
+        :selection/auto-confirm? true}
+       (= :object (:target/type target-req))
+       (assoc :selection/card-source :valid-targets)))))
 
 
 (defn confirm-ability-target
   "Complete ability activation after target selection.
 
+   For single-target abilities (no remaining-target-reqs):
    1. Pays costs (tap, sacrifice, pay-life)
    2. Creates ability trigger with stored targets
    3. Adds trigger to stack
+
+   For multi-target abilities (remaining-target-reqs is non-empty):
+   - Stores current target in chosen-targets
+   - Returns next pending selection for the next target requirement
 
    Arguments:
      db - Datascript database
      selection - Ability target selection state with :selection/selected set
 
-   Returns {:db db :pending-selection nil}"
+   Returns {:db db :pending-selection nil-or-next-selection}"
   [db selection]
   (let [player-id (:selection/player-id selection)
         object-id (:selection/object-id selection)
         ability-index (:selection/ability-index selection)
         target-req (:selection/target-requirement selection)
         target-id (first (:selection/selected selection))
-        target-ref (:target/id target-req)]
+        target-ref (:target/id target-req)
+        chosen-targets (or (:selection/chosen-targets selection) {})
+        remaining-reqs (or (:selection/remaining-target-reqs selection) [])]
     (if target-id
-      (let [obj (queries/get-object db object-id)
-            card (:object/card obj)
-            ability (nth (:card/abilities card) ability-index)
-            ;; Pay costs now
-            db-after-costs (abilities/pay-all-costs db object-id (:ability/cost ability))]
-        (if db-after-costs
-          ;; Create stack-item with stored targets
-          (let [effects-list (:ability/effects ability [])
-                db-with-item (stack/create-stack-item db-after-costs
-                                                      {:stack-item/type :activated-ability
-                                                       :stack-item/controller player-id
-                                                       :stack-item/source object-id
-                                                       :stack-item/effects effects-list
-                                                       :stack-item/targets {target-ref target-id}
-                                                       :stack-item/description (:ability/description ability)})]
-            {:db db-with-item
-             :pending-selection nil})
-          {:db db :pending-selection nil}))
+      (let [updated-chosen (assoc chosen-targets target-ref target-id)]
+        (if (seq remaining-reqs)
+          ;; More targets to collect — build next selection
+          (let [next-req (first remaining-reqs)
+                next-remaining (vec (rest remaining-reqs))]
+            {:db db
+             :pending-selection (build-ability-target-selection
+                                  db player-id object-id ability-index
+                                  next-req updated-chosen next-remaining)})
+          ;; All targets collected — pay costs and create stack-item
+          (let [obj (queries/get-object db object-id)
+                card (:object/card obj)
+                ability (nth (:card/abilities card) ability-index)
+                db-after-costs (abilities/pay-all-costs db object-id (:ability/cost ability))]
+            (if db-after-costs
+              (let [effects-list (:ability/effects ability [])
+                    db-with-item (stack/create-stack-item db-after-costs
+                                                          {:stack-item/type :activated-ability
+                                                           :stack-item/controller player-id
+                                                           :stack-item/source object-id
+                                                           :stack-item/effects effects-list
+                                                           :stack-item/targets updated-chosen
+                                                           :stack-item/description (:ability/description ability)})]
+                {:db db-with-item
+                 :pending-selection nil})
+              {:db db :pending-selection nil}))))
       ;; No target selected - return unchanged (activation cancelled)
       {:db db :pending-selection nil})))
 
@@ -152,7 +175,8 @@
       (seq targeting-reqs)
       {:db db
        :pending-selection (build-ability-target-selection
-                            db player-id object-id ability-index (first targeting-reqs))}
+                            db player-id object-id ability-index
+                            (first targeting-reqs) {} (vec (rest targeting-reqs)))}
 
       ;; Has generic mana cost - enter mana allocation
       (and (:mana (:ability/cost ability))

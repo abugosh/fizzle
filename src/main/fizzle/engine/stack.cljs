@@ -83,23 +83,32 @@
    2. :self - replace with source-id
    3. :controller - replace with controller
    4. :any-player - replace with stored player target
-   5. anything else - pass through unchanged"
+   5. anything else - pass through unchanged
+
+   Also resolves :effect/graveyard-ref (secondary target ref for welder-swap and
+   similar multi-target effects) from stored-targets."
   [effect source-id controller stored-targets]
   (let [target-ref (:effect/target-ref effect)
-        resolved-target (when target-ref (get stored-targets target-ref))]
+        resolved-target (when target-ref (get stored-targets target-ref))
+        ;; Resolve secondary ref (e.g., :welder-gy for welder-swap)
+        gy-ref (:effect/graveyard-ref effect)
+        resolved-gy (when gy-ref (get stored-targets gy-ref))
+        effect' (if resolved-gy
+                  (assoc effect :effect/graveyard-id resolved-gy)
+                  effect)]
     (cond
       resolved-target
-      (assoc effect :effect/target resolved-target)
+      (assoc effect' :effect/target resolved-target)
 
       (= :self (:effect/target effect))
-      (assoc effect :effect/target source-id)
+      (assoc effect' :effect/target source-id)
 
       (= :controller (:effect/target effect))
-      (assoc effect :effect/target controller)
+      (assoc effect' :effect/target controller)
 
       (= :any-player (:effect/target effect))
       (if-let [p (:player stored-targets)]
-        (assoc effect :effect/target p)
-        effect)
+        (assoc effect' :effect/target p)
+        effect')
 
-      :else effect)))
+      :else effect')))

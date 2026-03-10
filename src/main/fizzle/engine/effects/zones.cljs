@@ -127,3 +127,27 @@
       (if (q/get-object-eid db target-id)
         (zones/move-to-zone db target-id :hand)
         db))))
+
+
+(defmethod effects/execute-effect-impl :welder-swap
+  [db _player-id effect _object-id]
+  ;; Goblin Welder swap: simultaneously sacrifice battlefield artifact and
+  ;; return graveyard artifact to battlefield. Both must be legal at resolution.
+  ;; :effect/target = battlefield artifact (to sacrifice)
+  ;; :effect/graveyard-id = graveyard artifact (to return)
+  (let [bf-id (:effect/target effect)
+        gy-id (:effect/graveyard-id effect)]
+    (if-not (and bf-id gy-id)
+      db
+      ;; Check both targets are still in their expected zones
+      (let [bf-obj (q/get-object db bf-id)
+            gy-obj (q/get-object db gy-id)
+            bf-legal (and bf-obj (= :battlefield (:object/zone bf-obj)))
+            gy-legal (and gy-obj (= :graveyard (:object/zone gy-obj)))]
+        (if (and bf-legal gy-legal)
+          ;; Simultaneously: sacrifice bf artifact, return gy artifact to battlefield
+          (-> db
+              (zones/move-to-zone bf-id :graveyard)
+              (zones/move-to-zone gy-id :battlefield))
+          ;; Either target is no longer legal — do nothing
+          db)))))
