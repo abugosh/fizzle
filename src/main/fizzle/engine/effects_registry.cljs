@@ -5,6 +5,7 @@
   (:require
     [fizzle.engine.effects.grants]
     [fizzle.engine.effects.life]
+    [fizzle.engine.effects.pt-modifier]
     [fizzle.engine.effects.selection]
     [fizzle.engine.effects.simple]
     [fizzle.engine.effects.stack]

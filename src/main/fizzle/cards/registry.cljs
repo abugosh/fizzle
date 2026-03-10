@@ -13,6 +13,7 @@
     [fizzle.cards.artifacts.tormods-crypt :as tormods-crypt]
     [fizzle.cards.artifacts.urzas-bauble :as urzas-bauble]
     [fizzle.cards.black.cabal-ritual :as cabal-ritual]
+    [fizzle.cards.black.crippling-fatigue :as crippling-fatigue]
     [fizzle.cards.black.dark-ritual :as dark-ritual]
     [fizzle.cards.black.duress :as duress]
     [fizzle.cards.black.ill-gotten-gains :as ill-gotten-gains]
@@ -43,6 +44,7 @@
     [fizzle.cards.blue.stifle :as stifle]
     [fizzle.cards.blue.words-of-wisdom :as words-of-wisdom]
     [fizzle.cards.green.crumble :as crumble]
+    [fizzle.cards.green.hunting-pack :as hunting-pack]
     [fizzle.cards.green.nimble-mongoose :as nimble-mongoose]
     [fizzle.cards.green.xantid-swarm :as xantid-swarm]
     [fizzle.cards.lands.basic-lands :as basic-lands]
@@ -71,6 +73,7 @@
       ;; Individual cards
       [dark-ritual/card
        cabal-ritual/card
+       crippling-fatigue/card
        duress/card
        ill-gotten-gains/card
        necrologia/card
@@ -120,6 +123,7 @@
        tormods-crypt/card
        urzas-bauble/card
        crumble/card
+       hunting-pack/card
        nimble-mongoose/card
        xantid-swarm/card
        diabolic-vision/card]

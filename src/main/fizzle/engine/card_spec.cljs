@@ -19,7 +19,7 @@
     :grant-flashback :grant-delayed-draw :add-restriction :storm-copies
     :exile-zone :gain-life-equal-to-cmc :discard-from-revealed-hand
     :bounce :chain-bounce :counter-spell :counter-ability
-    :peek-random-hand :grant-mana-ability :create-token})
+    :peek-random-hand :grant-mana-ability :create-token :apply-pt-modifier})
 
 
 (def valid-cost-types
@@ -91,6 +91,8 @@
 (s/def :effect/order-remainder? boolean?)
 (s/def :effect/zone keyword?)
 (s/def :effect/ability map?)
+(s/def :effect/power int?)
+(s/def :effect/toughness int?)
 (s/def :restriction/type valid-restriction-types)
 
 
@@ -113,6 +115,7 @@
                 :effect/remainder-zone :effect/order-remainder?
                 :effect/zone :effect/unless-pay
                 :effect/ability
+                :effect/power :effect/toughness
                 :restriction/type]))
 
 
