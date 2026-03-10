@@ -347,3 +347,26 @@
           ability (first (:card/abilities goblin-welder/card))]
       (is (false? (targeting/has-valid-targets? db :player-1 ability))
           "has-valid-targets? false: no matching controller pair"))))
+
+
+;; === H. Regression: Selection System Chaining ===
+
+(deftest goblin-welder-chaining-through-selection-system-test
+  (testing "Multi-target chaining works through confirm-selection-impl (not just confirm-ability-target)"
+    (let [db (th/create-test-db {:mana {:red 1}})
+          [db welder-id] (th/add-card-to-zone db :goblin-welder :hand :player-1)
+          db (th/cast-and-resolve db :player-1 welder-id)
+          [db petal-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-1)
+          [db led-id] (th/add-card-to-zone db :lions-eye-diamond :graveyard :player-1)
+          ;; Activate ability — get first selection
+          result1 (ability-events/activate-ability db :player-1 welder-id 0)
+          pending1 (:pending-selection result1)
+          ;; Confirm first target through the SELECTION SYSTEM (not confirm-ability-target)
+          chain-result (th/confirm-selection (:db result1) pending1 #{petal-id})]
+      ;; The selection system should chain to the second target selection
+      (is (some? (:selection chain-result))
+          "Selection system should chain to second target (graveyard artifact)")
+      (is (= :ability-targeting (:selection/type (:selection chain-result)))
+          "Chained selection should be :ability-targeting type")
+      (is (contains? (set (:selection/valid-targets (:selection chain-result))) led-id)
+          "Chained selection should include LED as valid graveyard target"))))

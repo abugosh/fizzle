@@ -248,8 +248,34 @@
 
 (defmethod selection-core/execute-confirmed-selection :ability-targeting
   [game-db selection]
-  (let [result (confirm-ability-target game-db selection)]
-    {:db (:db result)}))
+  (let [remaining-reqs (:selection/remaining-target-reqs selection)]
+    (if (seq remaining-reqs)
+      ;; Chaining: db unchanged, build-chain-selection handles next target
+      {:db game-db}
+      ;; Final target: pay costs and create stack item
+      (let [result (confirm-ability-target game-db selection)]
+        {:db (:db result)}))))
+
+
+(defmethod selection-core/build-chain-selection :ability-targeting
+  [db selection]
+  (let [target-id (first (:selection/selected selection))
+        target-req (:selection/target-requirement selection)
+        target-ref (:target/id target-req)
+        chosen-targets (assoc (or (:selection/chosen-targets selection) {})
+                              target-ref target-id)
+        remaining-reqs (or (:selection/remaining-target-reqs selection) [])
+        next-req (first remaining-reqs)
+        next-remaining (vec (rest remaining-reqs))]
+    (when (and target-id next-req)
+      (build-ability-target-selection
+        db
+        (:selection/player-id selection)
+        (:selection/object-id selection)
+        (:selection/ability-index selection)
+        next-req
+        chosen-targets
+        next-remaining))))
 
 
 ;; === Activate Granted Mana Ability ===
