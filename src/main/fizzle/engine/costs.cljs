@@ -377,3 +377,28 @@
   ;; Actual payment deferred to the event layer's selection system.
   ;; Player chooses X via accumulator UI, then life is deducted.
   db)
+
+
+;; === :sacrifice-permanent cost ===
+;; Used for costs like "sacrifice an artifact" (Tinker), "sacrifice a creature" (Goblin Bombardment).
+;; Cost format: {:sacrifice-permanent {:match/types #{:artifact}}}
+;; The value is a criteria map (same format as matches-criteria?).
+;; Note: pay-cost returns db unchanged because actual sacrifice is deferred
+;; to the event layer's selection system (player chooses which permanent).
+
+(defmethod can-pay? :sacrifice-permanent [db object-id cost]
+  ;; Can pay sacrifice-permanent if:
+  ;; 1. Object exists (to find controller)
+  ;; 2. Controller has at least one battlefield permanent matching criteria
+  (if-let [controller-eid (get-controller-eid db object-id)]
+    (let [criteria (:sacrifice-permanent cost)
+          controller-id (get-player-id-from-eid db controller-eid)
+          matching (q/query-zone-by-criteria db controller-id :battlefield criteria)]
+      (pos? (count (or matching []))))
+    false))
+
+
+(defmethod pay-cost :sacrifice-permanent [db _object-id _cost]
+  ;; Actual sacrifice is deferred to the event layer's selection system.
+  ;; Player must choose which permanent to sacrifice, so we return db unchanged.
+  db)

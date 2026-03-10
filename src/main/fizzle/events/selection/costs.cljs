@@ -78,6 +78,20 @@
         (:mode/additional-costs mode)))
 
 
+(defn has-sacrifice-permanent-cost?
+  "Check if mode has a :sacrifice-permanent additional cost"
+  [mode]
+  (some (fn [cost] (= :sacrifice-permanent (:cost/type cost)))
+        (:mode/additional-costs mode)))
+
+
+(defn get-sacrifice-permanent-cost
+  "Get the :sacrifice-permanent additional cost from a mode"
+  [mode]
+  (first (filter (fn [cost] (= :sacrifice-permanent (:cost/type cost)))
+                 (:mode/additional-costs mode))))
+
+
 (defn has-generic-mana-cost?
   "Check if a resolved cost has a generic mana portion (:colorless > 0).
    Cost must NOT contain :x (caller resolves X before calling)."
@@ -210,6 +224,43 @@
                                                    candidates)
                :selection/validation :exact
                :selection/auto-confirm? false}
+        has-targeting? (assoc :selection/lifecycle :chaining)
+        (not has-targeting?) (assoc :selection/lifecycle :finalized
+                                    :selection/clear-selected-card? true)))))
+
+
+(defn build-sacrifice-permanent-selection
+  "Build pending selection for sacrifice-permanent additional cost.
+   Player selects which battlefield permanent matching criteria to sacrifice.
+
+   Arguments:
+     game-db - Datascript game database
+     player-id - Player casting the spell
+     object-id - Spell being cast
+     mode - Casting mode with :sacrifice-permanent cost
+     sac-cost - The :sacrifice-permanent cost map (has :cost/criteria)
+
+   Returns selection state for choosing a permanent to sacrifice."
+  [game-db player-id object-id mode sac-cost]
+  (let [criteria (:cost/criteria sac-cost)
+        matching (queries/query-zone-by-criteria game-db player-id :battlefield criteria)
+        candidate-ids (set (map :object/id matching))
+        ;; Check if spell has targeting (determines lifecycle)
+        obj (queries/get-object game-db object-id)
+        has-targeting? (seq (:card/targeting (:object/card obj)))]
+    (when (seq candidate-ids)
+      (cond-> {:selection/zone :battlefield
+               :selection/type :sacrifice-permanent-cost
+               :selection/card-source :valid-targets
+               :selection/select-count 1
+               :selection/valid-targets (vec candidate-ids)
+               :selection/selected #{}
+               :selection/player-id player-id
+               :selection/spell-id object-id
+               :selection/mode mode
+               :selection/sac-cost sac-cost
+               :selection/validation :exact
+               :selection/auto-confirm? true}
         has-targeting? (assoc :selection/lifecycle :chaining)
         (not has-targeting?) (assoc :selection/lifecycle :finalized
                                     :selection/clear-selected-card? true)))))
@@ -407,6 +458,21 @@
       {:db db-after-return}
       ;; Finalized: no targeting, cast directly
       {:db (rules/cast-spell-mode db-after-return player-id object-id mode)})))
+
+
+(defmethod core/execute-confirmed-selection :sacrifice-permanent-cost
+  [game-db selection]
+  (let [selected-permanent-id (first (:selection/selected selection))
+        player-id (:selection/player-id selection)
+        object-id (:selection/spell-id selection)
+        mode (:selection/mode selection)
+        ;; Sacrifice the permanent (move to graveyard)
+        db-after-sacrifice (zones/move-to-zone game-db selected-permanent-id :graveyard)]
+    (if (= :chaining (:selection/lifecycle selection))
+      ;; Chaining: just sacrifice, chain builder handles targeting
+      {:db db-after-sacrifice}
+      ;; Finalized: no targeting, cast directly (greedy mana payment)
+      {:db (rules/cast-spell-mode db-after-sacrifice player-id object-id mode)})))
 
 
 (defmethod core/execute-confirmed-selection :exile-cards-cost

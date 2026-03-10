@@ -68,7 +68,7 @@
 (def pre-cast-pipeline
   "Ordered vector of pre-cast step keywords. Evaluated left-to-right.
    Costs before targeting, targeting before mana allocation."
-  [:exile-cards-cost :return-land-cost :discard-specific-cost
+  [:exile-cards-cost :return-land-cost :discard-specific-cost :sacrifice-permanent-cost
    :pay-x-life :x-mana-cost :targeting :mana-allocation])
 
 
@@ -95,6 +95,15 @@
   (when (sel-costs/has-discard-specific-cost? mode)
     (let [discard-cost (sel-costs/get-discard-specific-cost mode)
           sel (sel-costs/build-discard-specific-selection game-db player-id object-id mode discard-cost)]
+      (when sel
+        {:selection sel}))))
+
+
+(defmethod evaluate-pre-cast-step :sacrifice-permanent-cost
+  [_ {:keys [game-db player-id object-id mode]}]
+  (when (sel-costs/has-sacrifice-permanent-cost? mode)
+    (let [sac-cost (sel-costs/get-sacrifice-permanent-cost mode)
+          sel (sel-costs/build-sacrifice-permanent-selection game-db player-id object-id mode sac-cost)]
       (when sel
         {:selection sel}))))
 

@@ -23,7 +23,7 @@
 
 
 (def valid-cost-types
-  #{:pay-life :pay-x-life :exile-cards :return-land :discard-specific})
+  #{:pay-life :pay-x-life :exile-cards :return-land :discard-specific :sacrifice-permanent})
 
 
 (def valid-ability-cost-keys

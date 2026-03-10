@@ -53,6 +53,7 @@
       ;; Pre-cast cost chains: cost selections that chain to targeting
       (derive :discard-specific-cost :pre-cast-cost-to-targeting)
       (derive :return-land-cost :pre-cast-cost-to-targeting)
+      (derive :sacrifice-permanent-cost :pre-cast-cost-to-targeting)
       ;; Targeting chains: targeting selections that chain to mana-allocation
       (derive :cast-time-targeting :targeting-to-mana-allocation)
       (derive :ability-cast-targeting :targeting-to-mana-allocation)

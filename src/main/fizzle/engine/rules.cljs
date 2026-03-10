@@ -125,7 +125,8 @@
     :return-land {:return-land {:criteria (:cost/criteria cost)}}
     :discard-specific {:discard-specific {:groups (:cost/groups cost)
                                           :total (:cost/total cost)}}
-    :pay-x-life {:pay-x-life true}))
+    :pay-x-life {:pay-x-life true}
+    :sacrifice-permanent {:sacrifice-permanent (:cost/criteria cost)}))
 
 
 (defn- can-pay-additional-cost?
