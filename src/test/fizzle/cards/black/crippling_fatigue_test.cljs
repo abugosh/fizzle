@@ -450,6 +450,46 @@
           "Second creature should be in graveyard"))))
 
 
+(deftest sba-non-creature-not-affected-by-zero-toughness-sba-test
+  (testing "Non-creature permanent on battlefield is not moved by :zero-toughness SBA"
+    (let [db (th/create-test-db)
+          ;; Add a Lotus Petal (artifact, not a creature) to the battlefield
+          [db artifact-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-1)
+          db-after-sba (sba/check-and-execute-sbas db)]
+      (is (= :battlefield (:object/zone (q/get-object db-after-sba artifact-id)))
+          "Non-creature permanent should remain on battlefield after SBA check"))))
+
+
+(deftest sba-token-creature-at-zero-toughness-dies-test
+  (testing "Token creature with 0 effective toughness is moved to graveyard by SBA"
+    (let [db (th/create-test-db)
+          ;; Create a 2/2 Beast token on the battlefield
+          token-effect {:effect/type :create-token
+                        :effect/token {:token/name "Beast"
+                                       :token/types #{:creature}
+                                       :token/subtypes #{:beast}
+                                       :token/colors #{:green}
+                                       :token/power 2
+                                       :token/toughness 2}}
+          db-with-token (effects/execute-effect db :player-1 token-effect)
+          ;; Find the token's object-id
+          bf-objects (q/get-objects-in-zone db-with-token :player-1 :battlefield)
+          token-obj (first (filter #(and (:object/is-token %) (= "Beast" (:card/name (:object/card %)))) bf-objects))
+          token-id (:object/id token-obj)
+          ;; Apply -2/-2 to bring toughness to 0
+          pt-effect {:effect/type :apply-pt-modifier
+                     :effect/target token-id
+                     :effect/power -2
+                     :effect/toughness -2}
+          db-with-grant (effects/execute-effect db-with-token :player-1 pt-effect)
+          db-after-sba (sba/check-and-execute-sbas db-with-grant)]
+      ;; Token creatures cease to exist when they leave the battlefield (token-cleanup SBA).
+      ;; The zero-toughness SBA moves the token to graveyard, then token-cleanup SBA
+      ;; retracts the entity entirely. So the token is no longer in the db.
+      (is (nil? (q/get-object db-after-sba token-id))
+          "Token creature with 0 toughness ceases to exist (removed from db) after SBA"))))
+
+
 ;; === H. Flashback Tests ===
 
 (deftest crippling-fatigue-flashback-available-from-graveyard-test

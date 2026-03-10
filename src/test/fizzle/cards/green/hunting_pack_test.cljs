@@ -15,7 +15,6 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.game :as game]
     [fizzle.test-helpers :as th]))
 
 
@@ -81,9 +80,9 @@
           ;; First resolve the storm trigger (creates copies — 0 here since first spell)
           storm-items (filter #(= :storm (:stack-item/type %))
                               (q/get-all-stack-items db-cast))
-          db-after-storm (:db (game/resolve-one-item db-cast))
+          db-after-storm (:db (th/resolve-top db-cast))
           ;; Now resolve the original spell
-          db-resolved (:db (game/resolve-one-item db-after-storm))
+          db-resolved (:db (th/resolve-top db-after-storm))
           ;; Count Beast tokens on battlefield for player-1
           battlefield-objects (q/get-objects-in-zone db-resolved :player-1 :battlefield)
           beast-tokens (filter (fn [obj]
@@ -101,15 +100,13 @@
     (let [db (th/create-test-db {:mana {:colorless 5 :green 2}})
           [db obj-id] (th/add-card-to-zone db :hunting-pack :hand :player-1)
           db-cast (rules/cast-spell db :player-1 obj-id)
-          db-after-storm (:db (game/resolve-one-item db-cast))
-          db-resolved (:db (game/resolve-one-item db-after-storm))
+          db-after-storm (:db (th/resolve-top db-cast))
+          db-resolved (:db (th/resolve-top db-after-storm))
           battlefield-objects (q/get-objects-in-zone db-resolved :player-1 :battlefield)
           beast-token (first (filter (fn [obj]
                                        (and (:object/is-token obj)
                                             (= "Beast" (:card/name (:object/card obj)))))
                                      battlefield-objects))]
-      (is (some? beast-token)
-          "Precondition: Beast token should exist")
       (is (= 4 (:object/power beast-token))
           "Beast token should have power 4")
       (is (= 4 (:object/toughness beast-token))
@@ -178,13 +175,13 @@
           _ (is (= 0 (get-in storm-trigger [:stack-item/effects 0 :effect/count]))
                 "Storm trigger count should be 0 (no copies)")
           ;; Resolve storm trigger first (0 copies created)
-          db-after-storm (:db (game/resolve-one-item db-cast))
+          db-after-storm (:db (th/resolve-top db-cast))
           stack-after-storm (q/get-objects-in-zone db-after-storm :player-1 :stack)
           copies (filter :object/is-copy stack-after-storm)
           _ (is (= 0 (count copies))
                 "No copies should be created with storm count 0")
           ;; Resolve original spell
-          db-resolved (:db (game/resolve-one-item db-after-storm))
+          db-resolved (:db (th/resolve-top db-after-storm))
           battlefield-objects (q/get-objects-in-zone db-resolved :player-1 :battlefield)
           beast-tokens (filter (fn [obj]
                                  (and (:object/is-token obj)
@@ -220,17 +217,17 @@
           _ (is (= 2 (get-in storm-trigger [:stack-item/effects 0 :effect/count]))
                 "Storm trigger count should be 2")
           ;; Resolve storm trigger — non-targeted storm, creates 2 copies directly
-          db-after-storm (:db (game/resolve-one-item db3c))
+          db-after-storm (:db (th/resolve-top db3c))
           stack-objects (q/get-objects-in-zone db-after-storm :player-1 :stack)
           copies (filter :object/is-copy stack-objects)
           _ (is (= 2 (count copies))
                 "Should have 2 storm copies on stack")
           ;; Resolve all copies then original
           db-resolve-copies (reduce (fn [d _copy]
-                                      (:db (game/resolve-one-item d)))
+                                      (:db (th/resolve-top d)))
                                     db-after-storm
                                     copies)
-          db-resolved (:db (game/resolve-one-item db-resolve-copies))
+          db-resolved (:db (th/resolve-top db-resolve-copies))
           ;; Count Beast tokens
           battlefield-objects (q/get-objects-in-zone db-resolved :player-1 :battlefield)
           beast-tokens (filter (fn [obj]
@@ -254,14 +251,14 @@
           db2m (mana/add-mana db2 :player-1 {:colorless 5 :green 2})
           db2c (rules/cast-spell db2m :player-1 hp-id)
           ;; Resolve storm trigger (creates 1 copy)
-          db-after-storm (:db (game/resolve-one-item db2c))
+          db-after-storm (:db (th/resolve-top db2c))
           stack-objects (q/get-objects-in-zone db-after-storm :player-1 :stack)
           copies (filter :object/is-copy stack-objects)
           copy-id (:object/id (first copies))
           _ (is (= 1 (count copies))
                 "Precondition: 1 copy on stack")
           ;; Resolve copy
-          db-after-copy (:db (game/resolve-one-item db-after-storm))]
+          db-after-copy (:db (th/resolve-top db-after-storm))]
       ;; Copy should cease to exist (removed from db entirely)
       (is (nil? (q/get-object db-after-copy copy-id))
           "Storm copy should cease to exist after resolution (removed from db)"))))
@@ -274,8 +271,8 @@
     (let [db (th/create-test-db {:mana {:colorless 5 :green 2}})
           [db obj-id] (th/add-card-to-zone db :hunting-pack :hand :player-1)
           db-cast (rules/cast-spell db :player-1 obj-id)
-          db-after-storm (:db (game/resolve-one-item db-cast))
-          db-resolved (:db (game/resolve-one-item db-after-storm))
+          db-after-storm (:db (th/resolve-top db-cast))
+          db-resolved (:db (th/resolve-top db-after-storm))
           battlefield-objects (q/get-objects-in-zone db-resolved :player-1 :battlefield)
           beast-token (first (filter (fn [obj]
                                        (and (:object/is-token obj)
@@ -290,7 +287,7 @@
     (let [db (th/create-test-db {:mana {:colorless 5 :green 2}})
           [db obj-id] (th/add-card-to-zone db :hunting-pack :hand :player-1)
           db-cast (rules/cast-spell db :player-1 obj-id)
-          db-after-storm (:db (game/resolve-one-item db-cast))
-          db-resolved (:db (game/resolve-one-item db-after-storm))]
+          db-after-storm (:db (th/resolve-top db-cast))
+          db-resolved (:db (th/resolve-top db-after-storm))]
       (is (= :graveyard (:object/zone (q/get-object db-resolved obj-id)))
           "Hunting Pack should be in graveyard after resolution"))))
