@@ -136,6 +136,48 @@
   {:db db :needs-selection effect})
 
 
+(defmethod effects/execute-effect-impl :tap-all
+  [db _player-id effect _object-id]
+  ;; Mass tap: tap all UNTAPPED permanents of :effect/permanent-type
+  ;; controlled by :effect/target player. Non-interactive — no player selection.
+  (let [target-player (:effect/target effect)
+        perm-type (:effect/permanent-type effect)
+        bf-objects (or (q/get-objects-in-zone db target-player :battlefield) [])
+        untapped-of-type (filterv (fn [obj]
+                                    (and (not (:object/tapped obj))
+                                         (contains? (set (get-in obj [:object/card :card/types] #{}))
+                                                    perm-type)))
+                                  bf-objects)]
+    (reduce (fn [db' obj]
+              (let [obj-eid (q/get-object-eid db' (:object/id obj))]
+                (if obj-eid
+                  (d/db-with db' [[:db/add obj-eid :object/tapped true]])
+                  db')))
+            db
+            untapped-of-type)))
+
+
+(defmethod effects/execute-effect-impl :untap-all
+  [db _player-id effect _object-id]
+  ;; Mass untap: untap all TAPPED permanents of :effect/permanent-type
+  ;; controlled by :effect/target player. Non-interactive — no player selection.
+  (let [target-player (:effect/target effect)
+        perm-type (:effect/permanent-type effect)
+        bf-objects (or (q/get-objects-in-zone db target-player :battlefield) [])
+        tapped-of-type (filterv (fn [obj]
+                                  (and (:object/tapped obj)
+                                       (contains? (set (get-in obj [:object/card :card/types] #{}))
+                                                  perm-type)))
+                                bf-objects)]
+    (reduce (fn [db' obj]
+              (let [obj-eid (q/get-object-eid db' (:object/id obj))]
+                (if obj-eid
+                  (d/db-with db' [[:db/add obj-eid :object/tapped false]])
+                  db')))
+            db
+            tapped-of-type)))
+
+
 (defmethod effects/execute-effect-impl :welder-swap
   [db _player-id effect _object-id]
   ;; Goblin Welder swap: simultaneously sacrifice battlefield artifact and

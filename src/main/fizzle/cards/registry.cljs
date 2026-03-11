@@ -46,6 +46,7 @@
     [fizzle.cards.blue.sleight-of-hand :as sleight-of-hand]
     [fizzle.cards.blue.stifle :as stifle]
     [fizzle.cards.blue.tinker :as tinker]
+    [fizzle.cards.blue.turnabout :as turnabout]
     [fizzle.cards.blue.words-of-wisdom :as words-of-wisdom]
     [fizzle.cards.green.crumble :as crumble]
     [fizzle.cards.green.hunting-pack :as hunting-pack]
@@ -109,6 +110,7 @@
        sleight-of-hand/card
        stifle/card
        tinker/card
+       turnabout/card
        words-of-wisdom/card
        abeyance/card
        orims-chant/card

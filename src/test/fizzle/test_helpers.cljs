@@ -79,14 +79,24 @@
                                  ". Card not found in database.")
                             {:card-id card-id})))
         obj-id (random-uuid)
+        card-def (d/pull db [:card/types :card/power :card/toughness] card-eid)
+        card-types (set (:card/types card-def))
         base-obj {:object/id obj-id
                   :object/card card-eid
                   :object/zone zone
                   :object/owner player-eid
                   :object/controller player-eid
                   :object/tapped false}
-        obj (if (= zone :library)
+        obj (cond
+              (= zone :library)
               (assoc base-obj :object/position 0)
+              (and (= zone :battlefield) (contains? card-types :creature))
+              (assoc base-obj
+                     :object/power (:card/power card-def)
+                     :object/toughness (:card/toughness card-def)
+                     :object/summoning-sick true
+                     :object/damage-marked 0)
+              :else
               base-obj)]
     (d/transact! conn [obj])
     [@conn obj-id]))
