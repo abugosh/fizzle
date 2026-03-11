@@ -27,6 +27,7 @@
     [fizzle.cards.blue.careful-study :as careful-study]
     [fizzle.cards.blue.chain-of-vapor :as chain-of-vapor]
     [fizzle.cards.blue.chill :as chill]
+    [fizzle.cards.blue.cloud-of-faeries :as cloud-of-faeries]
     [fizzle.cards.blue.counterspell :as counterspell]
     [fizzle.cards.blue.cunning-wish :as cunning-wish]
     [fizzle.cards.blue.daze :as daze]
@@ -95,6 +96,7 @@
        foil/card
        mana-leak/card
        careful-study/card
+       cloud-of-faeries/card
        frantic-search/card
        deep-analysis/card
        flash-of-insight/card

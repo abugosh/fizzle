@@ -186,8 +186,11 @@
    1. Gets object from stack-item/object-ref
    2. Verifies spell is on stack (no-op if not)
    3. Resolves effects via resolve-spell-effects
-   4. If needs-selection, returns paused result
-   5. Otherwise, moves spell to destination zone"
+   4. If needs-selection, returns paused result (spell stays on stack)
+   5. Otherwise, moves spell to destination zone
+   6. If permanent moved to battlefield and has :card/etb-effects, fires them.
+      ETB effects may be interactive (e.g., untap-lands): returns paused result.
+      Spell has already moved to battlefield at this point."
   [db stack-item]
   (let [obj-ref-raw (:stack-item/object-ref stack-item)
         obj-ref (if (map? obj-ref-raw) (:db/id obj-ref-raw) obj-ref-raw)
@@ -203,7 +206,15 @@
           (let [result (resolve-spell-effects db stack-item object-id obj)]
             (if (:needs-selection result)
               result
-              {:db (move-resolved-spell (:db result) object-id obj)})))))))
+              (let [db-after-move (move-resolved-spell (:db result) object-id obj)
+                    controller (:stack-item/controller stack-item)
+                    etb-effects (:card/etb-effects (:object/card obj))]
+                (if (seq etb-effects)
+                  ;; Fire ETB effects — permanent is already on battlefield.
+                  ;; reduce-effects handles interactive ETB (e.g., untap-lands).
+                  ;; If paused, caller gets the result to build a pending selection.
+                  (effects/reduce-effects db-after-move controller etb-effects object-id)
+                  {:db db-after-move})))))))))
 
 
 (defmethod resolve-stack-item :spell
