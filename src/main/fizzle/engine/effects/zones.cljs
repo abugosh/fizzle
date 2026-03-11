@@ -129,6 +129,13 @@
         db))))
 
 
+(defmethod effects/execute-effect-impl :untap-lands
+  [db _player-id effect _object-id]
+  ;; Interactive: player chooses which tapped lands to untap.
+  ;; Returns needs-selection to pause effect chain and trigger selection.
+  {:db db :needs-selection effect})
+
+
 (defmethod effects/execute-effect-impl :welder-swap
   [db _player-id effect _object-id]
   ;; Goblin Welder swap: simultaneously sacrifice battlefield artifact and

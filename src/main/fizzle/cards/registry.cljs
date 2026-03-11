@@ -33,6 +33,7 @@
     [fizzle.cards.blue.deep-analysis :as deep-analysis]
     [fizzle.cards.blue.flash-of-insight :as flash-of-insight]
     [fizzle.cards.blue.foil :as foil]
+    [fizzle.cards.blue.frantic-search :as frantic-search]
     [fizzle.cards.blue.hydroblast :as hydroblast]
     [fizzle.cards.blue.impulse :as impulse]
     [fizzle.cards.blue.intuition :as intuition]
@@ -94,6 +95,7 @@
        foil/card
        mana-leak/card
        careful-study/card
+       frantic-search/card
        deep-analysis/card
        flash-of-insight/card
        impulse/card

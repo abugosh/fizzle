@@ -18,6 +18,7 @@
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.turn-based :as turn-based]
     [fizzle.events.game :as game]
+    [fizzle.events.lands :as lands]
     [fizzle.events.selection.core :as sel-core]
     [fizzle.events.selection.targeting :as sel-targeting]))
 
@@ -202,6 +203,12 @@
      (let [opp-eid (q/get-player-eid @conn :player-2)]
        (d/transact! conn (turn-based/create-turn-based-triggers-tx opp-eid :player-2)))
      @conn)))
+
+
+(defn tap-permanent
+  "Tap a permanent on the battlefield. Returns updated db."
+  [db object-id]
+  (lands/tap-permanent db object-id))
 
 
 ;; =====================================================

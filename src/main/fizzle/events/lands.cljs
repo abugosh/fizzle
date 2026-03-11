@@ -94,3 +94,17 @@
   (fn [db [_ object-id]]
     (let [game-db (:game/db db)]
       (assoc db :game/db (tap-permanent game-db object-id)))))
+
+
+(defn untap-permanent
+  "Untap a permanent on the battlefield.
+   Pure function: (db, object-id) -> db
+
+   Sets :object/tapped to false for the given object.
+   Returns unchanged db if object doesn't exist."
+  [db object-id]
+  (let [obj (queries/get-object db object-id)]
+    (if obj
+      (let [obj-eid (queries/get-object-eid db object-id)]
+        (d/db-with db [[:db/add obj-eid :object/tapped false]]))
+      db)))

@@ -286,21 +286,34 @@
 ;; =====================================================
 
 (defn- standard-path
-  "Standard lifecycle: execute remaining-effects and cleanup source."
+  "Standard lifecycle: execute remaining-effects and cleanup source.
+   If remaining-effects contain an interactive effect, pauses and builds
+   a new pending selection (chained interactive effects support)."
   [app-db result selection on-complete]
   (let [remaining-effects (:selection/remaining-effects selection)
         player-id (:selection/player-id selection)
-        db-after-remaining (reduce (fn [d effect]
-                                     (effects/execute-effect d player-id effect))
-                                   (:db result)
-                                   (or remaining-effects []))
-        db-final (cleanup-selection-source db-after-remaining selection)
-        updated (-> app-db
-                    (assoc :game/db db-final)
-                    (dissoc :game/pending-selection))]
-    (if on-complete
-      (apply-continuation on-complete updated)
-      updated)))
+        object-id (:selection/spell-id selection)
+        remaining-result (effects/reduce-effects (:db result) player-id
+                                                 (or remaining-effects []))]
+    (if (:needs-selection remaining-result)
+      ;; Interactive effect in remaining-effects: build next selection, defer cleanup.
+      ;; The spell stays on stack; cleanup happens after the final selection resolves.
+      (let [next-effect (:needs-selection remaining-result)
+            further-remaining (vec (:remaining-effects remaining-result))
+            next-sel (build-selection-for-effect (:db remaining-result) player-id object-id
+                                                 next-effect further-remaining)
+            next-sel (cond-> next-sel on-complete (assoc :selection/on-complete on-complete))]
+        (-> app-db
+            (assoc :game/db (:db remaining-result))
+            (assoc :game/pending-selection next-sel)))
+      ;; No more interactive effects: cleanup source and finish.
+      (let [db-final (cleanup-selection-source (:db remaining-result) selection)
+            updated (-> app-db
+                        (assoc :game/db db-final)
+                        (dissoc :game/pending-selection))]
+        (if on-complete
+          (apply-continuation on-complete updated)
+          updated)))))
 
 
 (defn- finalized-path

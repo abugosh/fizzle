@@ -20,7 +20,7 @@
     :exile-zone :gain-life-equal-to-cmc :discard-from-revealed-hand
     :bounce :chain-bounce :counter-spell :counter-ability
     :peek-random-hand :grant-mana-ability :create-token :apply-pt-modifier
-    :welder-swap})
+    :welder-swap :untap-lands})
 
 
 (def valid-cost-types

@@ -21,6 +21,7 @@
     [fizzle.events.selection.library]
     [fizzle.events.selection.storm :as sel-storm]
     [fizzle.events.selection.targeting :as sel-targeting]
+    [fizzle.events.selection.untap]
     [fizzle.events.selection.zone-ops]
     [fizzle.events.ui :as ui]
     [re-frame.core :as rf]))
