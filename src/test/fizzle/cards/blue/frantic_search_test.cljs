@@ -180,7 +180,7 @@
           {db1 :db discard-sel :selection} (th/resolve-top db-cast)
           hand-cards (q/get-hand db1 :player-1)
           card-ids (set (map :object/id hand-cards))
-          {db2 :db untap-sel :selection} (th/confirm-selection db1 discard-sel card-ids)]
+          {_db2 :db untap-sel :selection} (th/confirm-selection db1 discard-sel card-ids)]
       ;; Should now have untap-lands selection
       (is (= :untap-lands (:selection/type untap-sel))
           "Should have untap-lands selection")
@@ -191,9 +191,7 @@
         (is (contains? candidates tapped-land-2)
             "Second tapped land should be a candidate")
         (is (not (contains? candidates untapped-land))
-            "Untapped land should NOT be a candidate")
-        ;; Suppress unused db2 warning
-        (is (some? db2) "db after discard should be valid")))))
+            "Untapped land should NOT be a candidate")))))
 
 
 (deftest test-untap-lands-validation-at-most

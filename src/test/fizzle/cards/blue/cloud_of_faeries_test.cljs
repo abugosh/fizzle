@@ -239,9 +239,10 @@
   (testing "Cannot cycle without sufficient mana"
     (let [db (th/create-test-db)
           [db cf-id] (th/add-card-to-zone db :cloud-of-faeries :hand :player-1)
-          _ (game/cycle-card db :player-1 cf-id)]
-      ;; Should fail gracefully — no state change (original db unchanged)
-      (is (= :hand (:object/zone (q/get-object db cf-id)))
+          result (game/cycle-card db :player-1 cf-id)
+          result-db (:db result)]
+      ;; Should fail gracefully — card remains in hand in result db
+      (is (= :hand (:object/zone (q/get-object result-db cf-id)))
           "Card should remain in hand when cycling fails"))))
 
 
@@ -249,8 +250,9 @@
   (testing "Cannot cycle from battlefield (must be in hand)"
     (let [db (th/create-test-db {:mana {:colorless 2}})
           [db cf-id] (th/add-card-to-zone db :cloud-of-faeries :battlefield :player-1)
-          _ (game/cycle-card db :player-1 cf-id)]
-      (is (= :battlefield (:object/zone (q/get-object db cf-id)))
+          result (game/cycle-card db :player-1 cf-id)
+          result-db (:db result)]
+      (is (= :battlefield (:object/zone (q/get-object result-db cf-id)))
           "Card should remain on battlefield when cycling fails"))))
 
 
@@ -258,8 +260,9 @@
   (testing "Cannot cycle from graveyard"
     (let [db (th/create-test-db {:mana {:colorless 2}})
           [db cf-id] (th/add-card-to-zone db :cloud-of-faeries :graveyard :player-1)
-          _ (game/cycle-card db :player-1 cf-id)]
-      (is (= :graveyard (:object/zone (q/get-object db cf-id)))
+          result (game/cycle-card db :player-1 cf-id)
+          result-db (:db result)]
+      (is (= :graveyard (:object/zone (q/get-object result-db cf-id)))
           "Card should remain in graveyard when cycling fails"))))
 
 
@@ -268,8 +271,8 @@
     ;; Cloud of Faeries has :card/cycling {:colorless 2}
     ;; The cycling mechanism should not be hardcoded to Cloud of Faeries
     (let [card cloud-of-faeries/card]
-      (is (some? (:card/cycling card))
-          "Card should have :card/cycling key for generic cycling to work"))))
+      (is (= {:colorless 2} (:card/cycling card))
+          "Card should have :card/cycling {:colorless 2} for generic cycling to work"))))
 
 
 ;; =====================================================
