@@ -94,7 +94,7 @@
    Returns updated BitWriter."
   [w data]
   (let [s     (pr-str data)
-        bytes (js/Buffer.from s "utf8")
+        bytes (.encode (js/TextEncoder.) s)
         n     (.-length bytes)]
     (let [w1 (bits/write-bits w n 16)]
       (loop [i 0 ww w1]
@@ -268,6 +268,15 @@
 ;; ---------------------------------------------------------------------------
 ;; Public API
 
+(defn- write-player-grants
+  "Write player-level grants as EDN blobs for both players when flag is set.
+   p1-grants and p2-grants are vectors of grant maps (may be empty)."
+  [w p1-grants p2-grants]
+  (-> w
+      (encode-edn-blob (or (seq p1-grants) []))
+      (encode-edn-blob (or (seq p2-grants) []))))
+
+
 (defn encode-snapshot
   "Encode a portable game-state map (from extractor/extract) to a base64url string.
    Returns nil if the result would exceed the URL character limit."
@@ -282,6 +291,8 @@
                          (write-header state p1-id p2-id has-stack? has-grants?)
                          (write-player-zones (get (:players state) p1-id))
                          (write-player-zones (get (:players state) p2-id))
+                         (cond-> has-grants?
+                           (as-> ww (write-player-grants ww p1-grants p2-grants)))
                          (cond-> has-stack?
                            (as-> ww (write-stack ww stack p1-id))))
         result       (bits/base64url-encode (bits/finish w))]

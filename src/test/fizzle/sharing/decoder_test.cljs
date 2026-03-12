@@ -7,6 +7,7 @@
     [cljs.test :refer-macros [deftest testing is]]
     [clojure.string :as string]
     [fizzle.db.queries :as q]
+    [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.sharing.bits :as bits]
@@ -217,6 +218,55 @@
           "stack item type should be :spell")
       (is (= :player-1 (:stack-item/controller (first stk)))
           "controller should be :player-1"))))
+
+
+(deftest roundtrip-targeted-spell-targets-test
+  (testing "targeted spell targets (EDN blob) survive encode→decode"
+    (let [db     (-> (th/create-test-db {:mana {:blue 1 :colorless 1}}) (th/add-opponent))
+          [db' _] (th/add-card-to-zone db :brain-freeze :hand :player-1)
+          hand   (q/get-hand db' :player-1)
+          ;; Brain Freeze targets players by player-id keyword
+          db-c   (th/cast-with-target db' :player-1 (:object/id (first hand)) :player-2)
+          state  (extractor/extract db-c)
+          rt     (decoder/decode-snapshot (encoder/encode-snapshot state))
+          stk    (:stack rt)
+          ;; The spell item may not be first due to LIFO ordering with storm trigger
+          spell-item (first (filter #(= :spell (:stack-item/type %)) stk))]
+      (is (pos? (count stk))
+          "stack should have items after casting Brain Freeze")
+      (is (some? spell-item)
+          "stack should contain a :spell type item")
+      (is (map? (:stack-item/targets spell-item))
+          "targets map should be decoded from EDN blob")
+      (is (pos? (count (:stack-item/targets spell-item)))
+          "targets map should be non-empty"))))
+
+
+;; ---------------------------------------------------------------------------
+;; E2. Round-trip: player grants
+
+(deftest roundtrip-player-grants-test
+  (testing "non-empty player grants survive encode→decode"
+    (let [db      (-> (th/create-test-db) (th/add-opponent))
+          grant   {:grant/id :test-grant :grant/type :add-restriction
+                   :grant/data {:restriction/type :no-land-play}}
+          db-with-grant (grants/add-player-grant db :player-1 grant)
+          state   (extractor/extract db-with-grant)
+          rt      (decoder/decode-snapshot (encoder/encode-snapshot state))
+          p1-grants (get-in rt [:players :player-1 :player/grants])]
+      (is (= 1 (count p1-grants))
+          "player-1 should have 1 grant after round-trip")
+      (is (= :test-grant (:grant/id (first p1-grants)))
+          "grant id should be preserved"))))
+
+
+(deftest roundtrip-empty-player-grants-test
+  (testing "empty player grants decode as empty vector"
+    (let [{:keys [decoded]} (encode-then-decode (-> (th/create-test-db) (th/add-opponent)))]
+      (is (= [] (get-in decoded [:players :player-1 :player/grants]))
+          "empty grants should decode as []")
+      (is (= [] (get-in decoded [:players :player-2 :player/grants]))
+          "empty grants for p2 should decode as []"))))
 
 
 ;; ---------------------------------------------------------------------------

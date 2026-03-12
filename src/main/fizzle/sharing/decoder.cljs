@@ -89,7 +89,7 @@
     (let [byte-arr (js/Uint8Array. n)]
       (dotimes [i n]
         (aset byte-arr i (check! (safe-read r 8))))
-      (let [s (.toString (js/Buffer.from byte-arr) "utf8")]
+      (let [s (.decode (js/TextDecoder. "utf-8") byte-arr)]
         (reader/read-string s)))))
 
 
@@ -252,16 +252,19 @@
         (when (not= 1 version)
           (throw (ex-info (str "Unsupported snapshot version " version)
                           {:bad-version version})))
-        (let [hdr        (read-header r version)
-              flags      (:flags hdr)
-              has-stack? (pos? (bit-and flags 1))
-              active-id  (if (= 0 (:active-bit hdr)) p1-id p2-id)
-              prio-id    (if (= 0 (:prio-bit hdr)) p1-id p2-id)
-              p1-zones   (read-player-zones r)
-              p2-zones   (read-player-zones r)
-              stack      (if has-stack?
-                           (read-stack r p1-id)
-                           [])]
+        (let [hdr           (read-header r version)
+              flags         (:flags hdr)
+              has-stack?    (pos? (bit-and flags 1))
+              has-grants?   (pos? (bit-and flags 2))
+              active-id     (if (= 0 (:active-bit hdr)) p1-id p2-id)
+              prio-id       (if (= 0 (:prio-bit hdr)) p1-id p2-id)
+              p1-zones      (read-player-zones r)
+              p2-zones      (read-player-zones r)
+              p1-grants     (if has-grants? (read-edn-blob r) [])
+              p2-grants     (if has-grants? (read-edn-blob r) [])
+              stack         (if has-stack?
+                              (read-stack r p1-id)
+                              [])]
           {:game/turn            (:turn hdr)
            :game/phase           (:phase hdr)
            :game/step            (:step hdr)
@@ -273,19 +276,19 @@
            :game/human-player-id p1-id
            :players
            {p1-id (merge p1-zones
-                         {:player/life           (:p1-life hdr)
-                          :player/mana-pool      (:p1-mana hdr)
-                          :player/storm-count    (:p1-storm hdr)
+                         {:player/life            (:p1-life hdr)
+                          :player/mana-pool       (:p1-mana hdr)
+                          :player/storm-count     (:p1-storm hdr)
                           :player/land-plays-left (:p1-land hdr)
-                          :player/max-hand-size  7
-                          :player/grants         []})
+                          :player/max-hand-size   7
+                          :player/grants          p1-grants})
             p2-id (merge p2-zones
-                         {:player/life           (:p2-life hdr)
-                          :player/mana-pool      (:p2-mana hdr)
-                          :player/storm-count    (:p2-storm hdr)
+                         {:player/life            (:p2-life hdr)
+                          :player/mana-pool       (:p2-mana hdr)
+                          :player/storm-count     (:p2-storm hdr)
                           :player/land-plays-left (:p2-land hdr)
-                          :player/max-hand-size  7
-                          :player/grants         []})}
+                          :player/max-hand-size   7
+                          :player/grants          p2-grants})}
            :stack stack}))
       (catch ExceptionInfo e
         (let [data (ex-data e)]

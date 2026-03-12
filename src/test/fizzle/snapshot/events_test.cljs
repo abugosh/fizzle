@@ -104,9 +104,17 @@
           "share status should be :copied after setting"))))
 
 
-(deftest share-status-can-be-set-to-error-test
-  (testing "share status can be set to :error"
-    (let [app-db (snap-events/set-share-status {} :error)
+(deftest share-status-can-be-set-to-error-too-large-test
+  (testing "share status can be set to :error-too-large"
+    (let [app-db (snap-events/set-share-status {} :error-too-large)
           status (snap-events/get-share-status app-db)]
-      (is (= :error status)
-          "share status should be :error after setting"))))
+      (is (= :error-too-large status)
+          "share status should be :error-too-large after setting"))))
+
+
+(deftest share-status-can-be-set-to-error-clipboard-test
+  (testing "share status can be set to :error-clipboard"
+    (let [app-db (snap-events/set-share-status {} :error-clipboard)
+          status (snap-events/get-share-status app-db)]
+      (is (= :error-clipboard status)
+          "share status should be :error-clipboard after setting"))))

@@ -9,7 +9,7 @@
      ::restore-from-hash → decode URL hash → restore game state → merge into app-db
 
    Subscription:
-     ::share-status → :idle | :copied | :error"
+     ::share-status → :idle | :copied | :error-too-large | :error-clipboard"
   (:require
     [clojure.string :as str]
     [fizzle.sharing.decoder :as decoder]
@@ -103,7 +103,8 @@
       (if url
         {:db     (set-share-status db :copied)
          ::copy-to-clipboard url}
-        {:db (set-share-status db :error)}))))
+        ;; encode-for-share returns nil when state exceeds URL limit
+        {:db (set-share-status db :error-too-large)}))))
 
 
 (rf/reg-event-db
@@ -118,15 +119,15 @@
 (rf/reg-fx
   ::copy-to-clipboard
   (fn [url]
-    (-> (copy-to-clipboard! url)
-        (.catch (fn [_]
-                  ;; Clipboard write failed — set error status
-                  (rf/dispatch [::set-share-status :error])))
-        ;; Clear :copied status after 2 seconds
-        (.then (fn [_]
+    (let [p (copy-to-clipboard! url)]
+      ;; Success path: clear :copied → :idle after 2 seconds
+      (.then p (fn [_]
                  (js/setTimeout
                    #(rf/dispatch [::set-share-status :idle])
-                   2000))))))
+                   2000)))
+      ;; Failure path: separate .catch so error status is not auto-cleared by the .then above
+      (.catch p (fn [_]
+                  (rf/dispatch [::set-share-status :error-clipboard]))))))
 
 
 (rf/reg-event-db
