@@ -2,27 +2,18 @@
   "Stable integer ↔ card-id index for compact URL encoding.
 
    Assigns a dense, zero-based integer to every card in the registry.
-   Ordering is alphabetical by card-id name so the mapping is deterministic
-   and does not change as long as the card pool is unchanged.
-
-   If the card pool grows, new cards are inserted at their alphabetical
-   position; existing indices for earlier cards are unaffected only if
-   new cards sort after all existing ones. When a card's index must change
-   (insertion before existing cards), any persisted URL snapshots that
-   reference that card will decode incorrectly. This is acceptable during
-   early development; a version field in the snapshot envelope guards
-   against silent corruption."
+   Index = position in registry/all-cards vector. New cards are always
+   appended to the end of all-cards, so existing indices never shift and
+   previously encoded snapshots remain decodable."
   (:require
     [fizzle.engine.cards :as cards]))
 
 
 (def card->int
   "Map from :card/id keyword to stable integer index.
-   Sorted alphabetically by card-id name."
+   Index = position in the registry all-cards vector."
   (->> cards/all-cards
-       (map :card/id)
-       sort
-       (map-indexed (fn [i id] [id i]))
+       (map-indexed (fn [i card] [(:card/id card) i]))
        (into {})))
 
 

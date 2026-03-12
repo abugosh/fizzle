@@ -2,10 +2,11 @@
   "Tests for card index registry — stable integer ↔ card-id mapping for URL encoding.
 
    The card index assigns a stable, deterministic integer to every card in the
-   registry. This allows compact URL encoding: store a small int instead of a
-   full keyword string like :brain-freeze."
+   registry. Index = position in the registry all-cards vector. New cards are
+   appended to all-cards so existing indices never shift."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
+    [fizzle.engine.cards :as cards]
     [fizzle.sharing.card-index :as card-index]))
 
 
@@ -81,23 +82,35 @@
 
 
 (deftest card-index-known-cards-have-stable-index-test
-  (testing "Known cards always get the same index (alphabetical ordering)"
-    ;; These exact values are fixed once the card pool is established.
+  (testing "Known cards always get the same index (registry position ordering)"
+    ;; These exact values are fixed by the position in registry/all-cards.
     ;; If they change, URL-encoded snapshots become invalid.
-    (is (int? (get card-index/card->int :dark-ritual))
-        ":dark-ritual should have an integer index")
-    (is (int? (get card-index/card->int :brain-freeze))
-        ":brain-freeze should have an integer index")
-    (is (int? (get card-index/card->int :plains))
-        ":plains should have an integer index")))
+    ;; dark-ritual is first in registry → index 0
+    (is (= 0 (card-index/encode :dark-ritual))
+        ":dark-ritual is first in registry, should be index 0")
+    ;; brain-freeze is 13th entry (0-based index 12) in the individual cards list
+    (is (= 12 (card-index/encode :brain-freeze))
+        ":brain-freeze is at registry position 12")))
 
 
-(deftest card-index-ordering-is-alphabetical-test
-  (testing "card->int assigns indices in alphabetical order of card-id names"
-    (let [sorted-ids  (sort-by name (keys card-index/card->int))
-          assigned    (map card-index/card->int sorted-ids)]
-      (is (= assigned (range (count sorted-ids)))
-          "Alphabetically sorted cards should have indices 0, 1, 2, ..."))))
+(deftest card-index-ordering-matches-registry-test
+  (testing "card->int indices match position in all-cards vector"
+    (let [registry-ids (mapv :card/id cards/all-cards)]
+      (doseq [[i card-id] (map-indexed vector registry-ids)]
+        (is (= i (card-index/encode card-id))
+            (str card-id " should have index " i " (its registry position)"))))))
+
+
+(deftest card-index-new-cards-appended-do-not-shift-existing-test
+  (testing "First card in registry is always index 0 regardless of card pool size"
+    (let [first-id (:card/id (first cards/all-cards))]
+      (is (= 0 (card-index/encode first-id))
+          "First registry card always gets index 0")))
+
+  (testing "Last card in registry has index (card-count - 1)"
+    (let [last-id (:card/id (last cards/all-cards))]
+      (is (= (dec card-index/card-count) (card-index/encode last-id))
+          "Last registry card gets index (card-count - 1)"))))
 
 
 ;; === D. Lookup helpers ===
