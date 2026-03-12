@@ -1,6 +1,7 @@
 (ns fizzle.views.history
   (:require
     [fizzle.history.events :as events]
+    [fizzle.snapshot.events :as snapshot]
     [fizzle.subs.game :as game-subs]
     [fizzle.subs.history :as subs]
     [re-frame.core :as rf]
@@ -211,6 +212,25 @@
           (:fork/name fork)]))]))
 
 
+(defn- share-button
+  "Share button that copies a snapshot URL to clipboard.
+   Shows feedback: 'Copied!' for 2s, or error message on failure."
+  []
+  (let [status @(rf/subscribe [::snapshot/share-status])]
+    [:div {:class "border-t border-surface-elevated pt-2 mt-2"}
+     [:button
+      {:class    (str "py-1 px-2 text-xs border rounded cursor-pointer w-full "
+                      (case status
+                        :copied "border-accent text-accent bg-surface-hover"
+                        :error  "border-red-500 text-red-400 bg-surface-hover"
+                        "border-border text-perm-text bg-surface-hover"))
+       :on-click #(rf/dispatch [::snapshot/share-position])}
+      (case status
+        :copied "Copied!"
+        :error  "State too large to share"
+        "Share")]]))
+
+
 (defn history-sidebar
   []
   [:div {:class "bg-surface-raised flex flex-col font-mono text-text overflow-hidden"}
@@ -218,4 +238,5 @@
     "History"]
    [step-controls]
    [action-log]
-   [fork-list-data]])
+   [fork-list-data]
+   [share-button]])

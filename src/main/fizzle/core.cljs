@@ -9,6 +9,7 @@
     [fizzle.events.setup :as setup]
     [fizzle.history.events]
     [fizzle.history.interceptor :as history-interceptor]
+    [fizzle.snapshot.events :as snapshot]
     [fizzle.subs.game :as subs]
     [fizzle.subs.history]
     [fizzle.subs.opening-hand]
@@ -127,5 +128,13 @@
   (history-interceptor/register!)
   (bot-interceptor/register!)
   (sba-interceptor/register!)
+  ;; Always run normal init-setup first (sets up setup screen + config)
   (rf/dispatch-sync [::setup/init-setup])
+  ;; If the URL has a snapshot hash, restore it (overrides active-screen to :game)
+  (let [hash     (.-hash js/location)
+        restored (snapshot/restore-from-hash-handler hash)]
+    (when restored
+      ;; Clear the hash so refresh doesn't re-restore
+      (.replaceState js/history nil "" (.-pathname js/location))
+      (rf/dispatch-sync [:fizzle.events.game/restore-from-snapshot restored])))
   (mount-root))
