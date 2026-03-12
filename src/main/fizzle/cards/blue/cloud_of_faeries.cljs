@@ -19,5 +19,7 @@
    :card/keywords #{:flying}
    :card/cycling {:colorless 2}
    :card/text "Flying. When this creature enters, untap up to two lands. Cycling {2}"
-   :card/etb-effects [{:effect/type :untap-lands
-                       :effect/count 2}]})
+   :card/triggers [{:trigger/type :enters-battlefield
+                    :trigger/effects [{:effect/type :untap-lands
+                                       :effect/count 2}]
+                    :trigger/description "When Cloud of Faeries enters, untap up to two lands."}]})

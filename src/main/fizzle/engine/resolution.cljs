@@ -16,10 +16,12 @@
     [fizzle.db.queries :as queries]
     [fizzle.engine.combat :as combat]
     [fizzle.engine.effects :as effects]
+    [fizzle.engine.events :as game-events]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.trigger-db :as trigger-db]
+    [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.engine.triggers :as triggers]
     [fizzle.engine.zones :as zones]))
 
@@ -130,13 +132,23 @@
                         :else :graveyard)
           db-after-move (zones/move-to-zone db object-id destination)
           card (:object/card obj)]
-      (if (and (= destination :battlefield) (seq (:card/triggers card)))
-        (let [obj-eid (queries/get-object-eid db-after-move object-id)
-              controller-ref (:object/controller obj)
+      (if (= destination :battlefield)
+        (let [controller-ref (:object/controller obj)
               controller-eid (if (map? controller-ref) (:db/id controller-ref) controller-ref)
-              tx (trigger-db/create-triggers-for-card-tx
-                   db-after-move obj-eid controller-eid (:card/triggers card))]
-          (d/db-with db-after-move tx))
+              controller-id (d/q '[:find ?pid .
+                                   :in $ ?e
+                                   :where [?e :player/id ?pid]]
+                                 db-after-move controller-eid)
+              ;; Register persistent triggers (e.g., becomes-tapped, land-entered)
+              db-with-triggers (if (seq (:card/triggers card))
+                                 (let [obj-eid (queries/get-object-eid db-after-move object-id)
+                                       tx (trigger-db/create-triggers-for-card-tx
+                                            db-after-move obj-eid controller-eid (:card/triggers card))]
+                                   (d/db-with db-after-move tx))
+                                 db-after-move)]
+          ;; Dispatch permanent-entered event for ETB triggers
+          (dispatch/dispatch-event db-with-triggers
+                                   (game-events/permanent-entered-event object-id controller-id)))
         db-after-move))))
 
 
@@ -187,10 +199,9 @@
    2. Verifies spell is on stack (no-op if not)
    3. Resolves effects via resolve-spell-effects
    4. If needs-selection, returns paused result (spell stays on stack)
-   5. Otherwise, moves spell to destination zone
-   6. If permanent moved to battlefield and has :card/etb-effects, fires them.
-      ETB effects may be interactive (e.g., untap-lands): returns paused result.
-      Spell has already moved to battlefield at this point."
+   5. Otherwise, moves spell to destination zone (battlefield for permanents)
+   6. If permanent enters battlefield, dispatches :permanent-entered event
+      which puts any ETB triggers on the stack as separate stack-items."
   [db stack-item]
   (let [obj-ref-raw (:stack-item/object-ref stack-item)
         obj-ref (if (map? obj-ref-raw) (:db/id obj-ref-raw) obj-ref-raw)
@@ -206,15 +217,7 @@
           (let [result (resolve-spell-effects db stack-item object-id obj)]
             (if (:needs-selection result)
               result
-              (let [db-after-move (move-resolved-spell (:db result) object-id obj)
-                    controller (:stack-item/controller stack-item)
-                    etb-effects (:card/etb-effects (:object/card obj))]
-                (if (seq etb-effects)
-                  ;; Fire ETB effects — permanent is already on battlefield.
-                  ;; reduce-effects handles interactive ETB (e.g., untap-lands).
-                  ;; If paused, caller gets the result to build a pending selection.
-                  (effects/reduce-effects db-after-move controller etb-effects object-id)
-                  {:db db-after-move})))))))))
+              {:db (move-resolved-spell (:db result) object-id obj)})))))))
 
 
 (defmethod resolve-stack-item :spell
@@ -225,6 +228,20 @@
 (defmethod resolve-stack-item :storm-copy
   [db stack-item]
   (resolve-spell-type db stack-item))
+
+
+;; =====================================================
+;; ETB Trigger Resolution
+;; =====================================================
+
+(defmethod resolve-stack-item :permanent-entered
+  [db stack-item]
+  (let [controller (:stack-item/controller stack-item)
+        source-id (:stack-item/source stack-item)
+        effects-list (or (:stack-item/effects stack-item) [])]
+    (if (empty? effects-list)
+      {:db db}
+      (effects/reduce-effects db controller effects-list source-id))))
 
 
 ;; =====================================================

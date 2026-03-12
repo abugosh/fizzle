@@ -32,12 +32,13 @@
         candidate-ids (set (mapv :object/id tapped-lands))]
     {:selection/type :untap-lands
      :selection/zone :battlefield
-     :selection/card-source :zone
+     :selection/card-source :candidates
      :selection/select-count count-limit
      :selection/player-id player-id
      :selection/selected #{}
      :selection/spell-id object-id
      :selection/remaining-effects remaining-effects
+     :selection/candidates candidate-ids
      :selection/candidate-ids candidate-ids
      :selection/min-count 0
      :selection/validation :at-most

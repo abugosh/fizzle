@@ -48,7 +48,7 @@
 
 
 (def valid-trigger-types
-  #{:becomes-tapped :land-entered :creature-attacks})
+  #{:becomes-tapped :land-entered :creature-attacks :enters-battlefield})
 
 
 (def valid-restriction-types

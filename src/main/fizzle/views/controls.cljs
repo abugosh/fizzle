@@ -30,6 +30,7 @@
   []
   (let [can-cast? @(rf/subscribe [::subs/can-cast?])
         can-play-land? @(rf/subscribe [::subs/can-play-land?])
+        can-cycle? @(rf/subscribe [::subs/can-cycle?])
         selected @(rf/subscribe [::subs/selected-card])
         card-info @(rf/subscribe [::subs/selected-card-info])
         stack @(rf/subscribe [::subs/stack])
@@ -65,6 +66,10 @@
                            can-play-land? #(rf/dispatch [::events/play-land selected])
                            :else identity)}
       play-yield-label]
+     (when can-cycle?
+       [:button {:class (btn-class true)
+                 :on-click #(rf/dispatch [::events/cycle-card selected])}
+        (str "Cycle " (:name card-info))])
      [:button {:class (btn-class true)
                :on-click #(rf/dispatch [::events/yield])}
       (if-let [n (top-stack-item-name stack)]

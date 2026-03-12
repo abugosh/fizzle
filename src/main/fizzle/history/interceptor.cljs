@@ -13,6 +13,7 @@
   #{:fizzle.events.game/init-game
     :fizzle.events.game/cast-spell
     :fizzle.events.game/cast-and-yield
+    :fizzle.events.game/cycle-card
     :fizzle.events.game/yield
     :fizzle.events.game/yield-all
     :fizzle.events.game/start-turn
@@ -55,7 +56,8 @@
         (queries/get-human-player-id game-db)
 
         ;; Explicit player-id in args: [_ object-id player-id]
-        :fizzle.events.game/play-land
+        (:fizzle.events.game/play-land
+          :fizzle.events.game/cycle-card)
         (or (second args) (queries/get-human-player-id game-db))
 
         ;; Explicit player-id: [_ object-id color player-id]

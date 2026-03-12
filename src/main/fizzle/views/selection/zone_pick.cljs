@@ -24,7 +24,8 @@
    :peek-and-select {:title "Look at the top cards of your library"
                      :border-color "gy-flashback-border" :empty-text "No cards to peek"
                      :confirm-extra-class "bg-gy-flashback-border"}
-   :discard-specific-cost {:title "Select cards to discard"}})
+   :discard-specific-cost {:title "Select cards to discard"}
+   :untap-lands {:title "Select lands to untap" :empty-text "No tapped lands"}})
 
 
 (defn- counter-text
@@ -45,6 +46,7 @@
       :exile-cards-cost (str "Select blue cards to exile. X = " n " (select at least 1)")
       :peek-and-select (str "Select up to " r " card(s) for your hand (" n " selected). "
                             "Remaining cards go to bottom of library.")
+      :untap-lands (str "Select up to " r " lands (" n " selected)")
       (str n " / " r " selected"))))
 
 

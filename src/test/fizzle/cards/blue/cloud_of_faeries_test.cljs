@@ -56,15 +56,19 @@
            (:card/text cloud-of-faeries/card))
         "Card text should match oracle text"))
 
-  (testing "Cloud of Faeries has ETB untap-lands effect"
-    (let [etb-effects (:card/etb-effects cloud-of-faeries/card)]
-      (is (= 1 (count etb-effects))
-          "Should have 1 ETB effect")
-      (let [untap-effect (first etb-effects)]
-        (is (= :untap-lands (:effect/type untap-effect))
-            "ETB effect should be :untap-lands")
-        (is (= 2 (:effect/count untap-effect))
-            "Should untap up to 2 lands"))))
+  (testing "Cloud of Faeries has ETB trigger"
+    (let [triggers (:card/triggers cloud-of-faeries/card)]
+      (is (= 1 (count triggers))
+          "Should have 1 trigger")
+      (let [trigger (first triggers)]
+        (is (= :enters-battlefield (:trigger/type trigger))
+            "Trigger should be :enters-battlefield")
+        (let [effects (:trigger/effects trigger)]
+          (is (= 1 (count effects)) "Trigger should have 1 effect")
+          (is (= :untap-lands (:effect/type (first effects)))
+              "ETB effect should be :untap-lands")
+          (is (= 2 (:effect/count (first effects)))
+              "Should untap up to 2 lands")))))
 
   (testing "Cloud of Faeries has no spell effects (ETB fires on entering)"
     (is (nil? (:card/effects cloud-of-faeries/card))
@@ -76,30 +80,31 @@
 ;; =====================================================
 
 (deftest test-cloud-of-faeries-enters-and-triggers-etb-untap
-  (testing "Casting Cloud of Faeries triggers ETB untap up to 2 lands"
+  (testing "Casting Cloud of Faeries puts ETB trigger on stack, resolving it triggers untap selection"
     (let [db (th/create-test-db {:mana {:colorless 1 :blue 1}})
-          [db fs-id] (th/add-card-to-zone db :cloud-of-faeries :hand :player-1)
+          [db cf-id] (th/add-card-to-zone db :cloud-of-faeries :hand :player-1)
           ;; Add a tapped land
           [db land-id] (th/add-card-to-zone db :island :battlefield :player-1)
           db (th/tap-permanent db land-id)
           ;; Cast
-          db-cast (rules/cast-spell db :player-1 fs-id)
-          ;; Resolve — creature moves to battlefield, ETB fires, pauses for untap selection
-          {:keys [db selection]} (th/resolve-top db-cast)]
+          db-cast (rules/cast-spell db :player-1 cf-id)
+          ;; Resolve spell — creature enters battlefield, ETB trigger goes on stack
+          {:keys [db]} (th/resolve-top db-cast)]
       ;; Cloud of Faeries should now be on battlefield
-      (is (= :battlefield (:object/zone (q/get-object db fs-id)))
+      (is (= :battlefield (:object/zone (q/get-object db cf-id)))
           "Cloud of Faeries should be on battlefield after resolution")
-      ;; ETB should have triggered untap selection
-      (is (= :untap-lands (:selection/type selection))
-          "ETB should fire untap-lands selection")
-      (is (= 2 (:selection/select-count selection))
-          "ETB should allow untapping up to 2 lands")
-      (is (contains? (:selection/candidate-ids selection) land-id)
-          "Tapped land should be in selection candidates")
-      ;; Select the land to untap
-      (let [{:keys [db]} (th/confirm-selection db selection #{land-id})]
-        (is (false? (:object/tapped (q/get-object db land-id)))
-            "Land should be untapped after ETB resolves")))))
+      ;; Resolve ETB trigger — pauses for untap selection
+      (let [{:keys [db selection]} (th/resolve-top db)]
+        (is (= :untap-lands (:selection/type selection))
+            "ETB trigger should fire untap-lands selection")
+        (is (= 2 (:selection/select-count selection))
+            "ETB should allow untapping up to 2 lands")
+        (is (contains? (:selection/candidate-ids selection) land-id)
+            "Tapped land should be in selection candidates")
+        ;; Select the land to untap
+        (let [{:keys [db]} (th/confirm-selection db selection #{land-id})]
+          (is (false? (:object/tapped (q/get-object db land-id)))
+              "Land should be untapped after ETB resolves"))))))
 
 
 (deftest test-cloud-of-faeries-etb-fires-without-tapped-lands
@@ -109,7 +114,10 @@
           ;; Untapped land only
           [db _untapped] (th/add-card-to-zone db :island :battlefield :player-1)
           db-cast (rules/cast-spell db :player-1 cf-id)
-          {:keys [db selection]} (th/resolve-top db-cast)]
+          ;; Resolve spell — creature enters, ETB trigger on stack
+          {:keys [db]} (th/resolve-top db-cast)
+          ;; Resolve ETB trigger — untap selection
+          {:keys [db selection]} (th/resolve-top db)]
       ;; Should still get selection (empty candidates)
       (is (= :untap-lands (:selection/type selection))
           "ETB should still provide untap selection")
@@ -168,14 +176,16 @@
 (deftest test-cloud-of-faeries-etb-shows-only-tapped-lands
   (testing "ETB untap selection only shows tapped lands controlled by casting player"
     (let [db (th/create-test-db {:mana {:colorless 1 :blue 1}})
-          [db cf-id] (th/add-card-to-zone db :cloud-of-faeries :hand :player-1)
+          [db _cf-id] (th/add-card-to-zone db :cloud-of-faeries :hand :player-1)
           [db tapped-1] (th/add-card-to-zone db :island :battlefield :player-1)
           [db tapped-2] (th/add-card-to-zone db :island :battlefield :player-1)
           [db untapped] (th/add-card-to-zone db :island :battlefield :player-1)
           db (th/tap-permanent db tapped-1)
           db (th/tap-permanent db tapped-2)
-          db-cast (rules/cast-spell db :player-1 cf-id)
-          {_db :db selection :selection} (th/resolve-top db-cast)]
+          db-cast (rules/cast-spell db :player-1 _cf-id)
+          ;; Resolve spell, then ETB trigger
+          {:keys [db]} (th/resolve-top db-cast)
+          {:keys [_db selection]} (th/resolve-top db)]
       (let [candidates (:selection/candidate-ids selection)]
         (is (contains? candidates tapped-1) "First tapped land should be candidate")
         (is (contains? candidates tapped-2) "Second tapped land should be candidate")
@@ -189,7 +199,9 @@
           [db land] (th/add-card-to-zone db :island :battlefield :player-1)
           db (th/tap-permanent db land)
           db-cast (rules/cast-spell db :player-1 cf-id)
-          {:keys [_db selection]} (th/resolve-top db-cast)]
+          ;; Resolve spell, then ETB trigger
+          {:keys [db]} (th/resolve-top db-cast)
+          {:keys [_db selection]} (th/resolve-top db)]
       (is (= :at-most (:selection/validation selection))
           "Validation should be :at-most")
       (is (= 2 (:selection/select-count selection))
@@ -206,7 +218,9 @@
           db (th/tap-permanent db my-land)
           db (th/tap-permanent db opp-land)
           db-cast (rules/cast-spell db :player-1 cf-id)
-          {:keys [_db selection]} (th/resolve-top db-cast)]
+          ;; Resolve spell, then ETB trigger
+          {:keys [db]} (th/resolve-top db-cast)
+          {:keys [_db selection]} (th/resolve-top db)]
       (let [candidates (:selection/candidate-ids selection)]
         (is (contains? candidates my-land) "Own tapped land should be candidate")
         (is (not (contains? candidates opp-land)) "Opponent's land should NOT be candidate")))))

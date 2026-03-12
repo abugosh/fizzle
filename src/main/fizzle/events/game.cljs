@@ -327,7 +327,10 @@
               (:db result) sel-player-id source-id
               sel-effect
               (vec (:remaining-effects result)))
-        sel (if (= :activated-ability (:stack-item/type stack-item))
+        ;; Non-spell stack items (activated abilities, triggered abilities)
+        ;; don't have an object-ref — use :stack-item source type so
+        ;; cleanup-selection-source removes the stack-item directly.
+        sel (if (not (:stack-item/object-ref stack-item))
               (-> sel
                   (dissoc :selection/spell-id)
                   (assoc :selection/stack-item-eid stack-item-eid

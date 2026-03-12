@@ -69,6 +69,21 @@
    :event/controller controller-id})
 
 
+(defn permanent-entered-event
+  "Create a permanent-entered event.
+
+   Arguments:
+     object-id     - ID of the permanent that entered the battlefield
+     controller-id - Player ID of the permanent's controller
+
+   Returns:
+     Event map with :event/type :permanent-entered"
+  [object-id controller-id]
+  {:event/type :permanent-entered
+   :event/object-id object-id
+   :event/controller controller-id})
+
+
 (defn creature-attacked-event
   "Create a creature-attacked event.
 

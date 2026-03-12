@@ -314,6 +314,11 @@
      :fizzle.events.game/play-land
      (describe-play-land (first _args) game-db-after)
 
+     :fizzle.events.game/cycle-card
+     (if-let [card-name (get-card-name pre-game-db (first _args))]
+       (str "Cycle " card-name)
+       "Cycle")
+
      :fizzle.events.abilities/activate-mana-ability
      (describe-activate-mana (first _args) (second _args) pre-game-db)
 
