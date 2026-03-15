@@ -332,43 +332,7 @@
 
 
 ;; ---------------------------------------------------------------------------
-;; H. Stack items in restored DB
-
-(deftest restore-stack-items-test
-  (testing "stack items restored when snapshot has non-empty stack"
-    (let [db       (th/create-test-db)
-          [db' _]  (th/add-card-to-zone db :dark-ritual :hand :player-1)
-          db-m     (mana/add-mana db' :player-1 {:black 1})
-          hand     (q/get-hand db-m :player-1)
-          db-cast  (rules/cast-spell db-m :player-1 (:object/id (first hand)))
-          db-with-opp (th/add-opponent db-cast)
-          snapshot (make-snapshot db-with-opp)
-          restored (-> snapshot restorer/restore-game-state :game/db)
-          stack    (d/q '[:find [(pull ?e [*]) ...]
-                          :where [?e :stack-item/position _]]
-                        restored)]
-      (is (pos? (count stack))
-          "restored DB should have stack items"))))
-
-
-(deftest restore-stack-item-type-test
-  (testing "stack item type restored correctly"
-    (let [db       (th/create-test-db)
-          [db' _]  (th/add-card-to-zone db :dark-ritual :hand :player-1)
-          db-m     (mana/add-mana db' :player-1 {:black 1})
-          hand     (q/get-hand db-m :player-1)
-          db-cast  (rules/cast-spell db-m :player-1 (:object/id (first hand)))
-          db-with-opp (th/add-opponent db-cast)
-          out      (restore-and-extract db-with-opp)
-          stack    (:stack out)]
-      (is (pos? (count stack))
-          "stack should not be empty")
-      (is (= :spell (:stack-item/type (first stack)))
-          "stack item type should be :spell"))))
-
-
-;; ---------------------------------------------------------------------------
-;; I. Playability — can-cast? works from restored state
+;; H. Playability — can-cast? works from restored state
 
 (deftest restore-can-cast-from-restored-state-test
   (testing "player can cast spells from restored game state"

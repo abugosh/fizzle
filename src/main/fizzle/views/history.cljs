@@ -214,18 +214,26 @@
 
 (defn- share-button
   "Share button that copies a snapshot URL to clipboard.
-   Shows feedback: 'Copied!' for 2s, or distinct error messages on failure."
+   Shows feedback: 'Copied!' for 2s, or distinct error messages on failure.
+   Disabled when the player doesn't have priority or the stack is non-empty."
   []
-  (let [status @(rf/subscribe [::snapshot/share-status])]
+  (let [status    @(rf/subscribe [::snapshot/share-status])
+        can-share? @(rf/subscribe [::game-subs/can-share?])
+        disabled? (not can-share?)]
     [:div {:class "border-t border-surface-elevated pt-2 mt-2"}
      [:button
-      {:class    (str "py-1 px-2 text-xs border rounded cursor-pointer w-full "
-                      (case status
-                        :copied           "border-accent text-accent bg-surface-hover"
-                        :error-too-large  "border-red-500 text-red-400 bg-surface-hover"
-                        :error-clipboard  "border-red-500 text-red-400 bg-surface-hover"
-                        "border-border text-perm-text bg-surface-hover"))
-       :on-click #(rf/dispatch [::snapshot/share-position])}
+      {:class    (str "py-1 px-2 text-xs border rounded w-full "
+                      (cond
+                        disabled?
+                        "border-border text-text-muted bg-surface cursor-not-allowed opacity-50"
+                        (= status :copied)
+                        "border-accent text-accent bg-surface-hover cursor-pointer"
+                        (#{:error-too-large :error-clipboard} status)
+                        "border-red-500 text-red-400 bg-surface-hover cursor-pointer"
+                        :else
+                        "border-border text-perm-text bg-surface-hover cursor-pointer"))
+       :disabled disabled?
+       :on-click #(when-not disabled? (rf/dispatch [::snapshot/share-position]))}
       (case status
         :copied           "Copied!"
         :error-too-large  "State too large to share"

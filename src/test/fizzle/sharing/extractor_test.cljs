@@ -7,9 +7,6 @@
    All object state fields are preserved."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
-    [fizzle.db.queries :as q]
-    [fizzle.engine.mana :as mana]
-    [fizzle.engine.rules :as rules]
     [fizzle.sharing.extractor :as extractor]
     [fizzle.test-helpers :as th]))
 
@@ -32,8 +29,7 @@
       (is (contains? out :game/phase)        ":game/phase")
       (is (contains? out :game/active-player) ":game/active-player")
       (is (contains? out :game/priority)     ":game/priority")
-      (is (contains? out :players)           ":players")
-      (is (contains? out :stack)             ":stack"))))
+      (is (contains? out :players)           ":players"))))
 
 
 ;; === B. Game state fields ===
@@ -204,61 +200,7 @@
           ":object/controller should be a keyword like :player-1"))))
 
 
-;; === G. Stack ===
-
-(deftest extract-stack-empty-by-default-test
-  (testing "stack is empty vector when nothing is on the stack"
-    (let [db  (th/create-test-db)
-          out (extractor/extract db)]
-      (is (= [] (:stack out))
-          "stack should be [] by default"))))
-
-
-(deftest extract-stack-item-after-cast-test
-  (testing "stack contains spell item after casting"
-    (let [db     (th/create-test-db)
-          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
-          db-m   (mana/add-mana db' :player-1 {:black 1})
-          hand   (q/get-hand db-m :player-1)
-          obj-id (:object/id (first hand))
-          db-c   (rules/cast-spell db-m :player-1 obj-id)
-          out    (extractor/extract db-c)
-          stk    (:stack out)]
-      (is (pos? (count stk))
-          "stack should have at least one item after cast")
-      (let [item (first stk)]
-        ;; Spell stack items always have type, position, and controller
-        (is (contains? item :stack-item/type)        ":stack-item/type")
-        (is (contains? item :stack-item/position)    ":stack-item/position")
-        (is (= :spell (:stack-item/type item))       "type should be :spell")
-        (is (keyword? (:stack-item/controller item))
-            ":stack-item/controller should be player-id keyword, not eid")
-        (is (= :player-1 (:stack-item/controller item))
-            "controller should be :player-1")))))
-
-
-(deftest extract-stack-ordered-lifo-test
-  (testing "stack items are ordered LIFO (highest position first)"
-    (let [db     (th/create-test-db)
-          [db1 _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
-          db1m   (mana/add-mana db1 :player-1 {:black 1})
-          hand1  (q/get-hand db1m :player-1)
-          db1c   (rules/cast-spell db1m :player-1 (:object/id (first hand1)))
-          db1r   (rules/resolve-spell db1c :player-1 (:object/id (first hand1)))
-          [db2 _] (th/add-card-to-zone db1r :dark-ritual :hand :player-1)
-          hand2  (q/get-hand db2 :player-1)
-          db2c   (rules/cast-spell db2 :player-1 (:object/id (first hand2)))
-          out    (extractor/extract db2c)
-          stk    (:stack out)]
-      ;; After casting second dark ritual, stack has the spell item
-      (is (vector? stk))
-      (when (> (count stk) 1)
-        (let [positions (map :stack-item/position stk)]
-          (is (= positions (sort > positions))
-              "stack should be sorted LIFO (highest position first)"))))))
-
-
-;; === H. Two-player extraction ===
+;; === G. Two-player extraction ===
 
 (deftest extract-two-players-test
   (testing "both players appear in :players map"

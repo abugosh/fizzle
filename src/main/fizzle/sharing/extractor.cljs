@@ -7,8 +7,7 @@
    - :db/id keys are stripped
 
    Zone contents are plain vectors of object maps.
-   Library is sorted ascending by :object/position (index 0 = top).
-   Stack is sorted LIFO (highest :stack-item/position first)."
+   Library is sorted ascending by :object/position (index 0 = top)."
   (:require
     [datascript.core :as d]))
 
@@ -129,35 +128,6 @@
                :exile       (objects-in-zone db pid :exile)))))
 
 
-(defn- extract-stack-item
-  "Convert a raw stack-item entity to a portable map.
-   Resolves :stack-item/controller eid → player-id keyword.
-   Strips :db/id."
-  [db item]
-  (let [ctrl (cond
-               (map? (:stack-item/controller item))
-               (:player/id (:stack-item/controller item))
-
-               (integer? (:stack-item/controller item))
-               (resolve-player-ref db (:stack-item/controller item))
-
-               :else
-               (:stack-item/controller item))]
-    (-> item
-        (dissoc :db/id :stack-item/source :stack-item/object-ref)
-        (assoc :stack-item/controller ctrl))))
-
-
-(defn- extract-stack
-  "All stack items in LIFO order (highest :stack-item/position first)."
-  [db]
-  (->> (d/q '[:find [(pull ?e [*]) ...]
-              :where [?e :stack-item/position _]]
-            db)
-       (sort-by :stack-item/position >)
-       (mapv #(extract-stack-item db %))))
-
-
 ;; ---------------------------------------------------------------------------
 ;; Public API
 
@@ -174,8 +144,7 @@
     :game/loss-condition keyword or nil
     :game/auto-mode     keyword or nil
     :game/human-player-id keyword
-    :players            {:player-id {player-state + zones}}
-    :stack              [stack-item ...]}"
+    :players            {:player-id {player-state + zones}}}"
   [db]
   (let [game   (d/pull db [:game/turn
                            :game/phase
@@ -197,5 +166,4 @@
      :game/priority       (get-in game [:game/priority :player/id])
      :game/winner         (get-in game [:game/winner :player/id])
      :game/human-player-id (:game/human-player-id game)
-     :players             (into {} (map (fn [pid] [pid (extract-player db pid)]) pids))
-     :stack               (extract-stack db)}))
+     :players             (into {} (map (fn [pid] [pid (extract-player db pid)]) pids))}))

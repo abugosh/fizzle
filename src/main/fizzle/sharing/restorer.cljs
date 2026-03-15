@@ -151,55 +151,6 @@
 
 
 ;; ---------------------------------------------------------------------------
-;; Stack items
-
-(defn- stack-item-tx
-  "Build one stack-item transaction map from the portable stack item.
-
-   Stack items in the portable map have:
-   - :stack-item/type       — keyword
-   - :stack-item/controller — player-id keyword
-   - :stack-item/is-copy    — boolean
-   - :card/id               — card-id keyword (optional; source card)
-   - :stack-item/targets    — map (optional)
-   - :stack-item/chosen-x   — integer (optional)
-
-   The :stack-item/position is set to the index so items with higher index
-   (later in LIFO-sorted snapshot array) get higher positions, preserving order."
-  [db item position]
-  (let [ctrl-id  (:stack-item/controller item)
-        ctrl-eid (get-player-eid db ctrl-id)
-        base     {:stack-item/type       (:stack-item/type item)
-                  :stack-item/controller ctrl-eid
-                  :stack-item/is-copy    (boolean (:stack-item/is-copy item))
-                  :stack-item/position   position}]
-    (cond-> base
-      (:stack-item/targets item)  (assoc :stack-item/targets (:stack-item/targets item))
-      (:stack-item/chosen-x item) (assoc :stack-item/chosen-x (:stack-item/chosen-x item))
-      (:card/id item)
-      (assoc :stack-item/source (when-let [ceid (get-card-eid db (:card/id item))]
-                                  ;; Source for a restored stack item is the card eid,
-                                  ;; not an object eid — objects were stripped in extractor
-                                  ceid)))))
-
-
-(defn- transact-stack!
-  "Transact all stack items. The snapshot stack is LIFO-sorted (highest position
-   first), so we reverse to assign ascending positions."
-  [conn stack]
-  (when (seq stack)
-    (let [db         @conn
-          ;; Snapshot is already LIFO sorted (highest first), assign positions
-          ;; in ascending order: item at end of reversed list = highest position
-          reversed   (vec (reverse stack))
-          tx-data    (vec (map-indexed
-                            (fn [i item]
-                              (stack-item-tx db item i))
-                            reversed))]
-      (d/transact! conn tx-data))))
-
-
-;; ---------------------------------------------------------------------------
 ;; Game state entity
 
 (defn- transact-game-state!
@@ -269,8 +220,6 @@
         (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid player-id))))
     ;; Transact game state entity
     (transact-game-state! conn snapshot)
-    ;; Transact stack items
-    (transact-stack! conn (:stack snapshot))
     ;; Build app-db map (mirrors init-game-state shape, but :active-screen :game)
     {:game/db              @conn
      :active-screen        :game

@@ -18,10 +18,6 @@
   [:untap :upkeep :draw :main1 :combat :main2 :end :cleanup])
 
 
-(def ^:private stack-types
-  [:spell :storm :activated-ability :etb :permanent-tapped :land-entered :storm-copy])
-
-
 (def ^:private mana-colors
   [:white :blue :black :red :green :colorless])
 
@@ -96,13 +92,22 @@
 ;; ---------------------------------------------------------------------------
 ;; Zone decoders
 
+(defn- read-grants
+  "Read 1-bit has-grants flag + optional EDN blob. Shared by all zone decoders."
+  [r]
+  (let [has-grt (= 1 (check! (safe-read r 1)))]
+    (if has-grt (read-edn-blob r) [])))
+
+
 (defn- read-card-obj
-  "Read one 7-bit card index, return {:card/id <keyword>} or throw on unknown."
+  "Read one 7-bit card index + grants, return object map or throw on unknown."
   [r]
   (let [idx (check! (safe-read r 7))
         cid (card-index/decode idx)]
     (when (nil? cid) (throw (ex-info (str "Unknown card at index " idx) {:unknown-card idx})))
-    {:card/id cid}))
+    (let [obj-grants (read-grants r)]
+      (cond-> {:card/id cid}
+        (seq obj-grants) (assoc :object/grants obj-grants)))))
 
 
 (defn- read-card-list
@@ -113,7 +118,7 @@
 
 
 (defn- read-permanent
-  "Read one battlefield permanent."
+  "Read one battlefield permanent: card index + tapped + counters + grants."
   [r]
   (let [card-idx (check! (safe-read r 7))
         cid      (card-index/decode card-idx)]
@@ -127,12 +132,11 @@
                                               [(get counter-types (check! (safe-read r 3)) :unknown)
                                                (check! (safe-read r 8))]))))
                      {})
-          has-grt  (= 1 (check! (safe-read r 1)))
-          grants   (if has-grt (read-edn-blob r) [])]
-      {:card/id         cid
-       :object/tapped   tapped
-       :object/counters counters
-       :object/grants   grants})))
+          grants   (read-grants r)]
+      (cond-> {:card/id         cid
+               :object/tapped   tapped
+               :object/counters counters}
+        (seq grants) (assoc :object/grants grants)))))
 
 
 (defn- read-battlefield
@@ -159,38 +163,6 @@
   "Read 6 mana colors × 4 bits each."
   [r]
   (into {} (map (fn [color] [color (check! (safe-read r 4))]) mana-colors)))
-
-
-;; ---------------------------------------------------------------------------
-;; Stack decoder
-
-(defn- read-stack-item
-  "Read one stack item."
-  [r p1-player-id]
-  (let [type-idx (check! (safe-read r 3))
-        card-idx (check! (safe-read r 7))
-        ctrl-bit (check! (safe-read r 1))
-        is-copy  (check! (safe-read r 1))
-        has-tgt  (check! (safe-read r 1))
-        item-type   (get stack-types type-idx :spell)
-        card-id     (card-index/decode card-idx)
-        controller  (if (= 0 ctrl-bit) p1-player-id p2-id)
-        targets     (when (= 1 has-tgt) (read-edn-blob r))
-        has-x       (check! (safe-read r 1))
-        chosen-x    (when (= 1 has-x) (check! (safe-read r 8)))]
-    (cond-> {:stack-item/type       item-type
-             :stack-item/controller controller
-             :stack-item/is-copy    (= 1 is-copy)}
-      card-id  (assoc :card/id card-id)
-      targets  (assoc :stack-item/targets targets)
-      chosen-x (assoc :stack-item/chosen-x chosen-x))))
-
-
-(defn- read-stack
-  "Read all stack items."
-  [r p1-player-id]
-  (let [n (check! (safe-read r 4))]
-    (vec (repeatedly n #(read-stack-item r p1-player-id)))))
 
 
 ;; ---------------------------------------------------------------------------
@@ -254,17 +226,13 @@
                           {:bad-version version})))
         (let [hdr           (read-header r version)
               flags         (:flags hdr)
-              has-stack?    (pos? (bit-and flags 1))
               has-grants?   (pos? (bit-and flags 2))
               active-id     (if (= 0 (:active-bit hdr)) p1-id p2-id)
               prio-id       (if (= 0 (:prio-bit hdr)) p1-id p2-id)
               p1-zones      (read-player-zones r)
               p2-zones      (read-player-zones r)
               p1-grants     (if has-grants? (read-edn-blob r) [])
-              p2-grants     (if has-grants? (read-edn-blob r) [])
-              stack         (if has-stack?
-                              (read-stack r p1-id)
-                              [])]
+              p2-grants     (if has-grants? (read-edn-blob r) [])]
           {:game/turn            (:turn hdr)
            :game/phase           (:phase hdr)
            :game/step            (:step hdr)
@@ -288,8 +256,7 @@
                           :player/storm-count     (:p2-storm hdr)
                           :player/land-plays-left (:p2-land hdr)
                           :player/max-hand-size   7
-                          :player/grants          p2-grants})}
-           :stack stack}))
+                          :player/grants          p2-grants})}}))
       (catch ExceptionInfo e
         (let [data (ex-data e)]
           (cond

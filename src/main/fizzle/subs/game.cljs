@@ -4,6 +4,7 @@
     [fizzle.db.queries :as queries]
     [fizzle.engine.creatures :as creatures]
     [fizzle.engine.mana :as mana]
+    [fizzle.engine.priority :as priority]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.sorting :as sorting]
     [fizzle.engine.validation :as validation]
@@ -140,6 +141,18 @@
   :<- [::game-db]
   (fn [game-db _]
     (when game-db (:game/turn (queries/get-game-state game-db)))))
+
+
+(rf/reg-sub
+  ::can-share?
+  :<- [::game-db]
+  (fn [game-db _]
+    (when game-db
+      (let [human-pid (queries/get-human-player-id game-db)
+            human-eid (queries/get-player-eid game-db human-pid)
+            holder-eid (priority/get-priority-holder-eid game-db)]
+        (and (= human-eid holder-eid)
+             (queries/stack-empty? game-db))))))
 
 
 (rf/reg-sub

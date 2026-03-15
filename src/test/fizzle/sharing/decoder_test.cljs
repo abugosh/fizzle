@@ -6,10 +6,8 @@
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [clojure.string :as string]
-    [fizzle.db.queries :as q]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
-    [fizzle.engine.rules :as rules]
     [fizzle.sharing.bits :as bits]
     [fizzle.sharing.decoder :as decoder]
     [fizzle.sharing.encoder :as encoder]
@@ -46,8 +44,7 @@
       (is (contains? decoded :game/phase))
       (is (contains? decoded :game/active-player))
       (is (contains? decoded :game/priority))
-      (is (contains? decoded :players))
-      (is (contains? decoded :stack)))))
+      (is (contains? decoded :players)))))
 
 
 ;; ---------------------------------------------------------------------------
@@ -194,56 +191,7 @@
 
 
 ;; ---------------------------------------------------------------------------
-;; E. Round-trip: stack
-
-(deftest roundtrip-empty-stack-test
-  (testing "empty stack decodes as empty vector"
-    (let [{:keys [decoded]} (encode-then-decode (-> (th/create-test-db) (th/add-opponent)))]
-      (is (= [] (:stack decoded))))))
-
-
-(deftest roundtrip-stack-item-type-test
-  (testing "stack item type survives encode→decode after casting"
-    (let [db    (-> (th/create-test-db) (th/add-opponent))
-          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
-          db-m  (mana/add-mana db' :player-1 {:black 1})
-          hand  (q/get-hand db-m :player-1)
-          db-c  (rules/cast-spell db-m :player-1 (:object/id (first hand)))
-          state (extractor/extract db-c)
-          rt    (decoder/decode-snapshot (encoder/encode-snapshot state))
-          stk   (:stack rt)]
-      (is (pos? (count stk))
-          "stack should have at least one item")
-      (is (= :spell (:stack-item/type (first stk)))
-          "stack item type should be :spell")
-      (is (= :player-1 (:stack-item/controller (first stk)))
-          "controller should be :player-1"))))
-
-
-(deftest roundtrip-targeted-spell-targets-test
-  (testing "targeted spell targets (EDN blob) survive encode→decode"
-    (let [db     (-> (th/create-test-db {:mana {:blue 1 :colorless 1}}) (th/add-opponent))
-          [db' _] (th/add-card-to-zone db :brain-freeze :hand :player-1)
-          hand   (q/get-hand db' :player-1)
-          ;; Brain Freeze targets players by player-id keyword
-          db-c   (th/cast-with-target db' :player-1 (:object/id (first hand)) :player-2)
-          state  (extractor/extract db-c)
-          rt     (decoder/decode-snapshot (encoder/encode-snapshot state))
-          stk    (:stack rt)
-          ;; The spell item may not be first due to LIFO ordering with storm trigger
-          spell-item (first (filter #(= :spell (:stack-item/type %)) stk))]
-      (is (pos? (count stk))
-          "stack should have items after casting Brain Freeze")
-      (is (some? spell-item)
-          "stack should contain a :spell type item")
-      (is (map? (:stack-item/targets spell-item))
-          "targets map should be decoded from EDN blob")
-      (is (pos? (count (:stack-item/targets spell-item)))
-          "targets map should be non-empty"))))
-
-
-;; ---------------------------------------------------------------------------
-;; E2. Round-trip: player grants
+;; E. Round-trip: player grants
 
 (deftest roundtrip-player-grants-test
   (testing "non-empty player grants survive encode→decode"
@@ -267,6 +215,54 @@
           "empty grants should decode as []")
       (is (= [] (get-in decoded [:players :player-2 :player/grants]))
           "empty grants for p2 should decode as []"))))
+
+
+;; ---------------------------------------------------------------------------
+;; E2. Round-trip: object grants (non-battlefield zones)
+
+(deftest roundtrip-graveyard-grants-test
+  (testing "grants on graveyard objects survive encode→decode (e.g. Recoup flashback)"
+    (let [db    (-> (th/create-test-db) (th/add-opponent))
+          [db' _] (th/add-card-to-zone db :ill-gotten-gains :graveyard :player-1)
+          state (extractor/extract db')
+          grant {:grant/id :granted-flashback
+                 :grant/type :alternate-cost
+                 :grant/data {:alternate/id :granted-flashback
+                              :alternate/zone :graveyard
+                              :alternate/cost {:black 1 :red 1}}}
+          state-with-grant (update-in state [:players :player-1 :graveyard 0]
+                                      assoc :object/grants [grant])
+          rt    (decoder/decode-snapshot (encoder/encode-snapshot state-with-grant))
+          gy    (get-in rt [:players :player-1 :graveyard])]
+      (is (= 1 (count gy)))
+      (is (= :ill-gotten-gains (:card/id (first gy))))
+      (is (= [grant] (:object/grants (first gy)))
+          "graveyard object grants should survive round-trip"))))
+
+
+(deftest roundtrip-hand-grants-test
+  (testing "grants on hand objects survive encode→decode"
+    (let [db    (-> (th/create-test-db) (th/add-opponent))
+          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          state (extractor/extract db')
+          grant {:grant/id :test :grant/type :test-type}
+          state-with-grant (update-in state [:players :player-1 :hand 0]
+                                      assoc :object/grants [grant])
+          rt    (decoder/decode-snapshot (encoder/encode-snapshot state-with-grant))
+          hand  (get-in rt [:players :player-1 :hand])]
+      (is (= [grant] (:object/grants (first hand)))
+          "hand object grants should survive round-trip"))))
+
+
+(deftest roundtrip-no-grants-omits-key-test
+  (testing "objects without grants decode without :object/grants key"
+    (let [db    (-> (th/create-test-db) (th/add-opponent))
+          [db' _] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
+          state (extractor/extract db')
+          rt    (decoder/decode-snapshot (encoder/encode-snapshot state))
+          gy    (get-in rt [:players :player-1 :graveyard])]
+      (is (not (contains? (first gy) :object/grants))
+          "objects without grants should not have :object/grants key"))))
 
 
 ;; ---------------------------------------------------------------------------

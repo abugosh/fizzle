@@ -5,7 +5,7 @@
 
    Header (~14 bytes):
      version       4 bits  (value: 1)
-     flags         4 bits  (bit0=has-stack, bit1=has-player-grants, reserved)
+     flags         4 bits  (bit1=has-player-grants, reserved)
      p1 life       8 bits  (stored as life+128, clamped 0-255)
      p2 life       8 bits
      p1 storm      6 bits  (0-63)
@@ -21,23 +21,15 @@
      p2 land-plays 2 bits
 
    Zones (P1 then P2):
-     hand:        6-bit count, N × 7-bit card-index
+     Per-object shared trailer: 1-bit has-grants (if set: length-prefixed EDN)
+     hand:        6-bit count, N × (7-bit card-index + grants-trailer)
      battlefield: 6-bit count, per-permanent: 7-bit card-index + 1-bit tapped
                   + 1-bit has-counters (if set: 3-bit counter-count,
                     then N × (3-bit type-idx + 8-bit amount))
-                  + 1-bit has-grants (if set: length-prefixed EDN)
-     graveyard:   6-bit count, N × 7-bit card-index
-     exile:       6-bit count, N × 7-bit card-index
-     library:     7-bit count, N × 7-bit card-index (position order, 0=top)
-
-   Stack (if has-stack flag set):
-     4-bit count, each item:
-       type        3 bits (index into STACK-TYPES)
-       card-index  7 bits
-       controller  1 bit
-       is-copy     1 bit
-       has-targets 1 bit  → if set: length-prefixed EDN
-       has-chosen-x 1 bit → if set: 8 bits
+                  + grants-trailer
+     graveyard:   6-bit count, N × (7-bit card-index + grants-trailer)
+     exile:       6-bit count, N × (7-bit card-index + grants-trailer)
+     library:     7-bit count, N × (7-bit card-index + grants-trailer) (position order, 0=top)
 
    Complex data: pr-str EDN, 16-bit length prefix (bytes), then UTF-8 bytes.
 
@@ -56,14 +48,6 @@
 
 (def ^:private phase->idx
   (into {} (map-indexed (fn [i p] [p i]) phases)))
-
-
-(def ^:private stack-types
-  [:spell :storm :activated-ability :etb :permanent-tapped :land-entered :storm-copy])
-
-
-(def ^:private stack-type->idx
-  (into {} (map-indexed (fn [i t] [t i]) stack-types)))
 
 
 (def ^:private mana-colors
@@ -115,27 +99,43 @@
 ;; ---------------------------------------------------------------------------
 ;; Zone encoders
 
+(defn- write-grants
+  "Write 1-bit has-grants flag + optional EDN blob. Shared by all zone encoders."
+  [w obj]
+  (let [grants  (or (:object/grants obj) [])
+        has-grt (if (seq grants) 1 0)]
+    (-> w
+        (bits/write-bits has-grt 1)
+        (cond-> (pos? has-grt)
+          (as-> ww (encode-edn-blob ww grants))))))
+
+
+(defn- write-card-obj
+  "Write one card object: 7-bit card index + grants."
+  [w obj]
+  (let [idx (or (card-index/encode (:card/id obj)) 0)]
+    (-> w
+        (bits/write-bits (clamp idx 0 127) 7)
+        (write-grants obj))))
+
+
 (defn- write-card-list
-  "Write a count (count-bits wide) then N card indices (7 bits each)."
+  "Write a count (count-bits wide) then N card objects with optional grants."
   [w cards count-bits]
   (let [n (count cards)
         w1 (bits/write-bits w (clamp n 0 (dec (bit-shift-left 1 count-bits))) count-bits)]
-    (reduce (fn [ww obj]
-              (let [idx (or (card-index/encode (:card/id obj)) 0)]
-                (bits/write-bits ww (clamp idx 0 127) 7)))
+    (reduce write-card-obj
             w1
             (take (clamp n 0 (dec (bit-shift-left 1 count-bits))) cards))))
 
 
 (defn- write-permanent
-  "Write one battlefield permanent with tapped, counters, grants."
+  "Write one battlefield permanent: card index + tapped + counters + grants."
   [w obj]
   (let [card-idx (or (card-index/encode (:card/id obj)) 0)
         tapped   (if (:object/tapped obj) 1 0)
         counters (or (:object/counters obj) {})
-        grants   (or (:object/grants obj) [])
-        has-ctr  (if (seq counters) 1 0)
-        has-grt  (if (seq grants) 1 0)]
+        has-ctr  (if (seq counters) 1 0)]
     (-> w
         (bits/write-bits (clamp card-idx 0 127) 7)
         (bits/write-bits tapped 1)
@@ -151,9 +151,7 @@
                               (bits/write-bits (clamp amount 0 255) 8))))
                       (bits/write-bits ww cnt 3)
                       (take cnt ctr-pairs)))))
-        (bits/write-bits has-grt 1)
-        (cond-> (pos? has-grt)
-          (as-> ww (encode-edn-blob ww grants))))))
+        (write-grants obj))))
 
 
 (defn- write-battlefield
@@ -188,52 +186,14 @@
 
 
 ;; ---------------------------------------------------------------------------
-;; Stack encoder
-
-(defn- write-stack-item
-  "Write one stack item."
-  [w item human-player-id]
-  (let [type-idx  (or (get stack-type->idx (:stack-item/type item)) 0)
-        card-idx  (or (some-> item :card/id card-index/encode) 0)
-        ctrl-bit  (if (= (:stack-item/controller item) human-player-id) 0 1)
-        is-copy   (if (:stack-item/is-copy item) 1 0)
-        targets   (:stack-item/targets item)
-        chosen-x  (:stack-item/chosen-x item)
-        has-tgt   (if (and (map? targets) (seq targets)) 1 0)
-        has-x     (if (some? chosen-x) 1 0)]
-    (-> w
-        (bits/write-bits (clamp type-idx 0 7) 3)
-        (bits/write-bits (clamp card-idx 0 127) 7)
-        (bits/write-bits ctrl-bit 1)
-        (bits/write-bits is-copy 1)
-        (bits/write-bits has-tgt 1)
-        (cond-> (pos? has-tgt)
-          (as-> ww (encode-edn-blob ww targets)))
-        (bits/write-bits has-x 1)
-        (cond-> (pos? has-x)
-          (as-> ww (bits/write-bits ww (clamp chosen-x 0 255) 8))))))
-
-
-(defn- write-stack
-  "Write all stack items."
-  [w stack human-player-id]
-  (let [n  (count stack)
-        w1 (bits/write-bits w (clamp n 0 15) 4)]
-    (reduce (fn [ww item] (write-stack-item ww item human-player-id))
-            w1
-            (take 15 stack))))
-
-
-;; ---------------------------------------------------------------------------
 ;; Header encoder
 
 (defn- write-header
   "Write the fixed header."
-  [w state p1-id p2-id has-stack? has-grants?]
+  [w state p1-id p2-id has-grants?]
   (let [p1     (get-in state [:players p1-id])
         p2     (get-in state [:players p2-id])
-        flags  (bit-or (if has-stack? 1 0)
-                       (if has-grants? 2 0))
+        flags  (if has-grants? 2 0)
         p1-life (clamp (+ (or (:player/life p1) 20) 128) 0 255)
         p2-life (clamp (+ (or (:player/life p2) 20) 128) 0 255)
         p1-storm (clamp (or (:player/storm-count p1) 0) 0 63)
@@ -282,19 +242,15 @@
    Returns nil if the result would exceed the URL character limit."
   [state]
   (let [[p1-id p2-id] (player-ids state)
-        stack        (:stack state)
-        has-stack?   (seq stack)
         p1-grants    (get-in state [:players p1-id :player/grants])
         p2-grants    (get-in state [:players p2-id :player/grants])
         has-grants?  (or (seq p1-grants) (seq p2-grants))
         w            (-> (bits/writer)
-                         (write-header state p1-id p2-id has-stack? has-grants?)
+                         (write-header state p1-id p2-id has-grants?)
                          (write-player-zones (get (:players state) p1-id))
                          (write-player-zones (get (:players state) p2-id))
                          (cond-> has-grants?
-                           (as-> ww (write-player-grants ww p1-grants p2-grants)))
-                         (cond-> has-stack?
-                           (as-> ww (write-stack ww stack p1-id))))
+                           (as-> ww (write-player-grants ww p1-grants p2-grants))))
         result       (bits/base64url-encode (bits/finish w))]
     (when (<= (count result) url-char-limit)
       result)))
