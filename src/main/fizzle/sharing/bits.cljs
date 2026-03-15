@@ -93,7 +93,7 @@
 
 (defn read-bits
   "Read n bits MSB-first from BitReader r. Returns integer value."
-  [r n]
+  [^BitReader r n]
   (.readBits r n))
 
 
