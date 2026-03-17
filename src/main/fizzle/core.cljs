@@ -2,6 +2,7 @@
   (:require
     [fizzle.bots.interceptor :as bot-interceptor]
     [fizzle.engine.effects-registry]
+    [fizzle.events.calculator]
     [fizzle.events.game :as events]
     [fizzle.events.interceptors.sba :as sba-interceptor]
     [fizzle.events.opening-hand]
