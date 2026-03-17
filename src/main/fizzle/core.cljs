@@ -138,6 +138,8 @@
   (sba-interceptor/register!)
   ;; Always run normal init-setup first (sets up setup screen + config)
   (rf/dispatch-sync [::setup/init-setup])
+  ;; Initialize calculator (restores queries from localStorage if available)
+  (rf/dispatch-sync [::calc-events/init-calculator])
   ;; If the URL has a snapshot hash, restore it (overrides active-screen to :game)
   (let [hash     (.-hash js/location)
         restored (snapshot/restore-from-hash-handler hash)]

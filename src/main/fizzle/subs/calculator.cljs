@@ -115,29 +115,31 @@
             (= 1 (count steps))
             (:step/probability (first enriched-steps))
             :else
-            ;; Sequential probability: collect all unique target groups across steps
-            ;; Build all-groups as union of distinct target specs
-            (let [all-target-groups
-                  (vec (distinct
-                         (mapcat (fn [step]
-                                   (mapv (fn [target]
-                                           {:count (compute-target-count card-counts target)})
-                                         (:step/targets step)))
-                                 steps)))
-                  ;; For each step, build :targets as [{:group-index i :min m} ...]
+            ;; Sequential probability: collect all target groups across all steps.
+            ;; Each target group gets a unique index — do NOT deduplicate by count,
+            ;; because two groups with the same count represent different card populations.
+            (let [;; Flatten all targets with their parent step info, assigning sequential indices
+                  indexed-targets
+                  (vec (mapcat (fn [step]
+                                 (map-indexed (fn [_ target]
+                                                {:target target
+                                                 :count  (compute-target-count card-counts target)})
+                                              (:step/targets step)))
+                               steps))
+                  ;; Build target-id → group-index mapping
+                  target-id->index
+                  (into {} (map-indexed (fn [i {:keys [target]}]
+                                          [(:target/id target) i])
+                                        indexed-targets))
+                  all-target-groups
+                  (mapv (fn [{:keys [count]}] {:count count}) indexed-targets)
                   seq-steps
                   (mapv (fn [step]
                           {:draw-count (min (:step/draw-count step) N)
                            :targets
                            (mapv (fn [target]
-                                   ;; Find the index of this target's group spec in all-target-groups
-                                   (let [count-k (compute-target-count card-counts target)
-                                         idx     (first (keep-indexed
-                                                          (fn [i g]
-                                                            (when (= (:count g) count-k) i))
-                                                          all-target-groups))]
-                                     {:group-index idx
-                                      :min         (:target/min-count target)}))
+                                   {:group-index (get target-id->index (:target/id target))
+                                    :min         (:target/min-count target)})
                                  (:step/targets step))})
                         steps)]
               (probability/sequential-probability N all-target-groups seq-steps)))]

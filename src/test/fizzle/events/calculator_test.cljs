@@ -4,7 +4,21 @@
    so they are pure unit tests with no side effects."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
+    [fizzle.db.storage :as storage]
     [fizzle.events.calculator :as calc]))
+
+
+;; === Mock localStorage for persistence tests ===
+
+(defn- create-mock-storage
+  []
+  (let [store (atom {})]
+    #js {:getItem (fn [key] (get @store key nil))
+         :setItem (fn [key value] (swap! store assoc key value) nil)
+         :removeItem (fn [key] (swap! store dissoc key) nil)}))
+
+
+(set! js/localStorage (create-mock-storage))
 
 
 ;; === Default state helpers ===
@@ -418,20 +432,23 @@
 ;; === init-calculator with restored queries ===
 
 (deftest test-init-calculator-with-loaded-queries-sets-next-id-past-max
-  (testing "init-calculator sets next-id to max(all ids) + 1 when queries have IDs"
-    ;; Simulate app-db that has no calculator state yet,
-    ;; but queries were loaded from localStorage (passed via handler with pre-populated state).
-    ;; We test max-id-in-queries feeding into next-id assignment indirectly by
-    ;; constructing a db with known queries and verifying next-id calculation.
-    (let [loaded-queries [{:query/id    10
-                           :query/steps [{:step/id      20
-                                          :step/targets [{:target/id 30}]}]}]
-          ;; max id is 30, so next-id should be 31
-          max-id         (calc/max-id-in-queries loaded-queries)]
-      (is (= 30 max-id)
-          "max-id-in-queries should find 30 as the max id")
-      (is (= 31 (inc max-id))
-          "next-id should be (inc max-id) = 31 to avoid collision"))))
+  (testing "init-calculator restores from localStorage and sets next-id past max existing id"
+    ;; Save queries with known IDs to localStorage, then init from empty db
+    (set! js/localStorage (create-mock-storage))
+    (let [saved-queries [{:query/id    10
+                          :query/label "Saved"
+                          :query/collapsed? false
+                          :query/steps [{:step/id      20
+                                         :step/draw-count 7
+                                         :step/targets [{:target/id 30
+                                                         :target/cards #{}
+                                                         :target/min-count 1}]}]}]]
+      (storage/save-calculator-queries! saved-queries)
+      (let [result (calc/init-calculator-handler {} nil)]
+        (is (= saved-queries (:calculator/queries result))
+            "queries should be restored from localStorage")
+        (is (= 31 (:calculator/next-id result))
+            "next-id should be (inc max-id) = 31 to avoid collision")))))
 
 
 (deftest test-init-calculator-is-idempotent-when-queries-present

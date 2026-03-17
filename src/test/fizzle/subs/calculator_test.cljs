@@ -255,6 +255,85 @@
         (is (= 0.0 (:target/probability target)))))))
 
 
+;; === Two-step sequential probability through compute-query-results ===
+
+(deftest test-compute-query-results-two-step-sequential
+  (testing "two-step query uses sequential-probability with cross-step consumption"
+    ;; N=20: 4 dark-ritual + 2 brainstorm + 14 island
+    ;; Step 1: draw 3, need >=1 dark-ritual
+    ;; Step 2: draw 5, need >=1 brainstorm
+    ;; Cross-step consumption: step 1 can accidentally draw brainstorms
+    (let [card-counts {:dark-ritual 4 :brainstorm 2 :island 14}
+          query {:query/id 1
+                 :query/label "Two-step"
+                 :query/collapsed? false
+                 :query/steps [{:step/id 2
+                                :step/draw-count 3
+                                :step/targets [{:target/id 3
+                                                :target/cards #{:dark-ritual}
+                                                :target/min-count 1}]}
+                               {:step/id 4
+                                :step/draw-count 5
+                                :step/targets [{:target/id 5
+                                                :target/cards #{:brainstorm}
+                                                :target/min-count 1}]}]}
+          result (subs/compute-query-results card-counts query)
+          overall-p (:query/probability result)
+          step1-p (:step/probability (first (:query/steps result)))
+          step2-p (:step/probability (second (:query/steps result)))]
+      ;; Overall should be a valid probability
+      (is (>= overall-p 0.0))
+      (is (<= overall-p 1.0))
+      ;; Overall should differ from product of independent step probabilities
+      ;; (cross-step consumption changes step 2's odds — can be higher or lower
+      ;;  depending on whether step 1's targets overlap with step 2's)
+      (is (not= overall-p (* step1-p step2-p))
+          "sequential probability should differ from naive product of independent steps")
+      ;; Overall should match sequential-probability directly
+      (let [expected (probability/sequential-probability
+                       20
+                       [{:count 4} {:count 2}]
+                       [{:draw-count 3 :targets [{:group-index 0 :min 1}]}
+                        {:draw-count 5 :targets [{:group-index 1 :min 1}]}])]
+        (is (< (Math/abs (- overall-p expected)) 1e-10)
+            "overall probability should match sequential-probability")))))
+
+
+(deftest test-compute-query-results-same-count-different-groups
+  (testing "two target groups with same card count are kept distinct"
+    ;; N=20: 4 dark-ritual + 4 brainstorm + 12 island
+    ;; Both groups have count=4 but are distinct card populations
+    ;; Step 1: need >=1 dark-ritual
+    ;; Step 2: need >=1 brainstorm
+    (let [card-counts {:dark-ritual 4 :brainstorm 4 :island 12}
+          query {:query/id 1
+                 :query/label "Same count"
+                 :query/collapsed? false
+                 :query/steps [{:step/id 2
+                                :step/draw-count 3
+                                :step/targets [{:target/id 3
+                                                :target/cards #{:dark-ritual}
+                                                :target/min-count 1}]}
+                               {:step/id 4
+                                :step/draw-count 3
+                                :step/targets [{:target/id 5
+                                                :target/cards #{:brainstorm}
+                                                :target/min-count 1}]}]}
+          result (subs/compute-query-results card-counts query)
+          overall-p (:query/probability result)]
+      ;; This should be a valid probability, not NaN or incorrect due to group merging
+      (is (>= overall-p 0.0))
+      (is (<= overall-p 1.0))
+      ;; Should match sequential-probability with two distinct groups
+      (let [expected (probability/sequential-probability
+                       20
+                       [{:count 4} {:count 4}]
+                       [{:draw-count 3 :targets [{:group-index 0 :min 1}]}
+                        {:draw-count 3 :targets [{:group-index 1 :min 1}]}])]
+        (is (< (Math/abs (- overall-p expected)) 1e-10)
+            "same-count groups must be treated as distinct populations")))))
+
+
 ;; === compute-target-count helper tests ===
 
 (deftest test-compute-target-count-sums-cards
