@@ -2,7 +2,7 @@
   (:require
     [fizzle.bots.interceptor :as bot-interceptor]
     [fizzle.engine.effects-registry]
-    [fizzle.events.calculator]
+    [fizzle.events.calculator :as calc-events]
     [fizzle.events.game :as events]
     [fizzle.events.interceptors.sba :as sba-interceptor]
     [fizzle.events.opening-hand]
@@ -17,6 +17,7 @@
     [fizzle.subs.opening-hand]
     [fizzle.subs.setup]
     [fizzle.views.battlefield :as battlefield]
+    [fizzle.views.calculator :as calculator]
     [fizzle.views.controls :as controls]
     [fizzle.views.game-over :as game-over]
     [fizzle.views.graveyard :as graveyard]
@@ -84,11 +85,16 @@
     [:div {:class "flex gap-8"}
      [mana-pool/mana-pool-view]
      [mana-pool/storm-count-view]]
-    [zone-counts/zone-counts-view]]
+    [zone-counts/zone-counts-view]
+    [:div {:class "mt-2"}
+     [:button {:class    "py-1 px-3 text-xs bg-surface-raised border border-border rounded text-text-muted cursor-pointer hover:text-text hover:border-text-muted"
+               :on-click #(rf/dispatch [::calc-events/toggle-calculator])}
+      "Calc"]]]
    ;; Right sidebar: history
    [collapsible-right-column "History" ::subs/history-collapsed ::events/toggle-history-collapsed [history/history-sidebar]]
-   ;; Bottom: reserved for calculator panel
-   [:div {:class "col-span-full"}]
+   ;; Bottom: calculator panel
+   [:div {:class "col-span-full"}
+    [calculator/calculator-panel]]
    ;; Modals (overlay, not in grid flow)
    [modals/selection-modal]
    [modals/mode-selector-modal]
