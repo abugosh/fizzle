@@ -11,6 +11,7 @@
     [fizzle.history.events]
     [fizzle.history.interceptor :as history-interceptor]
     [fizzle.snapshot.events :as snapshot]
+    [fizzle.subs.calculator]
     [fizzle.subs.game :as subs]
     [fizzle.subs.history]
     [fizzle.subs.opening-hand]
