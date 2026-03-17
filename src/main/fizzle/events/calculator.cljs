@@ -3,6 +3,7 @@
    Operates exclusively on app-db — no Datascript access, no probability computation.
    All mutation operations are no-ops when referenced IDs are not found."
   (:require
+    [fizzle.db.storage :as storage]
     [re-frame.core :as rf]))
 
 
@@ -14,14 +15,42 @@
    :calculator/queries  []})
 
 
+;; === Persistence interceptor ===
+
+(def ^:private save-queries-interceptor
+  (rf/after
+    (fn [db]
+      (storage/save-calculator-queries! (:calculator/queries db)))))
+
+
 ;; === Pure handler functions (exported for direct testing) ===
 
+(defn max-id-in-queries
+  "Find the maximum ID used across all queries, steps, and target groups.
+   Returns 0 if no IDs found."
+  [queries]
+  (reduce max 0
+          (concat
+            (map :query/id queries)
+            (mapcat (fn [q] (map :step/id (:query/steps q))) queries)
+            (mapcat (fn [q]
+                      (mapcat (fn [s] (map :target/id (:step/targets s)))
+                              (:query/steps q)))
+                    queries))))
+
+
 (defn init-calculator-handler
-  "Idempotent: only merges defaults when :calculator/queries is absent."
+  "Idempotent: only initializes when :calculator/queries is absent.
+   Attempts to restore queries from localStorage; falls back to empty default state."
   [db _]
   (if (contains? db :calculator/queries)
     db
-    (merge db default-state)))
+    (let [loaded (storage/load-calculator-queries)]
+      (if (seq loaded)
+        (merge db {:calculator/visible? false
+                   :calculator/next-id  (inc (max-id-in-queries loaded))
+                   :calculator/queries  loaded})
+        (merge db default-state)))))
 
 
 (defn toggle-calculator-handler
@@ -255,54 +284,65 @@
 
 (rf/reg-event-db
   ::add-query
+  [save-queries-interceptor]
   add-query-handler)
 
 
 (rf/reg-event-db
   ::remove-query
+  [save-queries-interceptor]
   remove-query-handler)
 
 
 (rf/reg-event-db
   ::set-query-label
+  [save-queries-interceptor]
   set-query-label-handler)
 
 
 (rf/reg-event-db
   ::toggle-query-collapsed
+  [save-queries-interceptor]
   toggle-query-collapsed-handler)
 
 
 (rf/reg-event-db
   ::add-step
+  [save-queries-interceptor]
   add-step-handler)
 
 
 (rf/reg-event-db
   ::remove-step
+  [save-queries-interceptor]
   remove-step-handler)
 
 
 (rf/reg-event-db
   ::set-step-draw-count
+  [save-queries-interceptor]
   set-step-draw-count-handler)
 
 
 (rf/reg-event-db
   ::add-target-group
+  [save-queries-interceptor]
   add-target-group-handler)
 
 
 (rf/reg-event-db
   ::remove-target-group
+  [save-queries-interceptor]
   remove-target-group-handler)
 
 
 (rf/reg-event-db
   ::toggle-target-card
+  [save-queries-interceptor]
   toggle-target-card-handler)
 
 
 (rf/reg-event-db
   ::set-target-min-count
+  [save-queries-interceptor]
   set-target-min-count-handler)

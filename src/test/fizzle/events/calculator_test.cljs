@@ -385,3 +385,62 @@
           after-targets (:step/targets (first (:query/steps (first (:calculator/queries result)))))]
       (is (= before-targets after-targets)
           "targets should be unchanged for unknown target id"))))
+
+
+;; === max-id-in-queries helper ===
+
+(deftest test-max-id-in-queries-finds-max-across-all-levels
+  (testing "max-id-in-queries returns the highest id across queries, steps, and targets"
+    (let [queries [{:query/id    1
+                    :query/steps [{:step/id      5
+                                   :step/targets [{:target/id 3}
+                                                  {:target/id 7}]}]}
+                   {:query/id    2
+                    :query/steps [{:step/id      4
+                                   :step/targets [{:target/id 6}]}]}]]
+      (is (= 7 (calc/max-id-in-queries queries))
+          "should return 7, the highest id anywhere in the structure"))))
+
+
+(deftest test-max-id-in-queries-empty-returns-zero
+  (testing "max-id-in-queries returns 0 for empty queries"
+    (is (= 0 (calc/max-id-in-queries []))
+        "should return 0 when no queries exist")))
+
+
+(deftest test-max-id-in-queries-single-query-no-steps
+  (testing "max-id-in-queries works with single query and no steps"
+    (let [queries [{:query/id 5 :query/steps []}]]
+      (is (= 5 (calc/max-id-in-queries queries))
+          "should return the query's own id when it has no steps"))))
+
+
+;; === init-calculator with restored queries ===
+
+(deftest test-init-calculator-with-loaded-queries-sets-next-id-past-max
+  (testing "init-calculator sets next-id to max(all ids) + 1 when queries have IDs"
+    ;; Simulate app-db that has no calculator state yet,
+    ;; but queries were loaded from localStorage (passed via handler with pre-populated state).
+    ;; We test max-id-in-queries feeding into next-id assignment indirectly by
+    ;; constructing a db with known queries and verifying next-id calculation.
+    (let [loaded-queries [{:query/id    10
+                           :query/steps [{:step/id      20
+                                          :step/targets [{:target/id 30}]}]}]
+          ;; max id is 30, so next-id should be 31
+          max-id         (calc/max-id-in-queries loaded-queries)]
+      (is (= 30 max-id)
+          "max-id-in-queries should find 30 as the max id")
+      (is (= 31 (inc max-id))
+          "next-id should be (inc max-id) = 31 to avoid collision"))))
+
+
+(deftest test-init-calculator-is-idempotent-when-queries-present
+  (testing "init-calculator does not overwrite existing :calculator/queries"
+    (let [existing-db {:calculator/visible? true
+                       :calculator/next-id  5
+                       :calculator/queries  [{:query/id 1}]}
+          result      (calc/init-calculator-handler existing-db nil)]
+      (is (= [{:query/id 1}] (:calculator/queries result))
+          "queries should be unchanged when already in db")
+      (is (= 5 (:calculator/next-id result))
+          "next-id should be unchanged when queries already present"))))

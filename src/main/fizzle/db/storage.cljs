@@ -62,6 +62,29 @@
       {})))
 
 
+;; === Calculator Queries ===
+
+(defn save-calculator-queries!
+  "Persist calculator queries vector to localStorage as EDN."
+  [queries]
+  (try
+    (.setItem js/localStorage "fizzle-calculator-queries" (pr-str queries))
+    (catch :default _)))
+
+
+(defn load-calculator-queries
+  "Load calculator queries from localStorage. Returns [] on missing or corrupt data."
+  []
+  (try
+    (let [raw (.getItem js/localStorage "fizzle-calculator-queries")]
+      (if raw
+        (let [data (reader/read-string raw)]
+          (if (vector? data) data []))
+        []))
+    (catch :default _
+      [])))
+
+
 ;; === Phase Stops ===
 
 (defn default-stops

@@ -118,3 +118,40 @@
 (deftest load-stops-returns-default-when-empty
   (is (= (storage/default-stops) (storage/load-stops))
       "Should return default stops when nothing stored"))
+
+
+;; === calculator queries persistence ===
+
+(deftest test-calculator-queries-round-trip
+  (testing "save-calculator-queries! and load-calculator-queries round-trip correctly"
+    (let [queries [{:query/id        1
+                    :query/label     "Test"
+                    :query/collapsed? false
+                    :query/steps     [{:step/id      2
+                                       :step/draw-count 7
+                                       :step/targets [{:target/id        3
+                                                       :target/cards     #{:dark-ritual :cabal-ritual}
+                                                       :target/min-count 1}]}]}]]
+      (storage/save-calculator-queries! queries)
+      (is (= queries (storage/load-calculator-queries))
+          "Loaded queries should equal saved queries including card sets"))))
+
+
+(deftest test-load-calculator-queries-empty-returns-default
+  (testing "load-calculator-queries returns [] when nothing stored"
+    (is (= [] (storage/load-calculator-queries))
+        "Should return [] when localStorage is empty")))
+
+
+(deftest test-load-calculator-queries-corrupt-returns-empty
+  (testing "load-calculator-queries returns [] on corrupt data"
+    (.setItem js/localStorage "fizzle-calculator-queries" "{:unclosed")
+    (is (= [] (storage/load-calculator-queries))
+        "Should return [] when localStorage contains corrupt data")))
+
+
+(deftest test-load-calculator-queries-non-vector-returns-empty
+  (testing "load-calculator-queries returns [] when stored data is not a vector"
+    (.setItem js/localStorage "fizzle-calculator-queries" (pr-str {:not "a vector"}))
+    (is (= [] (storage/load-calculator-queries))
+        "Should return [] when stored value is not a vector")))
