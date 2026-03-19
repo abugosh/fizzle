@@ -31,10 +31,19 @@
 
 ;; === Sub-components ===
 
+(defn- card-sort-key
+  "Sort key: lands first (0), then by CMC (1+), then alphabetically within CMC."
+  [card-id]
+  (let [card-def (get cards/card-by-id card-id)
+        is-land  (contains? (:card/types card-def) :land)
+        cmc      (or (:card/cmc card-def) 0)]
+    [(if is-land 0 1) cmc (card-display-name card-id)]))
+
+
 (defn- card-selection-grid
   "Clickable grid of cards from the library. Cards in selected-cards set are highlighted."
   [library-card-counts selected-cards query-id step-id target-id]
-  (let [sorted-cards (sort-by (fn [[card-id _]] (card-display-name card-id))
+  (let [sorted-cards (sort-by (fn [[card-id _]] (card-sort-key card-id))
                               library-card-counts)]
     [:div {:class "flex flex-wrap gap-1 mt-1"}
      (for [[card-id count] sorted-cards]
@@ -175,28 +184,22 @@
 ;; === Top-level panel ===
 
 (defn calculator-panel
-  "Top-level calculator dashboard. Returns nil when not visible.
-   Subscribes to visibility, results, and library card counts."
+  "Always-visible calculator dashboard. Renders inline in the center column."
   []
-  (let [visible?     @(rf/subscribe [::calc-subs/calculator-visible?])
-        results      @(rf/subscribe [::calc-subs/calculator-results])
+  (let [results      @(rf/subscribe [::calc-subs/calculator-results])
         card-counts  @(rf/subscribe [::calc-subs/library-card-counts])]
-    (when visible?
-      [:div {:class "border-t border-border bg-surface p-3"}
-       ;; Header
-       [:div {:class "flex items-center gap-3 mb-3"}
-        [:span {:class "text-text-label text-xs font-bold uppercase tracking-wider flex-1"}
-         "Draw Calculator"]
-        [:button {:class    "px-2 py-1 text-xs bg-surface-raised border border-border rounded text-text cursor-pointer hover:border-text-muted"
-                  :on-click #(rf/dispatch [::calc-events/add-query])}
-         "+ Query"]
-        [:button {:class    "text-text-muted hover:text-text text-xs cursor-pointer"
-                  :on-click #(rf/dispatch [::calc-events/toggle-calculator])}
-         "Close"]]
-       ;; Query list
-       (if (seq results)
-         [:div
-          (for [query results]
-            ^{:key (:query/id query)}
-            [query-view query card-counts])]
-         [:div {:class "text-text-muted text-xs"} "No queries. Click \"+ Query\" to add one."])])))
+    [:div {:class "mt-2"}
+     ;; Header
+     [:div {:class "flex items-center gap-3 mb-1"}
+      [:span {:class "text-text-label text-xs font-bold uppercase tracking-wider flex-1"}
+       "Draw Calculator"]
+      [:button {:class    "px-2 py-1 text-xs bg-surface-raised border border-border rounded text-text cursor-pointer hover:border-text-muted"
+                :on-click #(rf/dispatch [::calc-events/add-query])}
+       "+ Query"]]
+     ;; Query list
+     (if (seq results)
+       [:div
+        (for [query results]
+          ^{:key (:query/id query)}
+          [query-view query card-counts])]
+       [:div {:class "text-text-muted text-xs"} "No queries. Click \"+ Query\" to add one."])]))

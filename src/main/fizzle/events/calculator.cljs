@@ -27,29 +27,67 @@
 
 (defn max-id-in-queries
   "Find the maximum ID used across all queries, steps, and target groups.
-   Returns 0 if no IDs found."
+   Returns 0 if no IDs found. Filters out nil IDs gracefully."
   [queries]
-  (reduce max 0
-          (concat
-            (map :query/id queries)
-            (mapcat (fn [q] (map :step/id (:query/steps q))) queries)
-            (mapcat (fn [q]
-                      (mapcat (fn [s] (map :target/id (:step/targets s)))
-                              (:query/steps q)))
-                    queries))))
+  (let [all-ids (filterv some?
+                         (concat
+                           (map :query/id queries)
+                           (mapcat (fn [q] (map :step/id (:query/steps q))) queries)
+                           (mapcat (fn [q]
+                                     (mapcat (fn [s] (map :target/id (:step/targets s)))
+                                             (:query/steps q)))
+                                   queries)))]
+    (if (seq all-ids)
+      (reduce max all-ids)
+      0)))
+
+
+(defn- assign-missing-ids
+  "Walk queries/steps/targets and assign incrementing IDs where nil.
+   Returns [repaired-queries next-id]."
+  [queries start-id]
+  (loop [qs     queries
+         result []
+         nid    start-id]
+    (if (empty? qs)
+      [result nid]
+      (let [q   (first qs)
+            [q nid] (if (nil? (:query/id q))
+                      [(assoc q :query/id nid) (inc nid)]
+                      [q nid])
+            [steps nid]
+            (reduce (fn [[ss n] s]
+                      (let [[s n] (if (nil? (:step/id s))
+                                    [(assoc s :step/id n) (inc n)]
+                                    [s n])
+                            [targets n]
+                            (reduce (fn [[ts n] t]
+                                      (if (nil? (:target/id t))
+                                        [(conj ts (assoc t :target/id n)) (inc n)]
+                                        [(conj ts t) n]))
+                                    [[] n]
+                                    (:step/targets s))]
+                        [(conj ss (assoc s :step/targets targets)) n]))
+                    [[] nid]
+                    (:query/steps q))
+            q (assoc q :query/steps steps)]
+        (recur (rest qs) (conj result q) nid)))))
 
 
 (defn init-calculator-handler
   "Idempotent: only initializes when :calculator/queries is absent.
-   Attempts to restore queries from localStorage; falls back to empty default state."
+   Attempts to restore queries from localStorage; falls back to empty default state.
+   Repairs any nil IDs found in loaded queries."
   [db _]
   (if (contains? db :calculator/queries)
     db
     (let [loaded (storage/load-calculator-queries)]
       (if (seq loaded)
-        (merge db {:calculator/visible? false
-                   :calculator/next-id  (inc (max-id-in-queries loaded))
-                   :calculator/queries  loaded})
+        (let [max-existing            (max-id-in-queries loaded)
+              [repaired next-id] (assign-missing-ids loaded (inc max-existing))]
+          (merge db {:calculator/visible? false
+                     :calculator/next-id  next-id
+                     :calculator/queries  repaired}))
         (merge db default-state)))))
 
 
@@ -64,7 +102,7 @@
    N is the 1-based index of the new query (count before adding + 1).
    Increments :calculator/next-id."
   [db _]
-  (let [id      (:calculator/next-id db)
+  (let [id      (or (:calculator/next-id db) 1)
         n       (inc (count (:calculator/queries db)))
         query   {:query/id        id
                  :query/label     (str "Query " n)
@@ -115,7 +153,7 @@
   (let [query-exists? (some #(= (:query/id %) query-id) (:calculator/queries db))]
     (if-not query-exists?
       db
-      (let [id   (:calculator/next-id db)
+      (let [id   (or (:calculator/next-id db) 1)
             step {:step/id         id
                   :step/draw-count 7
                   :step/targets    []}]
@@ -175,7 +213,7 @@
                            (:calculator/queries db))]
     (if-not step-exists?
       db
-      (let [id     (:calculator/next-id db)
+      (let [id     (or (:calculator/next-id db) 1)
             target {:target/id        id
                     :target/cards     #{}
                     :target/min-count 1}]

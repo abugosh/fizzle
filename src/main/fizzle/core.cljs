@@ -86,15 +86,9 @@
      [mana-pool/mana-pool-view]
      [mana-pool/storm-count-view]]
     [zone-counts/zone-counts-view]
-    [:div {:class "mt-2"}
-     [:button {:class    "py-1 px-3 text-xs bg-surface-raised border border-border rounded text-text-muted cursor-pointer hover:text-text hover:border-text-muted"
-               :on-click #(rf/dispatch [::calc-events/toggle-calculator])}
-      "Calc"]]]
+    [calculator/calculator-panel]]
    ;; Right sidebar: history
    [collapsible-right-column "History" ::subs/history-collapsed ::events/toggle-history-collapsed [history/history-sidebar]]
-   ;; Bottom: calculator panel
-   [:div {:class "col-span-full"}
-    [calculator/calculator-panel]]
    ;; Modals (overlay, not in grid flow)
    [modals/selection-modal]
    [modals/mode-selector-modal]
