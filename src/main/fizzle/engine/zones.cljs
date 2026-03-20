@@ -117,6 +117,24 @@
         (d/db-with db txs)))))
 
 
+(defn move-to-bottom-of-library
+  "Move a game object to the bottom of a player's library.
+   Sets :object/position to one past the current max position.
+   Pure function: (db, object-id, player-id) -> db"
+  [db object-id player-id]
+  (let [player-eid (q/get-player-eid db player-id)
+        max-pos (or (d/q '[:find (max ?pos) .
+                           :in $ ?owner
+                           :where [?e :object/owner ?owner]
+                           [?e :object/zone :library]
+                           [?e :object/position ?pos]]
+                         db player-eid)
+                    -1)
+        db (move-to-zone db object-id :library)
+        obj-eid (q/get-object-eid db object-id)]
+    (d/db-with db [[:db/add obj-eid :object/position (inc max-pos)]])))
+
+
 (defn remove-object
   "Remove a game object entirely from the database.
    Used for spell copies that cease to exist when leaving the stack (per MTG rules).

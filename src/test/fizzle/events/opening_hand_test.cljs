@@ -302,3 +302,21 @@
           result-hand-ids (set (map :object/id (hand-objects result)))]
       (is (not (contains? result-hand-ids obj-id))
           "Selected card should NOT be in hand after confirm"))))
+
+
+(deftest test-confirm-bottom-cards-go-to-bottom-of-library
+  (testing "bottomed cards have higher position than all other library cards (London mulligan)"
+    (let [app-db (create-bottoming-app-db)
+          hand (hand-objects app-db)
+          obj-id (:object/id (first hand))
+          with-selected (assoc app-db :opening-hand/bottom-selection #{obj-id})
+          result (opening-hand/confirm-bottom-handler with-selected)
+          lib-objs (library-objects result)
+          bottomed-obj (first (filter #(= obj-id (:object/id %)) lib-objs))
+          other-objs (remove #(= obj-id (:object/id %)) lib-objs)
+          bottomed-pos (:object/position bottomed-obj)
+          max-other-pos (apply max (map :object/position other-objs))]
+      (is (some? bottomed-pos)
+          "Bottomed card should have a position")
+      (is (> bottomed-pos max-other-pos)
+          "Bottomed card position should be greater than all other library cards"))))

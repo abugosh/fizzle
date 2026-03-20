@@ -106,8 +106,9 @@
     (if (not= (count selection) mulligan-count)
       app-db
       (let [game-db (:game/db app-db)
+            human-pid (queries/get-human-player-id game-db)
             db-after (reduce (fn [db obj-id]
-                               (zones/move-to-zone db obj-id :library))
+                               (zones/move-to-bottom-of-library db obj-id human-pid))
                              game-db
                              selection)]
         (-> app-db

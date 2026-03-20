@@ -269,16 +269,35 @@
       (let [si-eid (:selection/stack-item-eid selection)]
         (stack/remove-stack-item game-db si-eid))
       (let [spell-id (:selection/spell-id selection)
-            spell-obj (queries/get-object game-db spell-id)
+            spell-obj (when spell-id (queries/get-object game-db spell-id))
             current-zone (:object/zone spell-obj)]
-        (if (= current-zone :stack)
-          ;; Remove stack-item first (needs object EID for lookup), then
-          ;; move spell off stack. Order matters: move-resolved-spell may
-          ;; retract the object entirely (copies), making EID lookup fail.
+        (cond
+          ;; No spell-id: nothing to clean up (e.g., finalized selection without spell context)
+          (nil? spell-id)
+          game-db
+
+          ;; Spell object already removed (e.g., copy that ceased to exist)
+          (nil? spell-obj)
+          game-db
+
+          ;; Spell on stack: normal cleanup path
+          (= current-zone :stack)
           (-> game-db
               (remove-spell-stack-item spell-id)
               (resolution/move-resolved-spell spell-id spell-obj))
-          game-db)))))
+
+          ;; Spell already moved off stack by its own effects (exile-self, graveyard).
+          ;; This is expected when effects like :exile-self run before cleanup.
+          ;; Warn on non-exile/non-graveyard zones since those likely indicate a
+          ;; routing bug (e.g., ETB trigger mis-routed through spell cleanup path).
+          :else
+          (do
+            (when-not (contains? #{:exile :graveyard} current-zone)
+              (js/console.warn
+                (str "cleanup-selection-source: spell " spell-id
+                     " is in zone " current-zone " (not :stack). "
+                     "If this is not expected, check build-selection-from-result routing.")))
+            game-db))))))
 
 
 ;; =====================================================
