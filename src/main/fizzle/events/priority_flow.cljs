@@ -298,8 +298,7 @@
   200)
 
 
-(defn yield-handler
-  "Handler body for ::yield event. Exposed for backward-compat forwarding in game.cljs."
+(defn- yield-handler
   [db]
   (if (:game/pending-selection db)
     {:db db}
@@ -339,8 +338,7 @@
     (yield-handler db)))
 
 
-(defn yield-all-handler
-  "Handler body for ::yield-all event. Exposed for backward-compat forwarding in game.cljs."
+(defn- yield-all-handler
   [db]
   (if (:game/pending-selection db)
     {:db db}
@@ -378,8 +376,7 @@
   (resolve-one-and-stop app-db))
 
 
-(defn cast-and-yield-handler
-  "Handler body for ::cast-and-yield event. Exposed for backward-compat forwarding in game.cljs."
+(defn- cast-and-yield-handler
   [db]
   (let [new-db (casting/cast-spell-handler db)]
     (cond
@@ -411,8 +408,7 @@
     (cast-and-yield-handler db)))
 
 
-(defn cast-and-yield-resolve-handler
-  "Handler body for ::cast-and-yield-resolve event. Exposed for backward-compat forwarding in game.cljs."
+(defn- cast-and-yield-resolve-handler
   [db]
   (resolve-one-and-stop db))
 
