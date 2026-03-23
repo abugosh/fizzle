@@ -17,7 +17,7 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.costs :as costs]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.game :as game]
+    [fizzle.events.casting :as casting]
     [fizzle.events.selection.costs :as sel-costs]
     [fizzle.test-helpers :as th]))
 
@@ -80,7 +80,7 @@
           ;; Add Tinker to hand
           [db tinker-id] (th/add-card-to-zone db :tinker :hand :player-1)
           ;; Cast Tinker — pre-cast pipeline fires sacrifice-permanent-cost selection
-          app-db (game/cast-spell-handler {:game/db db :game/selected-card tinker-id})
+          app-db (casting/cast-spell-handler {:game/db db :game/selected-card tinker-id})
           pending-sel (:game/pending-selection app-db)
           ;; Selection should be sacrifice-permanent-cost
           _ (is (= :sacrifice-permanent-cost (:selection/type pending-sel))
@@ -146,7 +146,7 @@
           [db petal-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-1)
           [db tinker-id] (th/add-card-to-zone db :tinker :hand :player-1)
           storm-before (q/get-storm-count db :player-1)
-          app-db (game/cast-spell-handler {:game/db db :game/selected-card tinker-id})
+          app-db (casting/cast-spell-handler {:game/db db :game/selected-card tinker-id})
           pending-sel (:game/pending-selection app-db)
           ;; Confirm sacrifice — executor casts Tinker (finalized lifecycle)
           {:keys [db]} (th/confirm-selection (:game/db app-db) pending-sel #{petal-id})]
@@ -164,7 +164,7 @@
           ;; Non-artifact on battlefield (creature)
           [db _mongoose-id] (th/add-card-to-zone db :nimble-mongoose :battlefield :player-1)
           [db tinker-id] (th/add-card-to-zone db :tinker :hand :player-1)
-          app-db (game/cast-spell-handler {:game/db db :game/selected-card tinker-id})
+          app-db (casting/cast-spell-handler {:game/db db :game/selected-card tinker-id})
           pending-sel (:game/pending-selection app-db)]
       (is (= :sacrifice-permanent-cost (:selection/type pending-sel))
           "Should show sacrifice selection")
@@ -178,7 +178,7 @@
           [db petal-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-1)
           [db led-id] (th/add-card-to-zone db :lions-eye-diamond :battlefield :player-1)
           [db tinker-id] (th/add-card-to-zone db :tinker :hand :player-1)
-          app-db (game/cast-spell-handler {:game/db db :game/selected-card tinker-id})
+          app-db (casting/cast-spell-handler {:game/db db :game/selected-card tinker-id})
           pending-sel (:game/pending-selection app-db)]
       (is (= #{petal-id led-id} (set (:selection/valid-targets pending-sel)))
           "All artifacts should be valid sacrifice candidates"))))
@@ -193,7 +193,7 @@
           ;; Non-artifact in library (won't be tutored)
           [db [ritual-id]] (th/add-cards-to-library db [:dark-ritual] :player-1)
           [db tinker-id] (th/add-card-to-zone db :tinker :hand :player-1)
-          app-db (game/cast-spell-handler {:game/db db :game/selected-card tinker-id})
+          app-db (casting/cast-spell-handler {:game/db db :game/selected-card tinker-id})
           pending-sel (:game/pending-selection app-db)
           ;; Confirm sacrifice — executor casts Tinker (finalized lifecycle)
           {:keys [db]} (th/confirm-selection (:game/db app-db) pending-sel #{petal-id})
@@ -223,7 +223,7 @@
           ;; Library has artifacts to tutor
           [db [led-id]] (th/add-cards-to-library db [:lions-eye-diamond] :player-1)
           [db tinker-id] (th/add-card-to-zone db :tinker :hand :player-1)
-          app-db (game/cast-spell-handler {:game/db db :game/selected-card tinker-id})
+          app-db (casting/cast-spell-handler {:game/db db :game/selected-card tinker-id})
           pending-sel (:game/pending-selection app-db)
           ;; Confirm sacrifice — executor casts Tinker (finalized lifecycle)
           {:keys [db]} (th/confirm-selection (:game/db app-db) pending-sel #{petal-id})

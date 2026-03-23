@@ -10,7 +10,7 @@
     [fizzle.cards.red.lightning-bolt :as lightning-bolt]
     [fizzle.db.queries :as q]
     [fizzle.engine.priority :as priority]
-    [fizzle.events.game :as game]
+    [fizzle.events.priority-flow :as priority-flow]
     [fizzle.history.core :as history]
     [fizzle.test-helpers :as th]))
 
@@ -81,7 +81,7 @@
           _ (is (= :player-1 (q/get-active-player-id db))
                 "Precondition: human is active")
           ;; Advance human through all phases to cleanup/start-turn
-          result (game/advance-with-stops {:game/db db} true)
+          result (priority-flow/advance-with-stops {:game/db db} true)
           result-db (:game/db (:app-db result))]
       (is (= 2 (:game/turn (q/get-game-state result-db)))
           "Turn should increment to 2 after human turn ends")
@@ -94,7 +94,7 @@
     (let [db (-> (th/create-test-db {:stops #{}})
                  (th/add-opponent {:bot-archetype :burn}))
           ;; First, advance human turn to get to bot turn (turn 2)
-          result1 (game/advance-with-stops {:game/db db} true)
+          result1 (priority-flow/advance-with-stops {:game/db db} true)
           db-bot-turn (:game/db (:app-db result1))
           _ (is (= 2 (:game/turn (q/get-game-state db-bot-turn)))
                 "Precondition: bot turn is 2")
@@ -106,7 +106,7 @@
                            n 20]
                       (if (zero? n)
                         gdb
-                        (let [result (game/advance-with-stops {:game/db gdb} true)
+                        (let [result (priority-flow/advance-with-stops {:game/db gdb} true)
                               rdb (:game/db (:app-db result))]
                           (if (not= (q/get-active-player-id rdb)
                                     (q/get-active-player-id db-bot-turn))
@@ -132,7 +132,7 @@
                       (let [turn (:game/turn (q/get-game-state (:game/db adb)))]
                         (if (or (zero? n) (>= turn 3))
                           adb
-                          (let [result (game/yield-impl adb)
+                          (let [result (priority-flow/yield-impl adb)
                                 result-adb (:app-db result)]
                             (if (:continue-yield? result)
                               (recur result-adb (dec n))

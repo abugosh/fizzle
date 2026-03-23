@@ -15,7 +15,8 @@
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
-    [fizzle.events.game :as game]
+    [fizzle.events.cleanup :as cleanup]
+    [fizzle.events.resolution :as resolution]
     [fizzle.events.selection.core :as core]
     [fizzle.events.selection.costs :as sel-costs]
     [fizzle.events.selection.library]
@@ -156,7 +157,7 @@
           [db _id7] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           [db _id8] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           [db _id9] (th/add-card-to-zone db :dark-ritual :hand :player-1)
-          result (game/begin-cleanup db :player-1)
+          result (cleanup/begin-cleanup db :player-1)
           selection (:pending-selection result)]
       (is (some? selection)
           "Cleanup should create pending selection")
@@ -346,7 +347,7 @@
           [db gy2] (th/add-card-to-zone db :cabal-ritual :graveyard :player-1)
           db (mana/add-mana db :player-1 {:black 4})
           db-cast (rules/cast-spell db :player-1 igg-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
       ;; Should have graveyard-return selection from generic builder
       (is (= :graveyard-return (:selection/type sel))

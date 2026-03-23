@@ -9,7 +9,7 @@
     [fizzle.cards.lands.gemstone-mine :as gemstone-mine]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana-activation :as engine-mana]
-    [fizzle.events.game :as game]
+    [fizzle.events.lands :as lands]
     [fizzle.test-helpers :as th]))
 
 
@@ -221,7 +221,7 @@
           [db' obj-id] (th/add-card-to-zone db :gemstone-mine :hand :player-1)
           _ (is (= :hand (th/get-object-zone db' obj-id))
                 "Precondition: Gemstone Mine starts in hand")
-          db'' (game/play-land db' :player-1 obj-id)]
+          db'' (lands/play-land db' :player-1 obj-id)]
       (is (= :battlefield (th/get-object-zone db'' obj-id))
           "Gemstone Mine should be on battlefield after playing")
       (is (= {:mining 3} (:object/counters (q/get-object db'' obj-id)))

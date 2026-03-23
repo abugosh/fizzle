@@ -16,7 +16,7 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.events.selection.costs :as sel-costs]
     [fizzle.test-helpers :as th]))
 
@@ -270,7 +270,7 @@
           db (mana/add-mana db :player-1 {:blue 1 :colorless 1})
           db-cast (cast-daze-targeting db daze-id ritual-id)
           db-ritual-resolved (rules/move-spell-off-stack db-cast nil ritual-id)
-          result (game/resolve-one-item db-ritual-resolved)
+          result (resolution/resolve-one-item db-ritual-resolved)
           db-resolved (:db result)]
       (is (= :graveyard (:object/zone (q/get-object db-resolved daze-id)))
           "Daze should be in graveyard after fizzling"))))

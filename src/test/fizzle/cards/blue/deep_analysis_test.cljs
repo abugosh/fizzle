@@ -22,7 +22,7 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
-    [fizzle.events.game :as events]
+    [fizzle.events.resolution :as resolution]
     [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
 
@@ -206,7 +206,7 @@
           [db obj-id] (th/add-card-to-zone db :deep-analysis :hand :player-1)
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
           db-cast (rules/cast-spell db :player-1 obj-id)
-          result (events/resolve-one-item db-cast)]
+          result (resolution/resolve-one-item db-cast)]
       (is (= :player-target (:selection/type (:pending-selection result)))
           "Selection type should be :player-target")
       (is (= obj-id (:selection/spell-id (:pending-selection result)))
@@ -219,7 +219,7 @@
           [db obj-id] (th/add-card-to-zone db :deep-analysis :hand :player-1)
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
           db-cast (rules/cast-spell db :player-1 obj-id)
-          result (events/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           selection (:pending-selection result)]
       (is (= :player-1 (:selection/player-id selection))
           "Caster should be tracked")
@@ -251,7 +251,7 @@
           [db obj-id] (th/add-card-to-zone db :deep-analysis :hand :player-1)
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
           db-cast (rules/cast-spell db :player-1 obj-id)
-          result (events/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           selection (:pending-selection result)
           target-effect (:selection/target-effect selection)]
       ;; The stored effect should have :any-player target (to be replaced on confirm)

@@ -10,14 +10,14 @@
     [fizzle.engine.effects :as effects]
     [fizzle.engine.effects.tokens]
     [fizzle.engine.grants :as grants]
-    [fizzle.engine.resolution :as resolution]
+    [fizzle.engine.resolution :as engine-resolution]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.state-based :as sba]
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.triggers :as triggers]
     [fizzle.engine.zones :as zones]
-    [fizzle.events.game :as game]
     [fizzle.events.phases :as phases]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -193,7 +193,7 @@
           db (clear-summoning-sickness db obj-id)
           stack-item {:stack-item/type :declare-attackers
                       :stack-item/controller :player-1}
-          result (resolution/resolve-stack-item db stack-item)]
+          result (engine-resolution/resolve-stack-item db stack-item)]
       (is (true? (:needs-attackers result))
           "Should return :needs-attackers")
       (is (= [obj-id] (:eligible-attackers result))
@@ -208,7 +208,7 @@
           [db _] (add-creature-to-battlefield db :nimble-mongoose :player-1)
           stack-item {:stack-item/type :declare-attackers
                       :stack-item/controller :player-1}
-          result (resolution/resolve-stack-item db stack-item)]
+          result (engine-resolution/resolve-stack-item db stack-item)]
       (is (nil? (:needs-attackers result))
           "Should not need attackers when none eligible")
       (is (some? (:db result))
@@ -221,7 +221,7 @@
           db (th/add-opponent db)
           stack-item {:stack-item/type :declare-blockers
                       :stack-item/controller :player-1}
-          result (resolution/resolve-stack-item db stack-item)]
+          result (engine-resolution/resolve-stack-item db stack-item)]
       (is (some? (:db result))
           "Should return {:db db}")
       (is (nil? (:needs-blockers result))
@@ -234,7 +234,7 @@
           db (th/add-opponent db)
           stack-item {:stack-item/type :combat-damage
                       :stack-item/controller :player-1}
-          result (resolution/resolve-stack-item db stack-item)]
+          result (engine-resolution/resolve-stack-item db stack-item)]
       (is (some? (:db result))
           "Should return {:db db}"))))
 
@@ -266,7 +266,7 @@
           [db obj-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
           db (clear-summoning-sickness db obj-id)
           db (combat/begin-combat db :player-1)
-          result (game/resolve-one-item db)]
+          result (resolution/resolve-one-item db)]
       (is (some? (:pending-selection result))
           "Should return pending-selection for attacker selection")
       (is (= :select-attackers (:selection/type (:pending-selection result)))
@@ -284,7 +284,7 @@
           [db obj-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
           db (clear-summoning-sickness db obj-id)
           db (combat/begin-combat db :player-1)
-          result (game/resolve-one-item db)
+          result (resolution/resolve-one-item db)
           selection (:pending-selection result)
           confirmed (th/confirm-selection (:db result) selection #{obj-id})
           db-after (:db confirmed)
@@ -302,7 +302,7 @@
           [db obj-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
           db (clear-summoning-sickness db obj-id)
           db (combat/begin-combat db :player-1)
-          result (game/resolve-one-item db)
+          result (resolution/resolve-one-item db)
           selection (:pending-selection result)
           confirmed (th/confirm-selection (:db result) selection #{})
           db-after (:db confirmed)
@@ -320,7 +320,7 @@
           [db obj-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
           db (clear-summoning-sickness db obj-id)
           db (combat/begin-combat db :player-1)
-          result (game/resolve-one-item db)
+          result (resolution/resolve-one-item db)
           selection (:pending-selection result)
           confirmed (th/confirm-selection (:db result) selection #{obj-id})
           db-after (:db confirmed)
@@ -341,7 +341,7 @@
           [db _obj-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
           db (clear-summoning-sickness db _obj-id)
           db (combat/begin-combat db :player-1)
-          result (game/resolve-one-item db)
+          result (resolution/resolve-one-item db)
           selection (:pending-selection result)
           confirmed (th/confirm-selection (:db result) selection #{})
           db-after (:db confirmed)
@@ -359,7 +359,7 @@
           [db obj-id] (add-creature-to-battlefield db :nimble-mongoose :player-2)
           db (clear-summoning-sickness db obj-id)
           db (combat/begin-combat db :player-2)
-          result (game/resolve-one-item db)]
+          result (resolution/resolve-one-item db)]
       (is (nil? (:pending-selection result))
           "Bot should auto-select attackers, no pending-selection")
       (let [db-after (:db result)
@@ -419,7 +419,7 @@
           db (stack/create-stack-item db {:stack-item/type :declare-blockers
                                           :stack-item/controller :player-1
                                           :stack-item/description "Declare Blockers"})
-          result (game/resolve-one-item db)]
+          result (resolution/resolve-one-item db)]
       (is (some? (:pending-selection result)))
       (is (= :assign-blockers (:selection/type (:pending-selection result))))
       (is (= :valid-targets (:selection/card-source (:pending-selection result)))
@@ -432,7 +432,7 @@
           db (th/add-opponent db)
           stack-item {:stack-item/type :declare-blockers
                       :stack-item/controller :player-1}
-          result (resolution/resolve-stack-item db stack-item)]
+          result (engine-resolution/resolve-stack-item db stack-item)]
       (is (nil? (:needs-blockers result)))
       (is (some? (:db result))))))
 
@@ -448,7 +448,7 @@
           db (stack/create-stack-item db {:stack-item/type :declare-blockers
                                           :stack-item/controller :player-1
                                           :stack-item/description "Declare Blockers"})
-          result (game/resolve-one-item db)
+          result (resolution/resolve-one-item db)
           selection (:pending-selection result)
           confirmed (th/confirm-selection (:db result) selection #{blk-id})
           db-after (:db confirmed)
@@ -468,7 +468,7 @@
           db (stack/create-stack-item db {:stack-item/type :declare-blockers
                                           :stack-item/controller :player-1
                                           :stack-item/description "Declare Blockers"})
-          result (game/resolve-one-item db)
+          result (resolution/resolve-one-item db)
           selection (:pending-selection result)
           confirmed (th/confirm-selection (:db result) selection #{})
           db-after (:db confirmed)
@@ -490,7 +490,7 @@
           db (stack/create-stack-item db {:stack-item/type :declare-blockers
                                           :stack-item/controller :player-1
                                           :stack-item/description "Declare Blockers"})
-          result (game/resolve-one-item db)
+          result (resolution/resolve-one-item db)
           sel1 (:pending-selection result)
           _ (is (= :assign-blockers (:selection/type sel1)))
           confirmed1 (th/confirm-selection (:db result) sel1 #{blk1-id})
@@ -663,7 +663,7 @@
           life-before (q/get-life-total db :player-2)
           stack-item {:stack-item/type :combat-damage
                       :stack-item/controller :player-1}
-          result (resolution/resolve-stack-item db stack-item)
+          result (engine-resolution/resolve-stack-item db stack-item)
           db-after (:db result)]
       (is (= (- life-before 1) (q/get-life-total db-after :player-2))
           "Defending player should lose life from combat damage")

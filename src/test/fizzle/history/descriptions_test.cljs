@@ -135,7 +135,7 @@
                                                 :stack-item/description "Dark Ritual"})]
       (is (= "Cast Dark Ritual"
              (descriptions/describe-event
-               [:fizzle.events.game/cast-spell] nil db-after))))))
+               [:fizzle.events.casting/cast-spell] nil db-after))))))
 
 
 (deftest test-cast-spell-with-target-shows-target
@@ -158,14 +158,14 @@
                                                 :stack-item/targets {:player :player-2}})]
       (is (= "Cast Brain Freeze targeting opponent"
              (descriptions/describe-event
-               [:fizzle.events.game/cast-spell] nil db-after))))))
+               [:fizzle.events.casting/cast-spell] nil db-after))))))
 
 
 (deftest test-cast-spell-nil-db-falls-back
   (testing "cast-spell with nil game-db falls back to generic"
     (is (= "Cast spell"
            (descriptions/describe-event
-             [:fizzle.events.game/cast-spell] nil nil)))))
+             [:fizzle.events.casting/cast-spell] nil nil)))))
 
 
 (deftest test-confirm-cast-time-target-shows-card-name
@@ -307,7 +307,7 @@
           [db obj-id] (add-object db card-eid :hand)]
       (is (= "Cast Dark Ritual"
              (descriptions/describe-event
-               [:fizzle.events.game/cast-spell] nil db nil obj-id))
+               [:fizzle.events.casting/cast-spell] nil db nil obj-id))
           "Should use casting-spell-id to find card name when stack is empty"))))
 
 
@@ -360,7 +360,7 @@
                                                 :stack-item/description "Dark Ritual"})]
       (is (= "Cast Dark Ritual"
              (descriptions/describe-event
-               [:fizzle.events.game/cast-spell] nil db-after nil (random-uuid)))
+               [:fizzle.events.casting/cast-spell] nil db-after nil (random-uuid)))
           "Should use stack top card name, not the fallback spell-id"))))
 
 
@@ -383,7 +383,7 @@
                                               :stack-item/description "Dark Ritual"})]
       (is (= "Resolve Dark Ritual"
              (descriptions/describe-event
-               [:fizzle.events.game/resolve-top] pre-db nil))))))
+               [:fizzle.events.resolution/resolve-top] pre-db nil))))))
 
 
 (deftest test-resolve-storm-copy-shows-card-name
@@ -406,7 +406,7 @@
                                               :stack-item/description "Brain Freeze (storm copy)"})]
       (is (= "Resolve Brain Freeze"
              (descriptions/describe-event
-               [:fizzle.events.game/resolve-top] pre-db nil))))))
+               [:fizzle.events.resolution/resolve-top] pre-db nil))))))
 
 
 (deftest test-resolve-activated-ability-shows-source
@@ -422,7 +422,7 @@
                                               :stack-item/description "Target player draws 3, discards 3"})]
       (is (= "Resolve Cephalid Coliseum ability"
              (descriptions/describe-event
-               [:fizzle.events.game/resolve-top] pre-db nil))))))
+               [:fizzle.events.resolution/resolve-top] pre-db nil))))))
 
 
 (deftest test-resolve-storm-item-uses-description
@@ -436,7 +436,7 @@
                                               :stack-item/description "Storm — create 5 copies"})]
       (is (= "Resolve Storm — create 5 copies"
              (descriptions/describe-event
-               [:fizzle.events.game/resolve-top] pre-db nil))))))
+               [:fizzle.events.resolution/resolve-top] pre-db nil))))))
 
 
 (deftest test-resolve-etb-trigger-shows-source
@@ -454,7 +454,7 @@
                                               :stack-item/effects [{:effect/type :return-from-graveyard}]})]
       (is (= "Resolve Mystic Sanctuary trigger"
              (descriptions/describe-event
-               [:fizzle.events.game/resolve-top] pre-db nil))))))
+               [:fizzle.events.resolution/resolve-top] pre-db nil))))))
 
 
 (deftest test-resolve-permanent-tapped-trigger-shows-source
@@ -472,7 +472,7 @@
                                               :stack-item/effects [{:effect/type :deal-damage}]})]
       (is (= "Resolve City of Brass trigger"
              (descriptions/describe-event
-               [:fizzle.events.game/resolve-top] pre-db nil))))))
+               [:fizzle.events.resolution/resolve-top] pre-db nil))))))
 
 
 (deftest test-resolve-empty-stack-falls-back
@@ -480,7 +480,7 @@
     (let [db (make-db)]
       (is (= "Resolve top of stack"
              (descriptions/describe-event
-               [:fizzle.events.game/resolve-top] db nil))))))
+               [:fizzle.events.resolution/resolve-top] db nil))))))
 
 
 ;; ============================================================
@@ -492,7 +492,7 @@
     (let [db-after (make-db {:game/phase :main1})]
       (is (= "Advance to Main 1"
              (descriptions/describe-event
-               [:fizzle.events.game/advance-phase] nil db-after))))))
+               [:fizzle.events.phases/advance-phase] nil db-after))))))
 
 
 (deftest test-advance-phase-all-phases
@@ -508,7 +508,7 @@
       (let [db-after (make-db {:game/phase phase})]
         (is (= expected
                (descriptions/describe-event
-                 [:fizzle.events.game/advance-phase] nil db-after))
+                 [:fizzle.events.phases/advance-phase] nil db-after))
             (str "Phase " phase " should produce: " expected))))))
 
 
@@ -516,7 +516,7 @@
   (testing "advance-phase with nil game-db falls back to generic"
     (is (= "Advance phase"
            (descriptions/describe-event
-             [:fizzle.events.game/advance-phase] nil nil)))))
+             [:fizzle.events.phases/advance-phase] nil nil)))))
 
 
 ;; ============================================================
@@ -528,14 +528,14 @@
     (let [db-after (make-db {:game/turn 3})]
       (is (= "Start Turn 3"
              (descriptions/describe-event
-               [:fizzle.events.game/start-turn] nil db-after))))))
+               [:fizzle.events.phases/start-turn] nil db-after))))))
 
 
 (deftest test-start-turn-nil-db-falls-back
   (testing "start-turn with nil game-db falls back to generic"
     (is (= "Start new turn"
            (descriptions/describe-event
-             [:fizzle.events.game/start-turn] nil nil)))))
+             [:fizzle.events.phases/start-turn] nil nil)))))
 
 
 ;; ============================================================
@@ -549,7 +549,7 @@
           [db obj-id] (add-object db card-eid :battlefield)]
       (is (= "Play Swamp"
              (descriptions/describe-event
-               [:fizzle.events.game/play-land obj-id] nil db))))))
+               [:fizzle.events.lands/play-land obj-id] nil db))))))
 
 
 (deftest test-play-land-missing-object-falls-back
@@ -557,14 +557,14 @@
     (let [db (make-db)]
       (is (= "Play land"
              (descriptions/describe-event
-               [:fizzle.events.game/play-land (random-uuid)] nil db))))))
+               [:fizzle.events.lands/play-land (random-uuid)] nil db))))))
 
 
 (deftest test-play-land-nil-db-falls-back
   (testing "play-land with nil game-db falls back to generic"
     (is (= "Play land"
            (descriptions/describe-event
-             [:fizzle.events.game/play-land (random-uuid)] nil nil)))))
+             [:fizzle.events.lands/play-land (random-uuid)] nil nil)))))
 
 
 ;; ============================================================
@@ -661,10 +661,10 @@
   (testing "init-game always returns 'Game started' regardless of dbs"
     (is (= "Game started"
            (descriptions/describe-event
-             [:fizzle.events.game/init-game] nil nil)))
+             [:fizzle.events.init/init-game] nil nil)))
     (is (= "Game started"
            (descriptions/describe-event
-             [:fizzle.events.game/init-game] (make-db) (make-db))))))
+             [:fizzle.events.init/init-game] (make-db) (make-db))))))
 
 
 ;; ============================================================
@@ -685,26 +685,26 @@
 
 (deftest test-ui-only-events-return-nil
   (testing "UI-only events that don't change game state return nil"
-    (is (nil? (descriptions/describe-event [:fizzle.events.game/select-card :obj-1] nil nil)))
+    (is (nil? (descriptions/describe-event [:fizzle.events.ui/select-card :obj-1] nil nil)))
     (is (nil? (descriptions/describe-event [:fizzle.events.selection/toggle-selection :obj-1] nil nil)))
     (is (nil? (descriptions/describe-event [:fizzle.events.selection/cancel-selection] nil nil)))
-    (is (nil? (descriptions/describe-event [:fizzle.events.game/cancel-mode-selection] nil nil)))))
+    (is (nil? (descriptions/describe-event [:fizzle.events.casting/cancel-mode-selection] nil nil)))))
 
 
 (deftest test-mid-action-events-return-nil
   (testing "Mid-action events (mode selection) return nil"
-    (is (nil? (descriptions/describe-event [:fizzle.events.game/select-casting-mode {:mode :normal}] nil nil)))))
+    (is (nil? (descriptions/describe-event [:fizzle.events.casting/select-casting-mode {:mode :normal}] nil nil)))))
 
 
 (deftest test-descriptions-are-non-empty-strings
   (testing "All priority event descriptions are non-empty strings (with nil dbs = fallback)"
-    (let [events [[:fizzle.events.game/init-game]
-                  [:fizzle.events.game/cast-spell]
-                  [:fizzle.events.game/cast-and-yield]
-                  [:fizzle.events.game/resolve-top]
-                  [:fizzle.events.game/advance-phase]
-                  [:fizzle.events.game/start-turn]
-                  [:fizzle.events.game/play-land :obj-1]
+    (let [events [[:fizzle.events.init/init-game]
+                  [:fizzle.events.casting/cast-spell]
+                  [:fizzle.events.priority-flow/cast-and-yield]
+                  [:fizzle.events.resolution/resolve-top]
+                  [:fizzle.events.phases/advance-phase]
+                  [:fizzle.events.phases/start-turn]
+                  [:fizzle.events.lands/play-land :obj-1]
                   [:fizzle.events.abilities/activate-mana-ability :obj-1 :black]
                   [:fizzle.events.abilities/activate-ability :obj-1 0]]]
       (doseq [event events]
@@ -730,7 +730,7 @@
       ;; Spell is in graveyard (already resolved), but casting-spell-id identifies it
       (is (= "Cast & Yield Dark Ritual"
              (descriptions/describe-event
-               [:fizzle.events.game/cast-and-yield] db db nil obj-id))))))
+               [:fizzle.events.priority-flow/cast-and-yield] db db nil obj-id))))))
 
 
 (deftest test-cast-and-yield-falls-back-to-stack-top
@@ -748,14 +748,14 @@
                                                 :stack-item/description "Dark Ritual"})]
       (is (= "Cast & Yield Dark Ritual"
              (descriptions/describe-event
-               [:fizzle.events.game/cast-and-yield] nil db-after nil nil))))))
+               [:fizzle.events.priority-flow/cast-and-yield] nil db-after nil nil))))))
 
 
 (deftest test-cast-and-yield-nil-dbs-falls-back
   (testing "cast-and-yield with nil dbs falls back to generic"
     (is (= "Cast & Yield"
            (descriptions/describe-event
-             [:fizzle.events.game/cast-and-yield] nil nil)))))
+             [:fizzle.events.priority-flow/cast-and-yield] nil nil)))))
 
 
 ;; ============================================================
@@ -778,9 +778,9 @@
           post-db (make-db)]
       (is (= "Yield: Dark Ritual \u2192 Main 1"
              (descriptions/describe-event
-               [:fizzle.events.game/yield] pre-db post-db))
+               [:fizzle.events.priority-flow/yield] pre-db post-db))
           "Yield should use standard format")
       (is (= "Yield: Dark Ritual \u2192 Main 1"
              (descriptions/describe-event
-               [:fizzle.events.game/yield] pre-db post-db nil nil))
+               [:fizzle.events.priority-flow/yield] pre-db post-db nil nil))
           "5-arity call should produce standard Yield format"))))

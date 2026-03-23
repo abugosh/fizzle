@@ -16,7 +16,7 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.zones :as zones]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -211,7 +211,7 @@
           ;; Simulate petal resolving first: move to battlefield (permanent)
           db-petal-resolved (zones/move-to-zone db-cast petal-id :battlefield)
           ;; Resolve Annul — target left stack, should fizzle
-          result (game/resolve-one-item db-petal-resolved)
+          result (resolution/resolve-one-item db-petal-resolved)
           db-resolved (:db result)]
       ;; Annul should still end up in graveyard
       (is (= :graveyard (:object/zone (q/get-object db-resolved annul-id)))

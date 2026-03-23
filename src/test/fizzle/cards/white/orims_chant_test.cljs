@@ -21,7 +21,7 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -198,7 +198,7 @@
           _ (is (= :stack (:object/zone (q/get-object db-cast obj-id)))
                 "Precondition: Orim's Chant on stack")
           ;; Resolve via production path (resolve-one-item)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           db-resolved (:db result)]
       ;; Spell should be in graveyard after resolution
       (is (= :graveyard (:object/zone (q/get-object db-resolved obj-id)))
@@ -278,7 +278,7 @@
           ;; Cast with target via production helper
           db-cast (th/cast-with-target db-with-mana :player-1 obj-id :player-2)
           ;; Resolve via production path
-          result (game/resolve-one-item db-cast)]
+          result (resolution/resolve-one-item db-cast)]
       ;; Spell should be resolved (in graveyard)
       (is (= :graveyard (:object/zone (q/get-object (:db result) obj-id)))
           "Orim's Chant should be in graveyard after resolution")

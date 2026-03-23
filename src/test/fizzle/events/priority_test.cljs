@@ -7,7 +7,9 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.priority :as priority]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.game :as game]
+    [fizzle.events.phases :as phases]
+    [fizzle.events.priority-flow :as priority-flow]
+    [fizzle.events.ui :as ui-events]
     [fizzle.history.core :as history]
     [fizzle.history.interceptor :as interceptor]
     [fizzle.test-helpers :as h]
@@ -59,7 +61,7 @@
             ;; Check if this is a pass (dispatches ::yield) or an action
             is-pass? (some (fn [[fx-type payload]]
                              (and (= :dispatch fx-type)
-                                  (= (first payload) :fizzle.events.game/yield)))
+                                  (= (first payload) :fizzle.events.priority-flow/yield)))
                            fx-entries)]
         ;; Always apply db changes
         (when (:db effects)
@@ -83,7 +85,7 @@
    Also processes bot actions between yields to simulate the bot interceptor."
   [app-db]
   (reset! rf-db/app-db app-db)
-  (rf/dispatch-sync [::game/yield-all])
+  (rf/dispatch-sync [::priority-flow/yield-all])
   (loop [n 300]
     (let [current @rf-db/app-db]
       (if (or (zero? n)
@@ -91,7 +93,7 @@
               (not (contains? current :yield/step-count)))
         @rf-db/app-db
         (do
-          (rf/dispatch-sync [::game/yield])
+          (rf/dispatch-sync [::priority-flow/yield])
           ;; After yield, process any bot action (land play, cast, etc.)
           ;; If bot took an action (not pass), continue the loop.
           ;; If bot passed, the next ::yield will advance the phase.
@@ -104,7 +106,7 @@
 (deftest yield-empty-stack-advances-past-combat-to-main2
   (testing "yield from main1 with stops at main1+main2 skips combat, lands on main2"
     (let [app-db (setup-app-db)
-          result (game/yield-impl app-db)]
+          result (priority-flow/yield-impl app-db)]
       (is (= :main2 (:game/phase (q/get-game-state (:game/db (:app-db result)))))
           "Should advance to main2, skipping upkeep/draw/combat"))))
 
@@ -119,7 +121,7 @@
           ;; Cast Dark Ritual to put it on the stack
           game-db (rules/cast-spell db' :player-1 _obj-id)
           app-db {:game/db game-db}
-          result (game/yield-impl app-db)
+          result (priority-flow/yield-impl app-db)
           result-db (:game/db (:app-db result))
           pool (q/get-mana-pool result-db :player-1)]
       (is (= 3 (:black pool))
@@ -136,8 +138,8 @@
                  (h/add-opponent {:bot-archetype :goldfish}))
           ;; Advance to main2 manually
           game-db (-> db
-                      (game/advance-phase :player-1)  ; main1 -> combat
-                      (game/advance-phase :player-1)  ; combat -> main2
+                      (phases/advance-phase :player-1)  ; main1 -> combat
+                      (phases/advance-phase :player-1)  ; combat -> main2
                       )
           ;; Use yield-all which cascades through turns via event dispatch
           app-db (merge (history/init-history) {:game/db game-db})
@@ -161,7 +163,7 @@
           [db'' _] (h/add-cards-to-library db' [:dark-ritual :dark-ritual :dark-ritual] :player-1)
           game-db (rules/cast-spell db'' :player-1 obj-id)
           app-db {:game/db game-db}
-          result (game/yield-impl app-db)]
+          result (priority-flow/yield-impl app-db)]
       (is (some? (:game/pending-selection (:app-db result)))
           "Should return pending-selection for interactive spell"))))
 
@@ -171,7 +173,7 @@
 (deftest yield-bot-auto-passes
   (testing "goldfish bot auto-passes when priority transfers to it"
     (let [app-db (setup-app-db)
-          result (game/yield-impl app-db)]
+          result (priority-flow/yield-impl app-db)]
       ;; If bot didn't auto-pass, phase wouldn't advance (only one player passed)
       (is (some? (:app-db result))
           "Should return a result (bot auto-passed)")
@@ -200,7 +202,7 @@
 (deftest yield-with-no-stops-advances-to-turn-boundary
   (testing "yield from main1 with no stops advances to turn boundary (untap of new turn)"
     (let [app-db (setup-app-db {:stops #{}})
-          result (game/yield-impl app-db)
+          result (priority-flow/yield-impl app-db)
           result-db (:game/db (:app-db result))]
       (is (= 2 (:game/turn (q/get-game-state result-db)))
           "Should advance to turn 2")
@@ -220,7 +222,7 @@
           [db'' obj2] (h/add-card-to-zone game-db1 :dark-ritual :hand :player-1)
           game-db2 (rules/cast-spell db'' :player-1 obj2)
           app-db {:game/db game-db2}
-          result (game/yield-impl app-db)]
+          result (priority-flow/yield-impl app-db)]
       ;; Without auto-mode, yield resolves one item and stops
       ;; This gives the player priority to respond to remaining stack items
       (is (not (:continue-yield? result))
@@ -274,7 +276,7 @@
           app-db (merge (history/init-history)
                         {:game/db db'
                          :game/selected-card obj-id})
-          result (dispatch-event app-db [::game/cast-and-yield])]
+          result (dispatch-event app-db [::priority-flow/cast-and-yield])]
       (is (= :graveyard (:object/zone (q/get-object (:game/db result) obj-id)))
           "Dark Ritual should be in graveyard after cast-and-yield")
       (is (= 3 (:black (q/get-mana-pool (:game/db result) :player-1)))
@@ -289,7 +291,7 @@
           app-db (merge (history/init-history)
                         {:game/db db'
                          :game/selected-card obj-id})
-          result (dispatch-event app-db [::game/cast-and-yield])]
+          result (dispatch-event app-db [::priority-flow/cast-and-yield])]
       ;; Brain Freeze has targeting — should show targeting selection, not yield
       (is (some? (:game/pending-selection result))
           "Should have pending selection for targeted spell")
@@ -308,7 +310,7 @@
           app-db (merge (history/init-history)
                         {:game/db (rules/cast-spell db' :player-1 obj-id)})
           ;; Yield to resolve (dispatch through re-frame)
-          result (dispatch-event app-db [::game/yield])
+          result (dispatch-event app-db [::priority-flow/yield])
           result-db (:game/db result)]
       ;; Spell should have resolved
       (is (= :graveyard (:object/zone (q/get-object result-db obj-id)))
@@ -342,13 +344,13 @@
     (let [app-db (merge (history/init-history)
                         (setup-app-db {:stops #{:main1 :main2}}))
           ;; Toggle off main2
-          result1 (dispatch-event app-db [::game/toggle-stop :player :main2])
+          result1 (dispatch-event app-db [::ui-events/toggle-stop :player :main2])
           stops1 (:player/stops (d/pull (:game/db result1) [:player/stops]
                                         (q/get-player-eid (:game/db result1) :player-1)))]
       (is (= #{:main1} stops1)
           "Should have removed main2 from stops")
       ;; Toggle on combat
-      (let [result2 (dispatch-event result1 [::game/toggle-stop :player :combat])
+      (let [result2 (dispatch-event result1 [::ui-events/toggle-stop :player :combat])
             stops2 (:player/stops (d/pull (:game/db result2) [:player/stops]
                                           (q/get-player-eid (:game/db result2) :player-1)))]
         (is (= #{:main1 :combat} stops2)
@@ -360,13 +362,13 @@
     (let [app-db (merge (history/init-history)
                         (setup-app-db {:stops #{:main1 :main2}}))
           ;; Toggle on end for opponent
-          result1 (dispatch-event app-db [::game/toggle-stop :opponent :end])
+          result1 (dispatch-event app-db [::ui-events/toggle-stop :opponent :end])
           opp-eid (q/get-player-eid (:game/db result1) :player-2)
           stops1 (:player/stops (d/pull (:game/db result1) [:player/stops] opp-eid))]
       (is (= #{:end} stops1)
           "Should have added end to opponent stops")
       ;; Toggle off end for opponent
-      (let [result2 (dispatch-event result1 [::game/toggle-stop :opponent :end])
+      (let [result2 (dispatch-event result1 [::ui-events/toggle-stop :opponent :end])
             stops2 (:player/stops (d/pull (:game/db result2) [:player/stops] opp-eid))]
         (is (= #{} stops2)
             "Should have removed end from opponent stops")))))
@@ -382,8 +384,8 @@
           [db' _] (h/add-card-to-zone db :plains :hand :player-2)
           ;; Advance to main2 manually
           game-db (-> db'
-                      (game/advance-phase :player-1)  ; main1 -> combat
-                      (game/advance-phase :player-1))  ; combat -> main2
+                      (phases/advance-phase :player-1)  ; main1 -> combat
+                      (phases/advance-phase :player-1))  ; combat -> main2
           app-db (merge (history/init-history) {:game/db game-db})
           result (dispatch-yield-all app-db)
           result-db (:game/db result)]
@@ -400,8 +402,8 @@
                  (h/add-opponent {:bot-archetype :goldfish}))
           ;; Advance to main2 manually (no lands in opponent hand)
           game-db (-> db
-                      (game/advance-phase :player-1)  ; main1 -> combat
-                      (game/advance-phase :player-1))  ; combat -> main2
+                      (phases/advance-phase :player-1)  ; main1 -> combat
+                      (phases/advance-phase :player-1))  ; combat -> main2
           app-db (merge (history/init-history) {:game/db game-db})
           result (dispatch-yield-all app-db)
           result-db (:game/db result)]
@@ -420,8 +422,8 @@
           [db' _] (h/add-cards-to-library db [:plains :island :swamp] :player-2)
           ;; Advance to main2
           game-db (-> db'
-                      (game/advance-phase :player-1)  ; main1 -> combat
-                      (game/advance-phase :player-1))  ; combat -> main2
+                      (phases/advance-phase :player-1)  ; main1 -> combat
+                      (phases/advance-phase :player-1))  ; combat -> main2
           app-db (merge (history/init-history) {:game/db game-db})
           result (dispatch-yield-all app-db)
           result-db (:game/db result)]
@@ -445,8 +447,8 @@
           [db' _] (h/add-cards-to-library db [:plains :island :swamp] :player-2)
           ;; Start at main2 so yield-all crosses turn boundary into opponent turn
           game-db (-> db'
-                      (game/advance-phase :player-1)  ; main1 -> combat
-                      (game/advance-phase :player-1))  ; combat -> main2
+                      (phases/advance-phase :player-1)  ; main1 -> combat
+                      (phases/advance-phase :player-1))  ; combat -> main2
           app-db (merge (history/init-history) {:game/db game-db})
           result (dispatch-yield-all app-db)
           entries (history/effective-entries result)]
@@ -463,8 +465,8 @@
                  (h/add-opponent {:bot-archetype :goldfish}))
           [db' _] (h/add-cards-to-library db [:plains :island :swamp] :player-2)
           game-db (-> db'
-                      (game/advance-phase :player-1)  ; main1 -> combat
-                      (game/advance-phase :player-1))  ; combat -> main2
+                      (phases/advance-phase :player-1)  ; main1 -> combat
+                      (phases/advance-phase :player-1))  ; combat -> main2
           app-db (merge (history/init-history) {:game/db game-db})
           result (dispatch-yield-all app-db)
           entries (history/effective-entries result)]
@@ -480,8 +482,8 @@
                  (h/add-opponent {:bot-archetype :goldfish}))
           [db' _] (h/add-cards-to-library db [:plains :island :swamp] :player-2)
           game-db (-> db'
-                      (game/advance-phase :player-1)  ; main1 -> combat
-                      (game/advance-phase :player-1))  ; combat -> main2
+                      (phases/advance-phase :player-1)  ; main1 -> combat
+                      (phases/advance-phase :player-1))  ; combat -> main2
           app-db (merge (history/init-history) {:game/db game-db})
           result (dispatch-yield-all app-db)
           entries (history/effective-entries result)]
@@ -500,8 +502,8 @@
                  (h/add-opponent {:bot-archetype :goldfish}))
           ;; No cards in opponent library or hand — bot has nothing to do
           game-db (-> db
-                      (game/advance-phase :player-1)  ; main1 -> combat
-                      (game/advance-phase :player-1))  ; combat -> main2
+                      (phases/advance-phase :player-1)  ; main1 -> combat
+                      (phases/advance-phase :player-1))  ; combat -> main2
           app-db (merge (history/init-history) {:game/db game-db})
           result (dispatch-yield-all app-db)
           entries (history/effective-entries result)
@@ -519,15 +521,15 @@
                  (h/add-opponent {:bot-archetype :goldfish :stops #{:draw}}))
           ;; Advance to main2 — last player stop before turn boundary
           game-db (-> db
-                      (game/advance-phase :player-1)  ; main1 -> combat
-                      (game/advance-phase :player-1)) ; combat -> main2
+                      (phases/advance-phase :player-1)  ; main1 -> combat
+                      (phases/advance-phase :player-1)) ; combat -> main2
           app-db {:game/db game-db}
           ;; Loop yield-impl + bot-decide until it stops
           ;; When yield pauses (no continue-yield?), simulate bot interceptor
           ;; by calling bot-decide-handler which dispatches ::yield to continue
           final (loop [adb app-db n 50]
                   (if (zero? n) adb
-                      (let [result (game/yield-impl adb)]
+                      (let [result (priority-flow/yield-impl adb)]
                         (if (:continue-yield? result)
                           (recur (:app-db result) (dec n))
                           ;; No continue — check if bot should act (interceptor sim)
@@ -559,7 +561,7 @@
                                  [:db/add game-eid :game/phase :draw]
                                  [:db/add game-eid :game/turn 2]])
           app-db {:game/db game-db}
-          result (game/yield-impl app-db)
+          result (priority-flow/yield-impl app-db)
           result-db (:game/db (:app-db result))]
       (is (= :end (:game/phase (q/get-game-state result-db)))
           "Should advance to next opponent stop (:end), not just one phase (:main1)")
@@ -572,8 +574,8 @@
     (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
                  (h/add-opponent {:bot-archetype :goldfish :stops #{:draw}}))
           game-db (-> db
-                      (game/advance-phase :player-1)  ; main1 -> combat
-                      (game/advance-phase :player-1)) ; combat -> main2
+                      (phases/advance-phase :player-1)  ; main1 -> combat
+                      (phases/advance-phase :player-1)) ; combat -> main2
           app-db (merge (history/init-history) {:game/db game-db})
           ;; yield-all sets F6 mode, which should skip all stops
           result (dispatch-yield-all app-db)
@@ -591,7 +593,7 @@
     (let [db (-> (h/create-test-db {:stops #{:main1}})
                  (h/add-opponent {:bot-archetype :goldfish}))
           app-db {:game/db db}
-          result (game/negotiate-priority app-db)]
+          result (priority-flow/negotiate-priority app-db)]
       (is (true? (:all-passed? result))
           "Both should have passed (human passed, bot auto-passed)"))))
 
@@ -602,7 +604,7 @@
                  (h/add-opponent {:bot-archetype :goldfish})
                  (priority/set-auto-mode :resolving))
           app-db {:game/db db}
-          result (game/negotiate-priority app-db)]
+          result (priority-flow/negotiate-priority app-db)]
       (is (true? (:all-passed? result))))))
 
 
@@ -614,7 +616,7 @@
           opp-eid (q/get-player-eid db :player-2)
           db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]])
           app-db {:game/db db}
-          result (game/negotiate-priority app-db)]
+          result (priority-flow/negotiate-priority app-db)]
       (is (true? (:all-passed? result))))))
 
 
@@ -622,7 +624,7 @@
   (testing "single player: one pass suffices"
     (let [db (h/create-test-db {:stops #{:main1}})
           app-db {:game/db db}
-          result (game/negotiate-priority app-db)]
+          result (priority-flow/negotiate-priority app-db)]
       (is (true? (:all-passed? result))
           "Single player should have all-passed after one pass"))))
 
@@ -632,7 +634,7 @@
     (let [db (-> (h/create-test-db {:stops #{:main1}})
                  (h/add-opponent {}))
           app-db {:game/db db}
-          result (game/negotiate-priority app-db)]
+          result (priority-flow/negotiate-priority app-db)]
       (is (false? (:all-passed? result))
           "Should not be all-passed when opponent is human and didn't pass"))))
 
@@ -642,7 +644,7 @@
     (let [db (-> (h/create-test-db {:stops #{:main1}})
                  (h/add-opponent {:bot-archetype :goldfish}))
           app-db {:game/db db}
-          result (game/negotiate-priority app-db)
+          result (priority-flow/negotiate-priority app-db)
           result-db (:game/db (:app-db result))]
       (is (empty? (priority/get-passed-eids result-db))
           "Passes should be reset after all-passed"))))
@@ -659,7 +661,7 @@
           opp-eid (q/get-player-eid game-db :player-2)
           game-db (d/db-with game-db [[:db/add game-eid :game/active-player opp-eid]])
           app-db {:game/db game-db}
-          result (game/negotiate-priority app-db)]
+          result (priority-flow/negotiate-priority app-db)]
       (is (false? (:all-passed? result))
           "Human should get priority when stack is non-empty during bot turn"))))
 
@@ -673,7 +675,7 @@
           opp-eid (q/get-player-eid db :player-2)
           db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]])
           app-db {:game/db db}
-          result (game/negotiate-priority app-db)]
+          result (priority-flow/negotiate-priority app-db)]
       (is (true? (:all-passed? result))
           "Human should be auto-passed when stack is empty during bot turn"))))
 
@@ -690,7 +692,7 @@
           opp-eid (q/get-player-eid game-db :player-2)
           game-db (d/db-with game-db [[:db/add game-eid :game/active-player opp-eid]])
           app-db {:game/db game-db}
-          result (game/negotiate-priority app-db)]
+          result (priority-flow/negotiate-priority app-db)]
       (is (true? (:all-passed? result))
           "Auto-mode (F6/resolving) should still auto-pass even with stack non-empty"))))
 
@@ -707,7 +709,7 @@
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db)
           game-db (d/db-with game-db [[:db/add game-eid :game/priority opp-eid]])
           app-db {:game/db game-db}
-          result (game/negotiate-priority app-db)]
+          result (priority-flow/negotiate-priority app-db)]
       (is (false? (:all-passed? result))
           "Human should get priority to respond when bot passes during human turn with stack"))))
 
@@ -722,7 +724,7 @@
           game-db (-> (rules/cast-spell db' :player-1 obj-id)
                       (priority/set-auto-mode :resolving))
           app-db {:game/db game-db}
-          result (game/yield-impl app-db)]
+          result (priority-flow/yield-impl app-db)]
       (is (nil? (priority/get-auto-mode (:game/db (:app-db result))))
           "Auto-mode should be cleared when stack empties during :resolving"))))
 
@@ -737,7 +739,7 @@
           game-db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]
                                  [:db/add game-eid :game/priority opp-eid]])
           app-db {:game/db game-db}
-          result (game/yield-impl app-db)
+          result (priority-flow/yield-impl app-db)
           result-db (:game/db (:app-db result))]
       (is (= :main2 (:game/phase (q/get-game-state result-db)))
           "Should have advanced from main1 to main2 (combat skipped — no creatures)")
@@ -760,11 +762,11 @@
           [db' _] (h/add-card-to-zone db' :dark-ritual :hand :player-1)
           ;; Advance to end phase (one before cleanup)
           game-db (-> db'
-                      (game/advance-phase :player-1)   ; main1 -> combat
-                      (game/advance-phase :player-1)   ; combat -> main2
-                      (game/advance-phase :player-1))  ; main2 -> end
+                      (phases/advance-phase :player-1)   ; main1 -> combat
+                      (phases/advance-phase :player-1)   ; combat -> main2
+                      (phases/advance-phase :player-1))  ; main2 -> end
           app-db {:game/db game-db}
-          result (game/yield-impl app-db)]
+          result (priority-flow/yield-impl app-db)]
       (is (some? (:game/pending-selection (:app-db result)))
           "Should return pending-selection for cleanup discard"))))
 
@@ -781,7 +783,7 @@
                                  [:db/add game-eid :game/phase :untap]])
           app-db {:game/db game-db}
           ;; First yield should advance through untap (non-priority) with continue
-          result-1 (game/yield-impl app-db)
+          result-1 (priority-flow/yield-impl app-db)
           phase-after-1 (:game/phase (q/get-game-state (:game/db (:app-db result-1))))]
       ;; Should have advanced from untap to upkeep
       (is (= :upkeep phase-after-1)
@@ -802,7 +804,7 @@
           game-db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]
                                  [:db/add game-eid :game/priority opp-eid]])
           app-db {:game/db game-db}
-          result (game/yield-impl app-db)
+          result (priority-flow/yield-impl app-db)
           result-db (:game/db (:app-db result))]
       (is (q/stack-empty? result-db)
           "Bot phase should not put anything on stack"))))
@@ -845,7 +847,7 @@
               [db' _] (h/add-card-to-zone db' :mountain :battlefield :player-2)
               game-db (rules/cast-spell db' :player-1 obj-id)
               app-db {:game/db game-db}
-              result (game/negotiate-priority app-db)]
+              result (priority-flow/negotiate-priority app-db)]
           (is (false? (:all-passed? result))
               "Reactive bot should get priority when opponent spell on stack"))))))
 
@@ -857,7 +859,7 @@
           [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
           game-db (rules/cast-spell db' :player-1 obj-id)
           app-db {:game/db game-db}
-          result (game/negotiate-priority app-db)]
+          result (priority-flow/negotiate-priority app-db)]
       (is (true? (:all-passed? result))
           "Goldfish should be auto-passed (empty priority rules -> :pass)"))))
 
@@ -870,7 +872,7 @@
           ;; Stack is NOT empty after cast — burn's :stack-empty condition won't match
           game-db (rules/cast-spell db' :player-1 obj-id)
           app-db {:game/db game-db}
-          result (game/negotiate-priority app-db)]
+          result (priority-flow/negotiate-priority app-db)]
       (is (true? (:all-passed? result))
           "Burn bot should be auto-passed (stack-empty condition doesn't match)"))))
 
@@ -883,7 +885,7 @@
                      (h/add-opponent {:bot-archetype :reactive-test}))
               ;; Stack is empty — :stack-has condition won't match
               app-db {:game/db db}
-              result (game/negotiate-priority app-db)]
+              result (priority-flow/negotiate-priority app-db)]
           (is (true? (:all-passed? result))
               "Reactive bot should be auto-passed when stack is empty"))))))
 
@@ -900,7 +902,7 @@
               game-db (-> (rules/cast-spell db' :player-1 obj-id)
                           (priority/set-auto-mode :resolving))
               app-db {:game/db game-db}
-              result (game/negotiate-priority app-db)]
+              result (priority-flow/negotiate-priority app-db)]
           (is (true? (:all-passed? result))
               "Auto-mode should bypass bot protocol and auto-pass"))))))
 
@@ -915,6 +917,6 @@
               ;; No bolt in hand, but :stack-has condition matches
               game-db (rules/cast-spell db' :player-1 obj-id)
               app-db {:game/db game-db}
-              result (game/negotiate-priority app-db)]
+              result (priority-flow/negotiate-priority app-db)]
           (is (true? (:all-passed? result))
               "Reactive bot should be auto-passed when card not in hand"))))))

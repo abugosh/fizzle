@@ -1,6 +1,6 @@
 (ns fizzle.views.graveyard
   (:require
-    [fizzle.events.game :as events]
+    [fizzle.events.ui :as ui-events]
     [fizzle.subs.game :as subs]
     [fizzle.views.card-styles :as card-styles]
     [re-frame.core :as rf]))
@@ -24,7 +24,7 @@
     [:div {:class (str "py-1 px-2 rounded text-xs select-none "
                        border-class " " bg-class " " text-class " " cursor-class)
            :on-click (when castable?
-                       #(rf/dispatch [::events/select-card object-id]))}
+                       #(rf/dispatch [::ui-events/select-card object-id]))}
      card-name
      (when has-flashback?
        [:span {:class "ml-1.5 py-px px-1 bg-flashback-badge-bg rounded-sm text-[9px] text-text"}
@@ -62,6 +62,6 @@
            (= (:object/id obj) selected)])
         [:div {:class "flex justify-end mt-1"}
          [:button {:class "text-[10px] text-text-muted hover:text-text cursor-pointer"
-                   :on-click #(rf/dispatch [::events/toggle-graveyard-sort])}
+                   :on-click #(rf/dispatch [::ui-events/toggle-graveyard-sort])}
           (if (= sort-mode :sorted) "Entry Order" "Sort")]]]
        [:div {:class "text-border text-[13px]"} "Empty"])]))

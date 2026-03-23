@@ -54,7 +54,7 @@
           new-game-db :db-new
           pre-db (make-db-with-history old-game-db)
           post-db (make-db-with-history new-game-db)
-          event [:fizzle.events.game/cast-spell]
+          event [:fizzle.events.casting/cast-spell]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])]
@@ -70,7 +70,7 @@
           pre-db (make-db-with-history same-db)
           ;; Post-db has same game-db reference
           post-db (make-db-with-history same-db)
-          event [:fizzle.events.game/cast-spell]
+          event [:fizzle.events.casting/cast-spell]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])]
@@ -86,7 +86,7 @@
           post-db (make-db-with-history new-game-db)]
       (doseq [event [[:fizzle.history.events/step-to 3]
                      [:fizzle.events.selection/confirm-selection]
-                     [:fizzle.events.game/select-card :obj-1]
+                     [:fizzle.events.ui/select-card :obj-1]
                      [:fizzle.events.selection/confirm-tutor-selection]]]
         (let [context (make-context pre-db post-db event)
               result (run-interceptor context)
@@ -106,7 +106,7 @@
                  (history/step-to 1))
           new-game-db :db-diverge
           post-db (assoc db :game/db new-game-db)
-          event [:fizzle.events.game/cast-spell]
+          event [:fizzle.events.casting/cast-spell]
           context (make-context db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])]
@@ -124,14 +124,14 @@
           new-game-db :db-new
           pre-db (make-db-with-history old-game-db)
           post-db (make-db-with-history new-game-db)
-          event [:fizzle.events.game/cast-spell]
+          event [:fizzle.events.casting/cast-spell]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])
           entry (first (:history/main result-db))]
       (is (= new-game-db (:entry/snapshot entry))
           "Snapshot should be the new game-db")
-      (is (= :fizzle.events.game/cast-spell (:entry/event-type entry))
+      (is (= :fizzle.events.casting/cast-spell (:entry/event-type entry))
           "Event type should be the event keyword")
       (is (= "Cast spell" (:entry/description entry))
           "Description should come from describe-event")
@@ -143,7 +143,7 @@
   (testing "Entry uses description from describe-event when available"
     (let [pre-db (make-db-with-history :db-old)
           post-db (make-db-with-history :db-new)
-          event [:fizzle.events.game/yield]
+          event [:fizzle.events.priority-flow/yield]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])
@@ -153,13 +153,13 @@
 
 (deftest test-priority-events-all-have-descriptions
   (testing "All priority events produce named descriptions (not fallback)"
-    (doseq [event [[:fizzle.events.game/cast-spell]
-                   [:fizzle.events.game/cast-and-yield]
-                   [:fizzle.events.game/yield]
-                   [:fizzle.events.game/yield-all]
+    (doseq [event [[:fizzle.events.casting/cast-spell]
+                   [:fizzle.events.priority-flow/cast-and-yield]
+                   [:fizzle.events.priority-flow/yield]
+                   [:fizzle.events.priority-flow/yield-all]
                    ;; start-turn creates its own history entries (not via interceptor)
-                   [:fizzle.events.game/play-land :obj-1]
-                   [:fizzle.events.game/init-game]
+                   [:fizzle.events.lands/play-land :obj-1]
+                   [:fizzle.events.init/init-game]
                    [:fizzle.events.abilities/activate-mana-ability :obj-1 :black]
                    [:fizzle.events.abilities/activate-ability :obj-1 0]]]
       (let [pre-db (make-db-with-history :db-old)
@@ -195,7 +195,7 @@
     (let [pre-db (merge {:game/db nil} (history/init-history))
           new-game-db :db-initial
           post-db (merge {:game/db new-game-db} (history/init-history))
-          event [:fizzle.events.game/init-game]
+          event [:fizzle.events.init/init-game]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])]
@@ -214,7 +214,7 @@
           ;; Post-db has same game-db but gained a pending-selection
           post-db (assoc (make-db-with-history same-db)
                          :game/pending-selection {:selection/type :peek-and-select})
-          event [:fizzle.events.game/yield]
+          event [:fizzle.events.priority-flow/yield]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])]
@@ -231,7 +231,7 @@
           ;; Post-db still has a pending-selection (same or different)
           post-db (assoc (make-db-with-history same-db)
                          :game/pending-selection {:selection/type :discard})
-          event [:fizzle.events.game/yield]
+          event [:fizzle.events.priority-flow/yield]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])]
@@ -245,7 +245,7 @@
           pre-db (make-db-with-history same-db)
           post-db (assoc (make-db-with-history same-db)
                          :game/pending-selection {:selection/type :peek-and-select})
-          event [:fizzle.events.game/yield]
+          event [:fizzle.events.priority-flow/yield]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])
@@ -313,7 +313,7 @@
           db-after-cast (rules/cast-spell db-mana :player-1 obj-id)
           pre-db (make-db-with-history db-before)
           post-db (make-db-with-history db-after-cast)
-          event [:fizzle.events.game/cast-spell]
+          event [:fizzle.events.casting/cast-spell]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])
@@ -334,7 +334,7 @@
           db-after @conn
           pre-db (make-db-with-history db-before)
           post-db (make-db-with-history db-after)
-          event [:fizzle.events.game/yield]
+          event [:fizzle.events.priority-flow/yield]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])
@@ -352,7 +352,7 @@
           db-after @conn
           pre-db (make-db-with-history db-before)
           post-db (make-db-with-history db-after)
-          event [:fizzle.events.game/yield-all]
+          event [:fizzle.events.priority-flow/yield-all]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])
@@ -369,7 +369,7 @@
           post-db (assoc (make-db-with-history same-db)
                          :game/pending-selection {:selection/type :exile-cards-cost}
                          :game/selected-card :some-spell)
-          event [:fizzle.events.game/cast-spell]
+          event [:fizzle.events.casting/cast-spell]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])]
@@ -394,7 +394,7 @@
           new-game-db :db-new
           pre-db (make-db-with-history old-game-db)
           post-db (make-db-with-history new-game-db)
-          event [:fizzle.events.game/cast-and-yield]
+          event [:fizzle.events.priority-flow/cast-and-yield]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])]
@@ -410,7 +410,7 @@
           pre-db (make-db-with-history same-db)
           post-db (assoc (make-db-with-history same-db)
                          :game/pending-selection {:selection/type :peek-and-select})
-          event [:fizzle.events.game/cast-and-yield]
+          event [:fizzle.events.priority-flow/cast-and-yield]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])]
@@ -430,7 +430,7 @@
           pre-db (assoc (make-db-with-history db-mana)
                         :game/selected-card obj-id)
           post-db (make-db-with-history db-after-resolve)
-          event [:fizzle.events.game/cast-and-yield]
+          event [:fizzle.events.priority-flow/cast-and-yield]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])

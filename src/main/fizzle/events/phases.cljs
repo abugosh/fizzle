@@ -120,7 +120,7 @@
 
 
 (rf/reg-event-db
-  :fizzle.events.game/advance-phase
+  ::advance-phase
   (fn [db _]
     (let [game-db (:game/db db)]
       ;; Block advance if pending selection exists (e.g., cleanup discard in progress)
@@ -144,7 +144,7 @@
 
 
 (rf/reg-event-db
-  :fizzle.events.game/start-turn
+  ::start-turn
   (fn [db _]
     (let [game-db (:game/db db)]
       ;; Block start-turn if pending selection exists (e.g., cleanup discard)

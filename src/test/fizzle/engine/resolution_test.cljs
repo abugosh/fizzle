@@ -5,10 +5,10 @@
     [fizzle.db.queries :as queries]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
-    [fizzle.engine.resolution :as resolution]
+    [fizzle.engine.resolution :as engine-resolution]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -25,7 +25,7 @@
           spell-items (filter #(:stack-item/object-ref %) (queries/get-all-stack-items db))
           stack-item (first spell-items)
           ;; Resolve via multimethod
-          result (resolution/resolve-stack-item db stack-item)]
+          result (engine-resolution/resolve-stack-item db stack-item)]
       ;; Should complete without needing selection
       (is (nil? (:needs-selection result))
           "Dark Ritual should not need selection")
@@ -53,7 +53,7 @@
           db (d/db-with db [[:db/add si-eid :stack-item/targets {:player :player-2}]])
           ;; Re-fetch stack-item with targets
           stack-item (stack/get-stack-item-by-object-ref db obj-eid)
-          result (resolution/resolve-stack-item db stack-item)]
+          result (engine-resolution/resolve-stack-item db stack-item)]
       ;; Should complete without selection
       (is (nil? (:needs-selection result))
           "Targeted Orim's Chant should not need selection when targets stored")
@@ -73,7 +73,7 @@
           ;; Find the spell stack-item
           spell-items (filter #(:stack-item/object-ref %) (queries/get-all-stack-items db))
           stack-item (first spell-items)
-          result (resolution/resolve-stack-item db stack-item)]
+          result (engine-resolution/resolve-stack-item db stack-item)]
       ;; Should pause for selection
       (is (some? (:needs-selection result))
           "Tutor spell should need selection")
@@ -111,7 +111,7 @@
                                        :stack-item/object-ref copy-eid
                                        :stack-item/is-copy true})
           stack-item (stack/get-top-stack-item db)
-          result (resolution/resolve-stack-item db stack-item)]
+          result (engine-resolution/resolve-stack-item db stack-item)]
       ;; Copy should be removed from db
       (is (nil? (queries/get-object (:db result) copy-id))
           "Storm copy should cease to exist after resolution"))))
@@ -131,7 +131,7 @@
           ;; Find the spell stack-item
           spell-items (filter #(:stack-item/object-ref %) (queries/get-all-stack-items db))
           stack-item (first spell-items)
-          result (resolution/resolve-stack-item db stack-item)]
+          result (engine-resolution/resolve-stack-item db stack-item)]
       ;; Spell should be in exile
       (is (= :exile (:object/zone (queries/get-object (:db result) obj-id)))
           "Flashback spell should exile after resolution"))))
@@ -147,7 +147,7 @@
           ;; Find the spell stack-item
           spell-items (filter #(:stack-item/object-ref %) (queries/get-all-stack-items db))
           stack-item (first spell-items)
-          result (resolution/resolve-stack-item db stack-item)]
+          result (engine-resolution/resolve-stack-item db stack-item)]
       ;; Spell should still be in graveyard
       (is (= :graveyard (:object/zone (queries/get-object (:db result) obj-id)))
           "Spell should move to graveyard even if conditional effects don't match"))))
@@ -167,7 +167,7 @@
                                        :stack-item/source obj-id
                                        :stack-item/object-ref obj-eid})
           stack-item (stack/get-top-stack-item db)
-          result (resolution/resolve-stack-item db stack-item)]
+          result (engine-resolution/resolve-stack-item db stack-item)]
       ;; Object should still be in hand (no-op)
       (is (= :hand (:object/zone (queries/get-object (:db result) obj-id)))
           "Object in hand should not be affected"))))
@@ -189,7 +189,7 @@
                         (if (or (nil? (stack/get-top-stack-item d))
                                 (> iterations 5))
                           d
-                          (let [result (game/resolve-one-item d)]
+                          (let [result (resolution/resolve-one-item d)]
                             (recur (:db result) (inc iterations)))))]
       ;; Spell should be in graveyard
       (is (= :graveyard (:object/zone (queries/get-object result-loop obj-id)))
@@ -214,7 +214,7 @@
           spell-items (filter #(:stack-item/object-ref %) (queries/get-all-stack-items db))
           stack-item (first spell-items)
           ;; Resolve — multimethod reads controller from stack-item, not a parameter
-          result (resolution/resolve-stack-item db stack-item)]
+          result (engine-resolution/resolve-stack-item db stack-item)]
       ;; Mana should go to player-1 (the controller), NOT player-2 (active player)
       (let [p1-pool (queries/get-mana-pool (:db result) :player-1)]
         (is (= 5 (:black p1-pool))
@@ -229,6 +229,6 @@
     (let [db (th/create-test-db)
           stack-item {:stack-item/type :unknown-type
                       :stack-item/controller :player-1}
-          result (resolution/resolve-stack-item db stack-item)]
+          result (engine-resolution/resolve-stack-item db stack-item)]
       (is (= db (:db result))
           "Default defmethod should return db unchanged"))))

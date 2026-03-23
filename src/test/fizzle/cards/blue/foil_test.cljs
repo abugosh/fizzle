@@ -19,7 +19,7 @@
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.validation :as validation]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.events.selection.costs :as sel-costs]
     [fizzle.test-helpers :as th]))
 
@@ -94,7 +94,7 @@
           [db foil-id] (th/add-card-to-zone db :foil :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 2 :colorless 2})
           db-cast (cast-foil-targeting db foil-id ritual-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           db-resolved (:db result)]
       ;; Should be a hard counter (no selection needed)
       (is (nil? (:pending-selection result))
@@ -323,7 +323,7 @@
           db (mana/add-mana db :player-1 {:blue 2 :colorless 2})
           db-cast (cast-foil-targeting db foil-id ritual-id)
           db-ritual-resolved (rules/move-spell-off-stack db-cast nil ritual-id)
-          result (game/resolve-one-item db-ritual-resolved)
+          result (resolution/resolve-one-item db-ritual-resolved)
           db-resolved (:db result)]
       (is (= :graveyard (:object/zone (q/get-object db-resolved foil-id)))
           "Foil should be in graveyard after fizzling"))))

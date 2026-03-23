@@ -22,7 +22,7 @@
     [fizzle.engine.state-based :as sba]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.abilities :as ability-events]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -102,7 +102,7 @@
           db-cast (th/cast-with-target db-with-lib :player-1 obj-id :player-2)
           _ (is (= :stack (:object/zone (q/get-object db-cast obj-id)))
                 "Precondition: Abeyance on stack")
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           db-resolved (:db result)]
       ;; Spell should be in graveyard
       (is (= :graveyard (:object/zone (q/get-object db-resolved obj-id)))
@@ -285,7 +285,7 @@
           [db-with-lib _] (th/add-cards-to-library db-with-mana [:dark-ritual] :player-1)
           ;; Target SELF via production helper
           db-cast (th/cast-with-target db-with-lib :player-1 obj-id :player-1)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           db-resolved (:db result)]
       ;; Player-1 should have the restrictions (targeting self)
       (let [p1-grants (grants/get-player-grants db-resolved :player-1)]
@@ -302,7 +302,7 @@
           db-with-mana (mana/add-mana db :player-1 {:colorless 1 :white 1})
           ;; NO library cards — draw should trigger loss
           db-cast (th/cast-with-target db-with-mana :player-1 obj-id :player-2)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           db-resolved (:db result)]
       ;; Restrictions should still be applied (effects execute sequentially)
       (let [p2-grants (grants/get-player-grants db-resolved :player-2)]

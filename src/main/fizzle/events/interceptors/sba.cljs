@@ -15,14 +15,14 @@
   "Events after which SBAs should be checked. Any event that can change
    game state (life totals, library contents, drew-from-empty flag) must
    be in this set."
-  #{:fizzle.events.game/yield
-    :fizzle.events.game/yield-all
-    :fizzle.events.game/resolve-top
-    :fizzle.events.game/cast-spell
-    :fizzle.events.game/cast-and-yield
-    :fizzle.events.game/play-land
-    :fizzle.events.game/advance-phase
-    :fizzle.events.game/start-turn
+  #{:fizzle.events.priority-flow/yield
+    :fizzle.events.priority-flow/yield-all
+    :fizzle.events.resolution/resolve-top
+    :fizzle.events.casting/cast-spell
+    :fizzle.events.priority-flow/cast-and-yield
+    :fizzle.events.lands/play-land
+    :fizzle.events.phases/advance-phase
+    :fizzle.events.phases/start-turn
     :fizzle.events.selection/confirm-selection
     :fizzle.events.abilities/activate-mana-ability})
 

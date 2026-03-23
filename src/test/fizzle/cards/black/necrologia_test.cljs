@@ -20,7 +20,7 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
-    [fizzle.events.game :as game]
+    [fizzle.events.casting :as casting]
     [fizzle.events.selection.costs :as sel-costs]
     [fizzle.test-helpers :as th]))
 
@@ -233,7 +233,7 @@
           db (set-phase db :end)
           mode (first (rules/get-casting-modes db :player-1 obj-id))
           ctx {:game-db db :player-id :player-1 :object-id obj-id :mode mode :target nil}
-          result (game/evaluate-pre-cast-step :pay-x-life ctx)]
+          result (casting/evaluate-pre-cast-step :pay-x-life ctx)]
       (is (map? result) "Pipeline should return a result for pay-x-life")
       (is (= :pay-x-life (:selection/type (:selection result))) "Result should contain a pay-x-life selection")
       (is (= :pay-x-life (:selection/type (:selection result)))))))

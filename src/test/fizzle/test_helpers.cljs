@@ -17,8 +17,8 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.turn-based :as turn-based]
-    [fizzle.events.game :as game]
     [fizzle.events.lands :as lands]
+    [fizzle.events.resolution :as resolution]
     [fizzle.events.selection.core :as sel-core]
     [fizzle.events.selection.targeting :as sel-targeting]))
 
@@ -233,7 +233,7 @@
   (assert (rules/can-cast? db player-id obj-id)
           (str "can-cast? returned false for " obj-id))
   (let [db-cast (rules/cast-spell db player-id obj-id)
-        result (game/resolve-one-item db-cast)]
+        result (resolution/resolve-one-item db-cast)]
     (assert (nil? (:pending-selection result))
             "Spell has pending selection — use resolve-top instead")
     (:db result)))
@@ -304,7 +304,7 @@
    Returns {:db db} for non-interactive effects,
    or {:db db :selection sel} for interactive effects."
   [db]
-  (let [result (game/resolve-one-item db)]
+  (let [result (resolution/resolve-one-item db)]
     (if-let [sel (:pending-selection result)]
       {:db (:db result) :selection sel}
       {:db (:db result)})))

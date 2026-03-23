@@ -1,6 +1,6 @@
 (ns fizzle.views.hand
   (:require
-    [fizzle.events.game :as events]
+    [fizzle.events.ui :as ui-events]
     [fizzle.subs.game :as subs]
     [fizzle.views.card-styles :as card-styles]
     [re-frame.core :as rf]))
@@ -19,7 +19,7 @@
     [:div {:class (str "border-2 rounded-md px-3.5 py-2.5 mx-1.5 cursor-pointer "
                        "min-w-[100px] text-center select-none text-text "
                        border-class " " bg-class)
-           :on-click #(rf/dispatch [::events/select-card object-id])}
+           :on-click #(rf/dispatch [::ui-events/select-card object-id])}
      card-name]))
 
 

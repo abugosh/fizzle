@@ -10,7 +10,7 @@
     [fizzle.engine.resolution :as resolution]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.turn-based :as turn-based]
-    [fizzle.events.game :as game-events]))
+    [fizzle.events.phases :as game-events]))
 
 
 ;; === Test Helpers ===

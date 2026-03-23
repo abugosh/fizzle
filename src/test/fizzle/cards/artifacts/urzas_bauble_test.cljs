@@ -21,7 +21,7 @@
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.abilities :as ability-events]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.history.descriptions :as descriptions]
     [fizzle.test-helpers :as th]))
 
@@ -102,7 +102,7 @@
           _ (is (true? (rules/can-cast? db :player-1 obj-id))
                 "Should be castable with 0 mana")
           db-cast (rules/cast-spell db :player-1 obj-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           db-resolved (:db result)]
       (is (= :battlefield (:object/zone (q/get-object db-resolved obj-id)))
           "Urza's Bauble should be on battlefield after resolution"))))
@@ -134,7 +134,7 @@
           (is (= :activated-ability (:stack-item/type top-item))
               "Stack item should be activated ability type")
           ;; Resolve the ability
-          (let [db-resolved (:db (game/resolve-one-item db-after-confirm))]
+          (let [db-resolved (:db (resolution/resolve-one-item db-after-confirm))]
             ;; Check that delayed-draw grant was created for player-1
             (let [player-grants (grants/get-player-grants db-resolved :player-1)]
               (is (some #(= :delayed-effect (:grant/type %)) player-grants)
@@ -191,7 +191,7 @@
           ;; Target SELF
           selection-with-target (assoc sel :selection/selected #{:player-1})
           confirm-result (ability-events/confirm-ability-target (:db result) selection-with-target)
-          db-resolved (:db (game/resolve-one-item (:db confirm-result)))]
+          db-resolved (:db (resolution/resolve-one-item (:db confirm-result)))]
       ;; Bauble should be in graveyard (sacrificed)
       (is (= :graveyard (:object/zone (q/get-object db-resolved bauble-id)))
           "Urza's Bauble should be in graveyard after sacrifice")
@@ -285,10 +285,10 @@
           confirm-result (ability-events/confirm-ability-target (:db result) selection-with-target)
           pre-game-db (:db confirm-result)
           ;; Resolve — this executes :peek-random-hand which stores the result
-          resolve-result (game/resolve-one-item pre-game-db)
+          resolve-result (resolution/resolve-one-item pre-game-db)
           game-db-after (:db resolve-result)
           ;; Generate description using the same function the history interceptor uses
-          event [:fizzle.events.game/resolve-top]
+          event [:fizzle.events.resolution/resolve-top]
           desc (descriptions/describe-event event pre-game-db game-db-after)]
       (is (re-find #"Resolve Urza's Bauble ability" desc)
           "Description should mention the card")
@@ -308,7 +308,7 @@
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           db (rules/cast-spell db :player-1 ritual-id)
           ;; Resolve Dark Ritual — should clear the stale peek-result
-          result (game/resolve-one-item db)]
+          result (resolution/resolve-one-item db)]
       (is (nil? (:game/peek-result (q/get-game-state (:db result))))
           "peek-result should be cleared after resolving a non-peek spell"))))
 
@@ -327,7 +327,7 @@
           sel (:pending-selection result)
           selection-with-target (assoc sel :selection/selected #{:player-2})
           confirm-result (ability-events/confirm-ability-target (:db result) selection-with-target)
-          db-resolved (:db (game/resolve-one-item (:db confirm-result)))]
+          db-resolved (:db (resolution/resolve-one-item (:db confirm-result)))]
       ;; Delayed draw should still be granted even though hand was empty
       (let [player-grants (grants/get-player-grants db-resolved :player-1)]
         (is (some #(= :delayed-effect (:grant/type %)) player-grants)

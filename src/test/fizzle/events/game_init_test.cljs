@@ -3,7 +3,7 @@
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [fizzle.db.queries :as q]
-    [fizzle.events.game :as game]
+    [fizzle.events.init :as game-init]
     [fizzle.events.setup :as setup]))
 
 
@@ -32,8 +32,8 @@
   (testing "sideboard cards are created as objects in the :sideboard zone"
     (let [sideboard [{:card/id :merchant-scroll :count 2}
                      {:card/id :orims-chant :count 1}]
-          app-db (game/init-game-state {:main-deck minimal-deck
-                                        :sideboard sideboard})
+          app-db (game-init/init-game-state {:main-deck minimal-deck
+                                             :sideboard sideboard})
           game-db (:game/db app-db)
           sb-objects (q/get-objects-in-zone game-db :player-1 :sideboard)]
       (is (= 3 (count sb-objects))
@@ -43,8 +43,8 @@
 (deftest test-sideboard-objects-have-correct-owner
   (testing "sideboard objects are owned by the player"
     (let [sideboard [{:card/id :merchant-scroll :count 1}]
-          app-db (game/init-game-state {:main-deck minimal-deck
-                                        :sideboard sideboard})
+          app-db (game-init/init-game-state {:main-deck minimal-deck
+                                             :sideboard sideboard})
           game-db (:game/db app-db)
           sb-objects (q/get-objects-in-zone game-db :player-1 :sideboard)]
       (is (= 1 (count sb-objects))
@@ -58,8 +58,8 @@
 
 (deftest test-empty-sideboard-produces-no-objects
   (testing "empty sideboard produces no objects in :sideboard zone"
-    (let [app-db (game/init-game-state {:main-deck minimal-deck
-                                        :sideboard []})
+    (let [app-db (game-init/init-game-state {:main-deck minimal-deck
+                                             :sideboard []})
           game-db (:game/db app-db)
           sb-objects (q/get-objects-in-zone game-db :player-1 :sideboard)]
       (is (= 0 (count sb-objects))
@@ -68,7 +68,7 @@
 
 (deftest test-no-sideboard-key-produces-no-objects
   (testing "omitting :sideboard key entirely produces no objects"
-    (let [app-db (game/init-game-state {:main-deck minimal-deck})
+    (let [app-db (game-init/init-game-state {:main-deck minimal-deck})
           game-db (:game/db app-db)
           sb-objects (q/get-objects-in-zone game-db :player-1 :sideboard)]
       (is (= 0 (count sb-objects))
@@ -78,8 +78,8 @@
 (deftest test-game-works-normally-with-sideboard
   (testing "game state is functional with sideboard — hand + library + sideboard all populated"
     (let [sideboard [{:card/id :merchant-scroll :count 2}]
-          app-db (game/init-game-state {:main-deck minimal-deck
-                                        :sideboard sideboard})
+          app-db (game-init/init-game-state {:main-deck minimal-deck
+                                             :sideboard sideboard})
           game-db (:game/db app-db)
           hand (q/get-objects-in-zone game-db :player-1 :hand)
           library (q/get-objects-in-zone game-db :player-1 :library)
@@ -98,8 +98,8 @@
   (testing "sideboard objects reference the correct card definitions"
     (let [sideboard [{:card/id :merchant-scroll :count 1}
                      {:card/id :orims-chant :count 1}]
-          app-db (game/init-game-state {:main-deck minimal-deck
-                                        :sideboard sideboard})
+          app-db (game-init/init-game-state {:main-deck minimal-deck
+                                             :sideboard sideboard})
           game-db (:game/db app-db)
           sb-objects (q/get-objects-in-zone game-db :player-1 :sideboard)
           card-ids (set (map #(get-in % [:object/card :card/id]) sb-objects))]
@@ -130,9 +130,9 @@
 (deftest test-bot-gets-empty-sideboard
   (testing "opponent/bot player has no sideboard objects"
     (let [sideboard [{:card/id :merchant-scroll :count 2}]
-          app-db (game/init-game-state {:main-deck minimal-deck
-                                        :sideboard sideboard
-                                        :bot-archetype :goldfish})
+          app-db (game-init/init-game-state {:main-deck minimal-deck
+                                             :sideboard sideboard
+                                             :bot-archetype :goldfish})
           game-db (:game/db app-db)
           opp-sb (q/get-objects-in-zone game-db :opponent :sideboard)]
       (is (= 0 (count opp-sb))

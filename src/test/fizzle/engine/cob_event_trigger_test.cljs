@@ -18,7 +18,8 @@
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.engine.zones :as zones]
-    [fizzle.events.game :as game]
+    [fizzle.events.lands :as lands]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -58,7 +59,7 @@
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
           ;; Play the land (trigger should be registered on ETB)
-          db-after-etb (game/play-land db' :player-1 obj-id)
+          db-after-etb (lands/play-land db' :player-1 obj-id)
           ;; Find CoB triggers (those with :permanent-tapped event type)
           all-triggers (trigger-db/get-all-triggers db-after-etb)
           cob-triggers (filter #(= :permanent-tapped (:trigger/event-type %))
@@ -126,7 +127,7 @@
           _ (is (= 20 (q/get-life-total db-after-tap :player-1))
                 "Life unchanged before trigger resolves")
           ;; Resolve the trigger
-          db-after-resolve (:db (game/resolve-one-item db-after-tap))]
+          db-after-resolve (:db (resolution/resolve-one-item db-after-tap))]
       (is (= 19 (q/get-life-total db-after-resolve :player-1))
           "Player should lose 1 life after trigger resolves"))))
 
@@ -142,7 +143,7 @@
           _ (is (= 1 (count (q/get-all-stack-items db-after-first-tap)))
                 "One trigger on stack after first tap")
           ;; Resolve first trigger
-          db-after-first-resolve (:db (game/resolve-one-item db-after-first-tap))
+          db-after-first-resolve (:db (resolution/resolve-one-item db-after-first-tap))
           _ (is (= 19 (q/get-life-total db-after-first-resolve :player-1))
                 "Player at 19 life after first trigger")
           ;; Untap the land manually
@@ -157,7 +158,7 @@
           _ (is (= 1 (count (q/get-all-stack-items db-after-second-tap)))
                 "One trigger on stack after second tap")
           ;; Resolve second trigger
-          db-after-second-resolve (:db (game/resolve-one-item db-after-second-tap))]
+          db-after-second-resolve (:db (resolution/resolve-one-item db-after-second-tap))]
       (is (= 18 (q/get-life-total db-after-second-resolve :player-1))
           "Player at 18 life after both triggers resolved (2 damage total)"))))
 
@@ -201,7 +202,7 @@
           _ (is (= :graveyard (:object/zone (q/get-object db-after-sacrifice obj-id)))
                 "CoB is in graveyard")
           ;; Resolve trigger - should still deal damage even though source is gone
-          db-after-resolve (:db (game/resolve-one-item db-after-sacrifice))]
+          db-after-resolve (:db (resolution/resolve-one-item db-after-sacrifice))]
       (is (= 19 (q/get-life-total db-after-resolve :player-1))
           "Trigger should still deal damage even if source is gone"))))
 
@@ -222,7 +223,7 @@
                                                                        :effect/amount 1
                                                                        :effect/target :controller}]})
           ;; Resolve via stack resolution
-          db-after-resolve (:db (game/resolve-one-item db-with-item))]
+          db-after-resolve (:db (resolution/resolve-one-item db-with-item))]
       (is (= 19 (q/get-life-total db-after-resolve :player-1))
           "Player should lose 1 life when :permanent-tapped trigger resolves"))))
 

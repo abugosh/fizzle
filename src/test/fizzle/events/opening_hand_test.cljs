@@ -3,7 +3,7 @@
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [fizzle.db.queries :as q]
-    [fizzle.events.game :as game]
+    [fizzle.events.init :as game-init]
     [fizzle.events.opening-hand :as opening-hand]
     [fizzle.events.setup :as setup]))
 
@@ -15,8 +15,8 @@
    Optionally accepts :must-contain map."
   ([] (create-opening-hand-app-db {}))
   ([must-contain]
-   (game/init-game-state {:main-deck (:deck/main setup/iggy-pop-decklist)
-                          :must-contain must-contain})))
+   (game-init/init-game-state {:main-deck (:deck/main setup/iggy-pop-decklist)
+                               :must-contain must-contain})))
 
 
 (defn hand-objects

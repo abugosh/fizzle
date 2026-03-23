@@ -17,7 +17,7 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -239,7 +239,7 @@
           ;; Use resolve-one-item which handles the fizzle check
           ;; The ritual's stack item is still there; Counterspell is on top
           ;; Actually Counterspell is on top of stack (LIFO), so resolve it
-          result (game/resolve-one-item db-ritual-resolved)
+          result (resolution/resolve-one-item db-ritual-resolved)
           db-resolved (:db result)]
       ;; Counterspell should still end up in graveyard (it resolved, target just fizzled)
       (is (= :graveyard (:object/zone (q/get-object db-resolved cs-id)))

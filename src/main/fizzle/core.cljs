@@ -2,12 +2,24 @@
   (:require
     [fizzle.bots.interceptor :as bot-interceptor]
     [fizzle.engine.effects-registry]
+    [fizzle.events.abilities]
     [fizzle.events.calculator :as calc-events]
-    [fizzle.events.game :as events]
+    [fizzle.events.casting]
+    [fizzle.events.cleanup]
+    [fizzle.events.cycling]
+    [fizzle.events.init]
     [fizzle.events.interceptors.sba :as sba-interceptor]
+    [fizzle.events.lands]
     [fizzle.events.opening-hand]
+    [fizzle.events.phases]
+    [fizzle.events.priority-flow]
+    [fizzle.events.resolution]
     [fizzle.events.selection]
+    [fizzle.events.selection.library]
+    [fizzle.events.selection.untap]
+    [fizzle.events.selection.zone-ops]
     [fizzle.events.setup :as setup]
+    [fizzle.events.ui :as ui-events]
     [fizzle.history.events]
     [fizzle.history.interceptor :as history-interceptor]
     [fizzle.snapshot.events :as snapshot]
@@ -73,7 +85,7 @@
   []
   [:div {:class "game-grid min-h-0"}
    ;; Left sidebar: graveyard
-   [collapsible-left-column "Graveyard" ::subs/gy-collapsed ::events/toggle-gy-collapsed [graveyard/graveyard-view]]
+   [collapsible-left-column "Graveyard" ::subs/gy-collapsed ::ui-events/toggle-gy-collapsed [graveyard/graveyard-view]]
    ;; Center column: primary interaction zones
    [:div {:class "p-4 overflow-y-auto min-w-[400px]"}
     [battlefield/battlefield-view]
@@ -88,7 +100,7 @@
     [zone-counts/zone-counts-view]
     [calculator/calculator-panel]]
    ;; Right sidebar: history
-   [collapsible-right-column "History" ::subs/history-collapsed ::events/toggle-history-collapsed [history/history-sidebar]]
+   [collapsible-right-column "History" ::subs/history-collapsed ::ui-events/toggle-history-collapsed [history/history-sidebar]]
    ;; Modals (overlay, not in grid flow)
    [modals/selection-modal]
    [modals/mode-selector-modal]
@@ -106,7 +118,7 @@
                 :on-click #(rf/dispatch [::setup/restore-setup])}
        "Setup"]
       [:button {:class (nav-btn-class (= screen :game))
-                :on-click #(rf/dispatch [::events/set-active-screen :game])}
+                :on-click #(rf/dispatch [::ui-events/set-active-screen :game])}
        "Game"]
       (when (= screen :game)
         [:button {:class "px-3 py-1 text-sm rounded cursor-pointer bg-surface-raised text-text-muted"
@@ -140,5 +152,5 @@
     (when restored
       ;; Clear the hash so refresh doesn't re-restore
       (.replaceState js/history nil "" (.-pathname js/location))
-      (rf/dispatch-sync [:fizzle.events.game/restore-from-snapshot restored])))
+      (rf/dispatch-sync [:fizzle.snapshot.events/restore-from-snapshot restored])))
   (mount-root))

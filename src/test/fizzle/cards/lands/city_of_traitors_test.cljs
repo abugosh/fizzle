@@ -19,7 +19,8 @@
     [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.zones :as zones]
-    [fizzle.events.game :as game]
+    [fizzle.events.lands :as lands]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -50,7 +51,7 @@
                                    (trigger-db/get-all-triggers db'))
           _ (is (empty? initial-triggers) "Precondition: no land-entered triggers")
           ;; Play the land
-          db-after-play (game/play-land db' :player-1 obj-id)]
+          db-after-play (lands/play-land db' :player-1 obj-id)]
       ;; Verify CoT is on battlefield (not sacrificed)
       (is (= :battlefield (:object/zone (q/get-object db-after-play obj-id)))
           "City of Traitors should be on battlefield after entering")
@@ -67,7 +68,7 @@
           db (th/add-opponent db)
           [db cot-id] (th/add-card-to-zone db :city-of-traitors :hand :player-1)
           ;; Play CoT
-          db (game/play-land db :player-1 cot-id)
+          db (lands/play-land db :player-1 cot-id)
           _ (is (= :battlefield (:object/zone (q/get-object db cot-id)))
                 "Precondition: CoT on battlefield")
           ;; Give opponent a land and play it
@@ -75,7 +76,7 @@
           ;; Give opponent land plays
           opp-eid (q/get-player-eid db :player-2)
           db (d/db-with db [[:db/add opp-eid :player/land-plays-left 1]])
-          db-after-opp-land (game/play-land db :player-2 island-id)]
+          db-after-opp-land (lands/play-land db :player-2 island-id)]
       ;; CoT should NOT trigger
       (is (= 0 (count (q/get-all-stack-items db-after-opp-land)))
           "CoT trigger should NOT fire when opponent plays a land")
@@ -91,18 +92,18 @@
     (let [db (th/create-test-db {:land-plays 2})
           [db' cot-id] (th/add-card-to-zone db :city-of-traitors :hand :player-1)
           ;; Play CoT first
-          db-after-cot (game/play-land db' :player-1 cot-id)
+          db-after-cot (lands/play-land db' :player-1 cot-id)
           _ (is (= :battlefield (:object/zone (q/get-object db-after-cot cot-id)))
                 "Precondition: CoT on battlefield")
           ;; Add an Island to hand
           [db'' island-id] (th/add-card-to-zone db-after-cot :island :hand :player-1)
           ;; Play the Island (should trigger CoT sacrifice)
-          db-after-island (game/play-land db'' :player-1 island-id)]
+          db-after-island (lands/play-land db'' :player-1 island-id)]
       ;; Verify CoT trigger is on stack
       (is (= 1 (count (q/get-all-stack-items db-after-island)))
           "CoT sacrifice trigger should be on stack")
       ;; Resolve the trigger
-      (let [db-after-resolve (:db (game/resolve-one-item db-after-island))]
+      (let [db-after-resolve (:db (resolution/resolve-one-item db-after-island))]
         ;; Verify CoT is now in graveyard
         (is (= :graveyard (:object/zone (q/get-object db-after-resolve cot-id)))
             "City of Traitors should be in graveyard after trigger resolves")
@@ -121,28 +122,28 @@
           db (d/db-with db [[:db/add player-eid :player/land-plays-left 3]])
           ;; Add first CoT to hand and play
           [db' cot-id-1] (th/add-card-to-zone db :city-of-traitors :hand :player-1)
-          db-after-cot1 (game/play-land db' :player-1 cot-id-1)
+          db-after-cot1 (lands/play-land db' :player-1 cot-id-1)
           _ (is (= :battlefield (:object/zone (q/get-object db-after-cot1 cot-id-1)))
                 "Precondition: CoT #1 on battlefield")
           ;; Add second CoT to hand and play (this triggers CoT #1's sacrifice)
           [db'' cot-id-2] (th/add-card-to-zone db-after-cot1 :city-of-traitors :hand :player-1)
-          db-after-cot2 (game/play-land db'' :player-1 cot-id-2)]
+          db-after-cot2 (lands/play-land db'' :player-1 cot-id-2)]
       ;; First CoT's trigger should be on stack
       (is (= 1 (count (q/get-all-stack-items db-after-cot2)))
           "CoT #1 sacrifice trigger should be on stack when CoT #2 enters")
       ;; Resolve CoT #1's trigger
-      (let [db-after-resolve1 (:db (game/resolve-one-item db-after-cot2))]
+      (let [db-after-resolve1 (:db (resolution/resolve-one-item db-after-cot2))]
         (is (= :graveyard (:object/zone (q/get-object db-after-resolve1 cot-id-1)))
             "CoT #1 should be sacrificed")
         (is (= :battlefield (:object/zone (q/get-object db-after-resolve1 cot-id-2)))
             "CoT #2 should still be on battlefield")
         ;; Now play an Island - should trigger CoT #2
         (let [[db''' island-id] (th/add-card-to-zone db-after-resolve1 :island :hand :player-1)
-              db-after-island (game/play-land db''' :player-1 island-id)]
+              db-after-island (lands/play-land db''' :player-1 island-id)]
           (is (= 1 (count (q/get-all-stack-items db-after-island)))
               "CoT #2 sacrifice trigger should be on stack when Island enters")
           ;; Resolve CoT #2's trigger
-          (let [db-final (:db (game/resolve-one-item db-after-island))]
+          (let [db-final (:db (resolution/resolve-one-item db-after-island))]
             (is (= :graveyard (:object/zone (q/get-object db-final cot-id-2)))
                 "CoT #2 should be sacrificed")))))))
 
@@ -154,10 +155,10 @@
     (let [db (th/create-test-db {:land-plays 2})
           [db' cot-id] (th/add-card-to-zone db :city-of-traitors :hand :player-1)
           ;; Play CoT
-          db-after-cot (game/play-land db' :player-1 cot-id)
+          db-after-cot (lands/play-land db' :player-1 cot-id)
           ;; Add Island to hand and play
           [db'' island-id] (th/add-card-to-zone db-after-cot :island :hand :player-1)
-          db-after-island (game/play-land db'' :player-1 island-id)]
+          db-after-island (lands/play-land db'' :player-1 island-id)]
       ;; Trigger should be on stack, not resolved yet
       (is (= 1 (count (q/get-all-stack-items db-after-island)))
           "Trigger should be on stack")
@@ -178,10 +179,10 @@
     (let [db (th/create-test-db {:land-plays 2})
           [db' cot-id] (th/add-card-to-zone db :city-of-traitors :hand :player-1)
           ;; Play CoT
-          db-after-cot (game/play-land db' :player-1 cot-id)
+          db-after-cot (lands/play-land db' :player-1 cot-id)
           ;; Add Island to hand and play (trigger goes on stack)
           [db'' island-id] (th/add-card-to-zone db-after-cot :island :hand :player-1)
-          db-after-island (game/play-land db'' :player-1 island-id)
+          db-after-island (lands/play-land db'' :player-1 island-id)
           _ (is (= 1 (count (q/get-all-stack-items db-after-island)))
                 "Precondition: trigger on stack")
           ;; Manually sacrifice CoT (simulating response)
@@ -189,7 +190,7 @@
           _ (is (= :graveyard (:object/zone (q/get-object db-after-sacrifice cot-id)))
                 "Precondition: CoT in graveyard before trigger resolves")
           ;; Resolve the trigger - should handle gracefully
-          db-after-resolve (:db (game/resolve-one-item db-after-sacrifice))
+          db-after-resolve (:db (resolution/resolve-one-item db-after-sacrifice))
           obj-after (q/get-object db-after-resolve cot-id)]
       ;; CoT still in graveyard (can't sacrifice again)
       (is (= :graveyard (:object/zone obj-after))
@@ -217,7 +218,7 @@
                                         :effect/target :controller}]})
           db'' (d/db-with db' tx-data)
           ;; Play the land
-          db-after-play (game/play-land db'' :player-1 island-id)]
+          db-after-play (lands/play-land db'' :player-1 island-id)]
       ;; A trigger should be on stack (proving event was dispatched)
       (is (= 1 (count (q/get-all-stack-items db-after-play)))
           ":land-entered event should be dispatched when land enters"))))

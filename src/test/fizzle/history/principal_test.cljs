@@ -113,7 +113,7 @@
           _ (d/transact! conn [[:db/add (queries/get-player-eid game-db :player-1)
                                 :player/storm-count 1]])
           post-db (make-db-with-history @conn)
-          event [:fizzle.events.game/cast-spell]
+          event [:fizzle.events.casting/cast-spell]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])
@@ -129,7 +129,7 @@
           _ (d/transact! conn [[:db/add (queries/get-player-eid game-db :player-2)
                                 :player/storm-count 1]])
           post-db (make-db-with-history @conn)
-          event [:fizzle.events.game/cast-spell {:player-id :player-2}]
+          event [:fizzle.events.casting/cast-spell {:player-id :player-2}]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])
@@ -149,7 +149,7 @@
           game-eid (d/q '[:find ?e . :where [?e :game/id :game-1]] game-db')
           _ (d/transact! conn [[:db/add game-eid :game/phase :combat]])
           post-db (make-db-with-history @conn)
-          event [:fizzle.events.game/yield]
+          event [:fizzle.events.priority-flow/yield]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])
@@ -197,7 +197,7 @@
           _ (d/transact! conn [[:db/add (queries/get-player-eid game-db :player-2)
                                 :player/storm-count 1]])
           post-db (make-db-with-history @conn)
-          event [:fizzle.events.game/play-land :obj-1 :player-2]
+          event [:fizzle.events.lands/play-land :obj-1 :player-2]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])
@@ -210,7 +210,7 @@
     (let [game-db (create-two-player-game-db)
           pre-db (merge {:game/db nil} (history/init-history))
           post-db (make-db-with-history game-db)
-          event [:fizzle.events.game/init-game]
+          event [:fizzle.events.init/init-game]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])

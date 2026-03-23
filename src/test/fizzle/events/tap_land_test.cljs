@@ -8,7 +8,9 @@
     [fizzle.engine.state-based :as state-based]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.turn-based :as turn-based]
-    [fizzle.events.game :as game]
+    [fizzle.events.lands :as lands]
+    [fizzle.events.phases :as phases]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -68,7 +70,7 @@
           [db' obj-id] (add-land-to-battlefield db :city-of-brass :player-1)
           _ (is (false? (get-object-tapped db' obj-id))
                 "Precondition: land starts untapped")
-          db'' (game/tap-permanent db' obj-id)]
+          db'' (lands/tap-permanent db' obj-id)]
       (is (true? (get-object-tapped db'' obj-id))
           "Land should be tapped after tap-permanent"))))
 
@@ -132,7 +134,7 @@
           _ (is (= 1 (count (q/get-all-stack-items db-after-tap)))
                 "One trigger should be on the stack")
           ;; Resolve the trigger
-          db-after-resolve (:db (game/resolve-one-item db-after-tap))]
+          db-after-resolve (:db (resolution/resolve-one-item db-after-tap))]
       (is (= 19 (q/get-life-total db-after-resolve :player-1))
           "Player should lose 1 life after trigger resolves"))))
 
@@ -153,8 +155,8 @@
           _ (is (= 2 (count (q/get-all-stack-items db-after-second-tap)))
                 "Two triggers should be on the stack")
           ;; Resolve both triggers
-          db-after-first-resolve (:db (game/resolve-one-item db-after-second-tap))
-          db-after-second-resolve (:db (game/resolve-one-item db-after-first-resolve))]
+          db-after-first-resolve (:db (resolution/resolve-one-item db-after-second-tap))
+          db-after-second-resolve (:db (resolution/resolve-one-item db-after-first-resolve))]
       (is (= 18 (q/get-life-total db-after-second-resolve :player-1))
           "Player should lose 2 life total after resolving both triggers"))))
 
@@ -180,14 +182,14 @@
           [db'' obj-id2] (add-land-to-battlefield db' :gemstone-mine :player-1)
           ;; Tap both lands
           db-tapped (-> db''
-                        (game/tap-permanent obj-id1)
-                        (game/tap-permanent obj-id2))
+                        (lands/tap-permanent obj-id1)
+                        (lands/tap-permanent obj-id2))
           _ (is (true? (get-object-tapped db-tapped obj-id1))
                 "Precondition: first land is tapped")
           _ (is (true? (get-object-tapped db-tapped obj-id2))
                 "Precondition: second land is tapped")
           ;; Start new turn
-          db-new-turn (game/start-turn db-tapped :player-1)]
+          db-new-turn (phases/start-turn db-tapped :player-1)]
       (is (false? (get-object-tapped db-new-turn obj-id1))
           "First land should be untapped after start-turn")
       (is (false? (get-object-tapped db-new-turn obj-id2))
@@ -222,7 +224,7 @@
       (is (= 1 (:black (q/get-mana-pool db-after-tap :player-1)))
           "Mana is available immediately, even with trigger on stack")
       ;; Resolve trigger - now damage happens
-      (let [db-after-resolve (:db (game/resolve-one-item db-after-tap))]
+      (let [db-after-resolve (:db (resolution/resolve-one-item db-after-tap))]
         (is (= 19 (q/get-life-total db-after-resolve :player-1))
             "Player loses 1 life after trigger resolves")))))
 
@@ -245,7 +247,7 @@
                           :object/controller player-eid
                           :object/tapped false}])
       ;; Play the land (should trigger ETB)
-      (let [db' (game/play-land @conn :player-1 obj-id)]
+      (let [db' (lands/play-land @conn :player-1 obj-id)]
         ;; Verify land is on battlefield
         (is (= :battlefield (:object/zone (q/get-object db' obj-id)))
             "Gemstone Mine should be on battlefield")
@@ -357,7 +359,7 @@
 
           ;; Stack now has: Dark Ritual (top), City of Brass trigger (bottom)
           ;; Step 3: Resolve top of stack - should be Dark Ritual (LIFO)
-          db-after-first-resolve (:db (game/resolve-one-item db-after-cast))
+          db-after-first-resolve (:db (resolution/resolve-one-item db-after-cast))
           _ (is (= 20 (q/get-life-total db-after-first-resolve :player-1))
                 "Life STILL unchanged - Dark Ritual resolved first, not the trigger")
           _ (is (= 3 (:black (q/get-mana-pool db-after-first-resolve :player-1)))
@@ -368,7 +370,7 @@
                 "City of Brass trigger still on stack")
 
           ;; Step 4: Resolve top of stack again - now City of Brass trigger
-          db-after-second-resolve (:db (game/resolve-one-item db-after-first-resolve))]
+          db-after-second-resolve (:db (resolution/resolve-one-item db-after-first-resolve))]
       (is (= 19 (q/get-life-total db-after-second-resolve :player-1))
           "NOW player loses 1 life from City of Brass trigger")
       (is (= 0 (count (q/get-all-stack-items db-after-second-resolve)))

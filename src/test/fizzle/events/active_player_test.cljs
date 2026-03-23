@@ -7,7 +7,9 @@
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.game :as game]
+    [fizzle.events.cleanup :as cleanup]
+    [fizzle.events.phases :as phases]
+    [fizzle.events.priority-flow :as priority-flow]
     [fizzle.test-helpers :as h]))
 
 
@@ -39,7 +41,7 @@
           game-db (d/db-with db [[:db/add player-eid :player/mana-pool
                                   {:white 0 :blue 0 :black 3 :red 0 :green 0 :colorless 0}]])
           ;; Call advance-phase pure function
-          result-db (game/advance-phase game-db :player-1)
+          result-db (phases/advance-phase game-db :player-1)
           pool (q/get-mana-pool result-db :player-1)]
       ;; Mana pool should be cleared for the active player
       (is (every? zero? (vals pool))
@@ -53,7 +55,7 @@
     (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
                  (h/add-opponent {:bot-archetype :goldfish}))
           app-db {:game/db db}
-          result (game/yield-impl app-db)
+          result (priority-flow/yield-impl app-db)
           result-db (:game/db (:app-db result))]
       ;; Should advance to main2 (next stop for the active player)
       (is (= :main2 (:game/phase (q/get-game-state result-db)))
@@ -71,7 +73,7 @@
           game-db (d/db-with db [[:db/add game-eid :game/phase :cleanup]])
           app-db {:game/db game-db}
           ;; maybe-continue-cleanup should use active player
-          result (game/maybe-continue-cleanup app-db)
+          result (cleanup/maybe-continue-cleanup app-db)
           result-db (:game/db result)]
       ;; Since hand is empty (no cards), no discard needed, grants expired
       (is (some? result-db)
@@ -85,7 +87,7 @@
     (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
                  (h/add-opponent {:bot-archetype :goldfish}))
           app-db {:game/db db}
-          result (game/yield-impl app-db)]
+          result (priority-flow/yield-impl app-db)]
       ;; If opponent lookup was wrong, bot wouldn't auto-pass and phase wouldn't advance
       (is (= :main2 (:game/phase (q/get-game-state (:game/db (:app-db result)))))
           "Should advance phase (opponent found and auto-passed)"))))
@@ -100,7 +102,7 @@
           [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
           game-db (rules/cast-spell db' :player-1 obj-id)
           app-db {:game/db game-db}
-          result (game/yield-impl app-db)
+          result (priority-flow/yield-impl app-db)
           result-db (:game/db (:app-db result))
           pool (q/get-mana-pool result-db :player-1)]
       ;; Dark Ritual should resolve correctly using active player
@@ -118,7 +120,7 @@
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
           game-db (d/db-with db [[:db/add game-eid :game/phase :cleanup]])
           ;; Call start-turn pure function with active player
-          result-db (game/start-turn game-db :player-1)]
+          result-db (phases/start-turn game-db :player-1)]
       (is (= 2 (:game/turn (q/get-game-state result-db)))
           "Should advance to turn 2")
       (is (= :untap (:game/phase (q/get-game-state result-db)))

@@ -4,7 +4,7 @@
     [fizzle.bots.protocol :as bot]
     [fizzle.db.storage :as storage]
     [fizzle.engine.deck-parser :as deck-parser]
-    [fizzle.events.game :as game]
+    [fizzle.events.init :as game-init]
     [re-frame.core :as rf]))
 
 
@@ -261,11 +261,11 @@
     (if (and (seq main-deck)
              (>= main-count 60))
       (let [arch (or (:setup/bot-archetype db) :goldfish)
-            game-db (game/init-game-state {:main-deck main-deck
-                                           :bot-archetype arch
-                                           :bot-deck (bot/bot-deck arch)
-                                           :must-contain (:setup/must-contain db)
-                                           :sideboard (:setup/sideboard db)})]
+            game-db (game-init/init-game-state {:main-deck main-deck
+                                                :bot-archetype arch
+                                                :bot-deck (bot/bot-deck arch)
+                                                :must-contain (:setup/must-contain db)
+                                                :sideboard (:setup/sideboard db)})]
         (assoc game-db :setup/stashed-config (stash-setup-config db)))
       db)))
 
@@ -283,11 +283,11 @@
   [db]
   (if-let [config (:setup/stashed-config db)]
     (let [arch (get config :setup/bot-archetype :goldfish)
-          game-db (game/init-game-state {:main-deck (:setup/main-deck config)
-                                         :bot-archetype arch
-                                         :bot-deck (bot/bot-deck arch)
-                                         :must-contain (get config :setup/must-contain {})
-                                         :sideboard (get config :setup/sideboard [])})]
+          game-db (game-init/init-game-state {:main-deck (:setup/main-deck config)
+                                              :bot-archetype arch
+                                              :bot-deck (bot/bot-deck arch)
+                                              :must-contain (get config :setup/must-contain {})
+                                              :sideboard (get config :setup/sideboard [])})]
       (assoc game-db :setup/stashed-config config))
     db))
 

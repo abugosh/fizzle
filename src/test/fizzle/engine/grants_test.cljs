@@ -14,7 +14,7 @@
     [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.game :as game]))
+    [fizzle.events.cleanup :as cleanup]))
 
 
 ;; === Test Helpers ===
@@ -386,7 +386,7 @@
                 "Card should be castable via granted flashback before cleanup")
           ;; Move to cleanup phase, then run begin-cleanup
           db (d/db-with db [[:db/add game-eid :game/phase :cleanup]])
-          result (game/begin-cleanup db :player-1)
+          result (cleanup/begin-cleanup db :player-1)
           db' (:db result)]
       ;; Grant should be removed
       (is (= 0 (count (q/get-grants db' obj-id)))
@@ -418,7 +418,7 @@
           db (grants/add-grant db obj-id grant)
           db (mana/add-mana db :player-1 {:colorless 1 :black 1})
           ;; Use begin-cleanup (grant expiration now handled by advance-phase handler)
-          result (game/begin-cleanup db :player-1)
+          result (cleanup/begin-cleanup db :player-1)
           db' (:db result)]
       ;; Grant should still exist (expires turn 2)
       (is (= 1 (count (q/get-grants db' obj-id)))

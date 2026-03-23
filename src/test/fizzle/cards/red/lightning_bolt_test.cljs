@@ -21,7 +21,7 @@
     [fizzle.engine.stack :as stack]
     [fizzle.engine.state-based :as sba]
     [fizzle.engine.targeting :as targeting]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -87,7 +87,7 @@
       (is (= :stack (:object/zone (q/get-object db-cast obj-id)))
           "Lightning Bolt should be on stack after casting")
       ;; Resolve via production path
-      (let [result (game/resolve-one-item db-cast)
+      (let [result (resolution/resolve-one-item db-cast)
             db-resolved (:db result)]
         ;; Spell should be in graveyard after resolution
         (is (= :graveyard (:object/zone (q/get-object db-resolved obj-id)))
@@ -107,7 +107,7 @@
           [db obj-id] (th/add-card-to-zone db :lightning-bolt :hand :player-1)
           db-with-mana (mana/add-mana db :player-1 {:red 1})
           db-cast (th/cast-with-target db-with-mana :player-1 obj-id :player-1)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           db-resolved (:db result)]
       (is (= :graveyard (:object/zone (q/get-object db-resolved obj-id)))
           "Lightning Bolt should be in graveyard after resolution")
@@ -213,7 +213,7 @@
           [db obj-id] (th/add-card-to-zone db :lightning-bolt :hand :player-1)
           db-with-mana (mana/add-mana db :player-1 {:red 1})
           db-cast (th/cast-with-target db-with-mana :player-1 obj-id :player-2)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           db-resolved (sba/check-and-execute-sbas (:db result))]
       (is (= 0 (q/get-life-total db-resolved :player-2))
           "Opponent life should be 0")
@@ -228,7 +228,7 @@
           [db obj-id] (th/add-card-to-zone db :lightning-bolt :hand :player-1)
           db-with-mana (mana/add-mana db :player-1 {:red 1})
           db-cast (th/cast-with-target db-with-mana :player-1 obj-id :player-2)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           db-resolved (sba/check-and-execute-sbas (:db result))]
       (is (= -2 (q/get-life-total db-resolved :player-2))
           "Opponent life should be -2 (no clamping)")
@@ -243,7 +243,7 @@
           [db obj-id] (th/add-card-to-zone db :lightning-bolt :hand :player-1)
           db-with-mana (mana/add-mana db :player-1 {:red 1})
           db-cast (th/cast-with-target db-with-mana :player-1 obj-id :player-2)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           db-resolved (sba/check-and-execute-sbas (:db result))]
       (is (= -3 (q/get-life-total db-resolved :player-2))
           "Opponent life should be -3 (still deals damage)")

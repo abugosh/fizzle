@@ -14,7 +14,7 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -67,7 +67,7 @@
                 "Precondition: opponent has 3 cards in hand")
           ;; Cast and resolve with selection
           db-cast (rules/cast-spell db-with-mana :player-1 igg-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           resolved-db (:db result)]
       ;; IGG should be in exile (not graveyard, not stack)
       (is (= :exile (:object/zone (q/get-object resolved-db igg-id)))
@@ -101,7 +101,7 @@
           ;; Add mana and cast
           db-m (mana/add-mana db3 :player-1 {:black 4})
           db-cast (rules/cast-spell db-m :player-1 igg-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
       ;; Selection structure
       (is (= :graveyard-return (:selection/type sel))
@@ -168,7 +168,7 @@
           db-m (mana/add-mana db3 :player-1 {:black 4})
           ;; Cast and resolve
           db-cast (rules/cast-spell db-m :player-1 igg-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
       ;; Selection should be graveyard-return type
       (is (= :graveyard-return (:selection/type sel))
@@ -202,7 +202,7 @@
           db-m (mana/add-mana db' :player-1 {:black 4})
           ;; Cast and resolve
           db-cast (rules/cast-spell db-m :player-1 igg-id)
-          result (game/resolve-one-item db-cast)]
+          result (resolution/resolve-one-item db-cast)]
       ;; IGG should be exiled (exile-self effect)
       (is (= :exile (:object/zone (q/get-object (:db result) igg-id)))
           "IGG should be exiled")
@@ -231,7 +231,7 @@
           [db' igg-id] (th/add-card-to-zone db :ill-gotten-gains :hand :player-1)
           db-m (mana/add-mana db' :player-1 {:black 4})
           db-cast (rules/cast-spell db-m :player-1 igg-id)
-          result (game/resolve-one-item db-cast)]
+          result (resolution/resolve-one-item db-cast)]
       ;; IGG should be exiled
       (is (= :exile (:object/zone (q/get-object (:db result) igg-id)))
           "IGG should be exiled")

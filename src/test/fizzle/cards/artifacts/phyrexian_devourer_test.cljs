@@ -25,7 +25,7 @@
     [fizzle.engine.stack :as stack]
     [fizzle.engine.state-based :as sba]
     [fizzle.events.abilities :as ability-events]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -129,7 +129,7 @@
                             db-after-activation dev-eid))
                   "last-exiled-cmc should be 1 (Dark Ritual CMC)"))
           ;; Resolve the ability
-          db-resolved (:db (game/resolve-one-item db-after-activation))
+          db-resolved (:db (resolution/resolve-one-item db-after-activation))
           dev-obj (q/get-object db-resolved devourer-id)
           counters (or (:object/counters dev-obj) {})]
       (is (= 1 (get counters :+1/+1 0))
@@ -146,7 +146,7 @@
           db-after-activation (:db result)
           _ (is (= :exile (:object/zone (q/get-object db-after-activation petal-id)))
                 "Lotus Petal should be exiled as cost")
-          db-resolved (:db (game/resolve-one-item db-after-activation))
+          db-resolved (:db (resolution/resolve-one-item db-after-activation))
           counters (or (:object/counters (q/get-object db-resolved devourer-id)) {})]
       (is (= 0 (get counters :+1/+1 0))
           "Devourer should have 0 counters when exiled card has CMC 0"))))
@@ -263,7 +263,7 @@
           ;; Run SBAs to put trigger on stack
           db-with-trigger (sba/check-and-execute-sbas db-with-counters)
           ;; Resolve the trigger
-          result (game/resolve-one-item db-with-trigger)
+          result (resolution/resolve-one-item db-with-trigger)
           db-resolved (:db result)]
       (is (= :graveyard (:object/zone (q/get-object db-resolved devourer-id)))
           "Devourer should be sacrificed (in graveyard) after trigger resolves"))))
@@ -313,10 +313,10 @@
                           db [:dark-ritual :cabal-ritual] :player-1)
           ;; First activation (exiles dark-ritual CMC 1)
           result1 (ability-events/activate-ability db :player-1 devourer-id 0)
-          db1 (:db (game/resolve-one-item (:db result1)))
+          db1 (:db (resolution/resolve-one-item (:db result1)))
           ;; Second activation (exiles cabal-ritual CMC 2)
           result2 (ability-events/activate-ability db1 :player-1 devourer-id 0)
-          db2 (:db (game/resolve-one-item (:db result2)))
+          db2 (:db (resolution/resolve-one-item (:db result2)))
           counters (or (:object/counters (q/get-object db2 devourer-id)) {})]
       (is (= 3 (get counters :+1/+1 0))
           "After two activations (CMC 1 + CMC 2), should have 3 counters total"))))
@@ -334,7 +334,7 @@
           db-after-activation (:db result)
           _ (is (= :exile (:object/zone (q/get-object db-after-activation lib-dev-id)))
                 "Library copy should be exiled as cost")
-          db-resolved (:db (game/resolve-one-item db-after-activation))
+          db-resolved (:db (resolution/resolve-one-item db-after-activation))
           counters (or (:object/counters (q/get-object db-resolved devourer-id)) {})]
       ;; Power = 1 (base) + 6 (counters) = 7 — SBA should fire
       (is (= 6 (get counters :+1/+1 0))

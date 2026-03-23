@@ -18,7 +18,7 @@
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.engine.zones :as zones]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -170,7 +170,7 @@
           db (clear-summoning-sickness db obj-id)
           ;; Begin combat and resolve declare-attackers (returns pending-selection)
           db (combat/begin-combat db :player-1)
-          result (game/resolve-one-item db)
+          result (resolution/resolve-one-item db)
           selection (:pending-selection result)
           ;; Confirm attackers with Xantid Swarm
           confirmed (th/confirm-selection (:db result) selection #{obj-id})
@@ -192,7 +192,7 @@
           db (th/cast-and-resolve db :player-1 obj-id)
           db (clear-summoning-sickness db obj-id)
           db (combat/begin-combat db :player-1)
-          result (game/resolve-one-item db)
+          result (resolution/resolve-one-item db)
           selection (:pending-selection result)
           confirmed (th/confirm-selection (:db result) selection #{obj-id})
           db-after (:db confirmed)
@@ -209,13 +209,13 @@
           db (th/cast-and-resolve db :player-1 obj-id)
           db (clear-summoning-sickness db obj-id)
           db (combat/begin-combat db :player-1)
-          result (game/resolve-one-item db)
+          result (resolution/resolve-one-item db)
           selection (:pending-selection result)
           ;; Confirm attackers
           confirmed (th/confirm-selection (:db result) selection #{obj-id})
           db-after (:db confirmed)
           ;; Resolve the trigger (creature-attacked is on top)
-          trigger-result (game/resolve-one-item db-after)
+          trigger-result (resolution/resolve-one-item db-after)
           db-resolved (:db trigger-result)
           p2-grants (grants/get-player-grants db-resolved :player-2)]
       (is (= 1 (count p2-grants))
@@ -277,7 +277,7 @@
           db (clear-summoning-sickness db obj-id-1)
           db (clear-summoning-sickness db obj-id-2)
           db (combat/begin-combat db :player-1)
-          result (game/resolve-one-item db)
+          result (resolution/resolve-one-item db)
           selection (:pending-selection result)
           confirmed (th/confirm-selection (:db result) selection #{obj-id-1 obj-id-2})
           db-after (:db confirmed)
@@ -408,7 +408,7 @@
           event (game-events/creature-attacked-event obj-id :player-2)
           db-after (dispatch/dispatch-event db event)
           ;; Resolve the trigger
-          trigger-result (game/resolve-one-item db-after)
+          trigger-result (resolution/resolve-one-item db-after)
           db-resolved (:db trigger-result)
           ;; Player-1 (human) should have the restriction
           p1-grants (grants/get-player-grants db-resolved :player-1)]

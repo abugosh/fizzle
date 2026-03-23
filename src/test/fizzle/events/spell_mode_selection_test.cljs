@@ -14,7 +14,7 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.game :as game]
+    [fizzle.events.casting :as casting]
     [fizzle.events.selection.core :as sel-core]
     [fizzle.test-helpers :as th]))
 
@@ -36,7 +36,7 @@
           db (mana/add-mana db :player-1 {:red 1})
           app-db {:game/db db
                   :game/selected-card reb-id}
-          result-db (game/cast-spell-handler app-db)]
+          result-db (casting/cast-spell-handler app-db)]
       ;; Should show spell mode selection via standard selection system
       (is (some? (:game/pending-selection result-db))
           "Should show selection for modal card")
@@ -70,7 +70,7 @@
           db (mana/add-mana db :player-1 {:red 1})
           app-db {:game/db db
                   :game/selected-card reb-id}
-          result-db (game/cast-spell-handler app-db)]
+          result-db (casting/cast-spell-handler app-db)]
       ;; Should show only modes with valid targets
       (let [selection (:game/pending-selection result-db)
             candidates (:selection/candidates selection)]
@@ -95,7 +95,7 @@
           ;; Build spell-mode selection as cast-spell-handler would
           app-db {:game/db db
                   :game/selected-card reb-id}
-          app-db-with-sel (game/cast-spell-handler app-db)
+          app-db-with-sel (casting/cast-spell-handler app-db)
           ;; Simulate toggle-selection (select the first mode)
           app-db-with-toggle (assoc-in app-db-with-sel
                                        [:game/pending-selection :selection/selected]
@@ -129,7 +129,7 @@
           db (mana/add-mana db :player-1 {:blue 2})
           app-db {:game/db db
                   :game/selected-card cs-id}
-          result-db (game/cast-spell-handler app-db)]
+          result-db (casting/cast-spell-handler app-db)]
       ;; Should NOT show spell mode selection
       (is (not= :spell-mode (:selection/type (:game/pending-selection result-db)))
           "Non-modal card should not trigger spell mode selection")

@@ -10,7 +10,7 @@
     [fizzle.cards.red.lightning-bolt :as lightning-bolt]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
-    [fizzle.events.game :as game]
+    [fizzle.events.casting :as casting]
     [fizzle.history.core :as history]
     [fizzle.test-helpers :as th]))
 
@@ -64,7 +64,7 @@
 (deftest cast-spell-handler-no-opts-uses-human-player-and-selected-card
   (testing "cast-spell-handler with no opts uses human-pid and selected-card"
     (let [{:keys [app-db]} (setup-human-with-ritual)
-          result (game/cast-spell-handler app-db)]
+          result (casting/cast-spell-handler app-db)]
       ;; Dark Ritual should be on the stack
       (is (not (q/stack-empty? (:game/db result)))
           "Stack should have the ritual on it")
@@ -84,8 +84,8 @@
           db (mana/add-mana db :player-2 {:black 1})
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           app-db (assoc app-db :game/db db)
-          result (game/cast-spell-handler app-db {:player-id :player-2
-                                                  :object-id ritual-id})]
+          result (casting/cast-spell-handler app-db {:player-id :player-2
+                                                     :object-id ritual-id})]
       (is (not (q/stack-empty? (:game/db result)))
           "Stack should have the ritual from player-2")
       (let [stack-items (q/get-all-stack-items (:game/db result))
@@ -101,7 +101,7 @@
     (let [{:keys [app-db ritual-id]} (setup-human-with-ritual)
           ;; Clear selected-card to prove it's not used
           app-db (dissoc app-db :game/selected-card)
-          result (game/cast-spell-handler app-db {:object-id ritual-id})]
+          result (casting/cast-spell-handler app-db {:object-id ritual-id})]
       (is (not (q/stack-empty? (:game/db result)))
           "Stack should have the ritual using explicit object-id")
       (let [stack-items (q/get-all-stack-items (:game/db result))
@@ -115,7 +115,7 @@
 (deftest cast-spell-handler-with-target-on-targeted-spell
   (testing "cast-spell-handler with target skips targeting selection and stores target"
     (let [{:keys [app-db]} (setup-human-with-bolt)
-          result (game/cast-spell-handler app-db {:target :player-2})]
+          result (casting/cast-spell-handler app-db {:target :player-2})]
       ;; Should NOT have pending-selection (target was pre-determined)
       (is (nil? (:game/pending-selection result))
           "Should not show targeting selection when target is provided")
@@ -136,7 +136,7 @@
 (deftest cast-spell-handler-targeted-spell-without-target-shows-selection
   (testing "cast-spell-handler on targeted spell without target shows selection UI"
     (let [{:keys [app-db]} (setup-human-with-bolt)
-          result (game/cast-spell-handler app-db)]
+          result (casting/cast-spell-handler app-db)]
       ;; Should have pending-selection for targeting
       (is (some? (:game/pending-selection result))
           "Should show targeting selection when no target provided")
@@ -150,9 +150,9 @@
 (deftest cast-spell-handler-full-bot-cast-with-target
   (testing "cast-spell-handler with all opts handles targeted bot cast"
     (let [{:keys [app-db bolt-id]} (setup-bot-with-bolt)
-          result (game/cast-spell-handler app-db {:player-id :player-2
-                                                  :object-id bolt-id
-                                                  :target :player-1})]
+          result (casting/cast-spell-handler app-db {:player-id :player-2
+                                                     :object-id bolt-id
+                                                     :target :player-1})]
       ;; Should NOT have pending-selection
       (is (nil? (:game/pending-selection result))
           "Should not show targeting selection for bot cast with target")

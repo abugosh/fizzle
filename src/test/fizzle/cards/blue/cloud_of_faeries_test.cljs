@@ -18,7 +18,7 @@
     [fizzle.cards.blue.cloud-of-faeries :as cloud-of-faeries]
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.game :as game]
+    [fizzle.events.cycling :as cycling]
     [fizzle.events.selection.untap]
     [fizzle.events.selection.zone-ops]
     [fizzle.test-helpers :as th]))
@@ -236,7 +236,7 @@
           [db _] (th/add-cards-to-library db [:dark-ritual] :player-1)
           [db cf-id] (th/add-card-to-zone db :cloud-of-faeries :hand :player-1)
           _ (is (= 1 (th/get-hand-count db :player-1)) "Precondition: 1 card in hand")
-          result (game/cycle-card db :player-1 cf-id)
+          result (cycling/cycle-card db :player-1 cf-id)
           db (:db result)]
       ;; Card should be in graveyard
       (is (= :graveyard (:object/zone (q/get-object db cf-id)))
@@ -253,7 +253,7 @@
   (testing "Cannot cycle without sufficient mana"
     (let [db (th/create-test-db)
           [db cf-id] (th/add-card-to-zone db :cloud-of-faeries :hand :player-1)
-          result (game/cycle-card db :player-1 cf-id)
+          result (cycling/cycle-card db :player-1 cf-id)
           result-db (:db result)]
       ;; Should fail gracefully — card remains in hand in result db
       (is (= :hand (:object/zone (q/get-object result-db cf-id)))
@@ -264,7 +264,7 @@
   (testing "Cannot cycle from battlefield (must be in hand)"
     (let [db (th/create-test-db {:mana {:colorless 2}})
           [db cf-id] (th/add-card-to-zone db :cloud-of-faeries :battlefield :player-1)
-          result (game/cycle-card db :player-1 cf-id)
+          result (cycling/cycle-card db :player-1 cf-id)
           result-db (:db result)]
       (is (= :battlefield (:object/zone (q/get-object result-db cf-id)))
           "Card should remain on battlefield when cycling fails"))))
@@ -274,7 +274,7 @@
   (testing "Cannot cycle from graveyard"
     (let [db (th/create-test-db {:mana {:colorless 2}})
           [db cf-id] (th/add-card-to-zone db :cloud-of-faeries :graveyard :player-1)
-          result (game/cycle-card db :player-1 cf-id)
+          result (cycling/cycle-card db :player-1 cf-id)
           result-db (:db result)]
       (is (= :graveyard (:object/zone (q/get-object result-db cf-id)))
           "Card should remain in graveyard when cycling fails"))))
@@ -298,7 +298,7 @@
     (let [db (th/create-test-db {:mana {:colorless 2}})
           ;; Empty library — no cards to draw
           [db cf-id] (th/add-card-to-zone db :cloud-of-faeries :hand :player-1)
-          result (game/cycle-card db :player-1 cf-id)
+          result (cycling/cycle-card db :player-1 cf-id)
           db (:db result)]
       ;; Card should be in graveyard even with empty library
       (is (= :graveyard (:object/zone (q/get-object db cf-id)))

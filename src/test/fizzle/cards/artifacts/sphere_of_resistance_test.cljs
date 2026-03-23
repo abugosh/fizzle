@@ -13,7 +13,7 @@
     [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.static-abilities :as static-abilities]
-    [fizzle.events.game :as game]
+    [fizzle.events.casting :as casting]
     [fizzle.test-helpers :as th]))
 
 
@@ -669,7 +669,7 @@
           [db dr-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           db (mana/add-mana db :player-1 {:black 2})
           app-db {:game/db db :game/selected-card dr-id}
-          result (game/cast-spell-handler app-db)
+          result (casting/cast-spell-handler app-db)
           sel (:game/pending-selection result)]
       (is (some? sel)
           "Should have pending selection (mana allocation needed)")
@@ -680,7 +680,7 @@
     (let [db (th/create-test-db {:mana {:black 1}})
           [db dr-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           app-db {:game/db db :game/selected-card dr-id}
-          result (game/cast-spell-handler app-db)]
+          result (casting/cast-spell-handler app-db)]
       (is (nil? (:game/pending-selection result))
           "Should NOT have pending selection (no generic in base cost)")
       (is (= :stack (:object/zone (q/get-object (:game/db result) dr-id)))

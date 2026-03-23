@@ -23,7 +23,7 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.abilities :as ability-events]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -156,7 +156,7 @@
           _ (is (true? (:object/tapped (q/get-object db-after-confirm welder-id)))
                 "Goblin Welder should be tapped after activation")
           ;; Resolve the ability
-          db-resolved (:db (game/resolve-one-item db-after-confirm))]
+          db-resolved (:db (resolution/resolve-one-item db-after-confirm))]
       ;; Lotus Petal should be sacrificed (in graveyard)
       (is (= :graveyard (:object/zone (q/get-object db-resolved petal-id)))
           "Lotus Petal should be sacrificed (in graveyard)")
@@ -289,7 +289,7 @@
           petal-eid (q/get-object-eid db-with-stack petal-id)
           db-petal-gone (d/db-with db-with-stack [[:db/add petal-eid :object/zone :graveyard]])
           ;; Resolve — welder effect should detect illegal target and do nothing
-          db-resolved (:db (game/resolve-one-item db-petal-gone))]
+          db-resolved (:db (resolution/resolve-one-item db-petal-gone))]
       ;; LED should still be in graveyard (no swap happened)
       (is (= :graveyard (:object/zone (q/get-object db-resolved led-id)))
           "LED should remain in graveyard — swap aborted due to illegal target"))))
@@ -313,7 +313,7 @@
           led-eid (q/get-object-eid db-with-stack led-id)
           db-led-exiled (d/db-with db-with-stack [[:db/add led-eid :object/zone :exile]])
           ;; Resolve — welder effect should detect illegal target and do nothing
-          db-resolved (:db (game/resolve-one-item db-led-exiled))]
+          db-resolved (:db (resolution/resolve-one-item db-led-exiled))]
       ;; Petal should still be on battlefield (not sacrificed)
       (is (= :battlefield (:object/zone (q/get-object db-resolved petal-id)))
           "Lotus Petal should remain on battlefield — swap aborted due to illegal target"))))

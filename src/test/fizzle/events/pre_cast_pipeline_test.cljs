@@ -7,7 +7,7 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.game :as game]
+    [fizzle.events.casting :as casting]
     [fizzle.test-helpers :as th]))
 
 
@@ -17,14 +17,14 @@
 
 (deftest pipeline-is-a-data-vector-test
   (testing "pre-cast-pipeline is a vector of keywords"
-    (is (vector? game/pre-cast-pipeline))
-    (is (every? keyword? game/pre-cast-pipeline))
-    (is (pos? (count game/pre-cast-pipeline)))))
+    (is (vector? casting/pre-cast-pipeline))
+    (is (every? keyword? casting/pre-cast-pipeline))
+    (is (pos? (count casting/pre-cast-pipeline)))))
 
 
 (deftest pipeline-contains-all-pre-cast-steps-test
   (testing "pipeline contains all expected step keywords"
-    (let [steps (set game/pre-cast-pipeline)]
+    (let [steps (set casting/pre-cast-pipeline)]
       (is (contains? steps :exile-cards-cost))
       (is (contains? steps :return-land-cost))
       (is (contains? steps :discard-specific-cost))
@@ -35,7 +35,7 @@
 
 (deftest pipeline-ordering-test
   (testing "pipeline steps are in correct dependency order"
-    (let [idx (fn [step] (.indexOf game/pre-cast-pipeline step))]
+    (let [idx (fn [step] (.indexOf casting/pre-cast-pipeline step))]
       ;; Costs before targeting
       (is (< (idx :exile-cards-cost) (idx :targeting)))
       (is (< (idx :return-land-cost) (idx :targeting)))
@@ -60,11 +60,11 @@
           ctx {:game-db db :player-id :player-1
                :object-id ritual-id :mode mode :target nil}]
       ;; All cost steps should return nil for a simple {B} spell
-      (is (nil? (game/evaluate-pre-cast-step :exile-cards-cost ctx)))
-      (is (nil? (game/evaluate-pre-cast-step :return-land-cost ctx)))
-      (is (nil? (game/evaluate-pre-cast-step :discard-specific-cost ctx)))
-      (is (nil? (game/evaluate-pre-cast-step :x-mana-cost ctx)))
-      (is (nil? (game/evaluate-pre-cast-step :targeting ctx))))))
+      (is (nil? (casting/evaluate-pre-cast-step :exile-cards-cost ctx)))
+      (is (nil? (casting/evaluate-pre-cast-step :return-land-cost ctx)))
+      (is (nil? (casting/evaluate-pre-cast-step :discard-specific-cost ctx)))
+      (is (nil? (casting/evaluate-pre-cast-step :x-mana-cost ctx)))
+      (is (nil? (casting/evaluate-pre-cast-step :targeting ctx))))))
 
 
 ;; =====================================================
@@ -77,7 +77,7 @@
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           db (mana/add-mana db :player-1 {:black 1})
           app-db {:game/db db :game/selected-card ritual-id}
-          result (game/cast-spell-handler app-db)]
+          result (casting/cast-spell-handler app-db)]
       ;; Should cast directly — no pending selections
       (is (nil? (:game/pending-selection result)))
       (is (= :stack (:object/zone (q/get-object (:game/db result) ritual-id)))))))
@@ -95,7 +95,7 @@
           [db cs-id] (th/add-card-to-zone db :counterspell :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 2})
           app-db {:game/db db :game/selected-card cs-id}
-          result (game/cast-spell-handler app-db)]
+          result (casting/cast-spell-handler app-db)]
       ;; Should show targeting selection
       (is (some? (:game/pending-selection result)))
       (let [sel (:game/pending-selection result)]
@@ -119,7 +119,7 @@
           [db scroll-id] (th/add-card-to-zone db :merchant-scroll :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1 :black 1})
           app-db {:game/db db :game/selected-card scroll-id}
-          result (game/cast-spell-handler app-db)]
+          result (casting/cast-spell-handler app-db)]
       ;; Should show mana allocation selection (has 1 generic)
       (is (some? (:game/pending-selection result)))
       (let [sel (:game/pending-selection result)]

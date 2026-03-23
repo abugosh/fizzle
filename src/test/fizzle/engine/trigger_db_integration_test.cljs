@@ -8,7 +8,8 @@
     [fizzle.engine.events :as game-events]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
-    [fizzle.events.game :as game]
+    [fizzle.events.init :as game-init]
+    [fizzle.events.lands :as lands]
     [fizzle.events.setup :as setup]
     [fizzle.test-helpers :as th]))
 
@@ -19,7 +20,7 @@
   (testing "City of Brass trigger entities exist in Datascript after playing the land"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
-          db-after (game/play-land db' :player-1 obj-id)
+          db-after (lands/play-land db' :player-1 obj-id)
           ;; Query Datascript for trigger entities
           triggers (trigger-db/get-all-triggers db-after)
           cob-triggers (filter #(= :permanent-tapped (:trigger/event-type %)) triggers)]
@@ -37,7 +38,7 @@
 
 (deftest test-game-rule-triggers-in-datascript-after-init
   (testing "Game-rule triggers (draw, untap) exist in Datascript after game init"
-    (let [app-db (game/init-game-state
+    (let [app-db (game-init/init-game-state
                    {:main-deck (:deck/main setup/iggy-pop-decklist)})
           game-db (:game/db app-db)
           triggers (trigger-db/get-all-triggers game-db)
@@ -68,7 +69,7 @@
   (testing "Trigger entities are linked to source object via :object/triggers"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
-          db-after (game/play-land db' :player-1 obj-id)
+          db-after (lands/play-land db' :player-1 obj-id)
           obj-eid (d/q '[:find ?e .
                          :in $ ?oid
                          :where [?e :object/id ?oid]]
@@ -85,7 +86,7 @@
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
           ;; Play land creates Datascript triggers
-          db-after-play (game/play-land db' :player-1 obj-id)
+          db-after-play (lands/play-land db' :player-1 obj-id)
           ;; Dispatch permanent-tapped event — should find trigger in Datascript
           event (game-events/permanent-tapped-event obj-id :player-1)
           db-after-dispatch (dispatch/dispatch-event db-after-play event)

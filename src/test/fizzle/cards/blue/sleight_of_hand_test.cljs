@@ -12,7 +12,7 @@
     [fizzle.cards.blue.sleight-of-hand :as sleight-of-hand]
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -62,7 +62,7 @@
           db-cast (rules/cast-spell db :player-1 soh-id)
           _ (is (= :stack (th/get-object-zone db-cast soh-id))
                 "Should be on stack after casting")
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
       (is (= :peek-and-select (:selection/type sel))
           "Selection type should be :peek-and-select")
@@ -83,7 +83,7 @@
                                                 :player-1)
           [db soh-id] (th/add-card-to-zone db :sleight-of-hand :hand :player-1)
           db-cast (rules/cast-spell db :player-1 soh-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)
           selected-card (first lib-ids)
           {:keys [db]} (th/confirm-selection
@@ -140,7 +140,7 @@
                                                 :player-1)
           [db soh-id] (th/add-card-to-zone db :sleight-of-hand :hand :player-1)
           db-cast (rules/cast-spell db :player-1 soh-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)
           first-card (first lib-ids)
           second-card (second lib-ids)
@@ -160,7 +160,7 @@
                                                 :player-1)
           [db soh-id] (th/add-card-to-zone db :sleight-of-hand :hand :player-1)
           db-cast (rules/cast-spell db :player-1 soh-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)
           first-card (first lib-ids)
           second-card (second lib-ids)
@@ -182,7 +182,7 @@
           [db lib-ids] (th/add-cards-to-library db [:dark-ritual] :player-1)
           [db soh-id] (th/add-card-to-zone db :sleight-of-hand :hand :player-1)
           db-cast (rules/cast-spell db :player-1 soh-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
       ;; Should peek at the 1 available card
       (is (= :peek-and-select (:selection/type sel))
@@ -203,7 +203,7 @@
           ;; No library cards
           [db soh-id] (th/add-card-to-zone db :sleight-of-hand :hand :player-1)
           db-cast (rules/cast-spell db :player-1 soh-id)
-          result (game/resolve-one-item db-cast)]
+          result (resolution/resolve-one-item db-cast)]
       ;; With empty library, peek has 0 cards — spell resolves without selection
       (is (nil? (:pending-selection result))
           "No selection should be created for empty library"))))

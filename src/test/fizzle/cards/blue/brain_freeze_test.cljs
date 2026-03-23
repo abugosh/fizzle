@@ -15,7 +15,7 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.triggers :as triggers]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
 
@@ -289,7 +289,7 @@
       (is (= 0 (get-in storm-trigger [:stack-item/effects 0 :effect/count]))
           "Storm trigger count should be 0 (no previous spells)")
       ;; Resolve storm stack-item (creates 0 copies) then resolve original
-      (let [db-after-trigger (:db (game/resolve-one-item db-cast))
+      (let [db-after-trigger (:db (resolution/resolve-one-item db-cast))
             stack-objects (q/get-objects-in-zone db-after-trigger :player-1 :stack)
             copies (filter :object/is-copy stack-objects)]
         (is (= 0 (count copies))

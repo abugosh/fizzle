@@ -4,7 +4,7 @@
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.stack :as stack]
-    [fizzle.events.game :as game]
+    [fizzle.events.lands :as lands]
     [fizzle.test-helpers :as th]))
 
 
@@ -45,7 +45,7 @@
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
           _ (is (= :hand (th/get-object-zone db' obj-id)) "Precondition: land starts in hand")
-          db'' (game/play-land db' :player-1 obj-id)]
+          db'' (lands/play-land db' :player-1 obj-id)]
       (is (= :battlefield (th/get-object-zone db'' obj-id))
           "Land should be on battlefield after play-land"))))
 
@@ -55,7 +55,7 @@
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
           _ (is (= 1 (get-land-plays db' :player-1)) "Precondition: land-plays-left = 1")
-          db'' (game/play-land db' :player-1 obj-id)]
+          db'' (lands/play-land db' :player-1 obj-id)]
       (is (= 0 (get-land-plays db'' :player-1))
           "Land plays should be decremented to 0"))))
 
@@ -65,7 +65,7 @@
     (let [db (-> (th/create-test-db)
                  (set-land-plays :player-1 0))
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
-          db'' (game/play-land db' :player-1 obj-id)]
+          db'' (lands/play-land db' :player-1 obj-id)]
       (is (= :hand (th/get-object-zone db'' obj-id))
           "Land should remain in hand when no land plays left")
       (is (= 0 (get-land-plays db'' :player-1))
@@ -76,7 +76,7 @@
   (testing "play-land returns unchanged db for non-land card (instant)"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
-          db'' (game/play-land db' :player-1 obj-id)]
+          db'' (lands/play-land db' :player-1 obj-id)]
       (is (= :hand (th/get-object-zone db'' obj-id))
           "Dark Ritual (instant) should remain in hand")
       (is (= 1 (get-land-plays db'' :player-1))
@@ -87,7 +87,7 @@
   (testing "play-land returns unchanged db for card in graveyard"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :graveyard :player-1)
-          db'' (game/play-land db' :player-1 obj-id)]
+          db'' (lands/play-land db' :player-1 obj-id)]
       (is (= :graveyard (th/get-object-zone db'' obj-id))
           "Land in graveyard should stay in graveyard")
       (is (= 1 (get-land-plays db'' :player-1))
@@ -99,7 +99,7 @@
     (let [db (-> (th/create-test-db)
                  (set-phase :combat))
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
-          db'' (game/play-land db' :player-1 obj-id)]
+          db'' (lands/play-land db' :player-1 obj-id)]
       (is (= :hand (th/get-object-zone db'' obj-id))
           "Land should remain in hand during combat")
       (is (= 1 (get-land-plays db'' :player-1))
@@ -111,7 +111,7 @@
     (let [db (-> (th/create-test-db)
                  (set-phase :main2))
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
-          db'' (game/play-land db' :player-1 obj-id)]
+          db'' (lands/play-land db' :player-1 obj-id)]
       (is (= :battlefield (th/get-object-zone db'' obj-id))
           "Land should be on battlefield after playing in main2"))))
 
@@ -122,7 +122,7 @@
   (testing "can-play-land? returns true when all conditions met"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)]
-      (is (true? (game/can-play-land? db' :player-1 obj-id))
+      (is (true? (lands/can-play-land? db' :player-1 obj-id))
           "Should be able to play land in hand during main phase with plays left"))))
 
 
@@ -131,7 +131,7 @@
     (let [db (-> (th/create-test-db)
                  (set-land-plays :player-1 0))
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)]
-      (is (false? (game/can-play-land? db' :player-1 obj-id))
+      (is (false? (lands/can-play-land? db' :player-1 obj-id))
           "Should not be able to play land when no plays left"))))
 
 
@@ -139,7 +139,7 @@
   (testing "can-play-land? returns false for non-land card"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)]
-      (is (false? (game/can-play-land? db' :player-1 obj-id))
+      (is (false? (lands/can-play-land? db' :player-1 obj-id))
           "Should not be able to play-land a spell"))))
 
 
@@ -147,7 +147,7 @@
   (testing "can-play-land? returns false for card in graveyard"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :graveyard :player-1)]
-      (is (false? (game/can-play-land? db' :player-1 obj-id))
+      (is (false? (lands/can-play-land? db' :player-1 obj-id))
           "Should not be able to play land from graveyard"))))
 
 
@@ -156,7 +156,7 @@
     (let [db (-> (th/create-test-db)
                  (set-phase :combat))
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)]
-      (is (false? (game/can-play-land? db' :player-1 obj-id))
+      (is (false? (lands/can-play-land? db' :player-1 obj-id))
           "Should not be able to play land during combat"))))
 
 
@@ -165,7 +165,7 @@
     (let [db (-> (th/create-test-db)
                  (set-phase :main2))
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)]
-      (is (true? (game/can-play-land? db' :player-1 obj-id))
+      (is (true? (lands/can-play-land? db' :player-1 obj-id))
           "Should be able to play land during main2"))))
 
 
@@ -175,7 +175,7 @@
     (let [db (-> (th/create-test-db)
                  (set-phase :upkeep))
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
-          db'' (game/play-land db' :player-1 obj-id)]
+          db'' (lands/play-land db' :player-1 obj-id)]
       (is (= :hand (th/get-object-zone db'' obj-id))
           "Land should remain in hand during upkeep")
       (is (= 1 (get-land-plays db'' :player-1))
@@ -188,7 +188,7 @@
     (let [db (-> (th/create-test-db)
                  (set-phase :end))
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
-          db'' (game/play-land db' :player-1 obj-id)]
+          db'' (lands/play-land db' :player-1 obj-id)]
       (is (= :hand (th/get-object-zone db'' obj-id))
           "Land should remain in hand during end step")
       (is (= 1 (get-land-plays db'' :player-1))
@@ -211,7 +211,7 @@
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
           db'' (add-stack-item db' :player-1)]
-      (is (false? (game/can-play-land? db'' :player-1 obj-id))
+      (is (false? (lands/can-play-land? db'' :player-1 obj-id))
           "Should not be able to play land with items on the stack"))))
 
 
@@ -220,7 +220,7 @@
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
           db'' (add-stack-item db' :player-1)
-          db''' (game/play-land db'' :player-1 obj-id)]
+          db''' (lands/play-land db'' :player-1 obj-id)]
       (is (= :hand (th/get-object-zone db''' obj-id))
           "Land should remain in hand when stack is non-empty")
       (is (= 1 (get-land-plays db''' :player-1))

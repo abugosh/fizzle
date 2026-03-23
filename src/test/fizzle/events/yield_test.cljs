@@ -9,7 +9,7 @@
     [fizzle.engine.mana :as mana]
     [fizzle.engine.priority :as priority]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.game :as game]
+    [fizzle.events.priority-flow :as priority-flow]
     [fizzle.history.core :as history]
     [fizzle.test-helpers :as th]))
 
@@ -34,7 +34,7 @@
           app-db (merge (history/init-history)
                         {:game/db db})
           ;; Call yield-impl (the pure function under test)
-          result (game/yield-impl app-db)]
+          result (priority-flow/yield-impl app-db)]
       ;; After resolving one item, should NOT cascade (no continue-yield?)
       (is (not (:continue-yield? result))
           "Manual yield should not cascade when stack has more items")
@@ -63,7 +63,7 @@
           db (priority/set-auto-mode db :resolving)
           app-db (merge (history/init-history)
                         {:game/db db})
-          result (game/yield-impl app-db)]
+          result (priority-flow/yield-impl app-db)]
       ;; With auto-mode, should cascade
       (is (true? (:continue-yield? result))
           "Yield with auto-mode should cascade when stack has items"))))

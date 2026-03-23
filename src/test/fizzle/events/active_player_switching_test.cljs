@@ -6,7 +6,8 @@
     [datascript.core :as d]
     [fizzle.bots.interceptor :as bot-interceptor]
     [fizzle.db.queries :as q]
-    [fizzle.events.game :as game]
+    [fizzle.events.phases :as phases]
+    [fizzle.events.priority-flow :as priority-flow]
     [fizzle.history.core :as history]
     [fizzle.history.interceptor :as interceptor]
     [fizzle.test-helpers :as h]
@@ -48,7 +49,7 @@
             fx-entries (:fx effects)
             is-pass? (some (fn [[fx-type payload]]
                              (and (= :dispatch fx-type)
-                                  (= (first payload) :fizzle.events.game/yield)))
+                                  (= (first payload) :fizzle.events.priority-flow/yield)))
                            fx-entries)]
         ;; Always apply db changes
         (when (:db effects)
@@ -68,7 +69,7 @@
    Also processes bot actions between yields to simulate the bot interceptor."
   [app-db]
   (reset! rf-db/app-db app-db)
-  (rf/dispatch-sync [::game/yield-all])
+  (rf/dispatch-sync [::priority-flow/yield-all])
   (loop [n 300]
     (let [current @rf-db/app-db]
       (if (or (zero? n)
@@ -76,7 +77,7 @@
               (not (contains? current :yield/step-count)))
         @rf-db/app-db
         (do
-          (rf/dispatch-sync [::game/yield])
+          (rf/dispatch-sync [::priority-flow/yield])
           (process-bot-action!)
           (recur (dec n)))))))
 
@@ -91,7 +92,7 @@
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
           game-db (d/db-with db [[:db/add game-eid :game/phase :cleanup]])
           ;; Start turn (should switch to opponent since player-1 just finished)
-          result-db (game/start-turn game-db :player-1)]
+          result-db (phases/start-turn game-db :player-1)]
       (is (= :player-2 (q/get-active-player-id result-db))
           "Active player should switch to opponent after player's turn")
       (is (= 2 (:game/turn (q/get-game-state result-db)))
@@ -108,7 +109,7 @@
           game-db (d/db-with db [[:db/add game-eid :game/phase :cleanup]
                                  [:db/add game-eid :game/active-player opp-eid]])
           ;; Start turn (should switch back to player-1)
-          result-db (game/start-turn game-db :player-2)]
+          result-db (phases/start-turn game-db :player-2)]
       (is (= :player-1 (q/get-active-player-id result-db))
           "Active player should switch back to player-1 after opponent's turn")
       (is (= 2 (:game/turn (q/get-game-state result-db)))
@@ -139,7 +140,7 @@
           game-db (d/db-with db' [[:db/add game-eid :game/phase :cleanup]])
           opp-hand-before (count (or (q/get-hand game-db :player-2) []))
           ;; Start turn switches to opponent but does NOT draw for them
-          result-db (game/start-turn game-db :player-1)]
+          result-db (phases/start-turn game-db :player-1)]
       ;; Opponent draw should happen via draw-step trigger on opponent's draw phase,
       ;; not via start-turn. The untap phase-entered event fires, not draw.
       (is (= opp-hand-before (count (or (q/get-hand result-db :player-2) [])))
@@ -191,8 +192,8 @@
           [game-db' _] (h/add-cards-to-library game-db [:dark-ritual :dark-ritual :dark-ritual] :player-2)
           ;; Advance to main2 manually
           game-db' (-> game-db'
-                       (game/advance-phase :player-1)   ; main1 -> combat
-                       (game/advance-phase :player-1))   ; combat -> main2
+                       (phases/advance-phase :player-1)   ; main1 -> combat
+                       (phases/advance-phase :player-1))   ; combat -> main2
           app-db (assoc app-db :game/db game-db')
           result (dispatch-yield-all app-db)
           result-db (:game/db result)]
@@ -214,8 +215,8 @@
           [game-db' _] (h/add-cards-to-library game-db [:dark-ritual :dark-ritual :dark-ritual] :player-2)
           ;; Advance to main2
           game-db' (-> game-db'
-                       (game/advance-phase :player-1)
-                       (game/advance-phase :player-1))
+                       (phases/advance-phase :player-1)
+                       (phases/advance-phase :player-1))
           app-db (assoc app-db :game/db game-db')
           entries-before (count (history/effective-entries app-db))
           result (dispatch-yield-all app-db)
@@ -240,6 +241,6 @@
           app-db (assoc app-db :game/db game-db)
           ;; Single yield-impl should advance one phase and NOT signal continue
           ;; (bot interceptor dispatches ::bot-decide instead of cascading)
-          result (game/yield-impl app-db)]
+          result (priority-flow/yield-impl app-db)]
       (is (not (:continue-yield? result))
           "yield-impl should pause for bot interceptor at priority-granting phases"))))

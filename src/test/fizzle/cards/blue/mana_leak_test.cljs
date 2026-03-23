@@ -16,7 +16,7 @@
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -263,7 +263,7 @@
           db-cast (cast-mana-leak-targeting db ml-id ritual-id)
           ;; Move ritual off stack (simulate it resolving)
           db-ritual-resolved (rules/move-spell-off-stack db-cast nil ritual-id)
-          result (game/resolve-one-item db-ritual-resolved)
+          result (resolution/resolve-one-item db-ritual-resolved)
           db-resolved (:db result)]
       ;; Mana Leak should be in graveyard (fizzled)
       (is (= :graveyard (:object/zone (q/get-object db-resolved ml-id)))

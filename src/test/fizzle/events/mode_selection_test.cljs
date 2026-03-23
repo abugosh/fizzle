@@ -17,7 +17,7 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.game :as game]))
+    [fizzle.events.casting :as casting]))
 
 
 ;; === Test Cards ===
@@ -98,7 +98,7 @@
           db (mana/add-mana db :player-1 {:black 1})
           app-db (-> (create-app-db db)
                      (assoc :game/selected-card obj-id))
-          result-db (game/cast-spell-handler app-db)]
+          result-db (casting/cast-spell-handler app-db)]
       ;; Should NOT show mode selector
       (is (nil? (:game/pending-mode-selection result-db))
           "Single-mode card should not show mode selector")
@@ -121,7 +121,7 @@
           db (mana/add-mana db :player-1 {:blue 3 :black 2})
           app-db (-> (create-app-db db)
                      (assoc :game/selected-card obj-id))
-          result-db (game/cast-spell-handler app-db)]
+          result-db (casting/cast-spell-handler app-db)]
       ;; Should have both modes in selector
       (let [pending (:game/pending-mode-selection result-db)
             modes (:modes pending)]
@@ -168,7 +168,7 @@
                   :game/selected-card obj-id
                   :game/pending-mode-selection {:object-id obj-id
                                                 :modes modes}}
-          result-db (game/select-casting-mode-handler app-db primary-mode)]
+          result-db (casting/select-casting-mode-handler app-db primary-mode)]
       ;; Pending selection should be cleared
       (is (nil? (:game/pending-mode-selection result-db))
           "Pending mode selection should be cleared")
@@ -196,7 +196,7 @@
                   :game/selected-card obj-id
                   :game/pending-mode-selection {:object-id obj-id
                                                 :modes modes}}
-          result-db (game/select-casting-mode-handler app-db alternate-mode)
+          result-db (casting/select-casting-mode-handler app-db alternate-mode)
           final-life (q/get-life-total (:game/db result-db) :player-1)]
       ;; Life should have been paid
       (is (= (- initial-life 2) final-life)
@@ -222,7 +222,7 @@
                   :game/selected-card obj-id
                   :game/pending-mode-selection {:object-id obj-id
                                                 :modes modes}}
-          result-db (game/cancel-mode-selection-handler app-db)]
+          result-db (casting/cancel-mode-selection-handler app-db)]
       ;; Pending selection should be cleared
       (is (nil? (:game/pending-mode-selection result-db))
           "Pending mode selection should be cleared")

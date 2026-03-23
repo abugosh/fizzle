@@ -15,7 +15,8 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.events.abilities :as abilities]
-    [fizzle.events.game :as game]
+    [fizzle.events.casting :as casting]
+    [fizzle.events.priority-flow :as priority-flow]
     [fizzle.history.core :as history]
     [fizzle.test-helpers :as th]))
 
@@ -127,7 +128,7 @@
             "First dispatch should be ::activate-mana-ability"))
       ;; Last dispatch should be cast-spell with opts map
       (let [[_ cast-args] (last dispatches)]
-        (is (= ::game/cast-spell (first cast-args))
+        (is (= ::casting/cast-spell (first cast-args))
             "Last dispatch should be ::cast-spell")
         (is (= :player-2 (:player-id (second cast-args)))
             "Cast dispatch opts should include bot player-id")))))
@@ -161,9 +162,9 @@
           bolt (first (filter #(= :lightning-bolt (get-in % [:object/card :card/id])) hand))
           ;; Call cast-spell-handler with opts (same path as human, with explicit args)
           app-db (assoc app-db :game/db game-db)
-          result-db (game/cast-spell-handler app-db {:player-id :player-2
-                                                     :object-id (:object/id bolt)
-                                                     :target :player-1})
+          result-db (casting/cast-spell-handler app-db {:player-id :player-2
+                                                        :object-id (:object/id bolt)
+                                                        :target :player-1})
           result-game-db (:game/db result-db)]
       (is (not (q/stack-empty? result-game-db))
           "Stack should have the bolt on it")
@@ -184,9 +185,9 @@
           ;; Bot has bolt but no mana (didn't tap)
           hand (q/get-objects-in-zone game-db :player-2 :hand)
           bolt (first (filter #(= :lightning-bolt (get-in % [:object/card :card/id])) hand))
-          result-db (game/cast-spell-handler app-db {:player-id :player-2
-                                                     :object-id (:object/id bolt)
-                                                     :target :player-1})
+          result-db (casting/cast-spell-handler app-db {:player-id :player-2
+                                                        :object-id (:object/id bolt)
+                                                        :target :player-1})
           result-game-db (:game/db result-db)]
       (is (q/stack-empty? result-game-db)
           "Stack should be empty when bot can't cast"))))
@@ -219,5 +220,5 @@
       (is (pos? (count (:fx result)))
           "Should have dispatches")
       (let [dispatches (mapv second (:fx result))]
-        (is (some #(= ::game/yield (first %)) dispatches)
+        (is (some #(= ::priority-flow/yield (first %)) dispatches)
             "Should dispatch ::yield when safety limit reached")))))

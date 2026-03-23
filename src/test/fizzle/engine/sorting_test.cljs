@@ -3,7 +3,7 @@
     [cljs.test :refer-macros [deftest is testing]]
     [fizzle.db.queries :as q]
     [fizzle.engine.sorting :as sorting]
-    [fizzle.events.game :as game]
+    [fizzle.events.init :as game-init]
     [fizzle.events.setup :as setup]))
 
 
@@ -97,7 +97,7 @@
 
 (deftest test-sort-lands-before-zero-cmc-datascript
   (testing "lands sort before 0-cost spells with actual Datascript entities"
-    (let [game-db (:game/db (game/init-game-state
+    (let [game-db (:game/db (game-init/init-game-state
                               {:main-deck (:deck/main setup/iggy-pop-decklist)}))
           ;; Get hand from real Datascript db
           hand (q/get-hand game-db (q/get-human-player-id game-db))

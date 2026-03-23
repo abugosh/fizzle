@@ -15,7 +15,7 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.state-based :as sba]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -70,7 +70,7 @@
           db-cast (rules/cast-spell db :player-1 ak-id)
           _ (is (= :stack (th/get-object-zone db-cast ak-id))
                 "AK should be on stack after casting")
-          result (game/resolve-one-item db-cast)]
+          result (resolution/resolve-one-item db-cast)]
       ;; Should draw 1 card (0 AK in graveyards + 1)
       (is (= 1 (th/get-hand-count (:db result) :player-1))
           "Should draw 1 card with 0 AK in graveyards"))))
@@ -131,7 +131,7 @@
           [db _gy-ids] (th/add-cards-to-graveyard db [:accumulated-knowledge] :player-1)
           [db ak-id] (th/add-card-to-zone db :accumulated-knowledge :hand :player-1)
           db-cast (rules/cast-spell db :player-1 ak-id)
-          result (game/resolve-one-item db-cast)]
+          result (resolution/resolve-one-item db-cast)]
       ;; Should draw 2 cards (1 AK in graveyard + 1)
       (is (= 2 (th/get-hand-count (:db result) :player-1))
           "Should draw 2 cards with 1 AK in graveyard"))))
@@ -151,7 +151,7 @@
                                                   :player-1)
           [db ak-id] (th/add-card-to-zone db :accumulated-knowledge :hand :player-1)
           db-cast (rules/cast-spell db :player-1 ak-id)
-          result (game/resolve-one-item db-cast)]
+          result (resolution/resolve-one-item db-cast)]
       ;; Should draw 3 cards (2 AK in graveyard + 1)
       (is (= 3 (th/get-hand-count (:db result) :player-1))
           "Should draw 3 cards with 2 AK in graveyards"))))
@@ -170,7 +170,7 @@
           [db _gy-ids] (th/add-cards-to-graveyard db [:accumulated-knowledge] :player-2)
           [db ak-id] (th/add-card-to-zone db :accumulated-knowledge :hand :player-1)
           db-cast (rules/cast-spell db :player-1 ak-id)
-          result (game/resolve-one-item db-cast)]
+          result (resolution/resolve-one-item db-cast)]
       ;; Should draw 2 cards (1 AK in opponent's graveyard + 1)
       (is (= 2 (th/get-hand-count (:db result) :player-1))
           "Should draw 2 cards with 1 AK in opponent's graveyard"))))
@@ -190,7 +190,7 @@
           [db _gy2] (th/add-cards-to-graveyard db [:accumulated-knowledge] :player-2)
           [db ak-id] (th/add-card-to-zone db :accumulated-knowledge :hand :player-1)
           db-cast (rules/cast-spell db :player-1 ak-id)
-          result (game/resolve-one-item db-cast)]
+          result (resolution/resolve-one-item db-cast)]
       ;; Should draw 3 cards (1 in own gy + 1 in opp gy + 1 base)
       (is (= 3 (th/get-hand-count (:db result) :player-1))
           "Should draw 3 cards with AK in both graveyards"))))
@@ -213,7 +213,7 @@
           db-cast (rules/cast-spell db :player-1 ak-id)
           _ (is (= :stack (th/get-object-zone db-cast ak-id))
                 "Precondition: AK is on stack")
-          result (game/resolve-one-item db-cast)]
+          result (resolution/resolve-one-item db-cast)]
       ;; AK on stack should not count — draws 0+1 = 1
       (is (= 1 (th/get-hand-count (:db result) :player-1))
           "AK on stack should not count toward draw amount"))))
@@ -231,7 +231,7 @@
                                                   :player-1)
           [db ak-id] (th/add-card-to-zone db :accumulated-knowledge :hand :player-1)
           db-cast (rules/cast-spell db :player-1 ak-id)
-          result (game/resolve-one-item db-cast)]
+          result (resolution/resolve-one-item db-cast)]
       ;; Should draw the 1 available card
       (is (= 1 (th/get-hand-count (:db result) :player-1))
           "Should draw available cards")
@@ -253,7 +253,7 @@
           ;; Cast first AK
           [db ak1-id] (th/add-card-to-zone db :accumulated-knowledge :hand :player-1)
           db-cast-1 (rules/cast-spell db :player-1 ak1-id)
-          result-1 (game/resolve-one-item db-cast-1)
+          result-1 (resolution/resolve-one-item db-cast-1)
           ;; First AK: 0 in graveyard + 1 = draw 1
           _ (is (= 1 (th/get-hand-count (:db result-1) :player-1))
                 "First AK should draw 1")
@@ -275,7 +275,7 @@
                                          {:white 0 :blue 1 :black 0 :red 0 :green 0 :colorless 1}]])
                           @conn)
           db-cast-2 (rules/cast-spell db2-with-mana :player-1 ak2-id)
-          result-2 (game/resolve-one-item db-cast-2)
+          result-2 (resolution/resolve-one-item db-cast-2)
           ;; After first AK resolved, hand had 1 card. Second AK was added to hand (+1 = 2).
           ;; Then casting AK2 removes it from hand (hand = 1). Second AK draws 2 (1 AK in gy + 1).
           ;; So final hand = 1 + 2 = 3

@@ -12,7 +12,7 @@
     [fizzle.cards.blue.impulse :as impulse]
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -64,7 +64,7 @@
           db-cast (rules/cast-spell db :player-1 imp-id)
           _ (is (= :stack (th/get-object-zone db-cast imp-id))
                 "Should be on stack after casting")
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
       (is (= :peek-and-select (:selection/type sel))
           "Selection type should be :peek-and-select")
@@ -88,7 +88,7 @@
                                                 :player-1)
           [db imp-id] (th/add-card-to-zone db :impulse :hand :player-1)
           db-cast (rules/cast-spell db :player-1 imp-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)
           selected-card (first lib-ids)
           ;; Confirm peek-and-select with 1 card selected via production path
@@ -116,7 +116,7 @@
                                                 :player-1)
           [db imp-id] (th/add-card-to-zone db :impulse :hand :player-1)
           db-cast (rules/cast-spell db :player-1 imp-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)
           selected-card (first lib-ids)
           ;; Confirm peek-and-select via production path
@@ -189,7 +189,7 @@
                                                 :player-1)
           [db imp-id] (th/add-card-to-zone db :impulse :hand :player-1)
           db-cast (rules/cast-spell db :player-1 imp-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)
           first-card (first lib-ids)
           {:keys [db selection]} (th/confirm-selection
@@ -212,7 +212,7 @@
                                                  :player-1)
           [db imp-id] (th/add-card-to-zone db :impulse :hand :player-1)
           db-cast (rules/cast-spell db :player-1 imp-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)
           ;; Select nothing (fail-to-find) via production path
           {:keys [selection]} (th/confirm-selection
@@ -233,7 +233,7 @@
           [db lib-ids] (th/add-cards-to-library db [:dark-ritual :cabal-ritual] :player-1)
           [db imp-id] (th/add-card-to-zone db :impulse :hand :player-1)
           db-cast (rules/cast-spell db :player-1 imp-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
       (is (= :peek-and-select (:selection/type sel))
           "Should still create peek-and-select")
@@ -256,7 +256,7 @@
           [db lib-ids] (th/add-cards-to-library db [:dark-ritual] :player-1)
           [db imp-id] (th/add-card-to-zone db :impulse :hand :player-1)
           db-cast (rules/cast-spell db :player-1 imp-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
       (is (= :peek-and-select (:selection/type sel))
           "Should still create peek-and-select")
@@ -274,6 +274,6 @@
     (let [db (th/create-test-db {:mana {:blue 1 :colorless 1}})
           [db imp-id] (th/add-card-to-zone db :impulse :hand :player-1)
           db-cast (rules/cast-spell db :player-1 imp-id)
-          result (game/resolve-one-item db-cast)]
+          result (resolution/resolve-one-item db-cast)]
       (is (nil? (:pending-selection result))
           "No selection should be created for empty library"))))

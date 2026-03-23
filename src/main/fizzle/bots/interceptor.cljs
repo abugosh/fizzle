@@ -112,7 +112,7 @@
                                [:dispatch [:fizzle.events.abilities/activate-mana-ability
                                            object-id mana-color player-id]])
                              (:tap-sequence action))
-        cast-dispatch [:dispatch [:fizzle.events.game/cast-spell
+        cast-dispatch [:dispatch [:fizzle.events.casting/cast-spell
                                   {:player-id player-id
                                    :object-id (:object-id action)
                                    :target (:target action)}]]]
@@ -123,14 +123,14 @@
 
 (def ^:private bot-trigger-events
   "Events after which the bot interceptor checks whether to queue ::bot-decide."
-  #{:fizzle.events.game/yield
-    :fizzle.events.game/yield-all
-    :fizzle.events.game/resolve-top
-    :fizzle.events.game/advance-phase
-    :fizzle.events.game/start-turn
-    :fizzle.events.game/cast-and-yield
-    :fizzle.events.game/play-land
-    :fizzle.events.game/cast-spell})
+  #{:fizzle.events.priority-flow/yield
+    :fizzle.events.priority-flow/yield-all
+    :fizzle.events.resolution/resolve-top
+    :fizzle.events.phases/advance-phase
+    :fizzle.events.phases/start-turn
+    :fizzle.events.priority-flow/cast-and-yield
+    :fizzle.events.lands/play-land
+    :fizzle.events.casting/cast-spell})
 
 
 (def ^:private max-bot-actions
@@ -158,7 +158,7 @@
                            (not (bot-should-act? game-db)))
                      context
                      (let [existing-fx (get-in context [:effects :fx] [])
-                           yield-kw :fizzle.events.game/yield
+                           yield-kw :fizzle.events.priority-flow/yield
                            cleaned-fx (into []
                                             (remove
                                               (fn [[effect-type arg]]
@@ -203,7 +203,7 @@
             (>= bot-action-count max-bot-actions))
       ;; Not bot's turn, selection in progress, or safety limit — yield
       {:db (dissoc app-db :bot/action-count)
-       :fx [[:dispatch [:fizzle.events.game/yield]]]}
+       :fx [[:dispatch [:fizzle.events.priority-flow/yield]]]}
       (let [holder-eid (priority/get-priority-holder-eid game-db)
             player-id (some (fn [pid]
                               (when (= holder-eid (queries/get-player-eid game-db pid))
@@ -221,7 +221,7 @@
                (find-bot-land-to-play game-db player-id))
           (let [land-id (find-bot-land-to-play game-db player-id)]
             {:db (assoc app-db :bot/action-count (inc bot-action-count))
-             :fx [[:dispatch [:fizzle.events.game/play-land land-id player-id]]]})
+             :fx [[:dispatch [:fizzle.events.lands/play-land land-id player-id]]]})
 
           ;; Check priority decision (cast spell or pass)
           :else
@@ -229,7 +229,7 @@
             (if (= :pass (:action action))
               ;; Bot passes — dispatch ::yield to pass priority
               {:db (dissoc app-db :bot/action-count)
-               :fx [[:dispatch [:fizzle.events.game/yield]]]}
+               :fx [[:dispatch [:fizzle.events.priority-flow/yield]]]}
               ;; Bot wants to cast — build dispatch sequence for taps + cast
               (let [dispatches (build-bot-dispatches action)]
                 {:db (assoc app-db :bot/action-count (inc bot-action-count))

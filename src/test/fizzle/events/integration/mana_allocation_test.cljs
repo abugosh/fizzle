@@ -13,7 +13,7 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.events.abilities :as abilities]
-    [fizzle.events.game :as game]
+    [fizzle.events.casting :as casting]
     [fizzle.events.selection.core :as core]
     [fizzle.events.selection.costs :as sel-costs]
     [fizzle.events.selection.targeting]
@@ -219,7 +219,7 @@
           db (mana/add-mana db :player-1 {:black 5 :blue 3})
           app-db (-> (create-app-db db)
                      (assoc :game/selected-card obj-id))
-          result (game/cast-spell-handler app-db)
+          result (casting/cast-spell-handler app-db)
           sel (:game/pending-selection result)]
       ;; Should enter allocation mode, not cast directly
       (is (some? sel) "Should have pending selection for allocation")
@@ -249,7 +249,7 @@
           db (mana/add-mana db :player-1 {:black 5})
           app-db (-> (create-app-db db)
                      (assoc :game/selected-card obj-id))
-          result (game/cast-spell-handler app-db)]
+          result (casting/cast-spell-handler app-db)]
       ;; No pending selection
       (is (nil? (:game/pending-selection result))
           "Should NOT enter allocation for pure colored cost")
@@ -270,7 +270,7 @@
           db (mana/add-mana db :player-1 {:black 3 :blue 2})
           app-db (-> (create-app-db db)
                      (assoc :game/selected-card obj-id))
-          result (game/cast-spell-handler app-db)
+          result (casting/cast-spell-handler app-db)
           sel (:game/pending-selection result)]
       (is (some? sel) "Should enter allocation mode")
       (is (= :mana-allocation (:selection/type sel)))

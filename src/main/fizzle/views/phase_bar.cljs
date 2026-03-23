@@ -1,7 +1,7 @@
 (ns fizzle.views.phase-bar
   (:require
     [fizzle.engine.rules :as rules]
-    [fizzle.events.game :as events]
+    [fizzle.events.ui :as ui-events]
     [fizzle.subs.game :as subs]
     [re-frame.core :as rf]))
 
@@ -11,7 +11,7 @@
   [phase stops role]
   (let [has-stop? (contains? stops phase)]
     [:div {:class "flex justify-center cursor-pointer py-0.5"
-           :on-click #(rf/dispatch [::events/toggle-stop role phase])}
+           :on-click #(rf/dispatch [::ui-events/toggle-stop role phase])}
      [:div {:class (str "w-1.5 h-1.5 rounded-full "
                         (if has-stop? "bg-accent" "bg-surface-dim"))}]]))
 

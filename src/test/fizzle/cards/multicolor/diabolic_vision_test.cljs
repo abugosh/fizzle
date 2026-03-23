@@ -11,7 +11,7 @@
     [fizzle.cards.multicolor.diabolic-vision :as diabolic-vision]
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -50,7 +50,7 @@
                                                 :player-1)
           [db dv-id] (th/add-card-to-zone db :diabolic-vision :hand :player-1)
           db-cast (rules/cast-spell db :player-1 dv-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
       (is (= :peek-and-select (:selection/type sel)))
       (is (= 5 (count (:selection/candidates sel))))
@@ -115,7 +115,7 @@
                                                 :player-1)
           [db dv-id] (th/add-card-to-zone db :diabolic-vision :hand :player-1)
           db-cast (rules/cast-spell db :player-1 dv-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)
           selected-card (first lib-ids)
           {:keys [db selection]} (th/confirm-selection
@@ -139,7 +139,7 @@
                                                 :player-1)
           [db dv-id] (th/add-card-to-zone db :diabolic-vision :hand :player-1)
           db-cast (rules/cast-spell db :player-1 dv-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)
           selected-card (first lib-ids)
           {:keys [db selection]} (th/confirm-selection
@@ -172,7 +172,7 @@
                                           :player-1)
           [db dv-id] (th/add-card-to-zone db :diabolic-vision :hand :player-1)
           db-cast (rules/cast-spell db :player-1 dv-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)
           {:keys [selection]} (th/confirm-selection (:db result) sel #{})]
       (is (= :order-top (:selection/type selection)))
@@ -189,7 +189,7 @@
                                                 :player-1)
           [db dv-id] (th/add-card-to-zone db :diabolic-vision :hand :player-1)
           db-cast (rules/cast-spell db :player-1 dv-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
       (is (= 3 (count (:selection/candidates sel))))
       (let [selected (first lib-ids)
@@ -204,7 +204,7 @@
           [db lib-ids] (th/add-cards-to-library db [:dark-ritual] :player-1)
           [db dv-id] (th/add-card-to-zone db :diabolic-vision :hand :player-1)
           db-cast (rules/cast-spell db :player-1 dv-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
       (is (= 1 (count (:selection/candidates sel))))
       (let [only-card (first lib-ids)
@@ -219,5 +219,5 @@
     (let [db (th/create-test-db {:mana {:blue 1 :black 1}})
           [db dv-id] (th/add-card-to-zone db :diabolic-vision :hand :player-1)
           db-cast (rules/cast-spell db :player-1 dv-id)
-          result (game/resolve-one-item db-cast)]
+          result (resolution/resolve-one-item db-cast)]
       (is (nil? (:pending-selection result))))))

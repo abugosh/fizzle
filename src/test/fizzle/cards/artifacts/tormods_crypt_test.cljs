@@ -19,7 +19,7 @@
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.abilities :as ability-events]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -98,7 +98,7 @@
           _ (is (true? (rules/can-cast? db :player-1 obj-id))
                 "Should be castable with 0 mana")
           db-cast (rules/cast-spell db :player-1 obj-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           db-resolved (:db result)]
       (is (= :battlefield (:object/zone (q/get-object db-resolved obj-id)))
           "Tormod's Crypt should be on battlefield after resolution"))))
@@ -138,7 +138,7 @@
           (is (= :activated-ability (:stack-item/type top-item))
               "Stack item should be activated ability type")
           ;; Resolve the ability
-          (let [db-resolved (:db (game/resolve-one-item db-after-confirm))]
+          (let [db-resolved (:db (resolution/resolve-one-item db-after-confirm))]
             ;; All opponent graveyard cards should be in exile
             (is (= 0 (th/get-zone-count db-resolved :graveyard :player-2))
                 "Opponent should have 0 cards in graveyard after resolution")
@@ -206,7 +206,7 @@
           ;; Target SELF
           selection-with-target (assoc sel :selection/selected #{:player-1})
           confirm-result (ability-events/confirm-ability-target (:db result) selection-with-target)
-          db-resolved (:db (game/resolve-one-item (:db confirm-result)))]
+          db-resolved (:db (resolution/resolve-one-item (:db confirm-result)))]
       ;; Player-1's graveyard should be exiled (except Crypt itself which
       ;; was sacrificed AFTER targeting and goes to player-1's GY)
       (doseq [gy-id gy-ids]

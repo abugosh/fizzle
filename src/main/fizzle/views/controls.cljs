@@ -1,6 +1,9 @@
 (ns fizzle.views.controls
   (:require
-    [fizzle.events.game :as events]
+    [fizzle.events.casting :as casting-events]
+    [fizzle.events.cycling :as cycling-events]
+    [fizzle.events.lands :as lands-events]
+    [fizzle.events.priority-flow :as priority-flow-events]
     [fizzle.subs.game :as subs]
     [re-frame.core :as rf]))
 
@@ -55,28 +58,28 @@
      [:button {:class (btn-class play-enabled?)
                :disabled (not play-enabled?)
                :on-click (cond
-                           can-cast? #(rf/dispatch [::events/cast-spell])
-                           can-play-land? #(rf/dispatch [::events/play-land selected])
+                           can-cast? #(rf/dispatch [::casting-events/cast-spell])
+                           can-play-land? #(rf/dispatch [::lands-events/play-land selected])
                            :else identity)}
       play-label]
      [:button {:class (btn-class play-enabled?)
                :disabled (not play-enabled?)
                :on-click (cond
-                           can-cast? #(rf/dispatch [::events/cast-and-yield])
-                           can-play-land? #(rf/dispatch [::events/play-land selected])
+                           can-cast? #(rf/dispatch [::priority-flow-events/cast-and-yield])
+                           can-play-land? #(rf/dispatch [::lands-events/play-land selected])
                            :else identity)}
       play-yield-label]
      (when can-cycle?
        [:button {:class (btn-class true)
-                 :on-click #(rf/dispatch [::events/cycle-card selected])}
+                 :on-click #(rf/dispatch [::cycling-events/cycle-card selected])}
         (str "Cycle " (:name card-info))])
      [:button {:class (btn-class true)
-               :on-click #(rf/dispatch [::events/yield])}
+               :on-click #(rf/dispatch [::priority-flow-events/yield])}
       (if-let [n (top-stack-item-name stack)]
         (str "Yield: " n)
         "Yield")]
      [:button {:class (btn-class true)
-               :on-click #(rf/dispatch [::events/yield-all])}
+               :on-click #(rf/dispatch [::priority-flow-events/yield-all])}
       (if (seq stack)
         (str "Yield All (" (count stack) ")")
         "Yield All")]]))

@@ -17,44 +17,44 @@
 
 
 (rf/reg-event-db
-  :fizzle.events.game/toggle-graveyard-sort
+  ::toggle-graveyard-sort
   (fn [db _]
     (let [current (get db :graveyard/sort-mode :entry)]
       (assoc db :graveyard/sort-mode (if (= current :entry) :sorted :entry)))))
 
 
 (rf/reg-event-db
-  :fizzle.events.game/set-active-screen
+  ::set-active-screen
   (fn [db [_ screen]]
     (set-active-screen-handler db screen)))
 
 
 (rf/reg-event-db
-  :fizzle.events.game/dismiss-game-over
+  ::dismiss-game-over
   (fn [db _]
     (assoc db :game/game-over-dismissed true)))
 
 
 (rf/reg-event-db
-  :fizzle.events.game/toggle-stack-collapsed
+  ::toggle-stack-collapsed
   (fn [db _]
     (update db :ui/stack-collapsed not)))
 
 
 (rf/reg-event-db
-  :fizzle.events.game/toggle-gy-collapsed
+  ::toggle-gy-collapsed
   (fn [db _]
     (update db :ui/gy-collapsed not)))
 
 
 (rf/reg-event-db
-  :fizzle.events.game/toggle-history-collapsed
+  ::toggle-history-collapsed
   (fn [db _]
     (update db :ui/history-collapsed not)))
 
 
 (rf/reg-event-db
-  :fizzle.events.game/select-card
+  ::select-card
   (fn [db [_ object-id]]
     (let [currently-selected (:game/selected-card db)]
       (assoc db :game/selected-card
@@ -62,7 +62,7 @@
 
 
 (rf/reg-event-db
-  :fizzle.events.game/toggle-stop
+  ::toggle-stop
   (fn [db [_ role phase]]
     (let [game-db (:game/db db)
           human-pid (queries/get-human-player-id game-db)

@@ -18,7 +18,7 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -151,7 +151,7 @@
           _ (is (= 2 (:object/x-value foi-obj))
                 "Spell should have X=2 stored")
           ;; Resolve spell - should create peek-and-select selection
-          result (game/resolve-one-item db-with-x)
+          result (resolution/resolve-one-item db-with-x)
           sel (:pending-selection result)]
       ;; Selection type should be :peek-and-select
       (is (= :peek-and-select (:selection/type sel))
@@ -267,7 +267,7 @@
                          :where [?e :object/id ?oid]]
                        db-cast foi-id)
           db-with-x (d/db-with db-cast [[:db/add foi-eid :object/x-value 3]])
-          result (game/resolve-one-item db-with-x)
+          result (resolution/resolve-one-item db-with-x)
           sel (:pending-selection result)]
       ;; Should peek at only 1 card (all that's available)
       (is (some? sel)

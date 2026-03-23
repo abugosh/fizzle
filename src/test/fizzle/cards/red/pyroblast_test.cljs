@@ -19,7 +19,7 @@
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -112,7 +112,7 @@
           ;; Cast Pyroblast choosing counter mode, targeting blue spell
           chosen-mode (first (:card/modes pyroblast/card))
           db-cast (th/cast-mode-with-target db :player-1 pyro-id chosen-mode opt-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           db-resolved (:db result)]
       ;; Blue spell should be countered
       (is (= :graveyard (:object/zone (q/get-object db-resolved opt-id)))
@@ -130,7 +130,7 @@
           db (mana/add-mana db :player-1 {:red 1})
           chosen-mode (second (:card/modes pyroblast/card))
           db-cast (th/cast-mode-with-target db :player-1 pyro-id chosen-mode perm-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           db-resolved (:db result)]
       (is (= :graveyard (:object/zone (q/get-object db-resolved perm-id)))
           "Blue permanent should be destroyed")
@@ -251,7 +251,7 @@
           db (mana/add-mana db :player-1 {:red 1})
           chosen-mode (first (:card/modes pyroblast/card))
           db-cast (th/cast-mode-with-target db :player-1 pyro-id chosen-mode ritual-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           db-resolved (:db result)]
       ;; Dark Ritual should NOT be countered — still on stack
       (is (= :stack (:object/zone (q/get-object db-resolved ritual-id)))
@@ -272,7 +272,7 @@
           db (mana/add-mana db :player-1 {:red 1})
           chosen-mode (second (:card/modes pyroblast/card))
           db-cast (th/cast-mode-with-target db :player-1 pyro-id chosen-mode red-perm-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           db-resolved (:db result)]
       ;; Red permanent should NOT be destroyed — still on battlefield
       (is (= :battlefield (:object/zone (q/get-object db-resolved red-perm-id)))

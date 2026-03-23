@@ -7,9 +7,9 @@
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.state-based :as sba]
-    [fizzle.events.game :as game]
     [fizzle.events.interceptors.sba :as sba-interceptor]
     [fizzle.events.phases :as phases]
+    [fizzle.events.priority-flow :as priority-flow]
     [fizzle.history.core :as history]
     [fizzle.test-helpers :as th]))
 
@@ -93,7 +93,7 @@
                             [:db/add game-eid :game/phase :upkeep]])
           app-db (merge (history/init-history) {:game/db db})
           ;; Run yield-impl to advance phase (both pass → advance)
-          result (game/yield-impl app-db)
+          result (priority-flow/yield-impl app-db)
           result-db (:game/db (:app-db result))
           ;; The SBA interceptor would normally fire here. Let's check manually.
           result-db-after-sba (sba/check-and-execute-sbas result-db)]
@@ -122,7 +122,7 @@
              iterations 0]
         (if (>= iterations 10)
           (is false "Safety limit reached — game should have ended")
-          (let [result (game/yield-impl adb)
+          (let [result (priority-flow/yield-impl adb)
                 result-adb (:app-db result)
                 result-game-db (:game/db result-adb)
                 ;; Simulate SBA interceptor
@@ -151,12 +151,12 @@
                             [:db/add game-eid :game/phase :upkeep]])
           app-db (merge (history/init-history) {:game/db db})
           ;; Simulate ::yield event handler (reg-event-fx)
-          result (game/yield-impl app-db)
+          result (priority-flow/yield-impl app-db)
           handler-effects {:db (:app-db result)}
           ;; Simulate global SBA interceptor reading from context
           ;; Global interceptor checks event-id against sba-trigger-events
           context {:effects handler-effects
-                   :coeffects {:event [:fizzle.events.game/yield]}}
+                   :coeffects {:event [:fizzle.events.priority-flow/yield]}}
           interceptor-after-fn (-> sba-interceptor/sba-interceptor
                                    :after)
           context-after (interceptor-after-fn context)

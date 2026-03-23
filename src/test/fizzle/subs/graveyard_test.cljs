@@ -7,7 +7,7 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.sorting :as sorting]
-    [fizzle.events.game :as events]
+    [fizzle.events.ui :as ui-events]
     [fizzle.subs.game :as subs]
     [re-frame.core :as rf]
     [re-frame.db :as rf-db]))
@@ -212,7 +212,7 @@
     (let [app-db {:game/db (make-game-db)
                   :graveyard/sort-mode :entry}]
       (reset! rf-db/app-db app-db)
-      (rf/dispatch-sync [::events/toggle-graveyard-sort])
+      (rf/dispatch-sync [::ui-events/toggle-graveyard-sort])
       (is (= :sorted (:graveyard/sort-mode @rf-db/app-db))))))
 
 
@@ -221,7 +221,7 @@
     (let [app-db {:game/db (make-game-db)
                   :graveyard/sort-mode :sorted}]
       (reset! rf-db/app-db app-db)
-      (rf/dispatch-sync [::events/toggle-graveyard-sort])
+      (rf/dispatch-sync [::ui-events/toggle-graveyard-sort])
       (is (= :entry (:graveyard/sort-mode @rf-db/app-db))))))
 
 
@@ -229,5 +229,5 @@
   (testing "toggling when no sort-mode set treats nil as :entry and toggles to :sorted"
     (let [app-db {:game/db (make-game-db)}]
       (reset! rf-db/app-db app-db)
-      (rf/dispatch-sync [::events/toggle-graveyard-sort])
+      (rf/dispatch-sync [::ui-events/toggle-graveyard-sort])
       (is (= :sorted (:graveyard/sort-mode @rf-db/app-db))))))

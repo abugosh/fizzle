@@ -6,7 +6,7 @@
     [fizzle.cards.lands.basic-lands :as basic-lands]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana-activation :as engine-mana]
-    [fizzle.events.game :as game]
+    [fizzle.events.lands :as lands]
     [fizzle.test-helpers :as th]))
 
 
@@ -184,7 +184,7 @@
           [db' obj-id] (th/add-card-to-zone db :island :hand :player-1)
           _ (is (= :hand (th/get-object-zone db' obj-id)) "Precondition: Island starts in hand")
           _ (is (= 1 (get-land-plays db' :player-1)) "Precondition: land-plays-left = 1")
-          db'' (game/play-land db' :player-1 obj-id)]
+          db'' (lands/play-land db' :player-1 obj-id)]
       (is (= :battlefield (th/get-object-zone db'' obj-id))
           "Island should be on battlefield after play-land")
       (is (= 0 (get-land-plays db'' :player-1))

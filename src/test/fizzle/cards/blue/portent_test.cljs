@@ -10,7 +10,7 @@
     [fizzle.cards.blue.portent :as portent]
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -28,7 +28,7 @@
   "Resolve Portent through the game resolution flow.
    Returns result map with :db and :pending-selection (if any)."
   [db]
-  (game/resolve-one-item db))
+  (resolution/resolve-one-item db))
 
 
 ;; === A. Card Definition Tests ===

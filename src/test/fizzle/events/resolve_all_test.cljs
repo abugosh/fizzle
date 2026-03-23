@@ -8,7 +8,7 @@
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.history.core :as history]
     [fizzle.history.interceptor :as interceptor]
     [re-frame.core :as rf]
@@ -72,7 +72,7 @@
    Max 20 iterations as safety."
   [app-db]
   (reset! rf-db/app-db app-db)
-  (rf/dispatch-sync [::game/resolve-all])
+  (rf/dispatch-sync [::resolution/resolve-all])
   ;; After first dispatch-sync, the :fx dispatch is queued but not processed.
   ;; We loop, re-dispatching with the initial-ids until stable.
   (let [initial-ids (set (map :db/id (queries/get-all-stack-items (:game/db app-db))))]
@@ -86,7 +86,7 @@
                       (not (contains? initial-ids (:db/id top))))))
           db
           (do
-            (rf/dispatch-sync [::game/resolve-all initial-ids])
+            (rf/dispatch-sync [::resolution/resolve-all initial-ids])
             (recur (inc iterations))))))))
 
 
@@ -120,7 +120,7 @@
             ;; Spell should be in graveyard
             (is (= :graveyard (:object/zone (queries/get-object db object-id)))
                 "Dark Ritual should be in graveyard after resolution"))
-          (let [result (game/resolve-one-item db)]
+          (let [result (resolution/resolve-one-item db)]
             (is (nil? (:pending-selection result)) "Dark Ritual should not need selection")
             (recur (:db result) (inc iterations))))))))
 
@@ -139,7 +139,7 @@
           top (stack/get-top-stack-item db')]
       (is (some? top) "Stack-item should exist")
       ;; Resolve via resolve-one-item
-      (let [result (game/resolve-one-item db')]
+      (let [result (resolution/resolve-one-item db')]
         (is (nil? (:pending-selection result)) "Simple ability should not need selection")
         ;; Stack-item should be removed
         (is (nil? (stack/get-top-stack-item (:db result)))
@@ -163,7 +163,7 @@
           top (stack/get-top-stack-item db')]
       (is (some? top) "Stack-item should exist")
       ;; Resolve via resolve-one-item
-      (let [result (game/resolve-one-item db')]
+      (let [result (resolution/resolve-one-item db')]
         (is (nil? (:pending-selection result)) "Trigger should not need selection")
         ;; Stack-item should be removed
         (is (nil? (stack/get-top-stack-item (:db result)))
@@ -179,7 +179,7 @@
       ;; No stack-items
       (is (nil? (stack/get-top-stack-item db)) "Stack should be empty")
       ;; Resolve via resolve-one-item
-      (let [result (game/resolve-one-item db)]
+      (let [result (resolution/resolve-one-item db)]
         (is (nil? (:pending-selection result)) "Should not have pending selection")
         ;; DB should be unchanged
         (is (= db (:db result)) "DB should be unchanged for empty stack")))))
@@ -201,7 +201,7 @@
           spell-items (filter #(:stack-item/object-ref %) (queries/get-all-stack-items db-cast))]
       (is (= 1 (count spell-items)) "Should have exactly 1 spell stack-item")
       ;; Resolve - should trigger tutor selection
-      (let [result (game/resolve-one-item db-cast)]
+      (let [result (resolution/resolve-one-item db-cast)]
         (is (some? (:pending-selection result))
             "Tutor spell should create pending selection")))))
 
@@ -223,7 +223,7 @@
       ;; Should have 1 stack-item (the storm meta-item)
       (is (= 1 (count items-before)) "Should have 1 stack-item before resolution")
       ;; Resolve the storm item
-      (let [result (game/resolve-one-item db')
+      (let [result (resolution/resolve-one-item db')
             items-after (queries/get-all-stack-items (:db result))]
         (is (nil? (:pending-selection result)) "Storm should not need selection")
         ;; Storm meta-item should be removed, but copies created

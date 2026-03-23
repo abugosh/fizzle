@@ -15,7 +15,8 @@
     [fizzle.cards.lands.city-of-brass :as city-of-brass]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana-activation :as engine-mana]
-    [fizzle.events.game :as game]
+    [fizzle.events.lands :as lands]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -70,7 +71,7 @@
     (testing (str "City of Brass taps for " (name color) " mana")
       (let [db (th/create-test-db)
             [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
-            db-played (game/play-land db' :player-1 obj-id)
+            db-played (lands/play-land db' :player-1 obj-id)
             _ (is (= :battlefield (th/get-object-zone db-played obj-id))
                   "Precondition: City of Brass on battlefield")
             initial-pool (q/get-mana-pool db-played :player-1)
@@ -87,7 +88,7 @@
   (testing "Tapping City of Brass puts trigger on stack (damage not immediate)"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
-          db-played (game/play-land db' :player-1 obj-id)
+          db-played (lands/play-land db' :player-1 obj-id)
           initial-life (q/get-life-total db-played :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
           db-tapped (engine-mana/activate-mana-ability db-played :player-1 obj-id :black)]
@@ -106,11 +107,11 @@
   (testing "Resolving City of Brass trigger deals 1 damage to controller"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
-          db-played (game/play-land db' :player-1 obj-id)
+          db-played (lands/play-land db' :player-1 obj-id)
           db-tapped (engine-mana/activate-mana-ability db-played :player-1 obj-id :blue)
           _ (is (= 20 (q/get-life-total db-tapped :player-1))
                 "Life unchanged before resolve")
-          db-resolved (:db (game/resolve-one-item db-tapped))]
+          db-resolved (:db (resolution/resolve-one-item db-tapped))]
       (is (= 19 (q/get-life-total db-resolved :player-1))
           "Player should lose 1 life after trigger resolves")
       (is (= 0 (count (q/get-all-stack-items db-resolved)))
@@ -121,10 +122,10 @@
   (testing "Tapping City of Brass twice deals 2 cumulative damage"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
-          db-played (game/play-land db' :player-1 obj-id)
+          db-played (lands/play-land db' :player-1 obj-id)
           ;; First tap
           db-tap1 (engine-mana/activate-mana-ability db-played :player-1 obj-id :black)
-          db-resolve1 (:db (game/resolve-one-item db-tap1))
+          db-resolve1 (:db (resolution/resolve-one-item db-tap1))
           _ (is (= 19 (q/get-life-total db-resolve1 :player-1))
                 "19 life after first trigger")
           ;; Manually untap for second activation
@@ -133,7 +134,7 @@
           db-untapped (d/db-with db-resolve1 [[:db/add obj-eid :object/tapped false]])
           ;; Second tap
           db-tap2 (engine-mana/activate-mana-ability db-untapped :player-1 obj-id :red)
-          db-resolve2 (:db (game/resolve-one-item db-tap2))]
+          db-resolve2 (:db (resolution/resolve-one-item db-tap2))]
       (is (= 18 (q/get-life-total db-resolve2 :player-1))
           "Player at 18 life after both triggers resolved"))))
 
@@ -170,7 +171,7 @@
   (testing "City of Brass already tapped cannot activate again"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
-          db-played (game/play-land db' :player-1 obj-id)
+          db-played (lands/play-land db' :player-1 obj-id)
           ;; First tap succeeds
           db-tap1 (engine-mana/activate-mana-ability db-played :player-1 obj-id :black)
           _ (is (= 1 (:black (q/get-mana-pool db-tap1 :player-1)))
@@ -189,7 +190,7 @@
   (testing "Playing City of Brass from hand registers becomes-tapped trigger"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
-          db-played (game/play-land db' :player-1 obj-id)
+          db-played (lands/play-land db' :player-1 obj-id)
           ;; Tap to verify trigger fires (proof trigger was registered)
           db-tapped (engine-mana/activate-mana-ability db-played :player-1 obj-id :black)]
       (is (= 1 (count (q/get-all-stack-items db-tapped)))

@@ -18,7 +18,7 @@
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.abilities :as ability-events]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -218,7 +218,7 @@
           (is (= :activated-ability (:stack-item/type top-item))
               "Stack item should be activated ability type")
           ;; Resolve the ability from the stack
-          (let [db-resolved (:db (game/resolve-one-item db-after-confirm))]
+          (let [db-resolved (:db (resolution/resolve-one-item db-after-confirm))]
             ;; Target enchantment should be destroyed (moved to graveyard)
             (is (= :graveyard (:object/zone (q/get-object db-resolved target-id)))
                 "Target enchantment should be in graveyard after ability resolves")

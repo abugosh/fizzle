@@ -8,7 +8,8 @@
     [fizzle.engine.stack :as stack]
     [fizzle.engine.state-based :as sba]
     [fizzle.engine.turn-based :as turn-based]
-    [fizzle.events.game :as game]))
+    [fizzle.events.cleanup :as cleanup]
+    [fizzle.events.phases :as phases]))
 
 
 ;; === Test helpers ===
@@ -118,7 +119,7 @@
                  (set-phase :main1)
                  (add-mana :player-1 {:black 3})
                  (add-stack-item-to-stack))
-          db' (game/advance-phase db :player-1)]
+          db' (phases/advance-phase db :player-1)]
       (is (= :main1 (get-phase db')) "phase should not advance")
       (is (not (mana-pool-empty? db' :player-1)) "mana pool should not be cleared"))))
 
@@ -128,7 +129,7 @@
     (let [db (-> (init-game-state)
                  (set-phase :main1)
                  (add-spell-to-stack :player-1))
-          db' (game/advance-phase db :player-1)]
+          db' (phases/advance-phase db :player-1)]
       (is (= :main1 (get-phase db')) "phase should not advance"))))
 
 
@@ -138,7 +139,7 @@
                  (set-phase :main1)
                  (add-stack-item-to-stack)
                  (add-spell-to-stack :player-1))
-          db' (game/advance-phase db :player-1)]
+          db' (phases/advance-phase db :player-1)]
       (is (= :main1 (get-phase db')) "phase should not advance"))))
 
 
@@ -148,7 +149,7 @@
                  (set-phase :cleanup)
                  (set-turn 1)
                  (add-stack-item-to-stack))
-          db' (game/start-turn db :player-1)]
+          db' (phases/start-turn db :player-1)]
       (is (= :cleanup (get-phase db')) "phase should stay at cleanup")
       (is (= 1 (get-turn db')) "turn should not increment"))))
 
@@ -159,7 +160,7 @@
   (testing "advance-phase from main1 skips combat to main2 when no creatures"
     (let [db (-> (init-game-state)
                  (set-phase :main1))
-          db' (game/advance-phase db :player-1)]
+          db' (phases/advance-phase db :player-1)]
       (is (= :main2 (get-phase db'))))))
 
 
@@ -167,7 +168,7 @@
   (testing "advance-phase from combat goes to main2"
     (let [db (-> (init-game-state)
                  (set-phase :combat))
-          db' (game/advance-phase db :player-1)]
+          db' (phases/advance-phase db :player-1)]
       (is (= :main2 (get-phase db'))))))
 
 
@@ -175,7 +176,7 @@
   (testing "advance-phase from cleanup stays at cleanup (requires explicit start-turn)"
     (let [db (-> (init-game-state)
                  (set-phase :cleanup))
-          db' (game/advance-phase db :player-1)]
+          db' (phases/advance-phase db :player-1)]
       ;; CRITICAL: Must NOT auto-advance to untap - need explicit start-turn
       (is (= :cleanup (get-phase db'))))))
 
@@ -185,7 +186,7 @@
     (let [db (-> (init-game-state)
                  (set-phase :main1)
                  (add-mana :player-1 {:black 3 :blue 2}))
-          db' (game/advance-phase db :player-1)]
+          db' (phases/advance-phase db :player-1)]
       (is (mana-pool-empty? db' :player-1)))))
 
 
@@ -196,7 +197,7 @@
     (let [db (-> (init-game-state)
                  (set-turn 1)
                  (set-phase :cleanup))
-          db' (game/start-turn db :player-1)]
+          db' (phases/start-turn db :player-1)]
       (is (= 2 (get-turn db'))))))
 
 
@@ -205,7 +206,7 @@
     (let [db (-> (init-game-state)
                  (set-phase :cleanup)
                  (set-storm-count :player-1 5))
-          db' (game/start-turn db :player-1)]
+          db' (phases/start-turn db :player-1)]
       (is (= 0 (q/get-storm-count db' :player-1))))))
 
 
@@ -214,7 +215,7 @@
     (let [db (-> (init-game-state)
                  (set-phase :cleanup)
                  (set-land-plays :player-1 0))
-          db' (game/start-turn db :player-1)]
+          db' (phases/start-turn db :player-1)]
       (is (= 1 (get-land-plays db' :player-1))))))
 
 
@@ -222,7 +223,7 @@
   (testing "start-turn sets phase to :untap"
     (let [db (-> (init-game-state)
                  (set-phase :cleanup))
-          db' (game/start-turn db :player-1)]
+          db' (phases/start-turn db :player-1)]
       (is (= :untap (get-phase db'))))))
 
 
@@ -231,7 +232,7 @@
     (let [db (-> (init-game-state)
                  (set-phase :cleanup)
                  (add-mana :player-1 {:red 2 :green 1}))
-          db' (game/start-turn db :player-1)]
+          db' (phases/start-turn db :player-1)]
       (is (mana-pool-empty? db' :player-1)))))
 
 
@@ -242,13 +243,13 @@
     (let [db (-> (init-game-state)
                  (set-phase :untap))
           ;; Advance through all phases (combat skipped — no creatures)
-          after-upkeep (game/advance-phase db :player-1)
-          after-draw (game/advance-phase after-upkeep :player-1)
-          after-main1 (game/advance-phase after-draw :player-1)
+          after-upkeep (phases/advance-phase db :player-1)
+          after-draw (phases/advance-phase after-upkeep :player-1)
+          after-main1 (phases/advance-phase after-draw :player-1)
           ;; main1 -> main2 (combat skipped)
-          after-main2 (game/advance-phase after-main1 :player-1)
-          after-end (game/advance-phase after-main2 :player-1)
-          after-cleanup (game/advance-phase after-end :player-1)]
+          after-main2 (phases/advance-phase after-main1 :player-1)
+          after-end (phases/advance-phase after-main2 :player-1)
+          after-cleanup (phases/advance-phase after-end :player-1)]
       (is (= :upkeep (get-phase after-upkeep)))
       (is (= :draw (get-phase after-draw)))
       (is (= :main1 (get-phase after-main1)))
@@ -304,7 +305,7 @@
                  (set-phase :cleanup)
                  (set-turn 1)
                  (add-expiring-player-grant :player-1 1 :cleanup))
-          result (game/begin-cleanup db :player-1)]
+          result (cleanup/begin-cleanup db :player-1)]
       (is (nil? (:pending-selection result))
           "should not create pending selection")
       (is (empty? (grants/get-player-grants (:db result) :player-1))
@@ -318,7 +319,7 @@
                  (add-cards-to-hand :player-1 6)
                  (set-phase :cleanup)
                  (set-turn 1))
-          result (game/begin-cleanup db :player-1)]
+          result (cleanup/begin-cleanup db :player-1)]
       (is (nil? (:pending-selection result))
           "hand at exactly max should not trigger discard"))))
 
@@ -330,7 +331,7 @@
                  (add-cards-to-hand :player-1 8)
                  (set-phase :cleanup)
                  (set-turn 1))
-          result (game/begin-cleanup db :player-1)
+          result (cleanup/begin-cleanup db :player-1)
           selection (:pending-selection result)]
       (is (= 2 (:selection/select-count selection))
           "should discard 2 cards (9 - 7)")
@@ -352,7 +353,7 @@
                  (set-max-hand-size :player-1 5)
                  (set-phase :cleanup)
                  (set-turn 1))
-          result (game/begin-cleanup db :player-1)
+          result (cleanup/begin-cleanup db :player-1)
           selection (:pending-selection result)]
       (is (= 1 (:selection/select-count selection))
           "should discard 1 card (6 - 5)"))))
@@ -368,7 +369,7 @@
           hand (q/get-hand db :player-1)
           ;; Pick first 2 cards to discard
           to-discard (set (map :object/id (take 2 hand)))
-          result (game/complete-cleanup-discard db :player-1 to-discard)
+          result (cleanup/complete-cleanup-discard db :player-1 to-discard)
           new-hand (q/get-hand (:db result) :player-1)
           graveyard (q/get-objects-in-zone (:db result) :player-1 :graveyard)]
       (is (= 7 (count new-hand))
@@ -388,7 +389,7 @@
                  (add-expiring-player-grant :player-1 1 :cleanup))
           hand (q/get-hand db :player-1)
           to-discard (set (map :object/id (take 2 hand)))
-          result (game/complete-cleanup-discard db :player-1 to-discard)]
+          result (cleanup/complete-cleanup-discard db :player-1 to-discard)]
       (is (empty? (grants/get-player-grants (:db result) :player-1))
           "grants should be expired after cleanup discard"))))
 
@@ -401,7 +402,7 @@
                  (set-turn 1))
           hand (q/get-hand db :player-1)
           to-discard (set (map :object/id (take 2 hand)))
-          result (game/complete-cleanup-discard db :player-1 to-discard)]
+          result (cleanup/complete-cleanup-discard db :player-1 to-discard)]
       (is (= 7 (count (q/get-hand (:db result) :player-1)))
           "hand should have 7 cards after discarding 2")
       (is (= 2 (count (q/get-objects-in-zone (:db result) :player-1 :graveyard)))
@@ -414,11 +415,11 @@
                  (set-phase :cleanup)
                  (set-turn 1)
                  (add-cards-to-hand :player-1 8))
-          result (game/begin-cleanup db :player-1)]
+          result (cleanup/begin-cleanup db :player-1)]
       (is (= :discard (:selection/type (:pending-selection result)))
           "selection should be for cleanup discard")
       (let [cleanup-db (:db result)
-            after-advance (game/advance-phase cleanup-db :player-1)]
+            after-advance (phases/advance-phase cleanup-db :player-1)]
         (is (= :cleanup (get-phase after-advance))
             "should stay at cleanup, cannot advance past it")))))
 
@@ -443,7 +444,7 @@
                       (set-turn 1)
                       (add-expiring-player-grant :player-1 1 :cleanup))
           app-db (make-app-db game-db)
-          result (game/maybe-continue-cleanup app-db)]
+          result (cleanup/maybe-continue-cleanup app-db)]
       ;; begin-cleanup should have run and expired the grant
       (is (empty? (grants/get-player-grants (:game/db result) :player-1))
           "grants should be expired after cleanup re-run"))))
@@ -458,7 +459,7 @@
                       (add-expiring-player-grant :player-1 1 :cleanup)
                       (add-stack-item-to-stack))
           app-db (make-app-db game-db)
-          result (game/maybe-continue-cleanup app-db)]
+          result (cleanup/maybe-continue-cleanup app-db)]
       ;; Should NOT re-run begin-cleanup while stack has items
       (is (= 1 (count (grants/get-player-grants (:game/db result) :player-1)))
           "grants should NOT be expired - stack still has items"))))
@@ -471,7 +472,7 @@
                       (set-turn 1)
                       (add-expiring-player-grant :player-1 1 :cleanup))
           app-db (make-app-db game-db)
-          result (game/maybe-continue-cleanup app-db)]
+          result (cleanup/maybe-continue-cleanup app-db)]
       (is (= game-db (:game/db result))
           "game-db should be unchanged during non-cleanup phase")
       (is (= 1 (count (grants/get-player-grants (:game/db result) :player-1)))
@@ -486,7 +487,7 @@
                       (set-phase :cleanup)
                       (set-turn 1))
           app-db (make-app-db game-db)
-          result (game/maybe-continue-cleanup app-db)]
+          result (cleanup/maybe-continue-cleanup app-db)]
       ;; Should re-run begin-cleanup which creates selection for discard
       (is (= 2 (:selection/select-count (:game/pending-selection result)))
           "should need to discard 2 cards (9 - 7)"))))
@@ -572,7 +573,7 @@
           lib-before (count-zone db :player-2 :library)
           hand-before (count-zone db :player-2 :hand)
           ;; Advance to draw phase — triggers opponent draw
-          db' (game/advance-phase db :player-2)]
+          db' (phases/advance-phase db :player-2)]
       (is (= (dec lib-before) (count-zone db' :player-2 :library))
           "opponent library should shrink by 1")
       (is (= (inc hand-before) (count-zone db' :player-2 :hand))
@@ -594,7 +595,7 @@
                             [:db/add game-eid :game/phase :upkeep]
                             [:db/add game-eid :game/turn 2]])
           ;; Advance to draw — triggers draw from empty library
-          db' (-> (game/advance-phase db :player-2)
+          db' (-> (phases/advance-phase db :player-2)
                   (sba/check-and-execute-sbas))]
       (is (= :empty-library (get-loss-condition db'))
           "loss condition should be :empty-library")
@@ -617,7 +618,7 @@
           db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]
                             [:db/add game-eid :game/phase :upkeep]
                             [:db/add game-eid :game/turn 2]])
-          db-after-draw (game/advance-phase db :player-2)]
+          db-after-draw (phases/advance-phase db :player-2)]
       (is (= 0 (count-zone db-after-draw :player-2 :library))
           "opponent library should be empty after drawing last card")
       (is (nil? (get-loss-condition db-after-draw))
@@ -626,7 +627,7 @@
       (let [db-at-upkeep (d/db-with db-after-draw
                                     [[:db/add game-eid :game/phase :upkeep]
                                      [:db/add game-eid :game/turn 4]])
-            db-after-draw-2 (-> (game/advance-phase db-at-upkeep :player-2)
+            db-after-draw-2 (-> (phases/advance-phase db-at-upkeep :player-2)
                                 (sba/check-and-execute-sbas))]
         (is (= :empty-library (get-loss-condition db-after-draw-2))
             "loss condition should fire on failed draw")
@@ -639,7 +640,7 @@
     (let [db (-> (init-game-state)
                  (set-phase :cleanup)
                  (set-turn 1))
-          db' (game/start-turn db :player-1)]
+          db' (phases/start-turn db :player-1)]
       (is (= 2 (get-turn db'))
           "turn should increment normally")
       (is (= :untap (get-phase db'))

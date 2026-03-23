@@ -68,7 +68,7 @@
 
 
 (rf/reg-event-db
-  :fizzle.events.game/play-land
+  ::play-land
   (fn [db [_ object-id player-id]]
     (let [game-db (:game/db db)
           pid (or player-id (queries/get-human-player-id game-db))]
@@ -90,7 +90,7 @@
 
 
 (rf/reg-event-db
-  :fizzle.events.game/tap-permanent
+  ::tap-permanent
   (fn [db [_ object-id]]
     (let [game-db (:game/db db)]
       (assoc db :game/db (tap-permanent game-db object-id)))))

@@ -170,6 +170,6 @@
 
 
 (rf/reg-event-db
-  :fizzle.events.game/init-game
+  ::init-game
   (fn [_ [_ config]]
     (init-game-state config)))

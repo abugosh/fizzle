@@ -2,7 +2,7 @@
   "Custom modal components for genuinely unique selection types."
   (:require
     [clojure.string :as str]
-    [fizzle.events.game :as events]
+    [fizzle.events.casting :as casting-events]
     [fizzle.events.selection :as selection-events]
     [fizzle.subs.game :as subs]
     [fizzle.views.selection.common :as common]
@@ -192,7 +192,7 @@
   (let [pending @(rf/subscribe [::subs/pending-mode-selection])]
     (when pending
       [:div {:class common/overlay-class
-             :on-click #(rf/dispatch [::events/cancel-mode-selection])}
+             :on-click #(rf/dispatch [::casting-events/cancel-mode-selection])}
        [:div {:class (common/container-class {:max-width "400px"})
               :on-click #(.stopPropagation %)}
         [:h2 {:class "text-text m-0 mb-4 text-lg text-center"} "Choose casting mode"]
@@ -202,14 +202,14 @@
                      fadd (format-additional-costs (:mode/additional-costs mode))]]
            ^{:key (:mode/id mode)}
            [:button {:class mode-btn-class
-                     :on-click #(rf/dispatch [::events/select-casting-mode mode])}
+                     :on-click #(rf/dispatch [::casting-events/select-casting-mode mode])}
             [:div {:class "font-bold text-sm mb-1"}
              (case (:mode/id mode) :primary "Normal Cast" :flashback "Flashback"
                    (name (:mode/id mode)))]
             [:div {:class "text-[13px] text-text-muted"}
              fmana (when fadd [:span {:class "ml-2 text-cost-text"} (str "+ " fadd)])]])]
         [:button {:class dismiss-btn-class
-                  :on-click #(rf/dispatch [::events/cancel-mode-selection])}
+                  :on-click #(rf/dispatch [::casting-events/cancel-mode-selection])}
          "Cancel"]]])))
 
 

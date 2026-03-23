@@ -18,7 +18,7 @@
     [fizzle.engine.cards :as cards]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.priority :as priority]
-    [fizzle.events.game :as game]
+    [fizzle.events.priority-flow :as priority-flow]
     [fizzle.events.selection.costs :as sel-costs]
     [fizzle.history.core :as history]
     [fizzle.history.interceptor :as interceptor]
@@ -82,7 +82,7 @@
    Uses dispatch-sync which processes the event and any :fx dispatches synchronously."
   [app-db]
   (reset! rf-db/app-db app-db)
-  (rf/dispatch-sync [::game/cast-and-yield])
+  (rf/dispatch-sync [::priority-flow/cast-and-yield])
   @rf-db/app-db)
 
 
@@ -359,7 +359,7 @@
           _ (is (nil? (:game/pending-selection after-alloc))
                 "Selection should be cleared after mana allocation completes")
           ;; Step 4: drain the resolve dispatch that should have been queued
-          _ (rf/dispatch-sync [::game/cast-and-yield-resolve])
+          _ (rf/dispatch-sync [::priority-flow/cast-and-yield-resolve])
           after-yield @rf-db/app-db]
       ;; Test spell should be resolved (in graveyard)
       ;; The key point: the resolve after allocation should resolve the spell

@@ -287,34 +287,34 @@
    (describe-event (into [event-id] _args) pre-game-db game-db-after selection-type nil))
   ([[event-id & _args] pre-game-db game-db-after selection-type casting-spell-id]
    (case event-id
-     :fizzle.events.game/init-game
+     :fizzle.events.init/init-game
      "Game started"
 
-     :fizzle.events.game/cast-spell
+     :fizzle.events.casting/cast-spell
      (describe-cast-spell game-db-after casting-spell-id)
 
-     :fizzle.events.game/cast-and-yield
+     :fizzle.events.priority-flow/cast-and-yield
      (describe-cast-and-yield pre-game-db game-db-after casting-spell-id)
 
-     :fizzle.events.game/yield
+     :fizzle.events.priority-flow/yield
      (describe-yield pre-game-db game-db-after)
 
-     :fizzle.events.game/yield-all
+     :fizzle.events.priority-flow/yield-all
      (describe-yield-all pre-game-db game-db-after)
 
-     :fizzle.events.game/resolve-top
+     :fizzle.events.resolution/resolve-top
      (describe-resolve-top pre-game-db game-db-after)
 
-     :fizzle.events.game/advance-phase
+     :fizzle.events.phases/advance-phase
      (describe-advance-phase game-db-after)
 
-     :fizzle.events.game/start-turn
+     :fizzle.events.phases/start-turn
      (describe-start-turn game-db-after)
 
-     :fizzle.events.game/play-land
+     :fizzle.events.lands/play-land
      (describe-play-land (first _args) game-db-after)
 
-     :fizzle.events.game/cycle-card
+     :fizzle.events.cycling/cycle-card
      (if-let [card-name (get-card-name pre-game-db (first _args))]
        (str "Cycle " card-name)
        "Cycle")

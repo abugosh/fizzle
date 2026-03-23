@@ -1,6 +1,6 @@
 (ns fizzle.views.game-over
   (:require
-    [fizzle.events.game :as events]
+    [fizzle.events.ui :as ui-events]
     [fizzle.subs.game :as subs]
     [fizzle.views.modals :as modals]
     [re-frame.core :as rf]))
@@ -54,5 +54,5 @@
          [:button {:class (str "w-full py-3 border-none rounded-lg text-white text-base "
                                "cursor-pointer "
                                (if win? "bg-health-good" "bg-health-danger"))
-                   :on-click #(rf/dispatch [::events/dismiss-game-over])}
+                   :on-click #(rf/dispatch [::ui-events/dismiss-game-over])}
           "Continue Playing"]]))))

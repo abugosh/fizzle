@@ -19,7 +19,7 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -110,7 +110,7 @@
           db (mana/add-mana db :player-1 {:blue 1})
           [db petal-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-2)
           db-cast (cast-chain-of-vapor db cov-id petal-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           db-resolved (:db result)]
       ;; Bounce happens as first effect even though chain-bounce pauses resolution
       (is (= :hand (:object/zone (q/get-object db-resolved petal-id)))
@@ -126,7 +126,7 @@
           db (mana/add-mana db :player-1 {:blue 1})
           [db petal-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-1)
           db-cast (cast-chain-of-vapor db cov-id petal-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           db-resolved (:db result)]
       (is (= :hand (:object/zone (q/get-object db-resolved petal-id)))
           "Own permanent should be returned to hand"))))
@@ -292,7 +292,7 @@
           ;; Opponent has a land to sacrifice
           [db _land-id] (th/add-card-to-zone db :island :battlefield :player-2)
           db-cast (cast-chain-of-vapor db cov-id petal-id)
-          result (game/resolve-one-item db-cast)]
+          result (resolution/resolve-one-item db-cast)]
       ;; Should have a pending selection for chain choice
       (is (some? (:pending-selection result))
           "Should have pending chain-bounce selection")
@@ -334,7 +334,7 @@
           ;; Lotus Petal on opponent's battlefield, no lands for opponent
           [db petal-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-2)
           db-cast (cast-chain-of-vapor db cov-id petal-id)
-          result (game/resolve-one-item db-cast)]
+          result (resolution/resolve-one-item db-cast)]
       ;; Chain-bounce should have pending-selection but with auto-confirm
       ;; (no lands = empty valid-targets)
       (is (some? (:pending-selection result))

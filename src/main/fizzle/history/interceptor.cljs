@@ -10,14 +10,14 @@
   "Events that represent player priority actions and should create history entries.
    Mid-resolution choices (selections, targeting, mode picks) are excluded so that
    stepping back always lands on a state where the player can act."
-  #{:fizzle.events.game/init-game
-    :fizzle.events.game/cast-spell
-    :fizzle.events.game/cast-and-yield
-    :fizzle.events.game/cycle-card
-    :fizzle.events.game/yield
-    :fizzle.events.game/yield-all
-    :fizzle.events.game/start-turn
-    :fizzle.events.game/play-land
+  #{:fizzle.events.init/init-game
+    :fizzle.events.casting/cast-spell
+    :fizzle.events.priority-flow/cast-and-yield
+    :fizzle.events.cycling/cycle-card
+    :fizzle.events.priority-flow/yield
+    :fizzle.events.priority-flow/yield-all
+    :fizzle.events.phases/start-turn
+    :fizzle.events.lands/play-land
     :fizzle.events.abilities/activate-mana-ability
     :fizzle.events.abilities/activate-ability})
 
@@ -46,18 +46,18 @@
           args (rest event)]
       (case event-id
         ;; Cast with optional opts map
-        :fizzle.events.game/cast-spell
+        :fizzle.events.casting/cast-spell
         (let [opts (first args)]
           (or (:player-id opts) (queries/get-human-player-id game-db)))
 
         ;; Always human-initiated
-        (:fizzle.events.game/cast-and-yield
+        (:fizzle.events.priority-flow/cast-and-yield
           :fizzle.events.abilities/activate-ability)
         (queries/get-human-player-id game-db)
 
         ;; Explicit player-id in args: [_ object-id player-id]
-        (:fizzle.events.game/play-land
-          :fizzle.events.game/cycle-card)
+        (:fizzle.events.lands/play-land
+          :fizzle.events.cycling/cycle-card)
         (or (second args) (queries/get-human-player-id game-db))
 
         ;; Explicit player-id: [_ object-id color player-id]
@@ -65,8 +65,8 @@
         (or (nth args 2 nil) (queries/get-human-player-id game-db))
 
         ;; Priority holder is the actor
-        (:fizzle.events.game/yield
-          :fizzle.events.game/yield-all)
+        (:fizzle.events.priority-flow/yield
+          :fizzle.events.priority-flow/yield-all)
         (get-priority-holder-pid game-db)
 
         ;; Confirm selection: handled separately via pending-selection
@@ -145,9 +145,9 @@
                        ;; cast-spell and activate-ability create selections that chain
                        ;; to confirm-selection (which has its own priority entry).
                        selection-triggers-entry (and selection-created
-                                                     (#{:fizzle.events.game/yield
-                                                        :fizzle.events.game/yield-all
-                                                        :fizzle.events.game/cast-and-yield} event-id))
+                                                     (#{:fizzle.events.priority-flow/yield
+                                                        :fizzle.events.priority-flow/yield-all
+                                                        :fizzle.events.priority-flow/cast-and-yield} event-id))
                        casting-spell-id (get-in context [:coeffects :history/casting-spell-id])]
                    (if (and db-after game-db-after
                             (or game-db-changed selection-triggers-entry))

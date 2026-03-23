@@ -17,7 +17,7 @@
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
-    [fizzle.events.game :as game]
+    [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
@@ -89,7 +89,7 @@
           [db petal-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-2)
           life-before (q/get-life-total db :player-2)
           db-cast (th/cast-with-target db :player-1 crumble-id petal-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           db-resolved (:db result)]
       ;; Lotus Petal should be destroyed
       (is (= :graveyard (:object/zone (q/get-object db-resolved petal-id)))
@@ -249,7 +249,7 @@
           [db petal-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-1)
           life-before (q/get-life-total db :player-1)
           db-cast (th/cast-with-target db :player-1 crumble-id petal-id)
-          result (game/resolve-one-item db-cast)
+          result (resolution/resolve-one-item db-cast)
           db-resolved (:db result)]
       ;; Lotus Petal destroyed
       (is (= :graveyard (:object/zone (q/get-object db-resolved petal-id)))

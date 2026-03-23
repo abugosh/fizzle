@@ -131,7 +131,7 @@
 
 
 (rf/reg-event-db
-  :fizzle.events.game/restore-from-snapshot
+  ::restore-from-snapshot
   (fn [db [_ restored-app-db]]
     ;; Merge restored game state into app-db, preserving setup keys
     (merge db restored-app-db)))
