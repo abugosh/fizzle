@@ -11,6 +11,8 @@ model {
     views_ui -> events_selection 'dispatches selection interaction events'
     views_ui -> events_abilities 'dispatches ability activation events'
     subs -> db 'queries Datascript entities for derived state'
+    subs -> engine 'calls engine for derived state computation (ADR-003)'
+    views_ui -> engine 'calls engine for display utilities (ADR-003)'
     events_game -> engine 'calls engine functions for game rules'
     events_game -> db 'reads and writes Datascript game state'
     events_selection -> engine 'calls engine for effect processing and validation'
@@ -22,5 +24,8 @@ model {
     bots -> events_game 'dispatches same events as human players'
     bots -> engine 'queries game state for decision making'
     history -> events_game 'intercepts events for history tracking (orthogonal, transparent)'
+    sharing -> db 'reads schema for reconstruction, uses storage for persistence'
+    sharing -> engine 'uses card lookup, trigger registration, and turn state for restoration'
+    views_ui -> sharing 'dispatches save/load snapshot commands'
   }
 }

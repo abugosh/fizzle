@@ -1,0 +1,54 @@
+// Part of fizzle
+
+model {
+  extend fizzle {
+    sharing = component 'Snapshot Sharing' {
+      description 'State serialization and URL sharing — extracts game state into a compact binary format, encodes/decodes for URL transport, and restores snapshots into a fresh Datascript db. Orthogonal to core game loop.'
+      link ./sharing.md 'Documentation'
+      link ../../../src/main/fizzle/sharing/ 'Source (sharing)'
+      link ../../../src/main/fizzle/snapshot/ 'Source (snapshot)'
+      metadata {
+        layer 'infrastructure'
+        stability_state 'exploring'
+      }
+
+      share_extractor = component 'State Extractor' {
+        description 'Extracts relevant game state from Datascript db into a serializable snapshot data structure. Strips transient state, preserves grants and restrictions.'
+        metadata {
+          layer 'infrastructure'
+          stability_state 'exploring'
+        }
+      }
+
+      share_encoder = component 'Encoder / Decoder' {
+        description 'Binary encoding and decoding of snapshot data. Compact bit-level serialization using card index for integer-based card references. Includes URL-safe base64 transport.'
+        metadata {
+          layer 'infrastructure'
+          stability_state 'exploring'
+        }
+      }
+
+      share_restorer = component 'State Restorer' {
+        description 'Reconstructs a full Datascript db from a decoded snapshot. Rebuilds schema, trigger registrations, and turn-based state from the compact representation.'
+        metadata {
+          layer 'infrastructure'
+          stability_state 'exploring'
+        }
+      }
+
+      share_events = component 'Snapshot Events' {
+        description 're-frame event handlers for save/load snapshot operations. Coordinates extraction, encoding, decoding, and restoration flow.'
+        metadata {
+          layer 'orchestration'
+          stability_state 'exploring'
+        }
+      }
+
+      // Internal relationships
+      share_events -> share_extractor 'extracts state for encoding'
+      share_events -> share_encoder 'encodes/decodes snapshot data'
+      share_events -> share_restorer 'restores state from decoded data'
+      share_restorer -> share_encoder 'uses card index for card references'
+    }
+  }
+}
