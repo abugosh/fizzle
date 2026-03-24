@@ -16,6 +16,7 @@
    Each dispatch goes through the full event pipeline (history, validation)."
   (:require
     [fizzle.bots.protocol :as bot]
+    [fizzle.db.game-state :as game-state]
     [fizzle.db.queries :as queries]
     [fizzle.engine.priority :as priority]
     [fizzle.engine.rules :as rules]
@@ -32,7 +33,7 @@
       (let [player-id (some (fn [pid]
                               (when (= holder-eid (queries/get-player-eid game-db pid))
                                 pid))
-                            [:player-1 :player-2 :opponent])]
+                            [game-state/human-player-id game-state/opponent-player-id])]
         (boolean (and player-id (bot/get-bot-archetype game-db player-id))))
       false)))
 
@@ -77,7 +78,7 @@
         player-id (some (fn [pid]
                           (when (= holder-eid (queries/get-player-eid game-db pid))
                             pid))
-                        [:player-1 :player-2 :opponent])
+                        [game-state/human-player-id game-state/opponent-player-id])
         archetype (when player-id (bot/get-bot-archetype game-db player-id))]
     (if-not archetype
       {:action :pass}
@@ -208,7 +209,7 @@
             player-id (some (fn [pid]
                               (when (= holder-eid (queries/get-player-eid game-db pid))
                                 pid))
-                            [:player-1 :player-2 :opponent])
+                            [game-state/human-player-id game-state/opponent-player-id])
             archetype (when player-id (bot/get-bot-archetype game-db player-id))
             ;; Check phase action first (e.g., play a land)
             game-state (queries/get-game-state game-db)

@@ -10,6 +10,7 @@
    selection/effect functions directly."
   (:require
     [datascript.core :as d]
+    [fizzle.db.game-state :as game-state]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.cards :as cards]
@@ -23,11 +24,6 @@
     [fizzle.events.selection.targeting :as sel-targeting]))
 
 
-(def ^:private empty-mana-pool
-  {:white 0 :blue 0 :black 0
-   :red 0 :green 0 :colorless 0})
-
-
 (defn create-test-db
   "Create a game state with all card definitions loaded.
    No-arg version: all-zero mana pool, standard player.
@@ -36,25 +32,17 @@
    (create-test-db {}))
   ([opts]
    (let [conn (d/create-conn schema)
-         mana-pool (merge empty-mana-pool (:mana opts))
-         life (or (:life opts) 20)
-         storm-count (or (:storm-count opts) 0)
-         land-plays (or (:land-plays opts) 1)]
+         mana-pool (merge game-state/empty-mana-pool (:mana opts))
+         overrides (cond-> {:player/name "Player"
+                            :player/mana-pool mana-pool}
+                     (:life opts) (assoc :player/life (:life opts))
+                     (:storm-count opts) (assoc :player/storm-count (:storm-count opts))
+                     (:land-plays opts) (assoc :player/land-plays-left (:land-plays opts)))]
      (d/transact! conn cards/all-cards)
-     (d/transact! conn [{:player/id :player-1
-                         :player/name "Player"
-                         :player/life life
-                         :player/mana-pool mana-pool
-                         :player/storm-count storm-count
-                         :player/land-plays-left land-plays}])
-     (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
-       (d/transact! conn [{:game/id :game-1
-                           :game/turn 1
-                           :game/phase :main1
-                           :game/active-player player-eid
-                           :game/priority player-eid
-                           :game/human-player-id :player-1}])
-       (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid :player-1))
+     (d/transact! conn (game-state/create-player-tx game-state/human-player-id overrides))
+     (let [player-eid (q/get-player-eid @conn game-state/human-player-id)]
+       (d/transact! conn (game-state/create-game-entity-tx player-eid {}))
+       (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid game-state/human-player-id))
        (when-let [stops (:stops opts)]
          (d/transact! conn [[:db/add player-eid :player/stops stops]])))
      @conn)))
@@ -192,26 +180,20 @@
 
 
 (defn add-opponent
-  "Add :player-2 with standard opponent settings and turn-based triggers.
+  "Add opponent with standard opponent settings and turn-based triggers.
    Opts map supports: {:bot-archetype :goldfish :stops #{:main1}}
    Returns updated db."
   ([db]
    (add-opponent db {}))
   ([db opts]
    (let [conn (d/conn-from-db db)
-         base {:player/id :player-2
-               :player/name "Opponent"
-               :player/life 20
-               :player/mana-pool empty-mana-pool
-               :player/storm-count 0
-               :player/land-plays-left 1
-               :player/is-opponent true}
-         tx (cond-> base
-              (:bot-archetype opts) (assoc :player/bot-archetype (:bot-archetype opts))
-              (:stops opts) (assoc :player/stops (:stops opts)))]
-     (d/transact! conn [tx])
-     (let [opp-eid (q/get-player-eid @conn :player-2)]
-       (d/transact! conn (turn-based/create-turn-based-triggers-tx opp-eid :player-2)))
+         overrides (cond-> {:player/name "Opponent"
+                            :player/is-opponent true}
+                     (:bot-archetype opts) (assoc :player/bot-archetype (:bot-archetype opts))
+                     (:stops opts) (assoc :player/stops (:stops opts)))]
+     (d/transact! conn (game-state/create-player-tx game-state/opponent-player-id overrides))
+     (let [opp-eid (q/get-player-eid @conn game-state/opponent-player-id)]
+       (d/transact! conn (turn-based/create-turn-based-triggers-tx opp-eid game-state/opponent-player-id)))
      @conn)))
 
 

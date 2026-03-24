@@ -9,7 +9,12 @@
 (defmethod effects/execute-effect-impl :lose-life
   [db player-id effect _object-id]
   (let [amount (get effect :effect/amount 0)
-        target (get effect :effect/target player-id)]
+        explicit-target (:effect/target effect)
+        target (cond
+                 (nil? explicit-target) player-id
+                 (= explicit-target :opponent) (q/get-opponent-id db player-id)
+                 (= explicit-target :self) player-id
+                 :else explicit-target)]
     (if (<= amount 0)
       db
       (if-let [player-eid (q/get-player-eid db target)]
@@ -22,7 +27,12 @@
 (defmethod effects/execute-effect-impl :gain-life
   [db player-id effect _object-id]
   (let [amount (get effect :effect/amount 0)
-        target (get effect :effect/target player-id)]
+        explicit-target (:effect/target effect)
+        target (cond
+                 (nil? explicit-target) player-id
+                 (= explicit-target :opponent) (q/get-opponent-id db player-id)
+                 (= explicit-target :self) player-id
+                 :else explicit-target)]
     (if (<= amount 0)
       db
       (if-let [player-eid (q/get-player-eid db target)]

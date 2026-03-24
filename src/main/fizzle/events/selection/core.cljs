@@ -136,11 +136,12 @@
   "Resolve symbolic :effect/target to a concrete player-id.
    :self -> player-id, :opponent -> looked up, nil -> player-id."
   [db player-id effect]
-  (let [target (get effect :effect/target player-id)]
+  (let [explicit-target (:effect/target effect)]
     (cond
-      (= target :opponent) (queries/get-opponent-id db player-id)
-      (= target :self) player-id
-      :else target)))
+      (nil? explicit-target) player-id
+      (= explicit-target :opponent) (queries/get-opponent-id db player-id)
+      (= explicit-target :self) player-id
+      :else explicit-target)))
 
 
 (defmethod build-selection-for-effect :zone-pick

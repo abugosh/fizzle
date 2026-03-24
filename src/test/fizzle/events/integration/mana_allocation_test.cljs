@@ -158,7 +158,7 @@
   (let [db (th/create-test-db)
         conn (d/conn-from-db db)]
     ;; Opponent (needed for targeting tests)
-    (d/transact! conn [{:player/id :opponent
+    (d/transact! conn [{:player/id :player-2
                         :player/name "Opponent"
                         :player/life 20
                         :player/mana-pool {:white 0 :blue 0 :black 0

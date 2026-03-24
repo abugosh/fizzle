@@ -24,7 +24,7 @@
   "Add an opponent player to the game state."
   [db]
   (let [conn (d/conn-from-db db)]
-    (d/transact! conn [{:player/id :opponent
+    (d/transact! conn [{:player/id :player-2
                         :player/name "Opponent"
                         :player/life 20
                         :player/is-opponent true
@@ -105,7 +105,7 @@
                  (add-opponent))
           [db' source-id] (th/add-card-to-zone db :brain-freeze :hand :player-1)
           db-m (mana/add-mana db' :player-1 {:blue 1 :colorless 1})
-          db-cast (cast-brain-freeze-with-target db-m :player-1 source-id :opponent)
+          db-cast (cast-brain-freeze-with-target db-m :player-1 source-id :player-2)
           ;; Create copy with 3-arg (should inherit opponent target)
           db-with-copy (triggers/create-spell-copy db-cast source-id :player-1)
           stack-objects (q/get-objects-in-zone db-with-copy :player-1 :stack)
@@ -116,7 +116,7 @@
                         db-with-copy (:object/id copy))
           copy-si (stack/get-stack-item-by-object-ref db-with-copy copy-eid)]
       (is (some? copy) "Copy should exist")
-      (is (= {:player :opponent} (:stack-item/targets copy-si))
+      (is (= {:player :player-2} (:stack-item/targets copy-si))
           "Copy's stack-item should inherit targets from original"))))
 
 
@@ -150,11 +150,11 @@
       ;; valid-targets uses player-ids
       (is (= 2 (count (:selection/valid-targets selection)))
           "Should have 2 valid targets (opponent + self)")
-      (is (contains? (set (:selection/valid-targets selection)) :opponent))
+      (is (contains? (set (:selection/valid-targets selection)) :player-2))
       (is (contains? (set (:selection/valid-targets selection)) :player-1))
       ;; Default allocation: all to first target (opponent)
       (let [alloc (:selection/allocation selection)]
-        (is (= 3 (get alloc :opponent))
+        (is (= 3 (get alloc :player-2))
             "Default should allocate all copies to opponent")
         (is (= 0 (get alloc :player-1))
             "Default should allocate 0 to self")))))
@@ -225,8 +225,8 @@
                   :game/pending-selection
                   {:selection/type :storm-split
                    :selection/copy-count 3
-                   :selection/valid-targets [:opponent :player-1]
-                   :selection/allocation {:opponent 2 :player-1 0}
+                   :selection/valid-targets [:player-2 :player-1]
+                   :selection/allocation {:player-2 2 :player-1 0}
                    :selection/auto-confirm? false}}
           result (storm/adjust-storm-split-impl app-db :player-1 1)]
       (is (= 1 (get-in result [:game/pending-selection :selection/allocation :player-1]))
@@ -239,11 +239,11 @@
                   :game/pending-selection
                   {:selection/type :storm-split
                    :selection/copy-count 3
-                   :selection/valid-targets [:opponent :player-1]
-                   :selection/allocation {:opponent 3 :player-1 0}
+                   :selection/valid-targets [:player-2 :player-1]
+                   :selection/allocation {:player-2 3 :player-1 0}
                    :selection/auto-confirm? false}}
-          result (storm/adjust-storm-split-impl app-db :opponent -1)]
-      (is (= 2 (get-in result [:game/pending-selection :selection/allocation :opponent]))
+          result (storm/adjust-storm-split-impl app-db :player-2 -1)]
+      (is (= 2 (get-in result [:game/pending-selection :selection/allocation :player-2]))
           "Opponent allocation should decrement to 2"))))
 
 
@@ -253,8 +253,8 @@
                   :game/pending-selection
                   {:selection/type :storm-split
                    :selection/copy-count 3
-                   :selection/valid-targets [:opponent :player-1]
-                   :selection/allocation {:opponent 3 :player-1 0}
+                   :selection/valid-targets [:player-2 :player-1]
+                   :selection/allocation {:player-2 3 :player-1 0}
                    :selection/auto-confirm? false}}
           result (storm/adjust-storm-split-impl app-db :player-1 -1)]
       (is (= 0 (get-in result [:game/pending-selection :selection/allocation :player-1]))
@@ -267,11 +267,11 @@
                   :game/pending-selection
                   {:selection/type :storm-split
                    :selection/copy-count 3
-                   :selection/valid-targets [:opponent :player-1]
-                   :selection/allocation {:opponent 3 :player-1 0}
+                   :selection/valid-targets [:player-2 :player-1]
+                   :selection/allocation {:player-2 3 :player-1 0}
                    :selection/auto-confirm? false}}
-          result (storm/adjust-storm-split-impl app-db :opponent 1)]
-      (is (= 3 (get-in result [:game/pending-selection :selection/allocation :opponent]))
+          result (storm/adjust-storm-split-impl app-db :player-2 1)]
+      (is (= 3 (get-in result [:game/pending-selection :selection/allocation :player-2]))
           "Opponent allocation should remain 3 (total would exceed copy-count)"))))
 
 
@@ -295,8 +295,8 @@
                                   (q/get-all-stack-items db-with-storm)))
           selection {:selection/type :storm-split
                      :selection/copy-count 3
-                     :selection/valid-targets [:opponent :player-1]
-                     :selection/allocation {:opponent 2 :player-1 1}
+                     :selection/valid-targets [:player-2 :player-1]
+                     :selection/allocation {:player-2 2 :player-1 1}
                      :selection/source-object-id source-id
                      :selection/controller-id :player-1
                      :selection/stack-item-eid (:db/id storm-si)
@@ -326,8 +326,8 @@
                                   (q/get-all-stack-items db-with-storm)))
           selection {:selection/type :storm-split
                      :selection/copy-count 3
-                     :selection/valid-targets [:opponent :player-1]
-                     :selection/allocation {:opponent 2 :player-1 1}
+                     :selection/valid-targets [:player-2 :player-1]
+                     :selection/allocation {:player-2 2 :player-1 1}
                      :selection/source-object-id source-id
                      :selection/controller-id :player-1
                      :selection/stack-item-eid (:db/id storm-si)
@@ -337,7 +337,7 @@
           db-after (:db result)
           all-items (q/get-all-stack-items db-after)
           copy-items (filter #(= :storm-copy (:stack-item/type %)) all-items)
-          opp-targeted (filter #(= {:player :opponent} (:stack-item/targets %)) copy-items)
+          opp-targeted (filter #(= {:player :player-2} (:stack-item/targets %)) copy-items)
           self-targeted (filter #(= {:player :player-1} (:stack-item/targets %)) copy-items)]
       (is (= 3 (count copy-items))
           "Should have 3 copy stack-items")
@@ -362,8 +362,8 @@
                                   (q/get-all-stack-items db-with-storm)))
           selection {:selection/type :storm-split
                      :selection/copy-count 3
-                     :selection/valid-targets [:opponent :player-1]
-                     :selection/allocation {:opponent 3 :player-1 0}
+                     :selection/valid-targets [:player-2 :player-1]
+                     :selection/allocation {:player-2 3 :player-1 0}
                      :selection/source-object-id source-id
                      :selection/controller-id :player-1
                      :selection/stack-item-eid (:db/id storm-si)
@@ -392,8 +392,8 @@
                                   (q/get-all-stack-items db-with-storm)))
           selection {:selection/type :storm-split
                      :selection/copy-count 3
-                     :selection/valid-targets [:opponent :player-1]
-                     :selection/allocation {:opponent 1 :player-1 0}
+                     :selection/valid-targets [:player-2 :player-1]
+                     :selection/allocation {:player-2 1 :player-1 0}
                      :selection/source-object-id source-id
                      :selection/controller-id :player-1
                      :selection/stack-item-eid (:db/id storm-si)
@@ -423,7 +423,7 @@
           ;; Cast Brain Freeze as 2nd spell (storm count=2, copies=1)
           [db2 bf-id] (th/add-card-to-zone db1r :brain-freeze :hand :player-1)
           db2m (mana/add-mana db2 :player-1 {:blue 1 :colorless 1})
-          db2c (cast-brain-freeze-with-target db2m :player-1 bf-id :opponent)
+          db2c (cast-brain-freeze-with-target db2m :player-1 bf-id :player-2)
           ;; Storm SI is on top, source spell has :card/targeting
           result (resolution/resolve-one-item db2c)]
       (is (some? (:pending-selection result))

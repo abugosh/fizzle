@@ -29,13 +29,14 @@
                                            :red 0 :green 0 :colorless 0}
                         :player/storm-count 3
                         :player/land-plays-left 1}
-                       {:player/id :opponent
+                       {:player/id :player-2
                         :player/name "Opponent"
                         :player/life 15
                         :player/mana-pool {:white 0 :blue 0 :black 0
                                            :red 0 :green 0 :colorless 0}
                         :player/storm-count 0
-                        :player/land-plays-left 0}])
+                        :player/land-plays-left 0
+                        :player/is-opponent true}])
     (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
       (d/transact! conn [{:game/id :game-1
                           :game/turn 5
@@ -48,7 +49,7 @@
 
 (defn- set-winner
   "Set :game/winner and :game/loss-condition on a game-db.
-   losing-player-id is :player-1 or :opponent."
+   losing-player-id is :player-1 or :player-2."
   [game-db condition losing-player-id]
   (let [game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db)
         winner-eid (d/q '[:find ?e .
@@ -86,7 +87,7 @@
 
 (deftest test-game-over-true-when-winner-set
   (testing "::game-over? returns true when winner exists"
-    (let [game-db (set-winner (make-game-db) :life-zero :opponent)
+    (let [game-db (set-winner (make-game-db) :life-zero :player-2)
           result (sub-value {:game/db game-db} [::subs/game-over?])]
       (is (true? result)))))
 
@@ -102,8 +103,8 @@
 (deftest test-game-result-player-wins
   (testing "::game-result returns :win outcome when player-1 wins"
     (let [game-db (-> (make-game-db)
-                      (add-library-cards :opponent 10)
-                      (set-winner :life-zero :opponent))
+                      (add-library-cards :player-2 10)
+                      (set-winner :life-zero :player-2))
           result (sub-value {:game/db game-db} [::subs/game-result])]
       (is (= :win (:outcome result)))
       (is (= :life-zero (:condition result)))
@@ -125,8 +126,8 @@
 (deftest test-game-result-stats-values
   (testing "::game-result returns correct stats values"
     (let [game-db (-> (make-game-db)
-                      (add-library-cards :opponent 7)
-                      (set-winner :empty-library :opponent))
+                      (add-library-cards :player-2 7)
+                      (set-winner :empty-library :player-2))
           result (sub-value {:game/db game-db} [::subs/game-result])]
       (is (= 5 (:turn result)) "turn number from game state")
       (is (= 3 (:storm-count result)) "storm count from player-1")
@@ -145,7 +146,7 @@
 
 (deftest test-show-modal-true-when-game-over-not-dismissed
   (testing "::show-game-over-modal? returns true when game over and not dismissed"
-    (let [game-db (set-winner (make-game-db) :life-zero :opponent)
+    (let [game-db (set-winner (make-game-db) :life-zero :player-2)
           result (sub-value {:game/db game-db
                              :active-screen :game}
                             [::subs/show-game-over-modal?])]
@@ -154,7 +155,7 @@
 
 (deftest test-show-modal-false-after-dismiss
   (testing "::show-game-over-modal? returns false after dismiss"
-    (let [game-db (set-winner (make-game-db) :life-zero :opponent)
+    (let [game-db (set-winner (make-game-db) :life-zero :player-2)
           result (sub-value {:game/db game-db
                              :active-screen :game
                              :game/game-over-dismissed true}
@@ -164,7 +165,7 @@
 
 (deftest test-show-modal-false-on-non-game-screen
   (testing "::show-game-over-modal? returns false on setup screen"
-    (let [game-db (set-winner (make-game-db) :life-zero :opponent)
+    (let [game-db (set-winner (make-game-db) :life-zero :player-2)
           result (sub-value {:game/db game-db
                              :active-screen :setup}
                             [::subs/show-game-over-modal?])]
@@ -241,9 +242,9 @@
 (deftest test-opponent-zone-counts-with-cards
   (testing "opponent-zone-counts returns correct counts for opponent"
     (let [game-db (-> (make-game-db)
-                      (add-zone-cards :opponent :graveyard 3)
-                      (add-zone-cards :opponent :library 50)
-                      (add-zone-cards :opponent :exile 1))
+                      (add-zone-cards :player-2 :graveyard 3)
+                      (add-zone-cards :player-2 :library 50)
+                      (add-zone-cards :player-2 :exile 1))
           result (sub-value {:game/db game-db} [::subs/opponent-zone-counts])]
       (is (= 3 (:graveyard result)))
       (is (= 50 (:library result)))
@@ -260,7 +261,7 @@
   (testing "player and opponent counts don't cross-contaminate"
     (let [game-db (-> (make-game-db)
                       (add-zone-cards :player-1 :graveyard 10)
-                      (add-zone-cards :opponent :graveyard 3))
+                      (add-zone-cards :player-2 :graveyard 3))
           player (sub-value {:game/db game-db} [::subs/player-zone-counts])
           opp (sub-value {:game/db game-db} [::subs/opponent-zone-counts])]
       (is (= 10 (:graveyard player)))
@@ -449,9 +450,9 @@
 (deftest test-opponent-battlefield-three-tier-grouping
   (testing "opponent-battlefield separates creatures, other, and lands for opponent"
     (let [game-db (-> (make-game-db)
-                      (add-battlefield-permanent :opponent "Tarmogoyf" 2 #{:creature})
-                      (add-battlefield-permanent :opponent "Chalice of the Void" 0 #{:artifact})
-                      (add-battlefield-permanent :opponent "Island" 0 #{:land}))
+                      (add-battlefield-permanent :player-2 "Tarmogoyf" 2 #{:creature})
+                      (add-battlefield-permanent :player-2 "Chalice of the Void" 0 #{:artifact})
+                      (add-battlefield-permanent :player-2 "Island" 0 #{:land}))
           result (sub-value {:game/db game-db} [::subs/opponent-battlefield])]
       (is (= 1 (count (:creatures result))))
       (is (= 1 (count (:other result))))
@@ -465,7 +466,7 @@
   (testing "player and opponent battlefields don't cross-contaminate"
     (let [game-db (-> (make-game-db)
                       (add-battlefield-permanent :player-1 "Swamp" 0 #{:land})
-                      (add-battlefield-permanent :opponent "Island" 0 #{:land}))
+                      (add-battlefield-permanent :player-2 "Island" 0 #{:land}))
           player (sub-value {:game/db game-db} [::subs/battlefield])
           opp (sub-value {:game/db game-db} [::subs/opponent-battlefield])]
       (is (= 1 (count (:lands player))))
@@ -655,7 +656,7 @@
   (testing "compute-creature-display returns blocking true when :object/blocking ref is set"
     (let [game-db (make-game-db)
           ;; Create the attacker object to use as the blocking ref
-          [game-db attacker-id] (add-battlefield-creature game-db :opponent "Attacker" 3 3)
+          [game-db attacker-id] (add-battlefield-creature game-db :player-2 "Attacker" 3 3)
           attacker-eid (q/get-object-eid game-db attacker-id)
           [game-db blocker-id] (add-battlefield-creature game-db :player-1 "Blocker" 2 2)
           blocker-eid (q/get-object-eid game-db blocker-id)
@@ -706,7 +707,7 @@
 
 (deftest test-blocker-attacker-display-returns-attacker-data
   (testing "blocker-attacker-display returns attacker's display data when assign-blockers active"
-    (let [[game-db attacker-id] (add-battlefield-creature (make-game-db) :opponent "Grizzly Bears" 2 2)
+    (let [[game-db attacker-id] (add-battlefield-creature (make-game-db) :player-2 "Grizzly Bears" 2 2)
           selection {:selection/type :assign-blockers
                      :selection/player-id :player-1
                      :selection/current-attacker attacker-id

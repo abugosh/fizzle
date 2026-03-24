@@ -1,6 +1,7 @@
 (ns fizzle.subs.game
   (:require
     [datascript.core :as d]
+    [fizzle.db.game-state :as game-state]
     [fizzle.db.queries :as queries]
     [fizzle.engine.creatures :as creatures]
     [fizzle.engine.mana :as mana]
@@ -204,8 +205,8 @@
              :turn (:game/turn game-state)
              :condition (:game/loss-condition game-state)
              :storm-count (queries/get-storm-count game-db human-pid)
-             :opponent-life (queries/get-life-total game-db :opponent)
-             :opponent-library-size (count (queries/get-objects-in-zone game-db :opponent :library))}))))))
+             :opponent-life (queries/get-life-total game-db game-state/opponent-player-id)
+             :opponent-library-size (count (queries/get-objects-in-zone game-db game-state/opponent-player-id :library))}))))))
 
 
 (rf/reg-sub
@@ -238,7 +239,7 @@
   ::opponent-life
   :<- [::game-db]
   (fn [game-db _]
-    (when game-db (queries/get-life-total game-db :opponent))))
+    (when game-db (queries/get-life-total game-db game-state/opponent-player-id))))
 
 
 (defn compute-creature-display
@@ -296,7 +297,7 @@
   :<- [::game-db]
   (fn [game-db _]
     (when game-db
-      (let [all (queries/get-objects-in-zone game-db :opponent :battlefield)
+      (let [all (queries/get-objects-in-zone game-db game-state/opponent-player-id :battlefield)
             {:keys [creatures other lands]} (sorting/group-by-type all)]
         {:creatures (mapv #(enrich-creature game-db %) (sorting/sort-cards creatures))
          :other (sorting/sort-cards other)
@@ -389,9 +390,9 @@
   :<- [::game-db]
   (fn [game-db _]
     (when game-db
-      (let [gy-count (count (queries/get-objects-in-zone game-db :opponent :graveyard))
-            lib-count (count (queries/get-objects-in-zone game-db :opponent :library))
-            exile-count (count (queries/get-objects-in-zone game-db :opponent :exile))]
+      (let [gy-count (count (queries/get-objects-in-zone game-db game-state/opponent-player-id :graveyard))
+            lib-count (count (queries/get-objects-in-zone game-db game-state/opponent-player-id :library))
+            exile-count (count (queries/get-objects-in-zone game-db game-state/opponent-player-id :exile))]
         {:graveyard gy-count
          :library lib-count
          :exile exile-count}))))

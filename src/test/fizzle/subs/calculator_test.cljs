@@ -28,13 +28,14 @@
                                            :red 0 :green 0 :colorless 0}
                         :player/storm-count 0
                         :player/land-plays-left 1}
-                       {:player/id :opponent
+                       {:player/id :player-2
                         :player/name "Opponent"
                         :player/life 20
                         :player/mana-pool {:white 0 :blue 0 :black 0
                                            :red 0 :green 0 :colorless 0}
                         :player/storm-count 0
-                        :player/land-plays-left 0}])
+                        :player/land-plays-left 0
+                        :player/is-opponent true}])
     (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
       (d/transact! conn [{:game/id :game-1
                           :game/turn 1

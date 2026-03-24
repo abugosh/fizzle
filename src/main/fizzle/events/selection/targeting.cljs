@@ -10,6 +10,7 @@
    - core/build-selection-for-effect for :player-target"
   (:require
     [datascript.core :as d]
+    [fizzle.db.game-state :as game-state]
     [fizzle.db.queries :as queries]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.rules :as rules]
@@ -31,7 +32,7 @@
    :selection/player-id player-id
    :selection/selected #{}
    :selection/select-count 1
-   :selection/valid-targets #{:player-1 :opponent}
+   :selection/valid-targets #{game-state/human-player-id game-state/opponent-player-id}
    :selection/spell-id object-id
    :selection/target-effect target-effect  ; The effect needing a target
    :selection/remaining-effects effects-after
