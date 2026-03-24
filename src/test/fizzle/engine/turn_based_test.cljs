@@ -278,12 +278,12 @@
                                 :player/name "Player"
                                 :player/life 20
                                 :player/mana-pool empty-mana-pool}
-                               {:player/id :opponent
+                               {:player/id :player-2
                                 :player/name "Opponent"
                                 :player/life 20
                                 :player/mana-pool empty-mana-pool}])
           p1-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)
-          opp-eid (d/q '[:find ?e . :where [?e :player/id :opponent]] @conn)
+          opp-eid (d/q '[:find ?e . :where [?e :player/id :player-2]] @conn)
           card-eid (d/q '[:find ?e . :where [?e :card/id :dark-ritual]] @conn)
           _ (d/transact! conn [{:game/id :game-1
                                 :game/turn 1
@@ -308,13 +308,13 @@
                                 :object/tapped true}])
           db @conn
           p1-tapped-before (get-tapped-permanents db :player-1)
-          opp-tapped-before (get-tapped-permanents db :opponent)
+          opp-tapped-before (get-tapped-permanents db :player-2)
           _ (is (= 1 (count p1-tapped-before)))
           _ (is (= 1 (count opp-tapped-before)))
           event (game-events/phase-entered-event :untap 1 :player-1)
           db' (dispatch/dispatch-event db event)
           p1-tapped-after (get-tapped-permanents db' :player-1)
-          opp-tapped-after (get-tapped-permanents db' :opponent)]
+          opp-tapped-after (get-tapped-permanents db' :player-2)]
       (is (= 0 (count p1-tapped-after))
           "Player 1's permanents should be untapped")
       (is (= 1 (count opp-tapped-after))

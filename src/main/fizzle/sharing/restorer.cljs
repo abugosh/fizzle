@@ -11,6 +11,7 @@
    Turn-based triggers are recreated for both players."
   (:require
     [datascript.core :as d]
+    [fizzle.db.game-state :as game-state]
     [fizzle.db.schema :refer [schema]]
     [fizzle.db.storage :as storage]
     [fizzle.engine.cards :as cards]
@@ -39,19 +40,17 @@
 (defn- player-tx
   "Build transaction data for restoring one player from a portable player map."
   [player-id player-map is-opponent bot-archetype]
-  (let [base {:player/id              player-id
-              :player/name            (if is-opponent "Opponent" "Player")
-              :player/life            (or (:player/life player-map) 20)
-              :player/mana-pool       (or (:player/mana-pool player-map)
-                                          {:white 0 :blue 0 :black 0
-                                           :red 0 :green 0 :colorless 0})
-              :player/storm-count     (or (:player/storm-count player-map) 0)
-              :player/land-plays-left (or (:player/land-plays-left player-map) 1)
-              :player/max-hand-size   (or (:player/max-hand-size player-map) 7)
-              :player/grants          (or (:player/grants player-map) [])}]
-    [(cond-> base
-       is-opponent     (assoc :player/is-opponent true)
-       bot-archetype   (assoc :player/bot-archetype bot-archetype))]))
+  (let [overrides (cond-> {:player/name            (if is-opponent "Opponent" "Player")
+                           :player/life            (or (:player/life player-map) 20)
+                           :player/mana-pool       (or (:player/mana-pool player-map)
+                                                       game-state/empty-mana-pool)
+                           :player/storm-count     (or (:player/storm-count player-map) 0)
+                           :player/land-plays-left (or (:player/land-plays-left player-map) 1)
+                           :player/max-hand-size   (or (:player/max-hand-size player-map) 7)
+                           :player/grants          (or (:player/grants player-map) [])}
+                    is-opponent   (assoc :player/is-opponent true)
+                    bot-archetype (assoc :player/bot-archetype bot-archetype))]
+    (game-state/create-player-tx player-id overrides)))
 
 
 ;; ---------------------------------------------------------------------------
@@ -197,8 +196,8 @@
         (d/transact! conn (player-tx player-id player-map is-opp bot-archetype))))
     ;; Add player stops from localStorage (same as init.cljs)
     (let [db       @conn
-          p1-eid   (get-player-eid db :player-1)
-          p2-eid   (get-player-eid db :player-2)]
+          p1-eid   (get-player-eid db game-state/human-player-id)
+          p2-eid   (get-player-eid db game-state/opponent-player-id)]
       (when p1-eid
         (d/transact! conn [[:db/add p1-eid :player/stops (:player stops)]]))
       (when p2-eid

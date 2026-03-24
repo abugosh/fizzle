@@ -8,18 +8,9 @@
    - Game state set up"
   (:require
     [datascript.core :as d]
+    [fizzle.db.game-state :as game-state]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.cards :as cards]))
-
-
-(def empty-mana-pool
-  "A mana pool with zero of each color."
-  {:white 0
-   :blue 0
-   :black 0
-   :red 0
-   :green 0
-   :colorless 0})
 
 
 (defn init-game-state
@@ -39,12 +30,8 @@
     (d/transact! conn [(cards/card-by-id :dark-ritual)])
 
     ;; 2. Transact player
-    (d/transact! conn [{:player/id :player-1
-                        :player/name "Player"
-                        :player/life 20
-                        :player/mana-pool empty-mana-pool
-                        :player/storm-count 0
-                        :player/land-plays-left 1}])
+    (d/transact! conn (game-state/create-player-tx game-state/human-player-id
+                                                   {:player/name "Player"}))
 
     ;; 3. Get entity IDs for references
     (let [player-eid (d/q '[:find ?e .

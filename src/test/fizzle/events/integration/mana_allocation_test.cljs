@@ -356,7 +356,7 @@
                                                     :target/type :player
                                                     :target/options [:self :opponent :any-player]
                                                     :target/required true}
-                     :selection/valid-targets #{:player-1 :opponent}
+                     :selection/valid-targets #{:player-1 :player-2}
                      :selection/selected #{:player-1}
                      :selection/select-count 1}
           result (core/execute-confirmed-selection db selection)
@@ -393,7 +393,7 @@
                                                     :target/type :player
                                                     :target/options [:self :opponent :any-player]
                                                     :target/required true}
-                     :selection/valid-targets #{:player-1 :opponent}
+                     :selection/valid-targets #{:player-1 :player-2}
                      :selection/selected #{:player-1}
                      :selection/select-count 1}
           result (core/execute-confirmed-selection db selection)]
@@ -506,7 +506,7 @@
                                                               :target/type :player
                                                               :target/options [:self :opponent :any-player]
                                                               :target/required true}
-                               :selection/valid-targets #{:player-1 :opponent}
+                               :selection/valid-targets #{:player-1 :player-2}
                                :selection/selected #{:player-1}
                                :selection/select-count 1}
           result (core/execute-confirmed-selection db targeting-selection)]

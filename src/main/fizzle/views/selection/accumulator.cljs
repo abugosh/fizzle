@@ -85,7 +85,6 @@
   [target-id]
   (case target-id
     :player-2 "Opponent"
-    :opponent "Opponent"
     :player-1 "You"
     (name target-id)))
 

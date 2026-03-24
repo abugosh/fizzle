@@ -115,14 +115,14 @@
   (testing "returns opponent player-id when opponent exists"
     (let [db (init-game-state)
           conn (d/conn-from-db db)]
-      (d/transact! conn [{:player/id :opponent
+      (d/transact! conn [{:player/id :player-2
                           :player/name "Opponent"
                           :player/life 20
                           :player/is-opponent true
                           :player/mana-pool {:white 0 :blue 0 :black 0
                                              :red 0 :green 0 :colorless 0}
                           :player/storm-count 0}])
-      (is (= :opponent (q/get-opponent-id @conn :player-1))))))
+      (is (= :player-2 (q/get-opponent-id @conn :player-1))))))
 
 
 (deftest get-opponent-id-no-opponent-test
