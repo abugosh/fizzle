@@ -84,6 +84,7 @@
   "Human-readable label for a storm-split target player-id."
   [target-id]
   (case target-id
+    :player-2 "Opponent"
     :opponent "Opponent"
     :player-1 "You"
     (name target-id)))

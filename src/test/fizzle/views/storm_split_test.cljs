@@ -14,6 +14,6 @@
     (is (= "You" (modals/storm-split-target-label :player-1)))))
 
 
-(deftest storm-split-target-label-unknown
-  (testing "unknown player-id returns stringified name"
-    (is (= "player-2" (modals/storm-split-target-label :player-2)))))
+(deftest storm-split-target-label-player-2
+  (testing "player-2 target returns 'Opponent'"
+    (is (= "Opponent" (modals/storm-split-target-label :player-2)))))

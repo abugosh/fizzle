@@ -2,6 +2,7 @@
   "Custom modal components for genuinely unique selection types."
   (:require
     [clojure.string :as str]
+    [fizzle.db.game-state :as game-state]
     [fizzle.events.casting :as casting-events]
     [fizzle.events.selection :as selection-events]
     [fizzle.subs.game :as subs]
@@ -78,7 +79,7 @@
         show? (fn [id] (or (nil? vt) (contains? vt id)))]
     [common/modal-wrapper {:title "Choose target player" :max-width "400px" :text-align "center"}
      [:div {:class "flex justify-center mb-5"}
-      (for [[id label] [[:player-1 "You"] [:opponent "Opponent"]]
+      (for [[id label] [[game-state/human-player-id "You"] [game-state/opponent-player-id "Opponent"]]
             :when (show? id)]
         ^{:key id}
         [:button {:class (str "py-4 px-8 m-2 rounded-lg cursor-pointer text-text text-base "
