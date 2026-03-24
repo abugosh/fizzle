@@ -5,7 +5,9 @@
     [cljs.test :refer-macros [deftest is testing]]
     [datascript.core :as d]
     [fizzle.bots.interceptor :as bot-interceptor]
+    [fizzle.bots.protocol :as bot]
     [fizzle.db.queries :as q]
+    [fizzle.events.init :as init]
     [fizzle.events.phases :as phases]
     [fizzle.events.priority-flow :as priority-flow]
     [fizzle.history.core :as history]
@@ -224,6 +226,73 @@
       ;; Should have multiple new history entries (one per yield dispatch through opponent's turn)
       (is (> entries-after entries-before)
           "Should have new history entries from opponent turn"))))
+
+
+;; === Opponent draws during their turn ===
+
+(deftest opponent-draws-card-during-turn
+  (testing "opponent draws a card when their turn reaches the draw phase"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          ;; Give opponent library cards so draw has something to draw
+          [game-db' _] (h/add-cards-to-library game-db [:dark-ritual :dark-ritual :dark-ritual] :player-2)
+          app-db (assoc app-db :game/db game-db')
+          opp-library-before (count (q/get-top-n-library (:game/db app-db) :player-2 100))
+          result (dispatch-yield-all app-db)
+          result-db (:game/db result)
+          opp-library-after (count (q/get-top-n-library result-db :player-2 100))]
+      ;; After a full cycle (player T1 -> opponent T2 -> player T3),
+      ;; opponent drew 1 card on draw step. May have also played a land (-1).
+      ;; Library is the reliable indicator since cards only leave library via draw.
+      (is (= (dec opp-library-before) opp-library-after)
+          (str "Opponent library should decrease by 1 (drew a card). "
+               "Before: " opp-library-before " After: " opp-library-after)))))
+
+
+(deftest advance-phase-fires-draw-for-opponent
+  (testing "advance-phase through :draw fires draw-step trigger for :opponent"
+    (let [app-db (init/init-game-state {:main-deck [{:card/id :island :count 60}]
+                                        :bot-deck (bot/bot-deck :goldfish)})
+          game-db (:game/db app-db)
+          ;; Set active player to opponent at :upkeep (one step before :draw)
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db)
+          opp-eid (q/get-player-eid game-db :opponent)
+          game-db (d/db-with game-db [[:db/add game-eid :game/active-player opp-eid]
+                                      [:db/add game-eid :game/phase :upkeep]
+                                      [:db/add game-eid :game/turn 2]])
+          opp-hand-before (count (q/get-hand game-db :opponent))
+          opp-library-before (count (q/get-top-n-library game-db :opponent 100))
+          ;; Advance one phase: upkeep -> draw
+          result-db (phases/advance-phase game-db :opponent)
+          opp-hand-after (count (q/get-hand result-db :opponent))
+          opp-library-after (count (q/get-top-n-library result-db :opponent 100))]
+      (is (= :draw (:game/phase (q/get-game-state result-db)))
+          "Phase should be :draw")
+      (is (= (inc opp-hand-before) opp-hand-after)
+          (str "Opponent should draw 1 card. Hand: " opp-hand-before " -> " opp-hand-after))
+      (is (= (dec opp-library-before) opp-library-after)
+          (str "Library should decrease by 1. Library: " opp-library-before " -> " opp-library-after)))))
+
+
+(deftest opponent-draws-card-production-init
+  (testing "opponent draws using production init-game-state (player-id :opponent)"
+    (let [;; Use production init which creates :opponent not :player-2
+          app-db (init/init-game-state {:main-deck [{:card/id :island :count 60}]
+                                        :bot-deck (bot/bot-deck :goldfish)})
+          ;; Accept the opening hand to get into gameplay
+          app-db (assoc app-db :active-screen :game)
+          app-db (merge app-db (history/init-history))
+          game-db (:game/db app-db)
+          opp-library-before (count (q/get-top-n-library game-db :opponent 100))
+          result (dispatch-yield-all app-db)
+          result-db (:game/db result)
+          opp-library-after (count (q/get-top-n-library result-db :opponent 100))]
+      (is (= 3 (:game/turn (q/get-game-state result-db)))
+          "Should reach turn 3 after full cycle")
+      ;; Library is the reliable draw indicator (bot may play a land from hand)
+      (is (= (dec opp-library-before) opp-library-after)
+          (str "Opponent library should decrease by 1 (drew a card). "
+               "Before: " opp-library-before " after: " opp-library-after)))))
 
 
 ;; === Bot auto-advance: each phase is separate yield ===

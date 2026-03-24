@@ -10,10 +10,11 @@
 
 (defmethod effects/execute-effect-impl :mill
   [db player-id effect _object-id]
-  (let [target (get effect :effect/target player-id)
-        target-player (if (= target :opponent)
-                        (q/get-opponent-id db player-id)
-                        target)
+  (let [explicit-target (:effect/target effect)
+        target-player (cond
+                        (nil? explicit-target) player-id
+                        (= explicit-target :opponent) (q/get-opponent-id db player-id)
+                        :else explicit-target)
         amount (:effect/amount effect)
         cards-to-mill (or (q/get-top-n-library db target-player amount) [])]
     (reduce (fn [db' oid]
@@ -25,13 +26,14 @@
 (defmethod effects/execute-effect-impl :draw
   [db player-id effect object-id]
   (let [amount (effects/resolve-dynamic-value db player-id (get effect :effect/amount 1) object-id)
-        target (get effect :effect/target player-id)
-        target-player (if (= target :opponent)
-                        (q/get-opponent-id db player-id)
-                        target)]
+        explicit-target (:effect/target effect)
+        target-player (cond
+                        (nil? explicit-target) player-id
+                        (= explicit-target :opponent) (q/get-opponent-id db player-id)
+                        :else explicit-target)]
     (if (<= amount 0)
       db
-      (if (= target :any-player)
+      (if (= explicit-target :any-player)
         {:db db :needs-selection effect}
         (if-let [cards-to-draw (q/get-top-n-library db target-player amount)]
           (let [actual-drawn (count cards-to-draw)
@@ -57,11 +59,12 @@
 
 (defmethod effects/execute-effect-impl :discard-hand
   [db player-id effect _object-id]
-  (let [target (get effect :effect/target player-id)
+  (let [explicit-target (:effect/target effect)
         target-player (cond
-                        (= target :opponent) (q/get-opponent-id db player-id)
-                        (= target :self) player-id
-                        :else target)
+                        (nil? explicit-target) player-id
+                        (= explicit-target :opponent) (q/get-opponent-id db player-id)
+                        (= explicit-target :self) player-id
+                        :else explicit-target)
         hand-cards (q/get-hand db target-player)]
     (reduce (fn [db' obj]
               (zones/move-to-zone db' (:object/id obj) :graveyard))
@@ -71,11 +74,12 @@
 
 (defmethod effects/execute-effect-impl :return-from-graveyard
   [db player-id effect _object-id]
-  (let [target (get effect :effect/target player-id)
+  (let [explicit-target (:effect/target effect)
         target-player (cond
-                        (= target :opponent) (q/get-opponent-id db player-id)
-                        (= target :self) player-id
-                        :else target)
+                        (nil? explicit-target) player-id
+                        (= explicit-target :opponent) (q/get-opponent-id db player-id)
+                        (= explicit-target :self) player-id
+                        :else explicit-target)
         selection (get effect :effect/selection :player)
         count-limit (get effect :effect/count 0)]
     (case selection
