@@ -364,7 +364,7 @@
 (deftest test-opponent-starts-with-empty-battlefield
   (testing "opponent starts with no cards on battlefield (goldfish plays from hand)"
     (let [db (init-and-get-db)
-          battlefield (q/get-objects-in-zone db :opponent :battlefield)]
+          battlefield (q/get-objects-in-zone db :player-2 :battlefield)]
       (is (= 0 (count battlefield))
           "Opponent should have no permanents on battlefield"))))
 
@@ -372,7 +372,7 @@
 (deftest test-opponent-starts-with-7-card-hand
   (testing "opponent starts with 7-card opening hand drawn from library"
     (let [db (init-and-get-db)
-          hand (get-hand-objects db :opponent)]
+          hand (get-hand-objects db :player-2)]
       (is (= 7 (count hand))
           "Opponent hand should have 7 cards"))))
 
@@ -380,7 +380,7 @@
 (deftest test-opponent-library-populated-from-bot-deck
   (testing "opponent library has 53 cards (60 minus 7-card hand)"
     (let [db (init-and-get-db)
-          library (get-library-objects db :opponent)]
+          library (get-library-objects db :player-2)]
       (is (= 53 (count library))
           "Opponent library should have 53 cards after drawing 7"))))
 
@@ -388,7 +388,7 @@
 (deftest test-opponent-library-contains-basic-lands
   (testing "opponent library contains basic lands from goldfish deck"
     (let [db (init-and-get-db)
-          library (get-library-objects db :opponent)
+          library (get-library-objects db :player-2)
           card-types (set (map #(get-in % [:object/card :card/id]) library))]
       (is (contains? card-types :plains) "Should contain Plains")
       (is (contains? card-types :island) "Should contain Island")

@@ -3,6 +3,7 @@
    Pure functions for building Datascript transaction data."
   (:require
     [datascript.core :as d]
+    [fizzle.db.game-state :as game-state]
     [fizzle.db.schema :refer [schema]]
     [fizzle.db.storage :as storage]
     [fizzle.engine.card-spec :as card-spec]
@@ -56,22 +57,6 @@
   "Look up a player's entity ID by :player/id."
   [db player-id]
   (d/q '[:find ?e . :in $ ?pid :where [?e :player/id ?pid]] db player-id))
-
-
-(def ^:private empty-mana-pool
-  {:white 0 :blue 0 :black 0 :red 0 :green 0 :colorless 0})
-
-
-(defn- player-tx
-  "Return transaction data for a player entity."
-  [player-id name life land-plays opts]
-  [(merge {:player/id player-id
-           :player/name name
-           :player/life life
-           :player/mana-pool empty-mana-pool
-           :player/storm-count 0
-           :player/land-plays-left land-plays}
-          opts)])
 
 
 (defn- objects-tx
@@ -128,13 +113,15 @@
   (card-spec/validate-cards! cards/all-cards)
   (let [conn (d/create-conn schema)
         _ (d/transact! conn cards/all-cards)
-        _ (d/transact! conn (player-tx :player-1 "Player" 20 1 {:player/max-hand-size 7}))
-        _ (d/transact! conn (player-tx :opponent "Opponent" 20 0
-                                       {:player/is-opponent true
-                                        :player/bot-archetype bot-archetype}))
+        _ (d/transact! conn (game-state/create-player-tx game-state/human-player-id
+                                                         {:player/name "Player"}))
+        _ (d/transact! conn (game-state/create-player-tx game-state/opponent-player-id
+                                                         {:player/name "Opponent"
+                                                          :player/is-opponent true
+                                                          :player/bot-archetype bot-archetype}))
         db @conn
-        player-eid (get-player-eid db :player-1)
-        opp-eid (get-player-eid db :opponent)
+        player-eid (get-player-eid db game-state/human-player-id)
+        opp-eid (get-player-eid db game-state/opponent-player-id)
         stops (storage/load-stops)
         shuffled-deck (deck-to-card-ids main-deck)
         [sculpted-ids remaining] (extract-sculpted-card-ids shuffled-deck must-contain)
@@ -151,11 +138,9 @@
       (when (seq sb-card-ids)
         (d/transact! conn (objects-tx @conn sb-card-ids :sideboard player-eid
                                       (repeatedly (count sb-card-ids) random-uuid)))))
-    (d/transact! conn [{:game/id :game-1 :game/turn 1 :game/phase :main1
-                        :game/active-player player-eid :game/priority player-eid
-                        :game/human-player-id :player-1}])
-    (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid :player-1))
-    (d/transact! conn (turn-based/create-turn-based-triggers-tx opp-eid :opponent))
+    (d/transact! conn (game-state/create-game-entity-tx player-eid {}))
+    (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid game-state/human-player-id))
+    (d/transact! conn (turn-based/create-turn-based-triggers-tx opp-eid game-state/opponent-player-id))
     (d/transact! conn [[:db/add player-eid :player/stops (:player stops)]
                        [:db/add opp-eid :player/stops (:opponent stops)]])
     (merge {:game/db @conn :active-screen :opening-hand

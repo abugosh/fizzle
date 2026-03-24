@@ -329,11 +329,11 @@
                        (assoc :setup/bot-archetype :burn))
           game-db (setup/start-game-handler setup-db)
           ;; Verify burn was used in the original game
-          _ (is (= :burn (bot/get-bot-archetype (:game/db game-db) :opponent))
+          _ (is (= :burn (bot/get-bot-archetype (:game/db game-db) :player-2))
                 "Original game should have burn bot")
           ;; Re-deal via new-game-handler
           new-db (setup/new-game-handler game-db)]
-      (is (= :burn (bot/get-bot-archetype (:game/db new-db) :opponent))
+      (is (= :burn (bot/get-bot-archetype (:game/db new-db) :player-2))
           "New game should preserve burn bot archetype from stashed config"))))
 
 

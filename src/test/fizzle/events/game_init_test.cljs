@@ -134,6 +134,6 @@
                                              :sideboard sideboard
                                              :bot-archetype :goldfish})
           game-db (:game/db app-db)
-          opp-sb (q/get-objects-in-zone game-db :opponent :sideboard)]
+          opp-sb (q/get-objects-in-zone game-db :player-2 :sideboard)]
       (is (= 0 (count opp-sb))
           "Bot should have no sideboard objects"))))

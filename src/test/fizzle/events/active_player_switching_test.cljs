@@ -250,22 +250,22 @@
 
 
 (deftest advance-phase-fires-draw-for-opponent
-  (testing "advance-phase through :draw fires draw-step trigger for :opponent"
+  (testing "advance-phase through :draw fires draw-step trigger for :player-2"
     (let [app-db (init/init-game-state {:main-deck [{:card/id :island :count 60}]
                                         :bot-deck (bot/bot-deck :goldfish)})
           game-db (:game/db app-db)
           ;; Set active player to opponent at :upkeep (one step before :draw)
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db)
-          opp-eid (q/get-player-eid game-db :opponent)
+          opp-eid (q/get-player-eid game-db :player-2)
           game-db (d/db-with game-db [[:db/add game-eid :game/active-player opp-eid]
                                       [:db/add game-eid :game/phase :upkeep]
                                       [:db/add game-eid :game/turn 2]])
-          opp-hand-before (count (q/get-hand game-db :opponent))
-          opp-library-before (count (q/get-top-n-library game-db :opponent 100))
+          opp-hand-before (count (q/get-hand game-db :player-2))
+          opp-library-before (count (q/get-top-n-library game-db :player-2 100))
           ;; Advance one phase: upkeep -> draw
-          result-db (phases/advance-phase game-db :opponent)
-          opp-hand-after (count (q/get-hand result-db :opponent))
-          opp-library-after (count (q/get-top-n-library result-db :opponent 100))]
+          result-db (phases/advance-phase game-db :player-2)
+          opp-hand-after (count (q/get-hand result-db :player-2))
+          opp-library-after (count (q/get-top-n-library result-db :player-2 100))]
       (is (= :draw (:game/phase (q/get-game-state result-db)))
           "Phase should be :draw")
       (is (= (inc opp-hand-before) opp-hand-after)
@@ -275,18 +275,17 @@
 
 
 (deftest opponent-draws-card-production-init
-  (testing "opponent draws using production init-game-state (player-id :opponent)"
-    (let [;; Use production init which creates :opponent not :player-2
-          app-db (init/init-game-state {:main-deck [{:card/id :island :count 60}]
+  (testing "opponent draws using production init-game-state (player-id :player-2)"
+    (let [app-db (init/init-game-state {:main-deck [{:card/id :island :count 60}]
                                         :bot-deck (bot/bot-deck :goldfish)})
           ;; Accept the opening hand to get into gameplay
           app-db (assoc app-db :active-screen :game)
           app-db (merge app-db (history/init-history))
           game-db (:game/db app-db)
-          opp-library-before (count (q/get-top-n-library game-db :opponent 100))
+          opp-library-before (count (q/get-top-n-library game-db :player-2 100))
           result (dispatch-yield-all app-db)
           result-db (:game/db result)
-          opp-library-after (count (q/get-top-n-library result-db :opponent 100))]
+          opp-library-after (count (q/get-top-n-library result-db :player-2 100))]
       (is (= 3 (:game/turn (q/get-game-state result-db)))
           "Should reach turn 3 after full cycle")
       ;; Library is the reliable draw indicator (bot may play a land from hand)
