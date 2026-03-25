@@ -50,6 +50,28 @@
     (or chosen-x 0)))
 
 
+(defmethod resolve-dynamic-impl :sacrificed-power
+  [db _player-id _dynamic object-id]
+  ;; object-id is the source object's UUID.
+  ;; Find the stack item for this source (either via object-ref for spells,
+  ;; or via stack-item/source for activated abilities) and read sacrifice-info.
+  (let [obj-eid (q/get-object-eid db object-id)
+        ;; Try spell path: find stack item by object-ref
+        sacrifice-info (or (when obj-eid
+                             (d/q '[:find ?info .
+                                    :in $ ?obj-eid
+                                    :where [?e :stack-item/object-ref ?obj-eid]
+                                    [?e :stack-item/sacrifice-info ?info]]
+                                  db obj-eid))
+                           ;; Try ability path: find stack item by source UUID
+                           (d/q '[:find ?info .
+                                  :in $ ?src
+                                  :where [?e :stack-item/source ?src]
+                                  [?e :stack-item/sacrifice-info ?info]]
+                                db object-id))]
+    (or (:power sacrifice-info) 0)))
+
+
 (defmethod resolve-dynamic-impl :cost-exiled-card-mana-value
   [db _player-id _dynamic object-id]
   ;; Reads the CMC of the card(s) exiled as an exile-library-top cost.

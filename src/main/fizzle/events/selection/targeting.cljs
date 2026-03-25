@@ -141,7 +141,14 @@
         target-id (:target/id target-req)]
     (if selected-target
       ;; Cast spell and store target on stack-item
-      (let [;; Cast via rules/cast-spell-mode (pays costs, moves to stack)
+      (let [;; Read pending-sacrifice-info off spell object BEFORE cast (cast may clear it)
+            spell-obj-eid (queries/get-object-eid game-db object-id)
+            pending-sacrifice-info (when spell-obj-eid
+                                     (d/q '[:find ?info .
+                                            :in $ ?e
+                                            :where [?e :object/pending-sacrifice-info ?info]]
+                                          game-db spell-obj-eid))
+            ;; Cast via rules/cast-spell-mode (pays costs, moves to stack)
             db-after-cast (rules/cast-spell-mode game-db player-id object-id mode)
             ;; Find object EID to locate stack-item
             obj-eid (queries/get-object-eid db-after-cast object-id)
@@ -151,11 +158,13 @@
                                 :in $ ?obj-eid
                                 :where [?e :stack-item/object-ref ?obj-eid]]
                               db-after-cast obj-eid))
-            stack-item-eid (:db/id stack-item)]
-        ;; Store targets on stack-item
-        (if stack-item-eid
-          (d/db-with db-after-cast
-                     [[:db/add stack-item-eid :stack-item/targets {target-id selected-target}]])
+            stack-item-eid (:db/id stack-item)
+            ;; Build txdata: always store targets, optionally store sacrifice-info
+            txdata (cond-> []
+                     stack-item-eid (conj [:db/add stack-item-eid :stack-item/targets {target-id selected-target}])
+                     (and stack-item-eid pending-sacrifice-info) (conj [:db/add stack-item-eid :stack-item/sacrifice-info pending-sacrifice-info]))]
+        (if (seq txdata)
+          (d/db-with db-after-cast txdata)
           db-after-cast))
       ;; No target selected - return unchanged
       game-db)))

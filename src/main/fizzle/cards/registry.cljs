@@ -4,6 +4,7 @@
    Every card namespace is required explicitly here. No build-time magic.
    Consumers access cards through engine/cards.cljs, not this namespace directly."
   (:require
+    [fizzle.cards.artifacts.altar-of-dementia :as altar-of-dementia]
     [fizzle.cards.artifacts.defense-grid :as defense-grid]
     [fizzle.cards.artifacts.helm-of-awakening :as helm-of-awakening]
     [fizzle.cards.artifacts.lions-eye-diamond :as lions-eye-diamond]
@@ -61,6 +62,7 @@
     [fizzle.cards.lands.pain-lands :as pain-lands]
     [fizzle.cards.multicolor.diabolic-vision :as diabolic-vision]
     [fizzle.cards.red.burning-wish :as burning-wish]
+    [fizzle.cards.red.fling :as fling]
     [fizzle.cards.red.goblin-welder :as goblin-welder]
     [fizzle.cards.red.lightning-bolt :as lightning-bolt]
     [fizzle.cards.red.pyroblast :as pyroblast]
@@ -117,6 +119,7 @@
        ray-of-revelation/card
        seal-of-cleansing/card
        burning-wish/card
+       fling/card
        goblin-welder/card
        lightning-bolt/card
        recoup/card
@@ -128,6 +131,7 @@
        cephalid-coliseum/card
        lotus-petal/card
        lions-eye-diamond/card
+       altar-of-dementia/card
        defense-grid/card
        phyrexian-devourer/card
        helm-of-awakening/card

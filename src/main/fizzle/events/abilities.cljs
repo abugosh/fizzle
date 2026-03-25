@@ -1,5 +1,6 @@
 (ns fizzle.events.abilities
   (:require
+    [datascript.core :as d]
     [fizzle.db.queries :as queries]
     [fizzle.engine.abilities :as abilities]
     [fizzle.engine.effects :as effects]
@@ -109,16 +110,25 @@
           (let [obj (queries/get-object db object-id)
                 card (:object/card obj)
                 ability (nth (:card/abilities card) ability-index)
+                ;; Read pending-sacrifice-info from source object if present
+                ;; (set by sacrifice executor when chaining from sacrifice to targeting)
+                obj-eid (queries/get-object-eid db object-id)
+                pending-sacrifice-info (when obj-eid
+                                         (d/q '[:find ?info .
+                                                :in $ ?e
+                                                :where [?e :object/pending-sacrifice-info ?info]]
+                                              db obj-eid))
                 db-after-costs (abilities/pay-all-costs db object-id (:ability/cost ability))]
             (if db-after-costs
               (let [effects-list (:ability/effects ability [])
-                    db-with-item (stack/create-stack-item db-after-costs
-                                                          {:stack-item/type :activated-ability
-                                                           :stack-item/controller player-id
-                                                           :stack-item/source object-id
-                                                           :stack-item/effects effects-list
-                                                           :stack-item/targets updated-chosen
-                                                           :stack-item/description (:ability/description ability)})]
+                    stack-item-attrs (cond-> {:stack-item/type :activated-ability
+                                              :stack-item/controller player-id
+                                              :stack-item/source object-id
+                                              :stack-item/effects effects-list
+                                              :stack-item/targets updated-chosen
+                                              :stack-item/description (:ability/description ability)}
+                                       pending-sacrifice-info (assoc :stack-item/sacrifice-info pending-sacrifice-info))
+                    db-with-item (stack/create-stack-item db-after-costs stack-item-attrs)]
                 {:db db-with-item
                  :pending-selection nil})
               {:db db :pending-selection nil}))))
@@ -165,28 +175,64 @@
               {:db db :pending-selection nil}))))))
 
 
+(defn- has-sacrifice-permanent-cost?
+  "Check if an ability cost map contains a :sacrifice-permanent entry."
+  [ability-cost]
+  (contains? ability-cost :sacrifice-permanent))
+
+
+(defn- activate-ability-with-sacrifice
+  "Handle ability activation that requires a sacrifice-permanent cost.
+   Pays non-sacrifice costs first, then enters sacrifice selection.
+   After sacrifice confirmation, executor creates the stack item."
+  [db player-id object-id ability-index ability]
+  (let [ability-cost (:ability/cost ability)
+        sac-criteria (:sacrifice-permanent ability-cost)
+        non-sac-costs (dissoc ability-cost :sacrifice-permanent)
+        db-after-non-sac (if (seq non-sac-costs)
+                           (abilities/pay-all-costs db object-id non-sac-costs)
+                           db)]
+    (if-not db-after-non-sac
+      {:db db :pending-selection nil}
+      (let [sac-cost {:cost/criteria sac-criteria}
+            sel (sel-costs/build-sacrifice-permanent-selection
+                  db-after-non-sac player-id object-id nil sac-cost
+                  {:source-type :ability
+                   :ability ability
+                   :ability-index ability-index})]
+        (if sel
+          {:db db-after-non-sac :pending-selection sel}
+          {:db db :pending-selection nil})))))
+
+
 (defn- activate-validated-ability
   "Activate an ability that has passed validation checks.
-   Handles three paths: targeting, generic mana allocation, and direct cost payment."
+   Handles four paths: sacrifice cost, targeting, generic mana allocation, direct.
+   Sacrifice is checked FIRST because it is the interactive cost that chains to targeting."
   [db player-id object-id ability-index ability]
-  (let [targeting-reqs (targeting/get-targeting-requirements ability)]
-    (cond
-      ;; Has targeting - pause for target selection (don't pay costs yet)
-      (seq targeting-reqs)
-      {:db db
-       :pending-selection (build-ability-target-selection
-                            db player-id object-id ability-index
-                            (first targeting-reqs) {} (vec (rest targeting-reqs)))}
+  (cond
+    ;; Has sacrifice-permanent cost - pause for sacrifice selection.
+    ;; Sacrifice chains to targeting (if any) after confirmation.
+    (has-sacrifice-permanent-cost? (:ability/cost ability))
+    (activate-ability-with-sacrifice db player-id object-id ability-index ability)
 
-      ;; Has generic mana cost - enter mana allocation
-      (and (:mana (:ability/cost ability))
-           (sel-costs/has-generic-mana-cost? (:mana (:ability/cost ability))))
-      (activate-ability-with-generic-mana db player-id object-id ability)
+    ;; Has targeting (no sacrifice) - pause for target selection (don't pay costs yet)
+    (seq (targeting/get-targeting-requirements ability))
+    {:db db
+     :pending-selection (build-ability-target-selection
+                          db player-id object-id ability-index
+                          (first (targeting/get-targeting-requirements ability)) {}
+                          (vec (rest (targeting/get-targeting-requirements ability))))}
 
-      ;; No special handling - pay all costs directly and add to stack
-      :else
-      (or (pay-costs-and-create-stack-item db player-id object-id ability)
-          {:db db :pending-selection nil}))))
+    ;; Has generic mana cost - enter mana allocation
+    (and (:mana (:ability/cost ability))
+         (sel-costs/has-generic-mana-cost? (:mana (:ability/cost ability))))
+    (activate-ability-with-generic-mana db player-id object-id ability)
+
+    ;; No special handling - pay all costs directly and add to stack
+    :else
+    (or (pay-costs-and-create-stack-item db player-id object-id ability)
+        {:db db :pending-selection nil})))
 
 
 (defn activate-ability

@@ -6,6 +6,7 @@
   (:require
     [datascript.core :as d]
     [fizzle.db.queries :as queries]
+    [fizzle.engine.creatures :as creatures]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
@@ -232,38 +233,54 @@
 (defn build-sacrifice-permanent-selection
   "Build pending selection for sacrifice-permanent additional cost.
    Player selects which battlefield permanent matching criteria to sacrifice.
+   Player always picks — auto-confirm is disabled by design.
 
    Arguments:
      game-db - Datascript game database
-     player-id - Player casting the spell
-     object-id - Spell being cast
-     mode - Casting mode with :sacrifice-permanent cost
+     player-id - Player casting the spell or activating ability
+     object-id - Spell being cast or source permanent for ability
+     mode - Casting mode (nil for ability activations)
      sac-cost - The :sacrifice-permanent cost map (has :cost/criteria)
+     opts - Optional map with :source-type :ability and :ability for ability path
 
    Returns selection state for choosing a permanent to sacrifice."
-  [game-db player-id object-id mode sac-cost]
-  (let [criteria (:cost/criteria sac-cost)
-        matching (queries/query-zone-by-criteria game-db player-id :battlefield criteria)
-        candidate-ids (set (map :object/id matching))
-        ;; Check if spell has targeting (determines lifecycle)
-        obj (queries/get-object game-db object-id)
-        has-targeting? (seq (:card/targeting (:object/card obj)))]
-    (when (seq candidate-ids)
-      (cond-> {:selection/zone :battlefield
-               :selection/type :sacrifice-permanent-cost
-               :selection/card-source :valid-targets
-               :selection/select-count 1
-               :selection/valid-targets (vec candidate-ids)
-               :selection/selected #{}
-               :selection/player-id player-id
-               :selection/spell-id object-id
-               :selection/mode mode
-               :selection/sac-cost sac-cost
-               :selection/validation :exact
-               :selection/auto-confirm? true}
-        has-targeting? (assoc :selection/lifecycle :chaining)
-        (not has-targeting?) (assoc :selection/lifecycle :finalized
-                                    :selection/clear-selected-card? true)))))
+  ([game-db player-id object-id mode sac-cost]
+   (build-sacrifice-permanent-selection game-db player-id object-id mode sac-cost nil))
+  ([game-db player-id object-id mode sac-cost opts]
+   (let [criteria (:cost/criteria sac-cost)
+         matching (queries/query-zone-by-criteria game-db player-id :battlefield criteria)
+         candidate-ids (set (map :object/id matching))
+         ;; Check if spell/ability has targeting (determines lifecycle for spell path)
+         source-type (:source-type opts)
+         ability (:ability opts)
+         ability-index (:ability-index opts)
+         has-targeting? (if (= source-type :ability)
+                          ;; Ability targeting is handled separately after sacrifice confirmation
+                          false
+                          (let [obj (queries/get-object game-db object-id)]
+                            (seq (:card/targeting (:object/card obj)))))]
+     (when (seq candidate-ids)
+       (cond-> {:selection/zone :battlefield
+                :selection/type :sacrifice-permanent-cost
+                :selection/card-source :valid-targets
+                :selection/select-count 1
+                :selection/valid-targets (vec candidate-ids)
+                :selection/selected #{}
+                :selection/player-id player-id
+                :selection/spell-id object-id
+                :selection/mode mode
+                :selection/sac-cost sac-cost
+                :selection/validation :exact
+                :selection/auto-confirm? false}
+         (= source-type :ability) (assoc :selection/source-type :ability
+                                         :selection/ability ability
+                                         :selection/ability-index ability-index)
+         (and (not= source-type :ability) has-targeting?) (assoc :selection/lifecycle :chaining)
+         (and (not= source-type :ability) (not has-targeting?)) (assoc :selection/lifecycle :finalized
+                                                                       :selection/clear-selected-card? true)
+         (and (= source-type :ability) (seq (:ability/targeting ability))) (assoc :selection/lifecycle :chaining)
+         (and (= source-type :ability) (not (seq (:ability/targeting ability)))) (assoc :selection/lifecycle :finalized
+                                                                                        :selection/clear-selected-card? true))))))
 
 
 (defn build-x-mana-selection
@@ -427,6 +444,57 @@
          :selection/card-source :valid-targets}))))
 
 
+;; Override chain selection for :sacrifice-permanent-cost to handle both spell and ability paths.
+;; For the spell path, delegate to parent :pre-cast-cost-to-targeting behavior (cast-time targeting).
+;; For the ability path, build an ability-targeting selection instead.
+(defmethod core/build-chain-selection :sacrifice-permanent-cost
+  [db selection]
+  (let [source-type (:selection/source-type selection)]
+    (if (= source-type :ability)
+      ;; Ability path: build ability-targeting selection
+      (let [ability (:selection/ability selection)
+            player-id (:selection/player-id selection)
+            object-id (:selection/spell-id selection)
+            ability-index (:selection/ability-index selection)
+            targeting-reqs (targeting/get-targeting-requirements ability)]
+        (when (seq targeting-reqs)
+          (let [first-req (first targeting-reqs)
+                remaining-reqs (vec (rest targeting-reqs))]
+            {:selection/type :ability-targeting
+             :selection/lifecycle (if (seq remaining-reqs) :chaining :finalized)
+             :selection/player-id player-id
+             :selection/object-id object-id
+             :selection/ability-index ability-index
+             :selection/target-requirement first-req
+             :selection/chosen-targets {}
+             :selection/remaining-target-reqs remaining-reqs
+             :selection/valid-targets (targeting/find-valid-targets db player-id first-req)
+             :selection/selected #{}
+             :selection/select-count 1
+             :selection/validation :exact
+             :selection/auto-confirm? true
+             :selection/card-source :valid-targets})))
+      ;; Spell path: delegate to pre-cast-cost-to-targeting chain behavior
+      (let [object-id (:selection/spell-id selection)
+            player-id (:selection/player-id selection)
+            mode (:selection/mode selection)
+            obj (queries/get-object db object-id)
+            targeting-reqs (:card/targeting (:object/card obj))]
+        (when (seq targeting-reqs)
+          (let [first-req (first targeting-reqs)]
+            {:selection/type :cast-time-targeting
+             :selection/player-id player-id
+             :selection/object-id object-id
+             :selection/mode mode
+             :selection/target-requirement first-req
+             :selection/valid-targets (targeting/find-valid-targets db player-id first-req)
+             :selection/selected #{}
+             :selection/select-count 1
+             :selection/validation :exact
+             :selection/auto-confirm? true
+             :selection/card-source :valid-targets}))))))
+
+
 (defmethod core/execute-confirmed-selection :discard-specific-cost
   [game-db selection]
   (let [selected (:selection/selected selection)
@@ -460,19 +528,63 @@
       {:db (rules/cast-spell-mode db-after-return player-id object-id mode)})))
 
 
+(defn- find-stack-item-eid-for-object
+  "Find the stack-item EID that references the given object UUID.
+   Returns nil if no stack item references this object."
+  [db object-id]
+  (let [obj-eid (queries/get-object-eid db object-id)]
+    (when obj-eid
+      (d/q '[:find ?e .
+             :in $ ?obj-eid
+             :where [?e :stack-item/object-ref ?obj-eid]]
+           db obj-eid))))
+
+
 (defmethod core/execute-confirmed-selection :sacrifice-permanent-cost
   [game-db selection]
   (let [selected-permanent-id (first (:selection/selected selection))
         player-id (:selection/player-id selection)
         object-id (:selection/spell-id selection)
         mode (:selection/mode selection)
+        source-type (:selection/source-type selection)
+        ability (:selection/ability selection)
+        ;; Capture effective power BEFORE graveyard move (zone-based statics may change)
+        effective-power (creatures/effective-power game-db selected-permanent-id)
+        sacrifice-info {:power effective-power}
         ;; Sacrifice the permanent (move to graveyard)
         db-after-sacrifice (zones/move-to-zone game-db selected-permanent-id :graveyard)]
-    (if (= :chaining (:selection/lifecycle selection))
-      ;; Chaining: just sacrifice, chain builder handles targeting
-      {:db db-after-sacrifice}
-      ;; Finalized: no targeting, cast directly (greedy mana payment)
-      {:db (rules/cast-spell-mode db-after-sacrifice player-id object-id mode)})))
+    (cond
+      ;; Chaining lifecycle (spell with targeting): sacrifice permanent, store sacrifice-info
+      ;; temporarily on spell object so the targeting executor can transfer it to the stack item.
+      (= :chaining (:selection/lifecycle selection))
+      (let [obj-eid (queries/get-object-eid db-after-sacrifice object-id)
+            db-with-pending (if obj-eid
+                              (d/db-with db-after-sacrifice
+                                         [[:db/add obj-eid :object/pending-sacrifice-info sacrifice-info]])
+                              db-after-sacrifice)]
+        {:db db-with-pending})
+
+      ;; Finalized lifecycle, ability path: create stack item directly with sacrifice-info.
+      (= source-type :ability)
+      (let [effects-list (:ability/effects ability [])
+            db-with-item (stack/create-stack-item db-after-sacrifice
+                                                  {:stack-item/type :activated-ability
+                                                   :stack-item/controller player-id
+                                                   :stack-item/source object-id
+                                                   :stack-item/effects effects-list
+                                                   :stack-item/sacrifice-info sacrifice-info
+                                                   :stack-item/description (:ability/description ability)})]
+        {:db db-with-item})
+
+      ;; Finalized lifecycle, spell path: cast spell then store sacrifice-info on stack item.
+      :else
+      (let [db-after-cast (rules/cast-spell-mode db-after-sacrifice player-id object-id mode)
+            stack-item-eid (find-stack-item-eid-for-object db-after-cast object-id)
+            db-final (if stack-item-eid
+                       (d/db-with db-after-cast
+                                  [[:db/add stack-item-eid :stack-item/sacrifice-info sacrifice-info]])
+                       db-after-cast)]
+        {:db db-final}))))
 
 
 (defmethod core/execute-confirmed-selection :exile-cards-cost
