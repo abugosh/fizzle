@@ -40,10 +40,8 @@
   (testing "Altar ability cost includes sacrifice-permanent with creature criteria"
     (let [ability (first (:card/abilities altar/card))
           cost (:ability/cost ability)]
-      (is (some? (:sacrifice-permanent cost))
-          "Ability cost should have :sacrifice-permanent key")
-      (is (= #{:creature} (get-in cost [:sacrifice-permanent :match/types]))
-          "Sacrifice should match creatures"))))
+      (is (= {:match/types #{:creature}} (:sacrifice-permanent cost))
+          "Ability cost should sacrifice a creature"))))
 
 
 (deftest ability-targets-any-player-test
