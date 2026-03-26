@@ -159,10 +159,12 @@
                                 :where [?e :stack-item/object-ref ?obj-eid]]
                               db-after-cast obj-eid))
             stack-item-eid (:db/id stack-item)
-            ;; Build txdata: always store targets, optionally store sacrifice-info
+            ;; Build txdata: always store targets, optionally store sacrifice-info,
+            ;; and retract pending-sacrifice-info from spell object (temporary attribute)
             txdata (cond-> []
                      stack-item-eid (conj [:db/add stack-item-eid :stack-item/targets {target-id selected-target}])
-                     (and stack-item-eid pending-sacrifice-info) (conj [:db/add stack-item-eid :stack-item/sacrifice-info pending-sacrifice-info]))]
+                     (and stack-item-eid pending-sacrifice-info) (conj [:db/add stack-item-eid :stack-item/sacrifice-info pending-sacrifice-info])
+                     (and spell-obj-eid pending-sacrifice-info) (conj [:db/retract spell-obj-eid :object/pending-sacrifice-info pending-sacrifice-info]))]
         (if (seq txdata)
           (d/db-with db-after-cast txdata)
           db-after-cast))

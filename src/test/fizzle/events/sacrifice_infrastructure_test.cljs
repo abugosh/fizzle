@@ -10,7 +10,6 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.creatures :as creatures]
     [fizzle.engine.effects :as effects]
-    [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.events.abilities :as abilities]
     [fizzle.events.casting :as casting]
@@ -248,50 +247,8 @@
           "No stack item should be created when costs cannot be paid"))))
 
 
-(deftest smoke-test
-  (testing "smoke test to verify tests are running"
-    (is (= 1 1))))
-
-
-(deftest debug-can-cast-fling-test
-  (testing "debug: can-cast? returns true for Fling with creature on battlefield"
-    (let [db (th/create-test-db {:mana {:red 1 :colorless 1}})
-          db (th/add-opponent db)
-          [db _creature-id] (th/add-card-to-zone db :nimble-mongoose :battlefield :player-1)
-          [db fling-id] (th/add-card-to-zone db :fling :hand :player-1)]
-      (is (true? (rules/can-cast? db :player-1 fling-id))
-          "Fling should be castable"))))
-
-
-(deftest debug-cast-fling-shows-sacrifice-test
-  (testing "debug: casting Fling shows sacrifice selection"
-    (let [db (th/create-test-db {:mana {:red 1 :colorless 1}})
-          db (th/add-opponent db)
-          [db _creature-id] (th/add-card-to-zone db :nimble-mongoose :battlefield :player-1)
-          [db fling-id] (th/add-card-to-zone db :fling :hand :player-1)
-          app-db (casting/cast-spell-handler {:game/db db :game/selected-card fling-id})
-          pending-sel (:game/pending-selection app-db)]
-      (is (some? pending-sel) "Should show a pending selection")
-      (is (= :sacrifice-permanent-cost (:selection/type pending-sel))
-          "Should show sacrifice selection"))))
-
-
-(deftest debug-confirm-sacrifice-chains-test
-  (testing "debug: confirming sacrifice chains to targeting"
-    (let [db (th/create-test-db {:mana {:red 1 :colorless 1}})
-          db (th/add-opponent db)
-          [db creature-id] (th/add-card-to-zone db :nimble-mongoose :battlefield :player-1)
-          [db fling-id] (th/add-card-to-zone db :fling :hand :player-1)
-          app-db (casting/cast-spell-handler {:game/db db :game/selected-card fling-id})
-          sac-sel (:game/pending-selection app-db)
-          {selection :selection} (th/confirm-selection (:game/db app-db) sac-sel #{creature-id})]
-      (is (some? selection) "Should chain to targeting selection")
-      (is (= :cast-time-targeting (:selection/type selection))
-          "Should chain to cast-time-targeting"))))
-
-
 (deftest debug-full-fling-flow-test
-  (testing "debug: full fling flow puts it on stack"
+  (testing "full fling flow puts it on stack with sacrifice-info"
     (let [db (th/create-test-db {:mana {:red 1 :colorless 1}})
           db (th/add-opponent db)
           [db creature-id] (th/add-card-to-zone db :nimble-mongoose :battlefield :player-1)

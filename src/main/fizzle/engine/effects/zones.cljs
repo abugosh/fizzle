@@ -9,13 +9,13 @@
 
 
 (defmethod effects/execute-effect-impl :mill
-  [db player-id effect _object-id]
+  [db player-id effect object-id]
   (let [explicit-target (:effect/target effect)
         target-player (cond
                         (nil? explicit-target) player-id
                         (= explicit-target :opponent) (q/get-opponent-id db player-id)
                         :else explicit-target)
-        amount (:effect/amount effect)
+        amount (effects/resolve-dynamic-value db player-id (get effect :effect/amount 0) object-id)
         cards-to-mill (or (q/get-top-n-library db target-player amount) [])]
     (reduce (fn [db' oid]
               (zones/move-to-zone db' oid :graveyard))

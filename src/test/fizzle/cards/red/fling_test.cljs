@@ -26,14 +26,14 @@
       (is (= {:red 1 :colorless 1} (:card/mana-cost card)))
       (is (= #{:red} (:card/colors card)))
       (is (= #{:instant} (:card/types card)))
-      (is (string? (:card/text card))))))
+      (is (= "As an additional cost to cast this spell, sacrifice a creature.\nFling deals damage equal to the sacrificed creature's power to any target."
+             (:card/text card))))))
 
 
 (deftest fling-has-sacrifice-additional-cost-test
   (testing "Fling has :sacrifice-permanent additional cost with creature match criteria"
     (let [costs (:card/additional-costs fling/card)
           sac-cost (first (filter #(= :sacrifice-permanent (:cost/type %)) costs))]
-      (is (some? sac-cost) "Should have sacrifice-permanent additional cost")
       (is (= #{:creature} (get-in sac-cost [:cost/criteria :match/types]))
           "Sacrifice cost should match creatures"))))
 
