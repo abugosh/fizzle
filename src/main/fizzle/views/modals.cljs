@@ -30,6 +30,9 @@
       (and (#{:cast-time-targeting :ability-targeting} sel-type)
            (= :player (:target/type target-req)))
       :targeting-player
+      (and (#{:cast-time-targeting :ability-targeting} sel-type)
+           (= :any (:target/type target-req)))
+      :targeting-any
       :else sel-type)))
 
 
@@ -68,6 +71,10 @@
 ;; Custom
 (defmethod render-selection-modal :targeting-player [s _]
   [custom/player-target-modal s ::selection-events/confirm-selection])
+
+
+(defmethod render-selection-modal :targeting-any [s c]
+  [custom/any-target-modal s c ::selection-events/confirm-selection])
 
 
 (defmethod render-selection-modal :player-target [s _]

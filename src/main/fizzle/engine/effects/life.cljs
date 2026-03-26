@@ -3,6 +3,7 @@
   (:require
     [datascript.core :as d]
     [fizzle.db.queries :as q]
+    [fizzle.engine.combat :as combat]
     [fizzle.engine.effects :as effects]))
 
 
@@ -43,16 +44,23 @@
 
 
 (defmethod effects/execute-effect-impl :deal-damage
-  [db _player-id effect _object-id]
-  (let [amount (get effect :effect/amount 0)
+  [db player-id effect object-id]
+  (let [amount (effects/resolve-dynamic-value db player-id (get effect :effect/amount 0) object-id)
         target (:effect/target effect)]
     (if (<= amount 0)
       db
-      (if-let [player-eid (q/get-player-eid db target)]
-        (let [current-life (q/get-life-total db target)
+      (cond
+        ;; Player target: reduce life
+        (q/get-player-eid db target)
+        (let [player-eid (q/get-player-eid db target)
+              current-life (q/get-life-total db target)
               new-life (- current-life amount)]
           (d/db-with db [[:db/add player-eid :player/life new-life]]))
-        db))))
+        ;; Object target (creature on battlefield): mark damage
+        (q/get-object db target)
+        (combat/mark-damage db target amount)
+        ;; Unknown target — no-op
+        :else db))))
 
 
 (defmethod effects/execute-effect-impl :gain-life-equal-to-cmc

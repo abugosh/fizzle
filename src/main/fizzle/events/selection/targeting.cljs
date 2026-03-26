@@ -69,7 +69,7 @@
        :selection/select-count 1
        :selection/validation :exact
        :selection/auto-confirm? true}
-      (= :object target-type)
+      (#{:object :any} target-type)
       (assoc :selection/card-source :valid-targets)
       has-generic?
       (assoc :selection/lifecycle :chaining)

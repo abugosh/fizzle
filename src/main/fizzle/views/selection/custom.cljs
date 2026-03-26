@@ -152,6 +152,46 @@
                                :on-confirm #(rf/dispatch [::selection-events/confirm-selection])}]]]]))
 
 
+;; === Any Target (player or battlefield creature) ===
+
+(defn any-target-modal
+  "Modal for :target/type :any — shows both players as buttons and battlefield
+   creatures as card tiles. Valid-targets contains player keywords and creature UUIDs."
+  [selection cards confirm-event]
+  (let [selected (or (:selection/selected selection) #{})
+        valid? @(rf/subscribe [::subs/selection-valid?])
+        vt (set (:selection/valid-targets selection))
+        show-player? (fn [id] (contains? vt id))]
+    [common/modal-wrapper {:title "Choose any target" :max-width "500px"}
+     [:p {:class (str "m-0 mb-3 text-sm "
+                      (if valid? "text-health-good" "text-health-danger"))}
+      (if valid? "Target selected" "Select a player or creature")]
+     ;; Players row
+     [:div {:class "flex justify-center gap-3 mb-4"}
+      (for [[id label] [[game-state/human-player-id "You"] [game-state/opponent-player-id "Opponent"]]
+            :when (show-player? id)]
+        ^{:key id}
+        [:button {:class (str "py-3 px-6 rounded-lg cursor-pointer text-text text-sm "
+                              "font-bold min-w-[100px] transition-all duration-100 "
+                              (if (contains? selected id)
+                                "border-[3px] border-border-accent bg-modal-selected-bg"
+                                "border-2 border-border bg-surface-raised"))
+                  :on-click #(rf/dispatch [::selection-events/toggle-selection id])}
+         label])]
+     ;; Creature objects (battlefield)
+     (when (seq cards)
+       [:div {:class "flex flex-wrap gap-2.5 mb-4 min-h-[60px]"}
+        (for [obj cards]
+          ^{:key (:object/id obj)}
+          [common/selection-card-view obj
+           (contains? selected (:object/id obj))
+           ::selection-events/toggle-selection])])
+     [:div {:class "flex justify-center"}
+      [common/confirm-button {:label "Confirm" :valid? valid?
+                              :on-confirm #(rf/dispatch [confirm-event])
+                              :extra-class "py-2.5 px-8"}]]]))
+
+
 ;; === Mode Selector / Spell Mode ===
 
 (def ^:private mode-btn-class

@@ -7,11 +7,7 @@
 
    Fling: 1R - Instant
    As an additional cost to cast this spell, sacrifice a creature.
-   Fling deals damage equal to the sacrificed creature's power to any target.
-
-   Note: :target/type is :player because :any (player + creature) targeting
-   is added in the next task. The card data will be updated when :any targeting
-   lands.")
+   Fling deals damage equal to the sacrificed creature's power to any target.")
 
 
 (def card
@@ -27,11 +23,9 @@
    :card/additional-costs [{:cost/type :sacrifice-permanent
                             :cost/criteria {:match/types #{:creature}}}]
 
-   ;; Cast-time targeting: target any player
-   ;; TODO: update to :target/type :any when any-target infrastructure lands
+   ;; Cast-time targeting: any target (player or creature on battlefield)
    :card/targeting [{:target/id :target
-                     :target/type :player
-                     :target/options #{:any-player}
+                     :target/type :any
                      :target/required true}]
 
    ;; Effect: deal damage equal to sacrificed creature's power to target

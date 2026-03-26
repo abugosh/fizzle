@@ -92,6 +92,20 @@
                         (creatures/has-keyword? db (:object/id obj) :shroud)))
               (mapv :object/id)))
 
+       ;; Any targeting: both players and creatures on the battlefield
+       (= :any target-type)
+       (let [opponent-id (q/get-opponent-id db player-id)
+             ;; All players are valid
+             player-targets [player-id opponent-id]
+             ;; All non-shroud creatures on the battlefield (both sides)
+             battlefield-creatures
+             (->> (concat (q/get-objects-in-zone db player-id :battlefield)
+                          (q/get-objects-in-zone db opponent-id :battlefield))
+                  (filter #(creatures/creature? db (:object/id %)))
+                  (remove #(creatures/has-keyword? db (:object/id %) :shroud))
+                  (mapv :object/id))]
+         (vec (concat player-targets battlefield-creatures)))
+
        ;; Ability targeting
        (= :ability target-type)
        (let [all-stack-items (q/get-all-stack-items db)]
@@ -193,6 +207,20 @@
                (not (creatures/has-keyword? db target-id :shroud))))
         ;; Object not found - target is illegal
         false)
+
+      ;; Any target (player or creature) — check by target type
+      (= :any target-type)
+      (cond
+        ;; Player targets are always legal
+        (keyword? target-id)
+        true
+        ;; Object targets: check still on battlefield
+        :else
+        (if-let [obj (q/get-object db target-id)]
+          (and (= :battlefield (:object/zone obj))
+               (creatures/creature? db target-id)
+               (not (creatures/has-keyword? db target-id :shroud)))
+          false))
 
       ;; Ability targets - check ability still exists on stack
       (= :ability target-type)
