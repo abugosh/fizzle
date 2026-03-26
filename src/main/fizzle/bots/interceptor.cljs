@@ -131,7 +131,9 @@
     :fizzle.events.phases/start-turn
     :fizzle.events.priority-flow/cast-and-yield
     :fizzle.events.lands/play-land
-    :fizzle.events.casting/cast-spell})
+    :fizzle.events.casting/cast-spell
+    :fizzle.events.selection/toggle-selection
+    :fizzle.events.selection/confirm-selection})
 
 
 (def ^:private max-bot-actions

@@ -8,6 +8,7 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.creatures :as creatures]
     [fizzle.engine.rules :as rules]
+    [fizzle.engine.state-based :as sba]
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.casting :as casting]
     [fizzle.test-helpers :as th]))
@@ -326,3 +327,37 @@
           targets (targeting/find-valid-targets db :player-1 target-req)]
       (is (not (some #{gy-creature-id} targets))
           "Graveyard creature should not be a valid :any target"))))
+
+
+;; =====================================================
+;; SBA: Fling dealing lethal damage should trigger game-over
+;; =====================================================
+
+(deftest fling-lethal-damage-triggers-life-zero-sba-test
+  (testing "Fling dealing lethal damage to opponent triggers :life-zero SBA"
+    (let [db (th/create-test-db {:mana {:red 1 :colorless 1}})
+          db (th/add-opponent db)
+          ;; Give opponent only 1 life so Nimble Mongoose (1/1) is lethal
+          opp-eid (q/get-player-eid db :player-2)
+          db (d/db-with db [[:db/add opp-eid :player/life 1]])
+          [db creature-id] (th/add-card-to-zone db :nimble-mongoose :battlefield :player-1)
+          [db fling-id] (th/add-card-to-zone db :fling :hand :player-1)
+          ;; Cast Fling
+          app-db (casting/cast-spell-handler {:game/db db :game/selected-card fling-id})
+          sac-sel (:game/pending-selection app-db)
+          ;; Sacrifice creature → chains to targeting
+          {:keys [db selection]} (th/confirm-selection (:game/db app-db) sac-sel #{creature-id})
+          ;; Target opponent
+          {:keys [db]} (th/confirm-selection db selection #{:player-2})
+          ;; Resolve Fling
+          result-db (:db (th/resolve-top db))
+          ;; Check life total
+          opp-life (q/get-life-total result-db :player-2)
+          ;; Run SBAs manually (th/resolve-top doesn't go through interceptor)
+          sba-db (sba/check-and-execute-sbas result-db)
+          game-state (q/get-game-state sba-db)]
+      (is (= 0 opp-life) "Opponent should be at 0 life")
+      (is (= :life-zero (:game/loss-condition game-state))
+          "SBA should set :life-zero loss condition")
+      (is (some? (:game/winner game-state))
+          "SBA should set a winner"))))

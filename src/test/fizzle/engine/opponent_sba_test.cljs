@@ -175,9 +175,9 @@
           opp-eid (q/get-player-eid db :player-2)
           db (d/db-with db [[:db/add opp-eid :player/drew-from-empty true]])
           app-db (merge (history/init-history) {:game/db db})
-          ;; Simulate a non-trigger event (e.g., toggle-selection)
+          ;; Simulate a non-trigger event (e.g., cancel-selection)
           context {:effects {:db app-db}
-                   :coeffects {:event [:fizzle.events.selection/toggle-selection 42]}}
+                   :coeffects {:event [:fizzle.events.selection/cancel-selection]}}
           interceptor-after-fn (-> sba-interceptor/sba-interceptor
                                    :after)
           context-after (interceptor-after-fn context)

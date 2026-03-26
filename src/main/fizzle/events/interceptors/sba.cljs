@@ -24,6 +24,7 @@
     :fizzle.events.phases/advance-phase
     :fizzle.events.phases/start-turn
     :fizzle.events.selection/confirm-selection
+    :fizzle.events.selection/toggle-selection
     :fizzle.events.abilities/activate-mana-ability})
 
 
