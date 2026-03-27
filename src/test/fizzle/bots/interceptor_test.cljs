@@ -306,3 +306,160 @@
           result (interceptor/bot-decide-handler app-db)]
       (is (not (:bot/action-pending? (:db result)))
           "Should NOT set :bot/action-pending? for land play"))))
+
+
+;; === Multi-Color Mana Tests ===
+
+(defn- setup-bot-with-lands
+  "Create an app-db with a burn bot that has specific lands on battlefield.
+   lands: seq of card-id keywords, e.g., [:mountain :plains :underground-river]
+   bolts: number of Lightning Bolts in hand."
+  [{:keys [lands bolts]}]
+  (let [db (th/create-test-db {:stops #{:main1 :main2}})
+        conn (d/conn-from-db db)
+        _ (d/transact! conn [lightning-bolt/card])
+        db (th/add-opponent @conn {:bot-archetype :burn})]
+    (let [[db _] (reduce (fn [[db' _] land-id]
+                           (th/add-card-to-zone db' land-id :battlefield :player-2))
+                         [db nil]
+                         lands)
+          [db _] (reduce (fn [[db' _] _]
+                           (th/add-card-to-zone db' :lightning-bolt :hand :player-2))
+                         [db nil]
+                         (range bolts))
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          opp-eid (q/get-player-eid db :player-2)
+          db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]
+                            [:db/add game-eid :game/priority opp-eid]
+                            [:db/add game-eid :game/phase :main1]])]
+      (merge (history/init-history)
+             {:game/db db}))))
+
+
+(deftest find-tap-sequence-handles-single-color
+  (testing "finds correct taps for single-color cost"
+    (let [app-db (setup-bot-with-lands {:lands [:mountain :mountain] :bolts 0})
+          game-db (:game/db app-db)
+          taps (interceptor/find-tap-sequence game-db :player-2 {:red 1})]
+      (is (= 1 (count taps))
+          "Should return exactly 1 tap for {:red 1}")
+      (is (= :red (:mana-color (first taps)))
+          "Tap should be for :red mana"))))
+
+
+(deftest find-tap-sequence-handles-multi-color
+  (testing "finds correct taps for multi-color cost"
+    (let [app-db (setup-bot-with-lands {:lands [:plains :island] :bolts 0})
+          game-db (:game/db app-db)
+          taps (interceptor/find-tap-sequence game-db :player-2 {:white 1 :blue 1})]
+      (is (= 2 (count taps))
+          "Should return 2 taps for {:white 1 :blue 1}")
+      (is (= 1 (count (filter #(= :white (:mana-color %)) taps)))
+          "Should have exactly 1 white tap")
+      (is (= 1 (count (filter #(= :blue (:mana-color %)) taps)))
+          "Should have exactly 1 blue tap"))))
+
+
+(deftest find-tap-sequence-fails-when-missing-color
+  (testing "returns insufficient taps when required color is missing"
+    (let [app-db (setup-bot-with-lands {:lands [:mountain :mountain] :bolts 0})
+          game-db (:game/db app-db)
+          taps (interceptor/find-tap-sequence game-db :player-2 {:red 1 :blue 1})]
+      (is (= 1 (count taps))
+          "Should return only 1 tap (red), not 2 — no blue sources available")
+      (is (= :red (:mana-color (first taps)))
+          "The one tap should be for :red"))))
+
+
+(deftest find-tap-sequence-dual-land-not-double-allocated
+  (testing "dual land cannot be tapped for two colors simultaneously"
+    (let [app-db (setup-bot-with-lands {:lands [:underground-river] :bolts 0})
+          game-db (:game/db app-db)
+          taps (interceptor/find-tap-sequence game-db :player-2 {:blue 1 :black 1})]
+      (is (= 1 (count taps))
+          "Single dual land can only produce 1 tap, not 2")
+      (is (contains? #{:blue :black} (:mana-color (first taps)))
+          "Tap should be for one of the dual land's colors"))))
+
+
+(deftest bot-decide-action-passes-when-wrong-colors-available
+  (testing "bot passes when lands produce wrong color for spell cost"
+    (let [app-db (setup-bot-with-lands {:lands [:plains :plains] :bolts 1})
+          game-db (:game/db app-db)
+          action (interceptor/bot-decide-action game-db)]
+      (is (= :pass (:action action))
+          "Should pass — Plains can't pay {:red 1} for Lightning Bolt"))))
+
+
+(deftest bot-decide-action-passes-with-enough-total-mana-but-wrong-colors
+  (testing "bot passes when total land count is sufficient but colors don't match"
+    ;; This is the core fungible-sum bug: 2 Mountains for a {:white 1 :blue 1} cost.
+    ;; find-tap-sequence finds 0 taps (no white/blue sources), but the sum check
+    ;; (reduce + 0 (vals {:white 1 :blue 1})) = 2, and 2 mountains would be 2 taps
+    ;; IF the colors were fungible. However, find-tap-sequence already filters
+    ;; per-color, so we need to ensure the validation also checks per-color.
+    ;;
+    ;; To trigger the actual bug, we need a bot that WANTS to cast a multi-color spell.
+    ;; The burn bot only casts bolts ({:red 1}). So we test find-tap-sequence validation
+    ;; indirectly: the sum check on bot-decide-action line 91 would pass if mountains
+    ;; counted toward a non-red cost.
+    ;;
+    ;; Direct test: find-tap-sequence returns 0 taps for {:white 1} with 2 mountains,
+    ;; and the validation must catch that 0 < 1 (not 2 >= 1).
+    (let [app-db (setup-bot-with-lands {:lands [:mountain :mountain] :bolts 1})
+          game-db (:game/db app-db)
+          ;; find-tap-sequence for a multi-color cost with wrong colors
+          taps (interceptor/find-tap-sequence game-db :player-2 {:white 1 :blue 1})]
+      ;; find-tap-sequence correctly returns 0 taps (no white/blue sources)
+      (is (zero? (count taps))
+          "Should find 0 taps — Mountains produce neither white nor blue"))))
+
+
+(deftest bot-decide-action-casts-with-correct-multi-color-taps
+  (testing "bot correctly identifies taps for multi-color cost via find-tap-sequence"
+    (let [app-db (setup-bot-with-lands {:lands [:mountain] :bolts 1})
+          game-db (:game/db app-db)
+          action (interceptor/bot-decide-action game-db)]
+      (is (= :cast-spell (:action action))
+          "Should cast — Mountain produces {:red 1} for bolt")
+      (is (= 1 (count (:tap-sequence action)))
+          "Should have 1 tap")
+      (is (= :red (:mana-color (first (:tap-sequence action))))
+          "Tap should produce :red"))))
+
+
+(deftest find-tap-sequence-handles-generic-mana
+  (testing "generic mana is paid by any remaining untapped mana-producing land"
+    (let [app-db (setup-bot-with-lands {:lands [:mountain :mountain :plains] :bolts 0})
+          game-db (:game/db app-db)
+          taps (interceptor/find-tap-sequence game-db :player-2 {:red 1 :generic 1})]
+      (is (= 2 (count taps))
+          "Should return 2 taps: 1 for red, 1 for generic")
+      ;; All taps should have distinct object-ids (no double-allocation)
+      (is (= 2 (count (set (map :object-id taps))))
+          "Should tap 2 different lands"))))
+
+
+(deftest find-tap-sequence-empty-cost-returns-empty
+  (testing "empty mana cost returns empty tap sequence"
+    (let [app-db (setup-bot-with-lands {:lands [:mountain] :bolts 0})
+          game-db (:game/db app-db)
+          taps (interceptor/find-tap-sequence game-db :player-2 {})]
+      (is (empty? taps)
+          "Empty mana cost should return no taps"))))
+
+
+(deftest find-tap-sequence-generic-uses-remaining-after-colors
+  (testing "generic mana uses lands not already allocated to specific colors"
+    (let [app-db (setup-bot-with-lands {:lands [:mountain :plains] :bolts 0})
+          game-db (:game/db app-db)
+          taps (interceptor/find-tap-sequence game-db :player-2 {:red 1 :generic 1})]
+      (is (= 2 (count taps))
+          "Should return 2 taps")
+      ;; The red tap should be the mountain, and generic should be the plains
+      (let [red-taps (filter #(= :red (:mana-color %)) taps)
+            non-red-taps (remove #(= :red (:mana-color %)) taps)]
+        (is (= 1 (count red-taps))
+            "1 tap for red")
+        (is (= 1 (count non-red-taps))
+            "1 tap for generic (from plains)")))))

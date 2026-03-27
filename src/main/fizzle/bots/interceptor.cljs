@@ -36,33 +36,66 @@
       false)))
 
 
-(defn- find-tap-sequence
+(def ^:private color-keys
+  "The five Magic colors recognized for mana production."
+  #{:red :black :blue :white :green})
+
+
+(defn find-tap-sequence
   "Find the lands that need to be tapped to pay a mana cost.
+   Allocates color-specific mana first, then generic mana from any remaining
+   untapped mana-producing land. Tracks already-allocated lands across colors
+   to prevent double-allocation of dual lands.
    Returns a vector of {:object-id oid :mana-color color} maps.
    Pure function: (game-db, player-id, mana-cost) -> [{:object-id :mana-color}]"
   [game-db player-id mana-cost]
-  (let [battlefield (queries/get-objects-in-zone game-db player-id :battlefield)]
-    (reduce
-      (fn [taps [color amount]]
-        (let [produces-key (case color
-                             :red :red
-                             :black :black
-                             :blue :blue
-                             :white :white
-                             :green :green
-                             nil)
-              untapped-lands (->> battlefield
-                                  (filter (fn [obj]
-                                            (and (not (:object/tapped obj))
-                                                 (not (some #(= (:object/id obj) (:object-id %)) taps))
-                                                 (some (fn [ability]
-                                                         (and (= :mana (:ability/type ability))
-                                                              (get (:ability/produces ability) produces-key)))
-                                                       (get-in obj [:object/card :card/abilities])))))
-                                  (take amount))]
-          (into taps (map (fn [obj] {:object-id (:object/id obj) :mana-color produces-key}) untapped-lands))))
-      []
-      mana-cost)))
+  (let [battlefield (queries/get-objects-in-zone game-db player-id :battlefield)
+        allocated-ids (volatile! #{})
+        find-lands (fn [pred amount]
+                     (->> battlefield
+                          (filter (fn [obj]
+                                    (and (not (:object/tapped obj))
+                                         (not (@allocated-ids (:object/id obj)))
+                                         (pred obj))))
+                          (take amount)
+                          vec))
+        ;; Process colored mana first, then generic
+        colored-entries (filter (fn [[color _]] (color-keys color)) mana-cost)
+        generic-amount (get mana-cost :generic 0)
+        ;; Allocate color-specific lands
+        colored-taps (reduce
+                       (fn [taps [color amount]]
+                         (let [lands (find-lands
+                                       (fn [obj]
+                                         (some (fn [ability]
+                                                 (and (= :mana (:ability/type ability))
+                                                      (get (:ability/produces ability) color)))
+                                               (get-in obj [:object/card :card/abilities])))
+                                       amount)]
+                           (doseq [obj lands]
+                             (vswap! allocated-ids conj (:object/id obj)))
+                           (into taps (map (fn [obj]
+                                             {:object-id (:object/id obj)
+                                              :mana-color color})
+                                           lands))))
+                       []
+                       colored-entries)]
+    ;; Allocate generic mana from any remaining mana-producing land
+    (if (pos? generic-amount)
+      (let [generic-lands (find-lands
+                            (fn [obj]
+                              (some (fn [ability]
+                                      (= :mana (:ability/type ability)))
+                                    (get-in obj [:object/card :card/abilities])))
+                            generic-amount)]
+        (into colored-taps (map (fn [obj]
+                                  (let [first-color (some (fn [ability]
+                                                            (when (= :mana (:ability/type ability))
+                                                              (first (keys (:ability/produces ability)))))
+                                                          (get-in obj [:object/card :card/abilities]))]
+                                    {:object-id (:object/id obj)
+                                     :mana-color first-color})) generic-lands)))
+      colored-taps)))
 
 
 (defn bot-decide-action
@@ -88,9 +121,14 @@
                 card (queries/get-card game-db object-id)
                 mana-cost (or (:card/mana-cost card) {})
                 tap-seq (find-tap-sequence game-db player-id mana-cost)
-                needed-mana (reduce + 0 (vals mana-cost))
-                have-taps (count tap-seq)]
-            (if (< have-taps needed-mana)
+                can-pay? (every?
+                           (fn [[color amount]]
+                             (if (= :generic color)
+                               (let [colored-need (reduce + 0 (vals (dissoc mana-cost :generic)))]
+                                 (>= (- (count tap-seq) colored-need) amount))
+                               (<= amount (count (filter #(= color (:mana-color %)) tap-seq)))))
+                           mana-cost)]
+            (if-not can-pay?
               {:action :pass}
               {:action :cast-spell
                :object-id object-id
