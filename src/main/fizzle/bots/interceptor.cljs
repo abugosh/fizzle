@@ -103,6 +103,7 @@
   "Convert a bot action plan into a sequence of re-frame dispatches.
    Each tap becomes [:dispatch [::activate-mana-ability obj-id color player-id]]
    and the cast becomes [:dispatch [::cast-spell {:player-id pid :object-id oid :target tid}]].
+   Appends ::bot-action-complete sentinel as the LAST dispatch.
    Returns a vector of [:dispatch [...]] entries for use in :fx.
    Pure function: (action-map) -> [[:dispatch [event-id args...]]]"
   [action]
@@ -114,8 +115,9 @@
         cast-dispatch [:dispatch [:fizzle.events.casting/cast-spell
                                   {:player-id player-id
                                    :object-id (:object-id action)
-                                   :target (:target action)}]]]
-    (conj tap-dispatches cast-dispatch)))
+                                   :target (:target action)}]]
+        sentinel [:dispatch [::bot-action-complete]]]
+    (conj tap-dispatches cast-dispatch sentinel)))
 
 
 ;; === ::bot-decide Event Handler ===
@@ -138,50 +140,84 @@
   "Core logic for ::bot-decide. Returns re-frame effects map.
    Checks phase actions first (play land), then priority decisions (cast/pass).
    Exposed as public for testing.
+
+   Action-pending guard: compound actions (tap+cast) set :bot/action-pending?
+   on app-db and append a ::bot-action-complete sentinel to :fx. Stale
+   ::bot-decide events from db_effect during intermediate states see the flag
+   and return a silent no-op (no yield, no dispatches). The sentinel clears
+   the flag and dispatches a fresh ::bot-decide against the settled state.
+
    Pure function: (app-db) -> {:db ... :fx [...]}"
   [app-db]
-  (let [game-db (:game/db app-db)
-        bot-action-count (or (:bot/action-count app-db) 0)]
-    (if (or (not game-db)
-            (:game/pending-selection app-db)
-            (not (bot-should-act? game-db))
-            (>= bot-action-count 20))
-      ;; Not bot's turn, selection in progress, or safety limit — yield
-      {:db (dissoc app-db :bot/action-count)
-       :fx [[:dispatch [:fizzle.events.priority-flow/yield]]]}
-      (let [holder-eid (priority/get-priority-holder-eid game-db)
-            player-id (some (fn [pid]
-                              (when (= holder-eid (queries/get-player-eid game-db pid))
-                                pid))
-                            [game-state/human-player-id game-state/opponent-player-id])
-            archetype (when player-id (bot/get-bot-archetype game-db player-id))
-            ;; Check phase action first (e.g., play a land)
-            game-state (queries/get-game-state game-db)
-            current-phase (:game/phase game-state)
-            phase-action (when archetype
-                           (bot/bot-phase-action archetype current-phase game-db player-id))]
-        (cond
-          ;; Phase action: play a land
-          (and (= :play-land (:action phase-action))
-               (find-bot-land-to-play game-db player-id))
-          (let [land-id (find-bot-land-to-play game-db player-id)]
-            {:db (assoc app-db :bot/action-count (inc bot-action-count))
-             :fx [[:dispatch [:fizzle.events.lands/play-land land-id player-id]]]})
+  (cond
+    ;; Guard: compound action in progress — suppress stale bot-decide (no-op)
+    (:bot/action-pending? app-db)
+    {:db app-db}
 
-          ;; Check priority decision (cast spell or pass)
-          :else
-          (let [action (bot-decide-action game-db)]
-            (if (= :pass (:action action))
-              ;; Bot passes — dispatch ::yield to pass priority
-              {:db (dissoc app-db :bot/action-count)
-               :fx [[:dispatch [:fizzle.events.priority-flow/yield]]]}
-              ;; Bot wants to cast — build dispatch sequence for taps + cast
-              (let [dispatches (build-bot-dispatches action)]
-                {:db (assoc app-db :bot/action-count (inc bot-action-count))
-                 :fx dispatches}))))))))
+    ;; Guard: not bot's turn, selection in progress, or safety limit — yield
+    (let [game-db (:game/db app-db)]
+      (or (not game-db)
+          (:game/pending-selection app-db)
+          (not (bot-should-act? game-db))
+          (>= (or (:bot/action-count app-db) 0) 20)))
+    {:db (dissoc app-db :bot/action-count)
+     :fx [[:dispatch [:fizzle.events.priority-flow/yield]]]}
+
+    ;; Normal decision path
+    :else
+    (let [game-db (:game/db app-db)
+          bot-action-count (or (:bot/action-count app-db) 0)
+          holder-eid (priority/get-priority-holder-eid game-db)
+          player-id (some (fn [pid]
+                            (when (= holder-eid (queries/get-player-eid game-db pid))
+                              pid))
+                          [game-state/human-player-id game-state/opponent-player-id])
+          archetype (when player-id (bot/get-bot-archetype game-db player-id))
+          ;; Check phase action first (e.g., play a land)
+          game-state (queries/get-game-state game-db)
+          current-phase (:game/phase game-state)
+          phase-action (when archetype
+                         (bot/bot-phase-action archetype current-phase game-db player-id))]
+      (cond
+        ;; Phase action: play a land (single dispatch, no flag needed)
+        (and (= :play-land (:action phase-action))
+             (find-bot-land-to-play game-db player-id))
+        (let [land-id (find-bot-land-to-play game-db player-id)]
+          {:db (assoc app-db :bot/action-count (inc bot-action-count))
+           :fx [[:dispatch [:fizzle.events.lands/play-land land-id player-id]]]})
+
+        ;; Check priority decision (cast spell or pass)
+        :else
+        (let [action (bot-decide-action game-db)]
+          (if (= :pass (:action action))
+            ;; Bot passes — dispatch ::yield to pass priority
+            {:db (dissoc app-db :bot/action-count)
+             :fx [[:dispatch [:fizzle.events.priority-flow/yield]]]}
+            ;; Bot wants to cast — compound action: set flag, include sentinel
+            (let [dispatches (build-bot-dispatches action)]
+              {:db (assoc app-db
+                          :bot/action-count (inc bot-action-count)
+                          :bot/action-pending? true)
+               :fx dispatches})))))))
+
+
+(defn bot-action-complete-handler
+  "Clear action-pending flag and dispatch fresh ::bot-decide.
+   Called by ::bot-action-complete sentinel after compound action settles.
+   Exposed as public for testing.
+   Pure function: (app-db) -> {:db ... :fx [...]}"
+  [app-db]
+  {:db (dissoc app-db :bot/action-pending?)
+   :fx [[:dispatch [::bot-decide]]]})
 
 
 (rf/reg-event-fx
   ::bot-decide
   (fn [{:keys [db]} _]
     (bot-decide-handler db)))
+
+
+(rf/reg-event-fx
+  ::bot-action-complete
+  (fn [{:keys [db]} _]
+    (bot-action-complete-handler db)))

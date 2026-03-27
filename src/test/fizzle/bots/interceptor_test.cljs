@@ -114,24 +114,28 @@
 ;; === Build Bot Dispatches ===
 
 (deftest build-bot-dispatches-produces-tap-then-cast-sequence
-  (testing "build-bot-dispatches returns activate-mana + cast-spell dispatches"
+  (testing "build-bot-dispatches returns activate-mana + cast-spell + sentinel dispatches"
     (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 1})
           game-db (:game/db app-db)
           action (interceptor/bot-decide-action game-db)
           dispatches (interceptor/build-bot-dispatches action)]
-      ;; Should have 2 dispatches: 1 tap + 1 cast
-      (is (= 2 (count dispatches))
-          "Should have 2 dispatches (1 tap + 1 cast)")
+      ;; Should have 3 dispatches: 1 tap + 1 cast + 1 sentinel
+      (is (= 3 (count dispatches))
+          "Should have 3 dispatches (1 tap + 1 cast + 1 sentinel)")
       ;; First dispatch should be activate-mana-ability
       (let [[tap-event] dispatches]
         (is (= ::abilities/activate-mana-ability (first (second tap-event)))
             "First dispatch should be ::activate-mana-ability"))
-      ;; Last dispatch should be cast-spell with opts map
-      (let [[_ cast-args] (last dispatches)]
+      ;; Second dispatch should be cast-spell with opts map
+      (let [[_ cast-args] (second dispatches)]
         (is (= ::casting/cast-spell (first cast-args))
-            "Last dispatch should be ::cast-spell")
+            "Second dispatch should be ::cast-spell")
         (is (= :player-2 (:player-id (second cast-args)))
-            "Cast dispatch opts should include bot player-id")))))
+            "Cast dispatch opts should include bot player-id"))
+      ;; Last dispatch should be the sentinel
+      (let [[_ sentinel-args] (last dispatches)]
+        (is (= ::interceptor/bot-action-complete (first sentinel-args))
+            "Last dispatch should be ::bot-action-complete sentinel")))))
 
 
 (deftest build-bot-dispatches-includes-player-id-in-tap
@@ -222,3 +226,83 @@
       (let [dispatches (mapv second (:fx result))]
         (is (some #(= ::priority-flow/yield (first %)) dispatches)
             "Should dispatch ::yield when safety limit reached")))))
+
+
+;; === Action-Pending Flag Tests ===
+
+(deftest bot-decide-handler-sets-action-pending-on-compound-action
+  (testing "compound action (tap+cast) sets :bot/action-pending? and includes sentinel"
+    (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 1})
+          result (interceptor/bot-decide-handler app-db)]
+      (is (true? (:bot/action-pending? (:db result)))
+          "Should set :bot/action-pending? true on compound action")
+      ;; Sentinel must be the LAST dispatch in :fx
+      (let [last-fx (last (:fx result))
+            [fx-type event-vec] last-fx]
+        (is (= :dispatch fx-type)
+            "Last fx should be a :dispatch")
+        (is (= ::interceptor/bot-action-complete (first event-vec))
+            "Last dispatch should be ::bot-action-complete")))))
+
+
+(deftest bot-decide-handler-suppresses-stale-fire-when-action-pending
+  (testing "stale bot-decide with :bot/action-pending? true returns no-op"
+    (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 1})
+          app-db (assoc app-db :bot/action-pending? true)
+          result (interceptor/bot-decide-handler app-db)]
+      (is (= {:db app-db} result)
+          "Should return {:db app-db} with no :fx key — pure no-op")
+      (is (nil? (:fx result))
+          "Must NOT have any :fx dispatches (no stale yield)"))))
+
+
+(deftest bot-decide-handler-does-not-flag-single-actions
+  (testing "pass action does not set :bot/action-pending?"
+    (let [app-db (setup-burn-bot-app-db {:mountains 0 :bolts 0})
+          result (interceptor/bot-decide-handler app-db)]
+      (is (not (:bot/action-pending? (:db result)))
+          "Should NOT set :bot/action-pending? on pass")
+      ;; Should yield normally
+      (let [dispatches (mapv second (:fx result))]
+        (is (some #(= ::priority-flow/yield (first %)) dispatches)
+            "Should dispatch ::yield on pass")))))
+
+
+(deftest bot-action-complete-clears-flag-and-triggers-decide
+  (testing "::bot-action-complete clears flag and dispatches fresh ::bot-decide"
+    (let [app-db {:bot/action-pending? true :game/db nil}
+          result (interceptor/bot-action-complete-handler app-db)]
+      (is (nil? (:bot/action-pending? (:db result)))
+          "Should clear :bot/action-pending?")
+      (let [dispatches (mapv second (:fx result))]
+        (is (some #(= ::interceptor/bot-decide (first %)) dispatches)
+            "Should dispatch fresh ::bot-decide")))))
+
+
+(deftest build-bot-dispatches-includes-sentinel-as-last-dispatch
+  (testing "build-bot-dispatches appends sentinel after cast"
+    (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 1})
+          game-db (:game/db app-db)
+          action (interceptor/bot-decide-action game-db)
+          dispatches (interceptor/build-bot-dispatches action)
+          last-dispatch (last dispatches)
+          [fx-type event-vec] last-dispatch]
+      ;; Should have 3 dispatches: 1 tap + 1 cast + 1 sentinel
+      (is (= 3 (count dispatches))
+          "Should have 3 dispatches (1 tap + 1 cast + 1 sentinel)")
+      (is (= :dispatch fx-type)
+          "Last entry should be :dispatch")
+      (is (= ::interceptor/bot-action-complete (first event-vec))
+          "Last dispatch should be ::bot-action-complete"))))
+
+
+(deftest bot-decide-handler-does-not-flag-land-play
+  (testing "land play does not set :bot/action-pending?"
+    (let [app-db (setup-burn-bot-app-db {:mountains 0 :bolts 0})
+          game-db (:game/db app-db)
+          ;; Add a mountain to the bot's hand so it can play a land
+          [game-db _] (th/add-card-to-zone game-db :mountain :hand :player-2)
+          app-db (assoc app-db :game/db game-db)
+          result (interceptor/bot-decide-handler app-db)]
+      (is (not (:bot/action-pending? (:db result)))
+          "Should NOT set :bot/action-pending? for land play"))))
