@@ -43,7 +43,9 @@
                     db-after-turn (phases/start-turn db-after-cleanup active-player-id)]
                 ;; Always return at turn boundary — yield-impl handles continuation
                 ;; via recursive ::yield dispatch (re-reads active player from db)
-                {:app-db (assoc app-db :game/db db-after-turn)})))
+                {:app-db (-> app-db
+                             (assoc :game/db db-after-turn)
+                             (dissoc :bot/action-count))})))
           ;; Normal phase advance
           (let [advanced-db (phases/advance-phase gdb active-player-id)
                 ;; Read actual phase from advanced-db (may differ from nxt
@@ -132,7 +134,9 @@
                        (assoc :game/pending-selection (:pending-selection cleanup-result)))}
           (let [db-after-cleanup (:db cleanup-result)
                 db-after-turn (phases/start-turn db-after-cleanup active-player-id)]
-            {:app-db (assoc app-db :game/db db-after-turn)})))
+            {:app-db (-> app-db
+                         (assoc :game/db db-after-turn)
+                         (dissoc :bot/action-count))})))
       ;; Normal: advance one phase
       {:app-db (assoc app-db :game/db (phases/advance-phase game-db active-player-id))})))
 

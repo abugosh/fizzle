@@ -217,8 +217,8 @@
 (deftest bot-decide-handler-respects-safety-limit
   (testing "::bot-decide handler checks action count and yields when limit reached"
     (let [app-db (setup-burn-bot-app-db {:mountains 3 :bolts 3})
-          ;; Simulate action count at limit
-          app-db (assoc app-db :bot/action-count 20)
+          ;; Simulate action count at limit (50, not the old 20)
+          app-db (assoc app-db :bot/action-count 50)
           result (interceptor/bot-decide-handler app-db)]
       ;; Should dispatch ::yield (pass) rather than another cast
       (is (pos? (count (:fx result)))
@@ -463,3 +463,85 @@
             "1 tap for red")
         (is (= 1 (count non-red-taps))
             "1 tap for generic (from plains)")))))
+
+
+;; === Turn-Based Action Limit Tests ===
+
+(deftest bot-decide-handler-does-not-clear-action-count-on-pass
+  (testing "action count persists when bot passes — not cleared per-pass"
+    (let [app-db (setup-burn-bot-app-db {:mountains 0 :bolts 0})
+          app-db (assoc app-db :bot/action-count 5)
+          result (interceptor/bot-decide-handler app-db)]
+      (is (= 5 (:bot/action-count (:db result)))
+          "Action count should persist at 5 after pass, NOT be dissoc'd"))))
+
+
+(deftest bot-decide-handler-uses-50-action-limit
+  (testing "bot acts when under 50 and yields when at 50"
+    ;; Under limit: bot with resources at count 49 should still act
+    (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 1})
+          app-db (assoc app-db :bot/action-count 49)
+          result (interceptor/bot-decide-handler app-db)]
+      (is (true? (:bot/action-pending? (:db result)))
+          "Bot at count 49 should still act (under 50 limit)")
+      (is (= 50 (:bot/action-count (:db result)))
+          "Action count should increment to 50"))
+    ;; At limit: bot with resources at count 50 should yield
+    (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 1})
+          app-db (assoc app-db :bot/action-count 50)
+          result (interceptor/bot-decide-handler app-db)]
+      (let [dispatches (mapv second (:fx result))]
+        (is (some #(= ::priority-flow/yield (first %)) dispatches)
+            "Bot at count 50 should yield")))))
+
+
+(deftest bot-decide-handler-safety-limit-yields-without-clearing-count
+  (testing "safety limit yields but does NOT clear the counter"
+    (let [app-db (setup-burn-bot-app-db {:mountains 3 :bolts 3})
+          app-db (assoc app-db :bot/action-count 50)
+          result (interceptor/bot-decide-handler app-db)]
+      (is (= 50 (:bot/action-count (:db result)))
+          "Counter should remain at 50 — NOT cleared on safety yield")
+      (let [dispatches (mapv second (:fx result))]
+        (is (some #(= ::priority-flow/yield (first %)) dispatches)
+            "Should dispatch ::yield when safety limit reached")))))
+
+
+(deftest bot-action-count-reset-at-turn-boundary
+  (testing "action count is cleared when turn boundary is crossed"
+    (let [db (-> (th/create-test-db {:stops #{}})
+                 (th/add-opponent {:bot-archetype :burn}))
+          ;; Start at human's turn with action count accumulated from bot's prior turn
+          app-db (merge (history/init-history)
+                        {:game/db db
+                         :bot/action-count 30})
+          ;; Advance human through all phases to turn boundary (crosses to bot turn)
+          result (priority-flow/advance-with-stops app-db true)
+          result-app-db (:app-db result)]
+      (is (nil? (:bot/action-count result-app-db))
+          "Action count should be cleared (dissoc'd) at turn boundary")))
+  (testing "action count is cleared on bot-turn-advance crossing turn boundary"
+    ;; Start at bot's turn, advance through to human turn
+    (let [db (-> (th/create-test-db {:stops #{}})
+                 (th/add-opponent {:bot-archetype :burn}))
+          ;; First get to bot's turn
+          result1 (priority-flow/advance-with-stops
+                    (merge (history/init-history) {:game/db db}) true)
+          bot-app-db (:app-db result1)
+          ;; Set accumulated action count
+          bot-app-db (assoc bot-app-db :bot/action-count 25)
+          ;; Advance bot through all phases to turn boundary
+          final-app-db (loop [adb bot-app-db
+                              n 20]
+                         (if (zero? n)
+                           adb
+                           (let [gdb (:game/db adb)
+                                 active (q/get-active-player-id gdb)
+                                 result (priority-flow/advance-with-stops adb true)
+                                 rdb (:game/db (:app-db result))
+                                 new-active (q/get-active-player-id rdb)]
+                             (if (not= active new-active)
+                               (:app-db result)
+                               (recur (:app-db result) (dec n))))))]
+      (is (nil? (:bot/action-count final-app-db))
+          "Action count should be cleared after bot turn ends"))))

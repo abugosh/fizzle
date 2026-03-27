@@ -197,8 +197,8 @@
       (or (not game-db)
           (:game/pending-selection app-db)
           (not (bot-should-act? game-db))
-          (>= (or (:bot/action-count app-db) 0) 20)))
-    {:db (dissoc app-db :bot/action-count)
+          (>= (or (:bot/action-count app-db) 0) 50)))
+    {:db app-db
      :fx [[:dispatch [:fizzle.events.priority-flow/yield]]]}
 
     ;; Normal decision path
@@ -228,8 +228,8 @@
         :else
         (let [action (bot-decide-action game-db)]
           (if (= :pass (:action action))
-            ;; Bot passes — dispatch ::yield to pass priority
-            {:db (dissoc app-db :bot/action-count)
+            ;; Bot passes — dispatch ::yield to pass priority (count persists until turn end)
+            {:db app-db
              :fx [[:dispatch [:fizzle.events.priority-flow/yield]]]}
             ;; Bot wants to cast — compound action: set flag, include sentinel
             (let [dispatches (build-bot-dispatches action)]
