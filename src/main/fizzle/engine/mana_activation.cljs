@@ -11,7 +11,6 @@
     [fizzle.engine.events :as game-events]
     [fizzle.engine.priority :as priority]
     [fizzle.engine.stack :as stack]
-    [fizzle.engine.state-based :as state-based]
     [fizzle.engine.trigger-dispatch :as dispatch]))
 
 
@@ -110,10 +109,8 @@
                       ;; Step 3: Dispatch permanent-tapped event to trigger registered triggers
                       ;; (replaces old fire-matching-triggers scanning approach)
                       db-after-triggers (dispatch/dispatch-event db-after-effects
-                                                                 (game-events/permanent-tapped-event object-id player-id))
-                      ;; Step 4: Check state-based actions
-                      db-after-sbas (state-based/check-and-execute-sbas db-after-triggers)]
-                  db-after-sbas)
+                                                                 (game-events/permanent-tapped-event object-id player-id))]
+                  db-after-triggers)
                 db))
             db))
         db))))

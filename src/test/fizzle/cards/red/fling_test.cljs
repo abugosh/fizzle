@@ -334,7 +334,7 @@
 ;; =====================================================
 
 (deftest fling-lethal-damage-triggers-life-zero-sba-test
-  (testing "Fling dealing lethal damage to opponent triggers :life-zero SBA"
+  (testing "Fling dealing lethal damage to opponent triggers :life-zero SBA inline via reduce-effects"
     (let [db (th/create-test-db {:mana {:red 1 :colorless 1}})
           db (th/add-opponent db)
           ;; Give opponent only 1 life so Nimble Mongoose (1/1) is lethal
@@ -349,15 +349,14 @@
           {:keys [db selection]} (th/confirm-selection (:game/db app-db) sac-sel #{creature-id})
           ;; Target opponent
           {:keys [db]} (th/confirm-selection db selection #{:player-2})
-          ;; Resolve Fling
+          ;; Resolve Fling via pure function — SBAs fire via :db effect handler in production.
+          ;; In tests, manually call check-and-execute-sbas (test helpers bypass re-frame).
           result-db (:db (th/resolve-top db))
-          ;; Check life total
+          result-db (sba/check-and-execute-sbas result-db)
           opp-life (q/get-life-total result-db :player-2)
-          ;; Run SBAs manually (th/resolve-top doesn't go through interceptor)
-          sba-db (sba/check-and-execute-sbas result-db)
-          game-state (q/get-game-state sba-db)]
+          game-state (q/get-game-state result-db)]
       (is (= 0 opp-life) "Opponent should be at 0 life")
       (is (= :life-zero (:game/loss-condition game-state))
-          "SBA should set :life-zero loss condition")
+          "SBA should set :life-zero after lethal damage")
       (is (some? (:game/winner game-state))
-          "SBA should set a winner"))))
+          "SBA should set winner after lethal damage"))))

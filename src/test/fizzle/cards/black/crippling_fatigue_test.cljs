@@ -145,8 +145,10 @@
           ;; 2/2 creature: -2/-2 gives 0 toughness, SBA kills it
           [db creature-id] (add-test-creature db :player-2 2 2)
           db-cast (th/cast-with-target db :player-1 obj-id creature-id)
-          {:keys [db]} (th/resolve-top db-cast)]
-      ;; SBA fires during resolve-top: creature with 0 toughness moves to graveyard.
+          {:keys [db]} (th/resolve-top db-cast)
+          ;; SBAs fire via :db effect handler in production; call manually in tests
+          db (sba/check-and-execute-sbas db)]
+      ;; SBA detects creature with 0 toughness and moves it to graveyard.
       ;; After zones/move-to-zone to graveyard, object/power and object/toughness
       ;; are retracted; the grant stays on the object in graveyard.
       (is (= :graveyard (:object/zone (q/get-object db creature-id)))

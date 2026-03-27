@@ -7,7 +7,6 @@
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.state-based :as sba]
-    [fizzle.events.interceptors.sba :as sba-interceptor]
     [fizzle.events.phases :as phases]
     [fizzle.events.priority-flow :as priority-flow]
     [fizzle.history.core :as history]
@@ -134,54 +133,3 @@
               ;; Continue iterating if no loss detected yet
               (recur (assoc result-adb :game/db sba-db)
                      (inc iterations)))))))))
-
-
-(deftest sba-interceptor-detects-opponent-empty-library-on-yield
-  (testing "SBA global interceptor fires and sets loss condition after yield advances through bot draw"
-    (let [db (-> (th/create-test-db {:stops #{}})
-                 (th/add-opponent {:bot-archetype :goldfish}))
-          ;; Clear opponent's library
-          db (clear-library db :player-2)
-          ;; Set game to opponent's turn, upkeep phase, turn 2
-          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
-          opp-eid (q/get-player-eid db :player-2)
-          db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]
-                            [:db/add game-eid :game/priority opp-eid]
-                            [:db/add game-eid :game/turn 2]
-                            [:db/add game-eid :game/phase :upkeep]])
-          app-db (merge (history/init-history) {:game/db db})
-          ;; Simulate ::yield event handler (reg-event-fx)
-          result (priority-flow/yield-impl app-db)
-          handler-effects {:db (:app-db result)}
-          ;; Simulate global SBA interceptor reading from context
-          ;; Global interceptor checks event-id against sba-trigger-events
-          context {:effects handler-effects
-                   :coeffects {:event [:fizzle.events.priority-flow/yield]}}
-          interceptor-after-fn (-> sba-interceptor/sba-interceptor
-                                   :after)
-          context-after (interceptor-after-fn context)
-          ;; Extract the game-db after SBA interceptor
-          result-game-db (get-in context-after [:effects :db :game/db])]
-      ;; The SBA interceptor should have detected drew-from-empty and set loss condition
-      (is (= :empty-library (get-loss-condition result-game-db))
-          "SBA interceptor should detect opponent's empty library draw and set loss condition"))))
-
-
-(deftest sba-interceptor-skips-non-trigger-events
-  (testing "SBA interceptor does not fire for events not in trigger set"
-    (let [db (-> (th/create-test-db {:stops #{}})
-                 (th/add-opponent {:bot-archetype :goldfish}))
-          ;; Manually set drew-from-empty flag
-          opp-eid (q/get-player-eid db :player-2)
-          db (d/db-with db [[:db/add opp-eid :player/drew-from-empty true]])
-          app-db (merge (history/init-history) {:game/db db})
-          ;; Simulate a non-trigger event (e.g., cancel-selection)
-          context {:effects {:db app-db}
-                   :coeffects {:event [:fizzle.events.selection/cancel-selection]}}
-          interceptor-after-fn (-> sba-interceptor/sba-interceptor
-                                   :after)
-          context-after (interceptor-after-fn context)
-          result-game-db (get-in context-after [:effects :db :game/db])]
-      ;; SBA should NOT have fired — loss condition should not be set
-      (is (nil? (get-loss-condition result-game-db))
-          "SBA interceptor should not fire for non-trigger events"))))

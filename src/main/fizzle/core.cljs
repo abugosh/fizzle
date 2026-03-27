@@ -1,6 +1,6 @@
 (ns fizzle.core
   (:require
-    [fizzle.bots.interceptor :as bot-interceptor]
+    [fizzle.bots.interceptor]
     [fizzle.engine.effects-registry]
     [fizzle.events.abilities]
     [fizzle.events.calculator :as calc-events]
@@ -9,7 +9,6 @@
     [fizzle.events.cycling]
     [fizzle.events.db-effect :as db-effect]
     [fizzle.events.init]
-    [fizzle.events.interceptors.sba :as sba-interceptor]
     [fizzle.events.lands]
     [fizzle.events.opening-hand]
     [fizzle.events.phases]
@@ -141,8 +140,6 @@
 (defn init
   []
   (history-interceptor/register!)
-  (bot-interceptor/register!)
-  (sba-interceptor/register!)
   (db-effect/register!)            ; Custom :db effect handler — SBA+bot chokepoint
   ;; Always run normal init-setup first (sets up setup screen + config)
   (rf/dispatch-sync [::setup/init-setup])

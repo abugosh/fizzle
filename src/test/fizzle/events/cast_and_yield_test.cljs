@@ -391,8 +391,11 @@
                    (:selection/on-complete (:game/pending-selection result)))
                 "Targeting selection should carry on-complete continuation")
           ;; Step 2: confirm targeting by selecting :player-1 as target
+          ;; Auto-confirm dispatches ::confirm-selection asynchronously (rf/dispatch);
+          ;; use dispatch-sync here to get the confirmed state in tests.
           _ (reset! rf-db/app-db result)
           _ (rf/dispatch-sync [:fizzle.events.selection/toggle-selection :player-1])
+          _ (rf/dispatch-sync [:fizzle.events.selection/confirm-selection])
           after-target @rf-db/app-db]
       ;; After targeting confirms (auto-confirm on single select), the spell
       ;; should be cast AND auto-resolved via the continuation protocol.
@@ -425,8 +428,11 @@
                    (:selection/on-complete (:game/pending-selection result)))
                 "Targeting selection should carry continuation")
           ;; Step 2: select target (player-1 for self-mill in testing)
+          ;; Auto-confirm dispatches ::confirm-selection asynchronously (rf/dispatch);
+          ;; use dispatch-sync here to get the confirmed state in tests.
           _ (reset! rf-db/app-db result)
           _ (rf/dispatch-sync [:fizzle.events.selection/toggle-selection :player-1])
+          _ (rf/dispatch-sync [:fizzle.events.selection/confirm-selection])
           after-target @rf-db/app-db]
       ;; After targeting, should chain to mana allocation with continuation propagated
       (is (some? (:game/pending-selection after-target))

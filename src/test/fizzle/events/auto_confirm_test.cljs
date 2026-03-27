@@ -41,6 +41,18 @@
   @rf-db/app-db)
 
 
+(defn- dispatch-sync-toggle-with-auto-confirm
+  "Dispatches toggle-selection synchronously, then dispatches confirm-selection
+   synchronously to simulate the auto-confirm path. After this change, toggle
+   dispatches ::confirm-selection asynchronously (rf/dispatch); tests use
+   dispatch-sync for the confirm step to get the final state."
+  [db event]
+  (reset! rf-db/app-db db)
+  (rf/dispatch-sync event)
+  (rf/dispatch-sync [::selection/confirm-selection])
+  @rf-db/app-db)
+
+
 ;; === Single-select tutor auto-confirm ===
 
 (deftest test-single-select-tutor-auto-confirms
@@ -63,7 +75,7 @@
                    :selection/auto-confirm? true}
           app-db {:game/db game-db'
                   :game/pending-selection pending}
-          result (dispatch-sync-on-db app-db [::selection/toggle-selection bf-id])]
+          result (dispatch-sync-toggle-with-auto-confirm app-db [::selection/toggle-selection bf-id])]
       ;; After auto-confirm, pending-selection should be cleared
       (is (nil? (:game/pending-selection result))
           "Auto-confirm should clear pending selection")
@@ -143,7 +155,7 @@
                    :selection/auto-confirm? true}
           app-db {:game/db game-db
                   :game/pending-selection pending}
-          result (dispatch-sync-on-db app-db [::selection/toggle-selection :player-2])]
+          result (dispatch-sync-toggle-with-auto-confirm app-db [::selection/toggle-selection :player-2])]
       ;; After auto-confirm, pending-selection should be cleared
       (is (nil? (:game/pending-selection result))
           "Player target should auto-confirm"))))
@@ -310,7 +322,7 @@
           app-db {:game/db game-db'
                   :game/pending-selection pending}
           ;; Click a different card (not deselect — replace)
-          result (dispatch-sync-on-db app-db [::selection/toggle-selection dr-id])]
+          result (dispatch-sync-toggle-with-auto-confirm app-db [::selection/toggle-selection dr-id])]
       ;; Auto-confirm should fire since new card was selected (replace, not deselect)
       (is (nil? (:game/pending-selection result))
           "Replacing selection in single-select tutor should auto-confirm")

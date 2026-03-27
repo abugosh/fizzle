@@ -15,7 +15,6 @@
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.conditions :as conditions]
-    [fizzle.engine.state-based :as sba]
     [fizzle.engine.zones :as zones]))
 
 
@@ -204,11 +203,11 @@
    (loop [db db
           [effect & remaining] (seq effects)]
      (if-not effect
-       {:db (sba/check-and-execute-sbas db)}
+       {:db db}
        (let [result (execute-effect-checked db player-id effect object-id)]
          (if (:needs-selection result)
            (assoc result :remaining-effects (vec remaining))
-           (recur (sba/check-and-execute-sbas (:db result)) remaining)))))))
+           (recur (:db result) remaining)))))))
 
 
 (defn counter-target-spell

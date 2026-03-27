@@ -335,17 +335,17 @@
           _ (is (= :exile (:object/zone (q/get-object db-after-activation lib-dev-id)))
                 "Library copy should be exiled as cost")
           db-resolved (:db (resolution/resolve-one-item db-after-activation))
+          ;; SBAs fire via :db effect handler in production; call manually in tests
+          db-after-sba (sba/check-and-execute-sbas db-resolved)
           counters (or (:object/counters (q/get-object db-resolved devourer-id)) {})]
       ;; Power = 1 (base) + 6 (counters) = 7 — SBA should fire
       (is (= 6 (get counters :+1/+1 0))
           "Should have 6 counters from exiling 6-CMC card")
       (is (= 7 (creatures/effective-power db-resolved devourer-id))
           "Effective power should be 7 (1 base + 6 counters)")
-      ;; check-and-execute-sbas called within reduce-effects should have put trigger on stack
-      ;; or Devourer may already be sacrificed (depending on SBA timing)
-      ;; What matters: either trigger is on stack OR Devourer is in graveyard
-      (let [zone (:object/zone (q/get-object db-resolved devourer-id))
-            stack-item (stack/get-top-stack-item db-resolved)]
+      ;; After SBAs run, trigger should be on stack or Devourer sacrificed
+      (let [zone (:object/zone (q/get-object db-after-sba devourer-id))
+            stack-item (stack/get-top-stack-item db-after-sba)]
         (is (or (= :graveyard zone)
                 (= :state-check-trigger (:stack-item/type stack-item)))
             "After reaching power 7, Devourer should either be sacrificed or have sacrifice trigger on stack")))))

@@ -16,7 +16,8 @@
     [fizzle.engine.resolution :as resolution]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.validation :as validation]
-    [fizzle.engine.zones :as zones]))
+    [fizzle.engine.zones :as zones]
+    [re-frame.core :as rf]))
 
 
 ;; =====================================================
@@ -440,11 +441,14 @@
 
           ;; At limit: ignore
           :else [app-db false])]
-    ;; Auto-confirm: data-driven via :selection/auto-confirm? flag
+    ;; Auto-confirm: dispatch ::confirm-selection instead of calling inline.
+    ;; This ensures the confirmation goes through the event system and hits
+    ;; the :db effect handler chokepoint (for SBA + bot checks).
     (if (and selected?
              (= select-count 1)
              (:selection/auto-confirm? selection))
-      (confirm-selection-impl new-db)
+      (do (rf/dispatch [:fizzle.events.selection/confirm-selection])
+          new-db)
       new-db)))
 
 

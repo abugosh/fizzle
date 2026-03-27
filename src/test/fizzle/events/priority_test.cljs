@@ -19,7 +19,6 @@
 
 ;; Register interceptors for dispatch-sync tests
 (interceptor/register!)
-(bot-interceptor/register!)
 
 
 (defn- setup-app-db

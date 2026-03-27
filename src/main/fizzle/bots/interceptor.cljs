@@ -1,17 +1,15 @@
 (ns fizzle.bots.interceptor
-  "Bot action interceptor and decision logic.
+  "Bot decision logic.
 
    This module is the ONLY place that knows about bots in the event layer.
    It provides:
    - bot-should-act?: checks if the current priority holder is a bot
    - bot-decide-action: asks bot protocol for a decision and builds action plan
    - build-bot-dispatches: converts action plan to re-frame dispatch sequence
-   - bot-action-interceptor: re-frame interceptor that queues ::bot-decide
    - ::bot-decide: event handler that dispatches standard events for bot actions
 
-   Most game events (::cast-spell, ::yield, etc.) remain bot-unaware.
-   Exception: negotiate-priority consults bot protocol to decide auto-pass vs transfer.
-   The interceptor bridges between bot protocol decisions and standard events.
+   Bot checks fire via the :db effect handler chokepoint (events/db_effect.cljs),
+   which queues ::bot-decide after every game-db mutation where a bot holds priority.
    Bot taps dispatch ::activate-mana-ability. Bot casts dispatch ::cast-spell with opts.
    Each dispatch goes through the full event pipeline (history, validation)."
   (:require
@@ -120,62 +118,6 @@
     (conj tap-dispatches cast-dispatch)))
 
 
-;; === Re-frame Interceptor ===
-
-(def ^:private bot-trigger-events
-  "Events after which the bot interceptor checks whether to queue ::bot-decide."
-  #{:fizzle.events.priority-flow/yield
-    :fizzle.events.priority-flow/yield-all
-    :fizzle.events.resolution/resolve-top
-    :fizzle.events.phases/advance-phase
-    :fizzle.events.phases/start-turn
-    :fizzle.events.priority-flow/cast-and-yield
-    :fizzle.events.lands/play-land
-    :fizzle.events.casting/cast-spell
-    :fizzle.events.selection/toggle-selection
-    :fizzle.events.selection/confirm-selection})
-
-
-(def ^:private max-bot-actions
-  "Safety limit: maximum number of consecutive bot actions per priority window."
-  20)
-
-
-(def bot-action-interceptor
-  "Global re-frame interceptor that checks if the priority holder is a bot
-   after game-state-changing events. If yes, injects a ::bot-decide dispatch.
-
-   Runs in the :after phase of the interceptor chain. Only fires for events
-   in bot-trigger-events. Does not fire if a pending-selection exists."
-  (rf/->interceptor
-    :id :bot/action
-    :after (fn [context]
-             (let [event (get-in context [:coeffects :event])
-                   event-id (first event)]
-               (if-not (bot-trigger-events event-id)
-                 context
-                 (let [db-after (get-in context [:effects :db])
-                       game-db (when db-after (:game/db db-after))]
-                   (if (or (not game-db)
-                           (:game/pending-selection db-after)
-                           (not (bot-should-act? game-db)))
-                     context
-                     (let [existing-fx (get-in context [:effects :fx] [])
-                           yield-kw :fizzle.events.priority-flow/yield
-                           cleaned-fx (into []
-                                            (remove
-                                              (fn [[effect-type arg]]
-                                                (or (and (= :dispatch effect-type)
-                                                         (sequential? arg)
-                                                         (= yield-kw (first arg)))
-                                                    (and (= :dispatch-later effect-type)
-                                                         (map? arg)
-                                                         (= yield-kw (first (:dispatch arg))))))
-                                              existing-fx))]
-                       (assoc-in context [:effects :fx]
-                                 (conj cleaned-fx [:dispatch [::bot-decide]]))))))))))
-
-
 ;; === ::bot-decide Event Handler ===
 
 (defn- find-bot-land-to-play
@@ -203,7 +145,7 @@
     (if (or (not game-db)
             (:game/pending-selection app-db)
             (not (bot-should-act? game-db))
-            (>= bot-action-count max-bot-actions))
+            (>= bot-action-count 20))
       ;; Not bot's turn, selection in progress, or safety limit — yield
       {:db (dissoc app-db :bot/action-count)
        :fx [[:dispatch [:fizzle.events.priority-flow/yield]]]}
@@ -243,9 +185,3 @@
   ::bot-decide
   (fn [{:keys [db]} _]
     (bot-decide-handler db)))
-
-
-(defn register!
-  "Register the bot action interceptor globally. Call once during app initialization."
-  []
-  (rf/reg-global-interceptor bot-action-interceptor))
