@@ -16,6 +16,7 @@
     [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.events.abilities :as abilities]
     [fizzle.events.casting :as casting]
+    [fizzle.events.lands :as lands]
     [fizzle.events.priority-flow :as priority-flow]
     [fizzle.history.core :as history]
     [fizzle.test-helpers :as th]))
@@ -87,8 +88,6 @@
           "Action type should be :cast-spell")
       (is (uuid? (:object-id result))
           "Should include the bolt object-id")
-      (is (= 1 (count (:tap-sequence result)))
-          "Should include a tap sequence with 1 land")
       (is (= 1 (count (:tap-sequence result)))
           "Should tap exactly 1 mountain"))))
 
@@ -305,7 +304,10 @@
           app-db (assoc app-db :game/db game-db)
           result (interceptor/bot-decide-handler app-db)]
       (is (not (:bot/action-pending? (:db result)))
-          "Should NOT set :bot/action-pending? for land play"))))
+          "Should NOT set :bot/action-pending? for land play")
+      (let [dispatches (mapv second (:fx result))]
+        (is (some #(= ::lands/play-land (first %)) dispatches)
+            "Should dispatch ::lands/play-land for land play")))))
 
 
 ;; === Multi-Color Mana Tests ===

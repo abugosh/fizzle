@@ -157,4 +157,5 @@
 (rf/reg-event-db
   ::init-game
   (fn [_ [_ config]]
-    (init-game-state config)))
+    (-> (init-game-state config)
+        (dissoc :bot/action-pending? :bot/action-count))))
