@@ -7,6 +7,7 @@
     [fizzle.events.casting]
     [fizzle.events.cleanup]
     [fizzle.events.cycling]
+    [fizzle.events.db-effect :as db-effect]
     [fizzle.events.init]
     [fizzle.events.interceptors.sba :as sba-interceptor]
     [fizzle.events.lands]
@@ -142,6 +143,7 @@
   (history-interceptor/register!)
   (bot-interceptor/register!)
   (sba-interceptor/register!)
+  (db-effect/register!)            ; Custom :db effect handler — SBA+bot chokepoint
   ;; Always run normal init-setup first (sets up setup screen + config)
   (rf/dispatch-sync [::setup/init-setup])
   ;; Initialize calculator (restores queries from localStorage if available)
