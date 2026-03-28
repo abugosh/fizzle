@@ -48,6 +48,7 @@
         ;; Queue bot action if bot should act (after SBAs applied)
         ;; Guards: no pending selection, bot holds priority
         (when (and (not (:game/pending-selection final-app-db))
+                   (not (:bot/action-pending? final-app-db))
                    (bot-interceptor/bot-should-act? sba-db))
           (rf/dispatch [::bot-interceptor/bot-decide]))))))
 

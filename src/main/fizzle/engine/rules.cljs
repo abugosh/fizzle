@@ -539,6 +539,7 @@
 (defn can-play-land?
   "Check if a player can play a land from their hand.
    Requires:
+   - Player is the active player (MTG rule: lands only during YOUR main phase)
    - Object is a land card
    - Object is in player's hand
    - Player has land plays remaining
@@ -548,6 +549,7 @@
   [db player-id object-id]
   (let [game-state (q/get-game-state db)
         phase (:game/phase game-state)
+        active-player-id (q/get-active-player-id db)
         player-eid (q/get-player-eid db player-id)
         land-plays (d/q '[:find ?plays .
                           :in $ ?pid
@@ -559,6 +561,7 @@
     (boolean
       (and player-eid
            obj
+           (= player-id active-player-id)
            (pos? (or land-plays 0))
            (= (:object/zone obj) :hand)
            (= owner-eid player-eid)

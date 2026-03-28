@@ -207,6 +207,10 @@
     (let [db (th/create-test-db)
           db (th/add-opponent db)
           [db land-id] (th/add-card-to-zone db :island :hand :player-2)
+          ;; Set player-2 as active player (can-play-land? requires active player)
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          p2-eid (q/get-player-eid db :player-2)
+          db (d/db-with db [[:db/add game-eid :game/active-player p2-eid]])
           db-restricted (grants/add-player-grant db :player-2
                                                  {:grant/type :restriction
                                                   :grant/data {:restriction/type :cannot-cast-instants-sorceries}
