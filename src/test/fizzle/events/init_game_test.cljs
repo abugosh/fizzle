@@ -1,14 +1,39 @@
 (ns fizzle.events.init-game-test
   "Tests for game initialization - player library and starting hand."
   (:require
-    [cljs.test :refer-macros [deftest testing is]]
+    [cljs.test :refer-macros [deftest testing is use-fixtures]]
     [clojure.set]
     [datascript.core :as d]
     [datascript.db :as ds-db]
     [fizzle.bots.protocol :as bot]
     [fizzle.db.queries :as q]
+    [fizzle.db.storage :as storage]
     [fizzle.events.init :as game-init]
     [fizzle.events.setup :as setup]))
+
+
+;; Mock localStorage so stops tests are isolated from any shared global state
+(def ^:private mock-storage (atom {}))
+
+
+(def ^:private create-mock-storage
+  (fn []
+    #js {:getItem (fn [key] (get @mock-storage key nil))
+         :setItem (fn [key value] (swap! mock-storage assoc key value) nil)
+         :removeItem (fn [key] (swap! mock-storage dissoc key) nil)
+         :clear (fn [] (reset! mock-storage {}) nil)
+         :length 0
+         :key (fn [_] nil)}))
+
+
+(set! js/localStorage (create-mock-storage))
+
+
+(use-fixtures :each
+  {:before (fn []
+             (set! js/localStorage (create-mock-storage))
+             (reset! mock-storage {}))
+   :after (fn [] (reset! mock-storage {}))})
 
 
 ;; === Test helpers ===
@@ -403,3 +428,31 @@
           battlefield (q/get-objects-in-zone db :player-1 :battlefield)]
       (is (= 0 (count battlefield))
           "Player battlefield should start empty"))))
+
+
+;; === Phase stops initialization tests ===
+
+(deftest test-init-loads-opponent-stops-onto-human-entity
+  (testing "After game init, human entity has :player/opponent-stops from localStorage"
+    ;; Save specific opponent-stops to localStorage before init
+    (storage/save-stops! {:player #{:main1 :main2} :opponent-stops #{:end :upkeep}})
+    (let [db (:game/db (game-init/init-game-state {:main-deck (:deck/main setup/iggy-pop-decklist)
+                                                   :bot-deck (bot/bot-deck :goldfish)}))
+          human-eid (q/get-player-eid db :player-1)
+          opp-stops (:player/opponent-stops (d/pull db [:player/opponent-stops] human-eid))]
+      (is (= #{:end :upkeep} opp-stops)
+          "Human entity should have :player/opponent-stops loaded from localStorage"))))
+
+
+(deftest test-init-bot-stops-unaffected-by-localstorage
+  (testing "After game init, bot entity's :player/stops is purely bot-derived, not from localStorage"
+    ;; Save opponent-stops to localStorage — should NOT leak to bot entity
+    (storage/save-stops! {:player #{:main1} :opponent-stops #{:end :combat}})
+    (let [db (:game/db (game-init/init-game-state {:main-deck (:deck/main setup/iggy-pop-decklist)
+                                                   :bot-deck (bot/bot-deck :goldfish)}))
+          bot-eid (q/get-player-eid db :player-2)
+          bot-stops (:player/stops (d/pull db [:player/stops] bot-eid))]
+      (is (= (bot/bot-stops :goldfish) bot-stops)
+          "Bot's :player/stops should equal goldfish bot-derived stops, not localStorage opponent-stops")
+      (is (not (contains? bot-stops :end))
+          ":end should not appear in bot stops — it came from localStorage opponent-stops, not phase-actions"))))

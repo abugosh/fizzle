@@ -7,9 +7,11 @@
    Verification strategy: restore a db, then extract it again and compare
    the extracted map to the original snapshot (round-trip property)."
   (:require
-    [cljs.test :refer-macros [deftest testing is]]
+    [cljs.test :refer-macros [deftest testing is use-fixtures]]
     [datascript.core :as d]
+    [fizzle.bots.protocol :as bot-protocol]
     [fizzle.db.queries :as q]
+    [fizzle.db.storage :as storage]
     [fizzle.engine.cards :as cards]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
@@ -18,6 +20,30 @@
     [fizzle.sharing.extractor :as extractor]
     [fizzle.sharing.restorer :as restorer]
     [fizzle.test-helpers :as th]))
+
+
+;; Mock localStorage so stops tests are isolated from any shared global state
+(def ^:private mock-storage (atom {}))
+
+
+(def ^:private create-mock-storage
+  (fn []
+    #js {:getItem (fn [key] (get @mock-storage key nil))
+         :setItem (fn [key value] (swap! mock-storage assoc key value) nil)
+         :removeItem (fn [key] (swap! mock-storage dissoc key) nil)
+         :clear (fn [] (reset! mock-storage {}) nil)
+         :length 0
+         :key (fn [_] nil)}))
+
+
+(set! js/localStorage (create-mock-storage))
+
+
+(use-fixtures :each
+  {:before (fn []
+             (set! js/localStorage (create-mock-storage))
+             (reset! mock-storage {}))
+   :after (fn [] (reset! mock-storage {}))})
 
 
 ;; ---------------------------------------------------------------------------
@@ -347,6 +373,43 @@
           "hand should have 1 card")
       (is (rules/can-cast? restored :player-1 (:object/id (first hand)))
           "should be able to cast dark-ritual from restored state"))))
+
+
+;; ---------------------------------------------------------------------------
+;; K. Stops restoration
+
+(deftest restore-opponent-stops-onto-human-entity-test
+  (testing "After restore, human entity has :player/opponent-stops from localStorage"
+    ;; Save specific opponent-stops to localStorage before restoring
+    (storage/save-stops! {:player #{:main1 :main2} :opponent-stops #{:end :upkeep}})
+    (let [db       (-> (th/create-test-db) (th/add-opponent {:bot-archetype :goldfish}))
+          snapshot (make-snapshot db)
+          restored (-> snapshot restorer/restore-game-state :game/db)
+          human-eid (q/get-player-eid restored :player-1)
+          opp-stops (:player/opponent-stops (d/pull restored [:player/opponent-stops] human-eid))]
+      (is (= #{:end :upkeep} opp-stops)
+          "Human entity's :player/opponent-stops should be loaded from localStorage after restore"))))
+
+
+(deftest restore-bot-stops-not-from-localstorage-opponent-stops-test
+  (testing "After restore, bot entity's :player/stops does NOT contain localStorage opponent-stops"
+    ;; Save opponent-stops to localStorage — should NOT appear on bot entity
+    (storage/save-stops! {:player #{:main1} :opponent-stops #{:end :combat}})
+    ;; Use a snapshot with bot-archetype preserved (not through binary encoder/decoder
+    ;; which drops bot-archetype — construct manually to include it)
+    (let [db       (-> (th/create-test-db) (th/add-opponent {:bot-archetype :goldfish}))
+          ;; Extract the state and manually add bot-archetype to the snapshot
+          ;; (the binary encoder/decoder drops bot-archetype from the snapshot)
+          snapshot (-> (make-snapshot db)
+                       (assoc-in [:players :player-2 :player/bot-archetype] :goldfish)
+                       (assoc-in [:players :player-2 :player/is-opponent] true))
+          restored (-> snapshot restorer/restore-game-state :game/db)
+          bot-eid  (q/get-player-eid restored :player-2)
+          bot-stops (:player/stops (d/pull restored [:player/stops] bot-eid))]
+      (is (= (bot-protocol/bot-stops :goldfish) bot-stops)
+          "Bot's :player/stops should equal goldfish bot-derived stops (from archetype, not localStorage)")
+      (is (not (contains? bot-stops :end))
+          ":end from localStorage opponent-stops should not appear in bot's :player/stops"))))
 
 
 ;; ---------------------------------------------------------------------------

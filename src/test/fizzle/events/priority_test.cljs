@@ -615,20 +615,79 @@
 
 
 (deftest bot-turn-f6-ignores-opponent-stops
-  (testing "F6 mode advances through opponent's turn ignoring human stops"
+  (testing "F6 mode advances through opponent's turn ignoring human opponent-stops"
     (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
                  (h/add-opponent {:bot-archetype :goldfish :stops #{:draw}}))
-          game-db (-> db
+          ;; Set :player/opponent-stops on human so F6 actually has something to skip
+          human-eid (q/get-player-eid db :player-1)
+          db-with-opp-stops (priority/set-opponent-stops db human-eid #{:end :upkeep})
+          game-db (-> db-with-opp-stops
                       (phases/advance-phase :player-1)  ; main1 -> combat
                       (phases/advance-phase :player-1)) ; combat -> main2
           app-db (merge (history/init-history) {:game/db game-db})
-          ;; yield-all sets F6 mode, which should skip all stops
+          ;; yield-all sets F6 mode, which should skip all stops including opponent-stops
           result (dispatch-yield-all app-db)
           result-db (:game/db result)]
       (is (= :main1 (:game/phase (q/get-game-state result-db)))
-          "F6 should advance through opponent's turn to player's main1")
+          "F6 should advance through opponent's turn to player's main1, bypassing human's opponent-stops")
       (is (= 3 (:game/turn (q/get-game-state result-db)))
-          "Should be player's turn 3 (past opponent's turn 2)"))))
+          "Should be player's turn 3 (past opponent's turn 2 — F6 skipped opponent-stops)"))))
+
+
+(deftest opponent-stop-pauses-during-bot-turn
+  (testing "advance-with-stops pauses at human's opponent-stop during bot's turn"
+    ;; Directly test advance-with-stops: bot is active with no own stops,
+    ;; human (non-active) has opponent-stop at :end.
+    ;; Starting at :main2 on bot's turn — should advance and pause at :end.
+    (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
+                 (h/add-opponent {:bot-archetype :goldfish :stops #{}}))  ; bot: no stops
+          human-eid (q/get-player-eid db :player-1)
+          ;; Set human's opponent-stop at :end
+          db' (priority/set-opponent-stops db human-eid #{:end})
+          ;; Set game to bot's turn (player-2 active) at :main2 — bot has no stops,
+          ;; so advance-with-stops will scan forward and hit human's :end opponent-stop
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db')
+          opp-eid (q/get-player-eid db' :player-2)
+          game-db (d/db-with db' [[:db/add game-eid :game/active-player opp-eid]
+                                  [:db/add game-eid :game/priority opp-eid]
+                                  [:db/add game-eid :game/phase :main2]])
+          app-db {:game/db game-db}
+          ;; advance-with-stops: bot active at :main2, bot has no stops,
+          ;; human has opponent-stop at :end — should pause at :end
+          result (priority-flow/advance-with-stops app-db false false)
+          result-db (:game/db (:app-db result))
+          result-phase (:game/phase (q/get-game-state result-db))]
+      (is (= :end result-phase)
+          "Should pause at :end — human's opponent-stop during bot's turn"))))
+
+
+(deftest same-phase-own-stop-short-circuits-opponent-stop-check
+  (testing "When active player has own-stop at a phase, opponent-stop at same phase does not cause double-pause"
+    ;; This tests that the short-circuit logic works: own-stop fires → return immediately
+    ;; without checking opponent-stop. The result is the same phase but only one pause.
+    (let [db (-> (h/create-test-db {:stops #{:main1}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          human-eid (q/get-player-eid db :player-1)
+          ;; Human has own stop at :main1 AND opponent-stop at :main1
+          db' (priority/set-opponent-stops db human-eid #{:main1})
+          ;; Manually set game to be in :upkeep (before :main1) so advance-with-stops
+          ;; will advance to :main1 and hit the own-stop
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db')
+          game-db (d/db-with db' [[:db/add game-eid :game/phase :upkeep]])
+          app-db {:game/db game-db}
+          ;; advance-with-stops directly: from :upkeep, should advance to :main1 and stop
+          result (priority-flow/advance-with-stops app-db false false)
+          result-db (:game/db (:app-db result))
+          game-state (q/get-game-state result-db)]
+      (is (= :main1 (:game/phase game-state))
+          "Should have stopped at :main1")
+      ;; advance-with-stops returns at first stop — if called again from :main1 it would
+      ;; advance past :main1 (own-stop already consumed), not loop
+      (let [result2 (priority-flow/advance-with-stops (:app-db result) false false)
+            result-db2 (:game/db (:app-db result2))
+            game-state2 (q/get-game-state result-db2)]
+        (is (not= :main1 (:game/phase game-state2))
+            "Second advance-with-stops from :main1 should advance past it (no infinite loop)")))))
 
 
 ;; === negotiate-priority tests (moved from game_loop_test) ===

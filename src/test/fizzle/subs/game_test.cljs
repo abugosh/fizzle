@@ -764,3 +764,40 @@
                             [::subs/selection-cards])
           card (first result)]
       (is (nil? (:creature/display card))))))
+
+
+;; === ::opponent-stops subscription tests ===
+
+(deftest test-opponent-stops-sub-reads-from-human-entity
+  (testing "::opponent-stops returns human's :player/opponent-stops, not opponent entity's :player/stops"
+    (let [base-db  (make-game-db)
+          human-eid (q/get-player-eid base-db :player-1)
+          ;; Set opponent-stops on human entity
+          game-db  (d/db-with base-db [[:db/add human-eid :player/opponent-stops #{:end :upkeep}]])
+          result   (sub-value {:game/db game-db} [::subs/opponent-stops])]
+      (is (= #{:end :upkeep} result)
+          "::opponent-stops should return human's :player/opponent-stops"))))
+
+
+(deftest test-opponent-stops-sub-empty-when-not-set
+  (testing "::opponent-stops returns #{} when human has no :player/opponent-stops"
+    (let [game-db (make-game-db)
+          result  (sub-value {:game/db game-db} [::subs/opponent-stops])]
+      (is (= #{} result)
+          "::opponent-stops should return #{} when human has no opponent-stops set"))))
+
+
+(deftest test-opponent-stops-sub-not-reading-from-opponent-entity
+  (testing "::opponent-stops does NOT return opponent entity's :player/stops"
+    (let [base-db    (make-game-db)
+          ;; Add a player-2 (opponent) entity with :player/stops set
+          conn       (d/conn-from-db base-db)
+          _          (d/transact! conn [{:player/id :player-2
+                                         :player/name "Opponent"
+                                         :player/is-opponent true
+                                         :player/stops #{:end :combat}}])
+          game-db    @conn
+          ;; Human (player-1) has NO :player/opponent-stops set
+          result     (sub-value {:game/db game-db} [::subs/opponent-stops])]
+      (is (= #{} result)
+          "::opponent-stops should not read from opponent entity's :player/stops — should return #{}"))))
