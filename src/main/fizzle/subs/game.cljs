@@ -172,10 +172,9 @@
   (fn [game-db _]
     (when game-db
       (let [human-pid (queries/get-human-player-id game-db)
-            opponent-id (queries/get-opponent-id game-db human-pid)]
-        (if opponent-id
-          (let [opponent-eid (queries/get-player-eid game-db opponent-id)]
-            (or (:player/stops (d/pull game-db [:player/stops] opponent-eid)) #{}))
+            human-eid (queries/get-player-eid game-db human-pid)]
+        (if human-eid
+          (or (:player/opponent-stops (d/pull game-db [:player/opponent-stops] human-eid)) #{})
           #{})))))
 
 

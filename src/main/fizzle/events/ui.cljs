@@ -3,6 +3,7 @@
    graveyard sort, card selection, phase stops."
   (:require
     [datascript.core :as d]
+    [fizzle.db.game-state :as game-state]
     [fizzle.db.queries :as queries]
     [fizzle.db.storage :as storage]
     [fizzle.engine.priority :as priority]
@@ -65,17 +66,19 @@
   ::toggle-stop
   (fn [db [_ role phase]]
     (let [game-db (:game/db db)
-          human-pid (queries/get-human-player-id game-db)
-          player-id (if (= role :opponent)
-                      (queries/get-opponent-id game-db human-pid)
-                      human-pid)
-          storage-key (if (= role :opponent) :opponent :player)
-          player-eid (queries/get-player-eid game-db player-id)
-          current-stops (or (:player/stops (d/pull game-db [:player/stops] player-eid)) #{})
-          new-stops (if (contains? current-stops phase)
-                      (disj current-stops phase)
-                      (conj current-stops phase))
+          human-pid game-state/human-player-id
+          human-eid (queries/get-player-eid game-db human-pid)
           all-stops (storage/load-stops)
-          updated-stops (assoc all-stops storage-key new-stops)]
+          updated-stops (storage/toggle-stop all-stops role phase)]
       (storage/save-stops! updated-stops)
-      (assoc db :game/db (priority/set-player-stops game-db player-eid new-stops)))))
+      (if (= role :opponent)
+        (let [current-opp-stops (or (:player/opponent-stops (d/pull game-db [:player/opponent-stops] human-eid)) #{})
+              new-opp-stops (if (contains? current-opp-stops phase)
+                              (disj current-opp-stops phase)
+                              (conj current-opp-stops phase))]
+          (assoc db :game/db (priority/set-opponent-stops game-db human-eid new-opp-stops)))
+        (let [current-stops (or (:player/stops (d/pull game-db [:player/stops] human-eid)) #{})
+              new-stops (if (contains? current-stops phase)
+                          (disj current-stops phase)
+                          (conj current-stops phase))]
+          (assoc db :game/db (priority/set-player-stops game-db human-eid new-stops)))))))

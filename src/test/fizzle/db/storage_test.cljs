@@ -73,8 +73,9 @@
   (is (= #{:main1 :main2} (:player (storage/default-stops)))))
 
 
-(deftest default-stops-has-empty-set-for-opponent
-  (is (= #{} (:opponent (storage/default-stops)))))
+(deftest default-stops-has-empty-opponent-stops-key
+  (is (= #{} (:opponent-stops (storage/default-stops)))
+      "default-stops should use :opponent-stops key (not :opponent)"))
 
 
 ;; === toggle-stop ===
@@ -92,9 +93,13 @@
     (is (contains? (:player stops') :main2))))
 
 
-(deftest toggle-stop-works-for-opponent-role
-  (let [stops' (storage/toggle-stop (storage/default-stops) :opponent :end)]
-    (is (contains? (:opponent stops') :end))))
+(deftest toggle-stop-opponent-updates-opponent-stops-key
+  (testing "toggle-stop :opponent updates :opponent-stops key, not :opponent"
+    (let [stops' (storage/toggle-stop (storage/default-stops) :opponent :end)]
+      (is (contains? (:opponent-stops stops') :end)
+          "toggle :opponent should update :opponent-stops key")
+      (is (nil? (:opponent stops'))
+          ":opponent key should not exist in new format"))))
 
 
 (deftest toggle-stop-is-symmetric
@@ -109,8 +114,8 @@
 ;; === stops persistence ===
 
 (deftest stops-round-trip
-  (testing "save-stops! and load-stops round-trip correctly"
-    (let [stops {:player #{:main1 :main2 :combat} :opponent #{:end}}]
+  (testing "save-stops! and load-stops round-trip correctly (new format)"
+    (let [stops {:player #{:main1 :main2 :combat} :opponent-stops #{:end}}]
       (storage/save-stops! stops)
       (is (= stops (storage/load-stops))))))
 
@@ -118,6 +123,28 @@
 (deftest load-stops-returns-default-when-empty
   (is (= (storage/default-stops) (storage/load-stops))
       "Should return default stops when nothing stored"))
+
+
+(deftest load-stops-migrates-old-opponent-key
+  (testing "Old format {:player #{} :opponent #{}} is migrated to {:player #{} :opponent-stops #{}}"
+    (let [old-format {:player #{:main1 :main2} :opponent #{:end}}]
+      (.setItem js/localStorage "fizzle-stops" (pr-str old-format))
+      (let [loaded (storage/load-stops)]
+        (is (= #{:main1 :main2} (:player loaded))
+            "Player stops should be preserved")
+        (is (= #{:end} (:opponent-stops loaded))
+            ":opponent key should be migrated to :opponent-stops")
+        (is (nil? (:opponent loaded))
+            "Old :opponent key should not be present after migration")))))
+
+
+(deftest load-stops-reads-new-format
+  (testing "New format {:player #{} :opponent-stops #{}} loads correctly"
+    (let [new-format {:player #{:main1} :opponent-stops #{:combat}}]
+      (.setItem js/localStorage "fizzle-stops" (pr-str new-format))
+      (let [loaded (storage/load-stops)]
+        (is (= #{:main1} (:player loaded)))
+        (is (= #{:combat} (:opponent-stops loaded)))))))
 
 
 ;; === calculator queries persistence ===

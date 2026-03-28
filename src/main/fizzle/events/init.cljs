@@ -143,6 +143,7 @@
     (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid game-state/human-player-id))
     (d/transact! conn (turn-based/create-turn-based-triggers-tx opp-eid game-state/opponent-player-id))
     (d/transact! conn [[:db/add player-eid :player/stops (:player stops)]
+                       [:db/add player-eid :player/opponent-stops (or (:opponent-stops stops) #{})]
                        [:db/add opp-eid :player/stops (bot-protocol/bot-stops bot-archetype)]])
     (merge {:game/db @conn :active-screen :opening-hand
             :opening-hand/mulligan-count 0 :opening-hand/sculpted-ids sculpted-id-set

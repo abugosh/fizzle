@@ -11,6 +11,7 @@
    Turn-based triggers are recreated for both players."
   (:require
     [datascript.core :as d]
+    [fizzle.bots.protocol :as bot-protocol]
     [fizzle.db.game-state :as game-state]
     [fizzle.db.schema :refer [schema]]
     [fizzle.db.storage :as storage]
@@ -197,11 +198,14 @@
     ;; Add player stops from localStorage (same as init.cljs)
     (let [db       @conn
           p1-eid   (get-player-eid db game-state/human-player-id)
-          p2-eid   (get-player-eid db game-state/opponent-player-id)]
+          p2-eid   (get-player-eid db game-state/opponent-player-id)
+          bot-archetype (when p2-eid
+                          (:player/bot-archetype (d/pull db [:player/bot-archetype] p2-eid)))]
       (when p1-eid
-        (d/transact! conn [[:db/add p1-eid :player/stops (:player stops)]]))
+        (d/transact! conn [[:db/add p1-eid :player/stops (:player stops)]
+                           [:db/add p1-eid :player/opponent-stops (or (:opponent-stops stops) #{})]]))
       (when p2-eid
-        (d/transact! conn [[:db/add p2-eid :player/stops (:opponent stops)]])))
+        (d/transact! conn [[:db/add p2-eid :player/stops (bot-protocol/bot-stops bot-archetype)]])))
     ;; Transact objects for each zone
     (doseq [[player-id player-map] players]
       (transact-zone! conn player-id :hand        (:hand player-map))

@@ -384,22 +384,31 @@
             "Should have added combat to stops")))))
 
 
-(deftest integration-stop-toggle-opponent-updates-game-state
-  (testing "toggle-stop :opponent updates opponent stops in game-db"
+(deftest integration-stop-toggle-opponent-writes-to-human-opponent-stops
+  (testing "toggle-stop :opponent writes to human's :player/opponent-stops, NOT bot's :player/stops"
     (let [app-db (merge (history/init-history)
                         (setup-app-db {:stops #{:main1 :main2}}))
           ;; Goldfish bot has auto-derived stops #{:main1}
           ;; Toggle on end for opponent
           result1 (dispatch-event app-db [::ui-events/toggle-stop :opponent :end])
-          opp-eid (q/get-player-eid (:game/db result1) :player-2)
-          stops1 (:player/stops (d/pull (:game/db result1) [:player/stops] opp-eid))]
-      (is (= #{:main1 :end} stops1)
-          "Should have added end to opponent stops (main1 from bot spec)")
+          game-db1 (:game/db result1)
+          human-eid (q/get-player-eid game-db1 :player-1)
+          opp-eid (q/get-player-eid game-db1 :player-2)
+          human-opp-stops1 (:player/opponent-stops (d/pull game-db1 [:player/opponent-stops] human-eid))
+          bot-stops1 (:player/stops (d/pull game-db1 [:player/stops] opp-eid))]
+      (is (= #{:end} human-opp-stops1)
+          "Should have added end to human's :player/opponent-stops")
+      (is (= #{:main1} bot-stops1)
+          "Bot's :player/stops should remain unchanged (goldfish derives #{:main1})")
       ;; Toggle off end for opponent
       (let [result2 (dispatch-event result1 [::ui-events/toggle-stop :opponent :end])
-            stops2 (:player/stops (d/pull (:game/db result2) [:player/stops] opp-eid))]
-        (is (= #{:main1} stops2)
-            "Should have removed end from opponent stops (main1 remains from bot spec)")))))
+            game-db2 (:game/db result2)
+            human-opp-stops2 (:player/opponent-stops (d/pull game-db2 [:player/opponent-stops] human-eid))
+            bot-stops2 (:player/stops (d/pull game-db2 [:player/stops] opp-eid))]
+        (is (= #{} human-opp-stops2)
+            "Should have removed end from human's :player/opponent-stops")
+        (is (= #{:main1} bot-stops2)
+            "Bot's :player/stops still unchanged after toggling off")))))
 
 
 ;; === Goldfish bot plays land integration tests ===
