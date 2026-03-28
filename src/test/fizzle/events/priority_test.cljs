@@ -4,6 +4,7 @@
     [datascript.core :as d]
     [fizzle.bots.definitions :as definitions]
     [fizzle.bots.interceptor :as bot-interceptor]
+    [fizzle.bots.protocol :as bot-protocol]
     [fizzle.db.queries :as q]
     [fizzle.engine.priority :as priority]
     [fizzle.engine.rules :as rules]
@@ -80,24 +81,33 @@
   "Dispatch ::yield-all and drain the yield cascade synchronously.
    ::yield-all sets auto-mode + step-count and dispatches ::yield via :dispatch.
    Since :dispatch is async, we drain the cascade by repeatedly calling
-   dispatch-sync [::yield] until step-count is cleared (cascade complete).
-   Also processes bot actions between yields to simulate the bot interceptor."
+   dispatch-sync [::yield] until the cascade settles.
+
+   After each yield, simulates the bot interceptor (db_effect fires ::bot-decide
+   after game-db mutations). When a yield transfers priority to a bot (no auto-pass),
+   the bot interceptor passes, and another yield is dispatched to complete the
+   priority round-trip.
+
+   The cascade is complete when step-count is absent AND the bot has no pending action."
   [app-db]
   (reset! rf-db/app-db app-db)
   (rf/dispatch-sync [::priority-flow/yield-all])
   (loop [n 300]
-    (let [current @rf-db/app-db]
-      (if (or (zero? n)
-              (:game/pending-selection current)
-              (not (contains? current :yield/step-count)))
-        @rf-db/app-db
-        (do
-          (rf/dispatch-sync [::priority-flow/yield])
-          ;; After yield, process any bot action (land play, cast, etc.)
-          ;; If bot took an action (not pass), continue the loop.
-          ;; If bot passed, the next ::yield will advance the phase.
-          (process-bot-action!)
-          (recur (dec n)))))))
+    (if (or (zero? n) (:game/pending-selection @rf-db/app-db))
+      @rf-db/app-db
+      (let [has-step-count? (contains? @rf-db/app-db :yield/step-count)
+            game-db (:game/db @rf-db/app-db)
+            bot-can-act? (and game-db (bot-interceptor/bot-should-act? game-db))]
+        (if (and (not has-step-count?) (not bot-can-act?))
+          @rf-db/app-db
+          (do
+            ;; Process bot actions (land play, cast, pass)
+            (loop [bot-n 20]
+              (when (and (pos? bot-n) (process-bot-action!))
+                (recur (dec bot-n))))
+            ;; Dispatch yield to continue the cascade
+            (rf/dispatch-sync [::priority-flow/yield])
+            (recur (dec n))))))))
 
 
 ;; === Test 1: yield on empty stack, stops at main1+main2 ===
@@ -105,8 +115,11 @@
 (deftest yield-empty-stack-advances-past-combat-to-main2
   (testing "yield from main1 with stops at main1+main2 skips combat, lands on main2"
     (let [app-db (setup-app-db)
-          result (priority-flow/yield-impl app-db)]
-      (is (= :main2 (:game/phase (q/get-game-state (:game/db (:app-db result)))))
+          ;; First yield: human passes, priority transfers to bot (no auto-pass)
+          result1 (priority-flow/yield-impl app-db)
+          ;; Second yield: bot passes (bot holds priority), both passed, phase advances
+          result2 (priority-flow/yield-impl (:app-db result1))]
+      (is (= :main2 (:game/phase (q/get-game-state (:game/db (:app-db result2)))))
           "Should advance to main2, skipping upkeep/draw/combat"))))
 
 
@@ -120,8 +133,11 @@
           ;; Cast Dark Ritual to put it on the stack
           game-db (rules/cast-spell db' :player-1 _obj-id)
           app-db {:game/db game-db}
-          result (priority-flow/yield-impl app-db)
-          result-db (:game/db (:app-db result))
+          ;; First yield: human passes, priority transfers to bot
+          result1 (priority-flow/yield-impl app-db)
+          ;; Second yield: bot passes, both passed, spell resolves
+          result2 (priority-flow/yield-impl (:app-db result1))
+          result-db (:game/db (:app-db result2))
           pool (q/get-mana-pool result-db :player-1)]
       (is (= 3 (:black pool))
           "Dark Ritual should resolve, adding BBB to mana pool")
@@ -162,22 +178,29 @@
           [db'' _] (h/add-cards-to-library db' [:dark-ritual :dark-ritual :dark-ritual] :player-1)
           game-db (rules/cast-spell db'' :player-1 obj-id)
           app-db {:game/db game-db}
-          result (priority-flow/yield-impl app-db)]
-      (is (some? (:game/pending-selection (:app-db result)))
+          ;; First yield: human passes, priority transfers to bot
+          result1 (priority-flow/yield-impl app-db)
+          ;; Second yield: bot passes, both passed, spell resolves with selection
+          result2 (priority-flow/yield-impl (:app-db result1))]
+      (is (some? (:game/pending-selection (:app-db result2)))
           "Should return pending-selection for interactive spell"))))
 
 
-;; === Test 5: bot auto-passes synchronously ===
+;; === Test 5: yield transfers priority to bot (no auto-pass) ===
 
-(deftest yield-bot-auto-passes
-  (testing "goldfish bot auto-passes when priority transfers to it"
+(deftest yield-transfers-priority-to-bot
+  (testing "yield without auto-mode transfers priority to bot instead of auto-passing"
     (let [app-db (setup-app-db)
-          result (priority-flow/yield-impl app-db)]
-      ;; If bot didn't auto-pass, phase wouldn't advance (only one player passed)
-      (is (some? (:app-db result))
-          "Should return a result (bot auto-passed)")
-      (is (= :main2 (:game/phase (q/get-game-state (:game/db (:app-db result)))))
-          "Phase should advance because bot auto-passed"))))
+          result (priority-flow/yield-impl app-db)
+          result-db (:game/db (:app-db result))
+          holder-eid (priority/get-priority-holder-eid result-db)
+          opp-eid (q/get-player-eid result-db :player-2)]
+      ;; Without auto-mode, priority transfers to bot — no auto-pass
+      (is (= opp-eid holder-eid)
+          "Priority should transfer to bot (not auto-passed)")
+      ;; Phase should NOT have advanced (bot hasn't passed yet)
+      (is (= :main1 (:game/phase (q/get-game-state result-db)))
+          "Phase should stay at main1 (bot hasn't passed yet)"))))
 
 
 ;; === Test 6: cast spell retains priority ===
@@ -201,8 +224,11 @@
 (deftest yield-with-no-stops-advances-to-turn-boundary
   (testing "yield from main1 with no stops advances to turn boundary (untap of new turn)"
     (let [app-db (setup-app-db {:stops #{}})
-          result (priority-flow/yield-impl app-db)
-          result-db (:game/db (:app-db result))]
+          ;; First yield: human passes, priority transfers to bot
+          result1 (priority-flow/yield-impl app-db)
+          ;; Second yield: bot passes, both passed, phase advances to turn boundary
+          result2 (priority-flow/yield-impl (:app-db result1))
+          result-db (:game/db (:app-db result2))]
       (is (= 2 (:game/turn (q/get-game-state result-db)))
           "Should advance to turn 2")
       (is (= :untap (:game/phase (q/get-game-state result-db)))
@@ -308,9 +334,11 @@
           ;; Cast spell (puts on stack, spends mana)
           app-db (merge (history/init-history)
                         {:game/db (rules/cast-spell db' :player-1 obj-id)})
-          ;; Yield to resolve (dispatch through re-frame)
-          result (dispatch-event app-db [::priority-flow/yield])
-          result-db (:game/db result)]
+          ;; First yield: human passes, priority transfers to bot
+          result1 (dispatch-event app-db [::priority-flow/yield])
+          ;; Second yield: bot passes, both passed, spell resolves
+          result2 (dispatch-event result1 [::priority-flow/yield])
+          result-db (:game/db result2)]
       ;; Spell should have resolved
       (is (= :graveyard (:object/zone (q/get-object result-db obj-id)))
           "Dark Ritual should be in graveyard after resolution")
@@ -319,7 +347,7 @@
       (is (= :main1 (:game/phase (q/get-game-state result-db)))
           "Should stay in main1 (stop is set)")
       ;; History should have an entry
-      (is (< 0 (count (history/effective-entries result)))
+      (is (< 0 (count (history/effective-entries result2)))
           "Should have created history entries"))))
 
 
@@ -360,17 +388,18 @@
   (testing "toggle-stop :opponent updates opponent stops in game-db"
     (let [app-db (merge (history/init-history)
                         (setup-app-db {:stops #{:main1 :main2}}))
+          ;; Goldfish bot has auto-derived stops #{:main1}
           ;; Toggle on end for opponent
           result1 (dispatch-event app-db [::ui-events/toggle-stop :opponent :end])
           opp-eid (q/get-player-eid (:game/db result1) :player-2)
           stops1 (:player/stops (d/pull (:game/db result1) [:player/stops] opp-eid))]
-      (is (= #{:end} stops1)
-          "Should have added end to opponent stops")
+      (is (= #{:main1 :end} stops1)
+          "Should have added end to opponent stops (main1 from bot spec)")
       ;; Toggle off end for opponent
       (let [result2 (dispatch-event result1 [::ui-events/toggle-stop :opponent :end])
             stops2 (:player/stops (d/pull (:game/db result2) [:player/stops] opp-eid))]
-        (is (= #{} stops2)
-            "Should have removed end from opponent stops")))))
+        (is (= #{:main1} stops2)
+            "Should have removed end from opponent stops (main1 remains from bot spec)")))))
 
 
 ;; === Goldfish bot plays land integration tests ===
@@ -515,7 +544,7 @@
 ;; === Human stops during opponent (bot) turn ===
 
 (deftest bot-turn-respects-human-opponent-stop
-  (testing "Opponent turn pauses at phase where human has an opponent-turn stop set"
+  (testing "Opponent turn pauses at phase where bot has a stop configured"
     (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
                  (h/add-opponent {:bot-archetype :goldfish :stops #{:draw}}))
           ;; Advance to main2 — last player stop before turn boundary
@@ -523,23 +552,27 @@
                       (phases/advance-phase :player-1)  ; main1 -> combat
                       (phases/advance-phase :player-1)) ; combat -> main2
           app-db {:game/db game-db}
-          ;; Loop yield-impl + bot-decide until it stops
-          ;; When yield pauses (no continue-yield?), simulate bot interceptor
-          ;; by calling bot-decide-handler which dispatches ::yield to continue
+          ;; Loop yield-impl + bot-decide until cascade settles.
+          ;; yield-impl handles both player types: bot passes via interceptor sim,
+          ;; human passes via yield-impl calls.
           final (loop [adb app-db n 50]
                   (if (zero? n) adb
                       (let [result (priority-flow/yield-impl adb)]
                         (if (:continue-yield? result)
                           (recur (:app-db result) (dec n))
-                          ;; No continue — check if bot should act (interceptor sim)
+                          ;; No continue — simulate bot interceptor if bot holds priority
                           (let [result-adb (:app-db result)
                                 gdb (:game/db result-adb)]
                             (if (and gdb (bot-interceptor/bot-should-act? gdb))
-                              ;; Bot decides: if pass, continue yield loop
                               (let [effects (bot-interceptor/bot-decide-handler result-adb)
                                     new-adb (or (:db effects) result-adb)]
                                 (recur new-adb (dec n)))
-                              result-adb))))))
+                              ;; Not bot's turn to act — run one more yield for human pass
+                              ;; then check if we've settled
+                              (let [result2 (priority-flow/yield-impl result-adb)]
+                                (if (:continue-yield? result2)
+                                  (recur (:app-db result2) (dec n))
+                                  (:app-db result2)))))))))
           result-db (:game/db final)]
       (is (= :draw (:game/phase (q/get-game-state result-db)))
           "Should stop at draw phase on opponent's turn")
@@ -560,8 +593,12 @@
                                  [:db/add game-eid :game/phase :draw]
                                  [:db/add game-eid :game/turn 2]])
           app-db {:game/db game-db}
-          result (priority-flow/yield-impl app-db)
-          result-db (:game/db (:app-db result))]
+          ;; First yield: human passes, priority transfers to bot
+          result1 (priority-flow/yield-impl app-db)
+          ;; Second yield: bot passes, both passed, advance-with-stops to next stop
+          ;; Bot has stops #{:draw :end}, currently at draw → next stop is :end
+          result2 (priority-flow/yield-impl (:app-db result1))
+          result-db (:game/db (:app-db result2))]
       (is (= :end (:game/phase (q/get-game-state result-db)))
           "Should advance to next opponent stop (:end), not just one phase (:main1)")
       (is (= 2 (:game/turn (q/get-game-state result-db)))
@@ -587,14 +624,19 @@
 
 ;; === negotiate-priority tests (moved from game_loop_test) ===
 
-(deftest negotiate-priority-normal-mode-bot-auto-passes
-  (testing "bot opponent auto-passes in normal mode"
+(deftest negotiate-priority-normal-mode-transfers-to-bot
+  (testing "bot opponent gets priority transfer in normal mode (no auto-pass)"
     (let [db (-> (h/create-test-db {:stops #{:main1}})
                  (h/add-opponent {:bot-archetype :goldfish}))
           app-db {:game/db db}
           result (priority-flow/negotiate-priority app-db)]
-      (is (true? (:all-passed? result))
-          "Both should have passed (human passed, bot auto-passed)"))))
+      (is (false? (:all-passed? result))
+          "Should not be all-passed — priority transfers to bot")
+      (let [result-db (:game/db (:app-db result))
+            holder-eid (priority/get-priority-holder-eid result-db)
+            opp-eid (q/get-player-eid result-db :player-2)]
+        (is (= opp-eid holder-eid)
+            "Priority should be transferred to bot")))))
 
 
 (deftest negotiate-priority-auto-mode-both-pass
@@ -607,8 +649,8 @@
       (is (true? (:all-passed? result))))))
 
 
-(deftest negotiate-priority-bot-turn-both-pass
-  (testing "both pass during bot turn"
+(deftest negotiate-priority-bot-turn-transfers-priority
+  (testing "bot turn without auto-mode transfers priority to human"
     (let [db (-> (h/create-test-db {:stops #{:main1}})
                  (h/add-opponent {:bot-archetype :goldfish}))
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
@@ -616,7 +658,8 @@
           db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]])
           app-db {:game/db db}
           result (priority-flow/negotiate-priority app-db)]
-      (is (true? (:all-passed? result))))))
+      (is (false? (:all-passed? result))
+          "Without auto-mode, priority transfers — not all-passed"))))
 
 
 (deftest negotiate-priority-single-player-one-pass-suffices
@@ -639,12 +682,15 @@
 
 
 (deftest negotiate-priority-returns-app-db-with-reset-passes
-  (testing "resets passes in returned app-db when all passed"
+  (testing "resets passes in returned app-db when all passed (auto-mode)"
     (let [db (-> (h/create-test-db {:stops #{:main1}})
-                 (h/add-opponent {:bot-archetype :goldfish}))
+                 (h/add-opponent {:bot-archetype :goldfish})
+                 (priority/set-auto-mode :resolving))
           app-db {:game/db db}
           result (priority-flow/negotiate-priority app-db)
           result-db (:game/db (:app-db result))]
+      (is (true? (:all-passed? result))
+          "Should be all-passed in auto-mode")
       (is (empty? (priority/get-passed-eids result-db))
           "Passes should be reset after all-passed"))))
 
@@ -665,8 +711,8 @@
           "Human should get priority when stack is non-empty during bot turn"))))
 
 
-(deftest negotiate-priority-human-auto-passed-when-stack-empty-on-bot-turn
-  (testing "human IS auto-passed when stack is empty during bot turn"
+(deftest negotiate-priority-bot-turn-empty-stack-transfers-priority
+  (testing "priority transfers during bot turn with empty stack (no auto-pass without auto-mode)"
     (let [db (-> (h/create-test-db {:stops #{:main1}})
                  (h/add-opponent {:bot-archetype :burn}))
           ;; Switch active player to bot
@@ -675,8 +721,8 @@
           db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]])
           app-db {:game/db db}
           result (priority-flow/negotiate-priority app-db)]
-      (is (true? (:all-passed? result))
-          "Human should be auto-passed when stack is empty during bot turn"))))
+      (is (false? (:all-passed? result))
+          "Without auto-mode, priority transfers even with empty stack"))))
 
 
 (deftest negotiate-priority-auto-mode-overrides-stack-check
@@ -728,22 +774,27 @@
           "Auto-mode should be cleared when stack empties during :resolving"))))
 
 
-(deftest yield-impl-bot-turn-advances-single-phase
-  (testing "yield-impl during bot turn advances one phase and pauses for bot interceptor"
+(deftest yield-impl-bot-turn-advances-to-stop
+  (testing "yield-impl during bot turn advances to bot's configured stop"
     (let [db (-> (h/create-test-db {:stops #{}})
                  (h/add-opponent {:bot-archetype :goldfish}))
-          ;; Switch active player to bot (default phase is main1)
+          ;; Switch active player to bot, start at untap
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
           opp-eid (q/get-player-eid db :player-2)
           game-db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]
-                                 [:db/add game-eid :game/priority opp-eid]])
+                                 [:db/add game-eid :game/priority opp-eid]
+                                 [:db/add game-eid :game/phase :untap]])
           app-db {:game/db game-db}
-          result (priority-flow/yield-impl app-db)
-          result-db (:game/db (:app-db result))]
-      (is (= :main2 (:game/phase (q/get-game-state result-db)))
-          "Should have advanced from main1 to main2 (combat skipped — no creatures)")
-      (is (not (:continue-yield? result))
-          "Bot turn should pause for bot interceptor to dispatch ::bot-decide"))))
+          ;; First yield: bot passes (no auto-mode), priority transfers to human
+          result1 (priority-flow/yield-impl app-db)
+          ;; Second yield: human passes, both passed, advance-with-stops to bot's main1 stop
+          result2 (priority-flow/yield-impl (:app-db result1))
+          result-db (:game/db (:app-db result2))]
+      ;; Goldfish has stops #{:main1} — advance-with-stops pauses at main1
+      (is (= :main1 (:game/phase (q/get-game-state result-db)))
+          "Should advance to main1 (bot's configured stop)")
+      (is (not (:continue-yield? result2))
+          "Should pause at bot's stop for bot interceptor to fire"))))
 
 
 (deftest yield-impl-cleanup-discard-returns-pending-selection
@@ -765,13 +816,16 @@
                       (phases/advance-phase :player-1)   ; combat -> main2
                       (phases/advance-phase :player-1))  ; main2 -> end
           app-db {:game/db game-db}
-          result (priority-flow/yield-impl app-db)]
-      (is (some? (:game/pending-selection (:app-db result)))
+          ;; First yield: human passes, priority transfers to bot
+          result1 (priority-flow/yield-impl app-db)
+          ;; Second yield: bot passes, both passed, advance to cleanup with discard
+          result2 (priority-flow/yield-impl (:app-db result1))]
+      (is (some? (:game/pending-selection (:app-db result2)))
           "Should return pending-selection for cleanup discard"))))
 
 
-(deftest yield-impl-bot-turn-pauses-at-priority-phases
-  (testing "yield-impl during bot turn stops at priority-granting phases for bot interceptor"
+(deftest yield-impl-bot-turn-stops-at-configured-stop
+  (testing "yield-impl during bot turn uses advance-with-stops, pausing at bot's configured stop"
     (let [db (-> (h/create-test-db {:stops #{}})
                  (h/add-opponent {:bot-archetype :goldfish}))
           ;; Switch to bot's turn at untap phase
@@ -781,16 +835,16 @@
                                  [:db/add game-eid :game/priority opp-eid]
                                  [:db/add game-eid :game/phase :untap]])
           app-db {:game/db game-db}
-          ;; First yield should advance through untap (non-priority) with continue
+          ;; First yield: bot passes, priority transfers to human
           result-1 (priority-flow/yield-impl app-db)
-          phase-after-1 (:game/phase (q/get-game-state (:game/db (:app-db result-1))))]
-      ;; Should have advanced from untap to upkeep
-      (is (= :upkeep phase-after-1)
-          "Should advance from untap to upkeep")
-      ;; At upkeep (priority-granting phase), should NOT continue-yield
-      ;; so the bot interceptor gets a chance to dispatch ::bot-decide
-      (is (not (:continue-yield? result-1))
-          "Should not continue-yield at priority-granting phase (upkeep)"))))
+          ;; Second yield: human passes, both passed, advance-with-stops
+          ;; Goldfish has stops #{:main1}, so advance batches untap→main1
+          result-2 (priority-flow/yield-impl (:app-db result-1))
+          phase-after (:game/phase (q/get-game-state (:game/db (:app-db result-2))))]
+      (is (= :main1 phase-after)
+          "Should advance to main1 (goldfish's configured stop)")
+      (is (not (:continue-yield? result-2))
+          "Should pause at bot's stop for bot interceptor"))))
 
 
 (deftest yield-impl-bot-phase-does-not-cast-spells
@@ -851,42 +905,40 @@
               "Reactive bot should get priority when opponent spell on stack"))))))
 
 
-(deftest negotiate-priority-goldfish-still-auto-passed
-  (testing "goldfish bot (empty rules) is still auto-passed with spell on stack"
+(deftest negotiate-priority-goldfish-transfers-priority
+  (testing "goldfish bot gets priority transfer (no auto-pass without auto-mode)"
     (let [db (-> (h/create-test-db {:mana {:black 1} :stops #{:main1}})
                  (h/add-opponent {:bot-archetype :goldfish}))
           [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
           game-db (rules/cast-spell db' :player-1 obj-id)
           app-db {:game/db game-db}
           result (priority-flow/negotiate-priority app-db)]
-      (is (true? (:all-passed? result))
-          "Goldfish should be auto-passed (empty priority rules -> :pass)"))))
+      (is (false? (:all-passed? result))
+          "Without auto-mode, priority transfers to bot (not auto-passed)"))))
 
 
-(deftest negotiate-priority-burn-non-matching-auto-passed
-  (testing "burn bot with non-matching conditions auto-passed (stack not empty)"
+(deftest negotiate-priority-burn-non-matching-transfers-priority
+  (testing "burn bot gets priority transfer (no auto-pass without auto-mode)"
     (let [db (-> (h/create-test-db {:mana {:black 1} :stops #{:main1}})
                  (h/add-opponent {:bot-archetype :burn}))
           [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
-          ;; Stack is NOT empty after cast — burn's :stack-empty condition won't match
           game-db (rules/cast-spell db' :player-1 obj-id)
           app-db {:game/db game-db}
           result (priority-flow/negotiate-priority app-db)]
-      (is (true? (:all-passed? result))
-          "Burn bot should be auto-passed (stack-empty condition doesn't match)"))))
+      (is (false? (:all-passed? result))
+          "Without auto-mode, priority transfers to bot"))))
 
 
-(deftest negotiate-priority-reactive-bot-empty-stack-auto-passed
-  (testing "reactive bot auto-passed when stack is empty (conditions don't match)"
+(deftest negotiate-priority-reactive-bot-empty-stack-transfers-priority
+  (testing "reactive bot gets priority transfer when stack is empty (no auto-pass)"
     (with-reactive-spec
       (fn []
         (let [db (-> (h/create-test-db {:stops #{:main1}})
                      (h/add-opponent {:bot-archetype :reactive-test}))
-              ;; Stack is empty — :stack-has condition won't match
               app-db {:game/db db}
               result (priority-flow/negotiate-priority app-db)]
-          (is (true? (:all-passed? result))
-              "Reactive bot should be auto-passed when stack is empty"))))))
+          (is (false? (:all-passed? result))
+              "Without auto-mode, priority transfers to bot"))))))
 
 
 (deftest negotiate-priority-auto-mode-bypasses-bot-protocol
@@ -906,16 +958,58 @@
               "Auto-mode should bypass bot protocol and auto-pass"))))))
 
 
-(deftest negotiate-priority-reactive-bot-card-not-in-hand-auto-passed
-  (testing "reactive bot auto-passed when conditions match but card not in hand"
+(deftest negotiate-priority-reactive-bot-card-not-in-hand-transfers-priority
+  (testing "reactive bot gets priority transfer even when card not in hand (no auto-pass)"
     (with-reactive-spec
       (fn []
         (let [db (-> (h/create-test-db {:mana {:black 1} :stops #{:main1}})
                      (h/add-opponent {:bot-archetype :reactive-test}))
               [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
-              ;; No bolt in hand, but :stack-has condition matches
               game-db (rules/cast-spell db' :player-1 obj-id)
               app-db {:game/db game-db}
               result (priority-flow/negotiate-priority app-db)]
-          (is (true? (:all-passed? result))
-              "Reactive bot should be auto-passed when card not in hand"))))))
+          (is (false? (:all-passed? result))
+              "Without auto-mode, priority transfers to bot"))))))
+
+
+;; === Bot stops derivation tests ===
+
+(deftest bot-stops-derived-from-phase-actions
+  (testing "bot-stops derives stops from phase-actions keys in bot spec"
+    (is (= #{:main1} (bot-protocol/bot-stops :goldfish))
+        "Goldfish has {:main1 :play-land} → stops at #{:main1}")
+    (is (= #{:main1} (bot-protocol/bot-stops :burn))
+        "Burn has {:main1 :play-land} → stops at #{:main1}")
+    (is (= #{} (bot-protocol/bot-stops :nonexistent))
+        "Unknown archetype returns empty stops")))
+
+
+(deftest game-init-sets-bot-stops-from-spec
+  (testing "init-game-state sets bot player stops from bot spec phase-actions"
+    (let [app-db (h/create-test-db {:stops #{:main1 :main2}})
+          db (h/add-opponent app-db {:bot-archetype :goldfish})
+          opp-eid (q/get-player-eid db :player-2)
+          opp-stops (:player/stops (d/pull db [:player/stops] opp-eid))]
+      (is (= #{:main1} opp-stops)
+          "Goldfish bot should have stops #{:main1} derived from phase-actions"))))
+
+
+(deftest burn-bot-casts-at-main1-stop
+  (testing "Burn bot gets opportunity to cast at main1 during its turn"
+    (let [db (-> (h/create-test-db {:stops #{:main1 :main2} :life 20})
+                 (h/add-opponent {:bot-archetype :burn}))
+          ;; Add mountain to bot battlefield and bolt to bot hand
+          [db' _] (h/add-card-to-zone db :mountain :battlefield :player-2)
+          [db' _] (h/add-card-to-zone db' :lightning-bolt :hand :player-2)
+          ;; Advance to main2 so yield-all crosses to bot turn
+          game-db (-> db'
+                      (phases/advance-phase :player-1)   ; main1 -> combat
+                      (phases/advance-phase :player-1))   ; combat -> main2
+          app-db (merge (history/init-history) {:game/db game-db})
+          result (dispatch-yield-all app-db)
+          result-db (:game/db result)]
+      ;; After full cycle including bot turn, bot should have cast bolt
+      ;; (player took 3 damage from bolt)
+      (is (> 20 (:player/life (d/pull result-db [:player/life]
+                                      (q/get-player-eid result-db :player-1))))
+          "Human should have taken damage from burn bot's bolt"))))

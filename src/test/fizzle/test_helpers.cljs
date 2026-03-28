@@ -10,6 +10,7 @@
    selection/effect functions directly."
   (:require
     [datascript.core :as d]
+    [fizzle.bots.protocol :as bot-protocol]
     [fizzle.db.game-state :as game-state]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
@@ -182,15 +183,20 @@
 (defn add-opponent
   "Add opponent with standard opponent settings and turn-based triggers.
    Opts map supports: {:bot-archetype :goldfish :stops #{:main1}}
+   When :bot-archetype is set and :stops is not provided, derives stops
+   from the bot spec's phase-actions keys (same as production init).
    Returns updated db."
   ([db]
    (add-opponent db {}))
   ([db opts]
    (let [conn (d/conn-from-db db)
+         bot-stops (when (and (:bot-archetype opts) (not (contains? opts :stops)))
+                     (bot-protocol/bot-stops (:bot-archetype opts)))
          overrides (cond-> {:player/name "Opponent"
                             :player/is-opponent true}
                      (:bot-archetype opts) (assoc :player/bot-archetype (:bot-archetype opts))
-                     (:stops opts) (assoc :player/stops (:stops opts)))]
+                     (:stops opts) (assoc :player/stops (:stops opts))
+                     bot-stops (assoc :player/stops bot-stops))]
      (d/transact! conn (game-state/create-player-tx game-state/opponent-player-id overrides))
      (let [opp-eid (q/get-player-eid @conn game-state/opponent-player-id)]
        (d/transact! conn (turn-based/create-turn-based-triggers-tx opp-eid game-state/opponent-player-id)))

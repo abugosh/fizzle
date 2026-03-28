@@ -56,6 +56,18 @@
       [])))
 
 
+(defn bot-stops
+  "Derive the set of phase stops for a bot archetype from its phase-actions keys.
+   A bot should stop at every phase where it has a defined action.
+   Returns #{} for unknown archetypes or specs with no phase-actions.
+   Pure function: (archetype) -> #{:phase ...}"
+  [archetype]
+  (let [spec (definitions/get-spec archetype)]
+    (if spec
+      (set (keys (:bot/phase-actions spec)))
+      #{})))
+
+
 (defn bot-deck
   "Return the deck list for a bot archetype.
    Returns a vector of {:card/id keyword :count int} maps.

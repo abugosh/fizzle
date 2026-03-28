@@ -33,13 +33,15 @@
           ;; Build app-db (no auto-mode set)
           app-db (merge (history/init-history)
                         {:game/db db})
-          ;; Call yield-impl (the pure function under test)
-          result (priority-flow/yield-impl app-db)]
+          ;; First yield: human passes, priority transfers to bot (no auto-pass)
+          result1 (priority-flow/yield-impl app-db)
+          ;; Second yield: bot passes, both passed, resolve one stack item
+          result2 (priority-flow/yield-impl (:app-db result1))]
       ;; After resolving one item, should NOT cascade (no continue-yield?)
-      (is (not (:continue-yield? result))
+      (is (not (:continue-yield? result2))
           "Manual yield should not cascade when stack has more items")
       ;; Should have resolved exactly one spell
-      (let [result-db (:game/db (:app-db result))
+      (let [result-db (:game/db (:app-db result2))
             remaining-stack (queries/get-all-stack-items result-db)
             remaining-spells (filter #(= :spell (:stack-item/type %)) remaining-stack)]
         (is (= 1 (count remaining-spells))

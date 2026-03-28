@@ -91,9 +91,11 @@
                             [:db/add game-eid :game/turn 2]
                             [:db/add game-eid :game/phase :upkeep]])
           app-db (merge (history/init-history) {:game/db db})
-          ;; Run yield-impl to advance phase (both pass → advance)
-          result (priority-flow/yield-impl app-db)
-          result-db (:game/db (:app-db result))
+          ;; First yield: bot passes, priority transfers to human
+          result1 (priority-flow/yield-impl app-db)
+          ;; Second yield: human passes, both passed, advance to draw (empty library triggers)
+          result2 (priority-flow/yield-impl (:app-db result1))
+          result-db (:game/db (:app-db result2))
           ;; The SBA interceptor would normally fire here. Let's check manually.
           result-db-after-sba (sba/check-and-execute-sbas result-db)]
       ;; SBA should detect the opponent drew from empty library

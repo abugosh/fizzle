@@ -55,8 +55,11 @@
     (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
                  (h/add-opponent {:bot-archetype :goldfish}))
           app-db {:game/db db}
-          result (priority-flow/yield-impl app-db)
-          result-db (:game/db (:app-db result))]
+          ;; First yield: human passes, priority transfers to bot
+          result1 (priority-flow/yield-impl app-db)
+          ;; Second yield: bot passes, both passed, advance to main2
+          result2 (priority-flow/yield-impl (:app-db result1))
+          result-db (:game/db (:app-db result2))]
       ;; Should advance to main2 (next stop for the active player)
       (is (= :main2 (:game/phase (q/get-game-state result-db)))
           "Should advance to main2 using active player's stops"))))
@@ -87,10 +90,11 @@
     (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
                  (h/add-opponent {:bot-archetype :goldfish}))
           app-db {:game/db db}
-          result (priority-flow/yield-impl app-db)]
-      ;; If opponent lookup was wrong, bot wouldn't auto-pass and phase wouldn't advance
-      (is (= :main2 (:game/phase (q/get-game-state (:game/db (:app-db result)))))
-          "Should advance phase (opponent found and auto-passed)"))))
+          ;; Two yields: human passes → bot gets priority → bot passes → phase advances
+          result1 (priority-flow/yield-impl app-db)
+          result2 (priority-flow/yield-impl (:app-db result1))]
+      (is (= :main2 (:game/phase (q/get-game-state (:game/db (:app-db result2)))))
+          "Should advance phase after both players pass"))))
 
 
 ;; === yield-impl resolve-one-item uses active player ===
@@ -102,8 +106,10 @@
           [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
           game-db (rules/cast-spell db' :player-1 obj-id)
           app-db {:game/db game-db}
-          result (priority-flow/yield-impl app-db)
-          result-db (:game/db (:app-db result))
+          ;; Two yields: human passes → bot gets priority → bot passes → spell resolves
+          result1 (priority-flow/yield-impl app-db)
+          result2 (priority-flow/yield-impl (:app-db result1))
+          result-db (:game/db (:app-db result2))
           pool (q/get-mana-pool result-db :player-1)]
       ;; Dark Ritual should resolve correctly using active player
       (is (= 3 (:black pool))

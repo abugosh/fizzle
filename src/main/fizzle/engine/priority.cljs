@@ -79,6 +79,14 @@
       db)))
 
 
+(defn set-priority-holder
+  "Set the priority holder to a specific player.
+   Pure function: (db, player-eid) -> db"
+  [db player-eid]
+  (let [game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)]
+    (d/db-with db [[:db/add game-eid :game/priority player-eid]])))
+
+
 (defn set-player-stops
   "Set the phase stops for a player.
    Pure function: (db, player-eid, stops-set) -> db"

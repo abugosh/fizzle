@@ -39,13 +39,15 @@
    applies db changes, and dispatches non-yield fx effects synchronously.
    When bot passes (dispatches ::yield), only applies db changes — the main
    loop will handle the next yield. When bot acts (play land, cast), dispatches
-   the action events synchronously."
+   the action events synchronously.
+   Returns true if bot acted (not pass), false if bot passed or no bot."
   []
   (let [current @rf-db/app-db
         game-db (:game/db current)]
-    (when (and game-db
-               (not (:game/pending-selection current))
-               (bot-interceptor/bot-should-act? game-db))
+    (if (or (not game-db)
+            (:game/pending-selection current)
+            (not (bot-interceptor/bot-should-act? game-db)))
+      false
       (let [effects (bot-interceptor/bot-decide-handler current)
             fx-entries (:fx effects)
             is-pass? (some (fn [[fx-type payload]]
@@ -55,32 +57,41 @@
         ;; Always apply db changes
         (when (:db effects)
           (reset! rf-db/app-db (:db effects)))
-        ;; Only dispatch non-yield effects (yield is handled by main loop)
-        (when-not is-pass?
-          (doseq [[fx-type payload] fx-entries]
-            (when (= :dispatch fx-type)
-              (rf/dispatch-sync payload))))))))
+        (if is-pass?
+          false
+          (do
+            (doseq [[fx-type payload] fx-entries]
+              (when (= :dispatch fx-type)
+                (rf/dispatch-sync payload)))
+            true))))))
 
 
 (defn- dispatch-yield-all
   "Dispatch ::yield-all and drain the yield cascade synchronously.
    ::yield-all sets auto-mode + step-count and dispatches ::yield via :dispatch.
    Since :dispatch is async, we drain the cascade by repeatedly calling
-   dispatch-sync [::yield] until step-count is cleared (cascade complete).
-   Also processes bot actions between yields to simulate the bot interceptor."
+   dispatch-sync [::yield] until the cascade settles.
+   Between yields, simulates the bot interceptor (db_effect fires ::bot-decide
+   after game-db mutations)."
   [app-db]
   (reset! rf-db/app-db app-db)
   (rf/dispatch-sync [::priority-flow/yield-all])
   (loop [n 300]
-    (let [current @rf-db/app-db]
-      (if (or (zero? n)
-              (:game/pending-selection current)
-              (not (contains? current :yield/step-count)))
-        @rf-db/app-db
-        (do
-          (rf/dispatch-sync [::priority-flow/yield])
-          (process-bot-action!)
-          (recur (dec n)))))))
+    (if (or (zero? n) (:game/pending-selection @rf-db/app-db))
+      @rf-db/app-db
+      (let [has-step-count? (contains? @rf-db/app-db :yield/step-count)
+            game-db (:game/db @rf-db/app-db)
+            bot-can-act? (and game-db (bot-interceptor/bot-should-act? game-db))]
+        (if (and (not has-step-count?) (not bot-can-act?))
+          @rf-db/app-db
+          (do
+            ;; Process bot actions (land play, cast, pass)
+            (loop [bot-n 20]
+              (when (and (pos? bot-n) (process-bot-action!))
+                (recur (dec bot-n))))
+            ;; Dispatch yield to continue the cascade
+            (rf/dispatch-sync [::priority-flow/yield])
+            (recur (dec n))))))))
 
 
 ;; === start-turn switches active player ===

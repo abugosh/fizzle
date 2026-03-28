@@ -3,6 +3,7 @@
    Pure functions for building Datascript transaction data."
   (:require
     [datascript.core :as d]
+    [fizzle.bots.protocol :as bot-protocol]
     [fizzle.db.game-state :as game-state]
     [fizzle.db.schema :refer [schema]]
     [fizzle.db.storage :as storage]
@@ -142,7 +143,7 @@
     (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid game-state/human-player-id))
     (d/transact! conn (turn-based/create-turn-based-triggers-tx opp-eid game-state/opponent-player-id))
     (d/transact! conn [[:db/add player-eid :player/stops (:player stops)]
-                       [:db/add opp-eid :player/stops (:opponent stops)]])
+                       [:db/add opp-eid :player/stops (bot-protocol/bot-stops bot-archetype)]])
     (merge {:game/db @conn :active-screen :opening-hand
             :opening-hand/mulligan-count 0 :opening-hand/sculpted-ids sculpted-id-set
             :opening-hand/must-contain (or must-contain {})
