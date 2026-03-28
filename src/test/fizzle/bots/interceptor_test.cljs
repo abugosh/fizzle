@@ -518,7 +518,7 @@
                         {:game/db db
                          :bot/action-count 30})
           ;; Advance human through all phases to turn boundary (crosses to bot turn)
-          result (priority-flow/advance-with-stops app-db true)
+          result (priority-flow/advance-with-stops app-db true false)
           result-app-db (:app-db result)]
       (is (nil? (:bot/action-count result-app-db))
           "Action count should be cleared (dissoc'd) at turn boundary")))
@@ -528,7 +528,7 @@
                  (th/add-opponent {:bot-archetype :burn}))
           ;; First get to bot's turn
           result1 (priority-flow/advance-with-stops
-                    (merge (history/init-history) {:game/db db}) true)
+                    (merge (history/init-history) {:game/db db}) true false)
           bot-app-db (:app-db result1)
           ;; Set accumulated action count
           bot-app-db (assoc bot-app-db :bot/action-count 25)
@@ -539,7 +539,7 @@
                            adb
                            (let [gdb (:game/db adb)
                                  active (q/get-active-player-id gdb)
-                                 result (priority-flow/advance-with-stops adb true)
+                                 result (priority-flow/advance-with-stops adb true false)
                                  rdb (:game/db (:app-db result))
                                  new-active (q/get-active-player-id rdb)]
                              (if (not= active new-active)

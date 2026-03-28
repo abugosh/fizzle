@@ -1013,3 +1013,84 @@
       (is (> 20 (:player/life (d/pull result-db [:player/life]
                                       (q/get-player-eid result-db :player-1))))
           "Human should have taken damage from burn bot's bolt"))))
+
+
+;; === advance-with-stops: opponent-stops on human player ===
+
+(deftest advance-with-stops-pauses-at-human-opponent-stop-on-bot-turn
+  (testing "advance-with-stops pauses when human has opponent-stop at current bot phase"
+    (let [db (-> (h/create-test-db {:stops #{:main1}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          ;; Set human's opponent-stops to #{:upkeep}
+          human-eid (q/get-player-eid db :player-1)
+          game-db (priority/set-opponent-stops db human-eid #{:upkeep})
+          ;; Switch active player to bot, starting from untap
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db)
+          opp-eid (q/get-player-eid game-db :player-2)
+          game-db (d/db-with game-db [[:db/add game-eid :game/active-player opp-eid]
+                                      [:db/add game-eid :game/priority opp-eid]
+                                      [:db/add game-eid :game/phase :untap]])
+          app-db {:game/db game-db}
+          ;; advance-with-stops: ignore-stops? false, ignore-opponent-stops? false
+          result (priority-flow/advance-with-stops app-db false false)
+          result-phase (:game/phase (q/get-game-state (:game/db (:app-db result))))]
+      (is (= :upkeep result-phase)
+          "advance-with-stops should pause at :upkeep because human has opponent-stop there"))))
+
+
+(deftest advance-with-stops-no-opponent-stop-passes-through-phase
+  (testing "advance-with-stops does NOT pause when human has no opponent-stop at the phase"
+    (let [db (-> (h/create-test-db {:stops #{}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          ;; Human has empty opponent-stops
+          human-eid (q/get-player-eid db :player-1)
+          game-db (priority/set-opponent-stops db human-eid #{})
+          ;; Bot's turn — goldfish has stops #{:main1}
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db)
+          opp-eid (q/get-player-eid game-db :player-2)
+          game-db (d/db-with game-db [[:db/add game-eid :game/active-player opp-eid]
+                                      [:db/add game-eid :game/priority opp-eid]
+                                      [:db/add game-eid :game/phase :untap]])
+          app-db {:game/db game-db}
+          result (priority-flow/advance-with-stops app-db false false)
+          result-phase (:game/phase (q/get-game-state (:game/db (:app-db result))))]
+      (is (= :main1 result-phase)
+          "Should advance past upkeep/draw to main1 (no opponent-stop, only bot's own stop)"))))
+
+
+(deftest advance-with-stops-ignore-opponent-stops-skips-human-opponent-stop
+  (testing "advance-with-stops ignores human's opponent-stops when ignore-opponent-stops? is true (F6)"
+    (let [db (-> (h/create-test-db {:stops #{}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          ;; Human has opponent-stop at upkeep
+          human-eid (q/get-player-eid db :player-1)
+          game-db (priority/set-opponent-stops db human-eid #{:upkeep})
+          ;; Bot's turn at untap
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db)
+          opp-eid (q/get-player-eid game-db :player-2)
+          game-db (d/db-with game-db [[:db/add game-eid :game/active-player opp-eid]
+                                      [:db/add game-eid :game/priority opp-eid]
+                                      [:db/add game-eid :game/phase :untap]])
+          app-db {:game/db game-db}
+          ;; ignore-opponent-stops? = true (F6 mode)
+          result (priority-flow/advance-with-stops app-db false true)
+          result-phase (:game/phase (q/get-game-state (:game/db (:app-db result))))]
+      (is (= :main1 result-phase)
+          "F6 should skip human's opponent-stop at :upkeep, advance to bot's :main1 stop"))))
+
+
+(deftest advance-with-stops-nil-opponent-stops-does-not-pause
+  (testing "advance-with-stops is safe when human has no :player/opponent-stops (nil)"
+    (let [db (-> (h/create-test-db {:stops #{}})
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          ;; Human has NO opponent-stops attribute set (nil)
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+          opp-eid (q/get-player-eid db :player-2)
+          game-db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]
+                                 [:db/add game-eid :game/priority opp-eid]
+                                 [:db/add game-eid :game/phase :untap]])
+          app-db {:game/db game-db}
+          result (priority-flow/advance-with-stops app-db false false)
+          result-phase (:game/phase (q/get-game-state (:game/db (:app-db result))))]
+      (is (= :main1 result-phase)
+          "Should safely advance to main1 without throwing when opponent-stops is nil"))))

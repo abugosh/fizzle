@@ -102,6 +102,22 @@
     (boolean (and stops (contains? stops phase)))))
 
 
+(defn set-opponent-stops
+  "Set the opponent-turn phase stops for a player.
+   Pure function: (db, player-eid, stops-set) -> db"
+  [db player-eid stops]
+  (d/db-with db [[:db/add player-eid :player/opponent-stops stops]]))
+
+
+(defn check-opponent-stop
+  "Check if a player has an opponent-stop set for a given phase.
+   Returns true if the player's :player/opponent-stops contains the phase.
+   Returns false when :player/opponent-stops is nil (e.g., bot entity)."
+  [db player-eid phase]
+  (let [stops (:player/opponent-stops (d/pull db [:player/opponent-stops] player-eid))]
+    (boolean (and stops (contains? stops phase)))))
+
+
 (defn get-auto-mode
   "Get the current auto-mode (:resolving, :f6, or nil)."
   [db]

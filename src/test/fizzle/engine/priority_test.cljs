@@ -151,3 +151,40 @@
 (deftest clear-auto-mode-when-already-nil
   (let [[db _ _ _] (setup-two-player-db)]
     (is (nil? (priority/get-auto-mode (priority/clear-auto-mode db))))))
+
+
+;; === check-opponent-stop ===
+
+(deftest check-opponent-stop-true-when-phase-in-set
+  (let [[db p1-eid _ _] (setup-two-player-db)
+        db' (priority/set-opponent-stops db p1-eid #{:upkeep :main1})]
+    (is (true? (priority/check-opponent-stop db' p1-eid :upkeep)))
+    (is (true? (priority/check-opponent-stop db' p1-eid :main1)))))
+
+
+(deftest check-opponent-stop-false-when-phase-not-in-set
+  (let [[db p1-eid _ _] (setup-two-player-db)
+        db' (priority/set-opponent-stops db p1-eid #{:upkeep})]
+    (is (false? (priority/check-opponent-stop db' p1-eid :main1)))
+    (is (false? (priority/check-opponent-stop db' p1-eid :end)))))
+
+
+(deftest check-opponent-stop-false-when-nil
+  ;; Bot entity will have no :player/opponent-stops attribute — must not throw
+  (let [[db _ p2-eid _] (setup-two-player-db)]
+    (is (false? (priority/check-opponent-stop db p2-eid :main1)))))
+
+
+(deftest check-opponent-stop-false-when-empty-set
+  (let [[db p1-eid _ _] (setup-two-player-db)
+        db' (priority/set-opponent-stops db p1-eid #{})]
+    (is (false? (priority/check-opponent-stop db' p1-eid :main1)))))
+
+
+;; === set-opponent-stops ===
+
+(deftest set-opponent-stops-persists-to-entity
+  (let [[db p1-eid _ _] (setup-two-player-db)
+        db' (priority/set-opponent-stops db p1-eid #{:upkeep :main2})]
+    (is (= #{:upkeep :main2}
+           (:player/opponent-stops (d/pull db' [:player/opponent-stops] p1-eid))))))

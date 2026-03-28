@@ -66,6 +66,7 @@
    :player/grants          {}  ; Vector of grant maps (temporary restrictions/effects)
    :player/bot-archetype   {}  ; :goldfish | :burn | nil
    :player/stops           {}  ; #{:main1 :main2 ...} — phases where player wants priority
+   :player/opponent-stops  {}  ; #{:upkeep :main1 ...} — phases where human wants priority during opponent's turn
    :player/drew-from-empty {}  ; Boolean, set by :draw when library is empty, cleared by SBA
 
    ;; === Game State (singleton) ===

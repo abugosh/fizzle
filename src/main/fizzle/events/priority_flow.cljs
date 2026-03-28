@@ -15,14 +15,19 @@
    Handles cleanup and start-turn automatically.
    After crossing a turn boundary, returns immediately — the caller (yield-impl)
    handles continuing through the new turn via recursive ::yield dispatch.
-   When ignore-stops? is true (F6 mode), skips player phase stop checks.
+   When ignore-stops? is true (F6 mode), skips active player's phase stop checks.
+   When ignore-opponent-stops? is true (F6 mode), skips non-active player's opponent-stops.
+   Also checks the non-active player's :player/opponent-stops at each priority phase.
    Bot-agnostic: checks stops for any player the same way.
    Returns {:app-db app-db'} with game-db at the stopped phase.
-   Pure function: (app-db, ignore-stops?) -> {:app-db app-db'}"
-  [app-db ignore-stops?]
+   Pure function: (app-db, ignore-stops?, ignore-opponent-stops?) -> {:app-db app-db'}"
+  [app-db ignore-stops? ignore-opponent-stops?]
   (let [game-db (:game/db app-db)
         active-player-id (queries/get-active-player-id game-db)
-        player-eid (queries/get-player-eid game-db active-player-id)]
+        player-eid (queries/get-player-eid game-db active-player-id)
+        non-active-id (queries/get-other-player-id game-db active-player-id)
+        non-active-eid (when non-active-id
+                         (queries/get-player-eid game-db non-active-id))]
     (loop [gdb game-db]
       (let [game-state (queries/get-game-state gdb)
             current-phase (:game/phase game-state)
@@ -53,13 +58,19 @@
             (if (not (queries/stack-empty? advanced-db))
               ;; Stack triggered — stop and give priority
               {:app-db (assoc app-db :game/db advanced-db)}
-              ;; Check stop (skipped in F6 mode)
+              ;; Check active player's own stop (skipped in F6 mode)
               (if (and (not ignore-stops?)
                        (priority/check-stop advanced-db player-eid actual-phase))
                 ;; Stop hit — pause here
                 {:app-db (assoc app-db :game/db advanced-db)}
-                ;; No stop or F6 — continue advancing
-                (recur advanced-db)))))))))
+                ;; Check non-active player's opponent-stop (skipped in F6 mode)
+                (if (and (not ignore-opponent-stops?)
+                         non-active-eid
+                         (priority/check-opponent-stop advanced-db non-active-eid actual-phase))
+                  ;; Opponent-stop hit — pause here
+                  {:app-db (assoc app-db :game/db advanced-db)}
+                  ;; No stop — continue advancing
+                  (recur advanced-db))))))))))
 
 
 (defn- yield-resolve-stack
@@ -98,6 +109,7 @@
    and set during init. Bot interceptor fires via db_effect after each stop.
    F6 only ignores stops for the human player — other players' stops are always
    respected so their interceptors (e.g., bot-decide) can fire at configured phases.
+   F6 also skips human's opponent-stops — human opted into full-auto mode.
    Returns {:app-db, :continue-yield?} or {:app-db} with pending-selection."
   [app-db]
   (let [game-db (:game/db app-db)
@@ -107,7 +119,9 @@
         human-pid (queries/get-human-player-id game-db)
         ;; F6 only skips the human's stops — other players' stops are always respected
         ignore-stops? (and f6? (= active-player-id human-pid))
-        result (advance-with-stops app-db ignore-stops?)
+        ;; F6 also skips human's opponent-stops (human opted into full-auto)
+        ignore-opponent-stops? f6?
+        result (advance-with-stops app-db ignore-stops? ignore-opponent-stops?)
         result-db (:game/db (:app-db result))
         new-active-id (queries/get-active-player-id result-db)
         crossed-turn? (not= active-player-id new-active-id)]
