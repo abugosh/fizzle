@@ -6,7 +6,7 @@
     [fizzle.db.game-state :as game-state]
     [fizzle.db.queries :as queries]
     [fizzle.db.storage :as storage]
-    [fizzle.engine.priority :as priority]
+    [fizzle.events.priority-flow :as priority-flow]
     [re-frame.core :as rf]))
 
 
@@ -76,9 +76,9 @@
               new-opp-stops (if (contains? current-opp-stops phase)
                               (disj current-opp-stops phase)
                               (conj current-opp-stops phase))]
-          (assoc db :game/db (priority/set-opponent-stops game-db human-eid new-opp-stops)))
+          (assoc db :game/db (priority-flow/set-opponent-stops game-db human-eid new-opp-stops)))
         (let [current-stops (or (:player/stops (d/pull game-db [:player/stops] human-eid)) #{})
               new-stops (if (contains? current-stops phase)
                           (disj current-stops phase)
                           (conj current-stops phase))]
-          (assoc db :game/db (priority/set-player-stops game-db human-eid new-stops)))))))
+          (assoc db :game/db (priority-flow/set-player-stops game-db human-eid new-stops)))))))

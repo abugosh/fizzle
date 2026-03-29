@@ -127,7 +127,7 @@
   (testing "yield-impl advances turns correctly through a full human->bot->human cycle"
     (let [db (-> (th/create-test-db {:stops #{}})
                  (th/add-opponent {:bot-archetype :burn})
-                 (priority/set-auto-mode :f6))
+                 (priority-flow/set-auto-mode :f6))
           app-db (merge (history/init-history) {:game/db db})
           ;; Run yield-impl in a loop — F6 means resolve everything.
           ;; When yield pauses (no continue-yield?), simulate bot interceptor.

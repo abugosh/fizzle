@@ -322,3 +322,33 @@
           result (priority-flow/yield-impl app-db)]
       (is (not (:continue-yield? result))
           "yield-impl should pause for bot interceptor at priority-granting phases"))))
+
+
+;; === Stale dispatch-later does not skip bot turn ===
+
+(deftest stale-timer-yield-does-not-skip-bot-turn
+  (testing "A stale dispatch-later yield (from pre-bot-pause) does not advance past bot's stop"
+    ;; Simulates the race condition: cascade crosses to bot's turn → dispatch-later
+    ;; queued → bot-decide fires and pauses at main1 (incrementing epoch) →
+    ;; stale timer fires with old epoch → should be ignored.
+    (let [app-db (setup-app-db {:stops #{:main1 :main2}})
+          game-db (:game/db app-db)
+          ;; Set up: bot's turn at main1 (where bot stop paused the cascade)
+          ;; with epoch=1 (bot pause incremented from 0 to 1)
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db)
+          opp-eid (q/get-player-eid game-db :player-2)
+          game-db (d/db-with game-db [[:db/add game-eid :game/active-player opp-eid]
+                                      [:db/add game-eid :game/priority opp-eid]
+                                      [:db/add game-eid :game/phase :main1]])
+          app-db (-> app-db
+                     (assoc :game/db (priority-flow/set-auto-mode game-db :f6))
+                     (assoc :yield/epoch 1 :yield/step-count 3))]
+      ;; Stale timer fires [::yield 0] — epoch 0 from before bot pause
+      (reset! rf-db/app-db app-db)
+      (rf/dispatch-sync [::priority-flow/yield 0])
+      (let [result @rf-db/app-db
+            result-phase (:game/phase (q/get-game-state (:game/db result)))]
+        (is (= :main1 result-phase)
+            "Phase should still be main1 — stale timer yield was ignored")
+        (is (= :player-2 (q/get-active-player-id (:game/db result)))
+            "Active player should still be bot — turn didn't advance")))))

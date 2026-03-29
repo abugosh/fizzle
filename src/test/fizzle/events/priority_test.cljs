@@ -287,7 +287,7 @@
       (is (= 3 (:game/turn (q/get-game-state (:game/db result))))
           "Should advance to turn 3 (player T1 -> opponent T2 -> player T3)")
       ;; Auto-mode should be cleared after completion
-      (is (nil? (priority/get-auto-mode (:game/db result)))
+      (is (nil? (priority-flow/get-auto-mode (:game/db result)))
           "Auto-mode should be cleared after F6 completes"))))
 
 
@@ -359,7 +359,7 @@
           result-db (:game/db result)]
       (is (= 3 (:game/turn (q/get-game-state result-db)))
           "Should advance to turn 3 (player T1 -> opponent T2 -> player T3)")
-      (is (nil? (priority/get-auto-mode result-db))
+      (is (nil? (priority-flow/get-auto-mode result-db))
           "Auto-mode should be cleared after F6")
       ;; History should have entries for the turn transition
       (is (< 0 (count (history/effective-entries result)))
@@ -620,7 +620,7 @@
                  (h/add-opponent {:bot-archetype :goldfish :stops #{:draw}}))
           ;; Set :player/opponent-stops on human so F6 actually has something to skip
           human-eid (q/get-player-eid db :player-1)
-          db-with-opp-stops (priority/set-opponent-stops db human-eid #{:end :upkeep})
+          db-with-opp-stops (priority-flow/set-opponent-stops db human-eid #{:end :upkeep})
           game-db (-> db-with-opp-stops
                       (phases/advance-phase :player-1)  ; main1 -> combat
                       (phases/advance-phase :player-1)) ; combat -> main2
@@ -643,7 +643,7 @@
                  (h/add-opponent {:bot-archetype :goldfish :stops #{}}))  ; bot: no stops
           human-eid (q/get-player-eid db :player-1)
           ;; Set human's opponent-stop at :end
-          db' (priority/set-opponent-stops db human-eid #{:end})
+          db' (priority-flow/set-opponent-stops db human-eid #{:end})
           ;; Set game to bot's turn (player-2 active) at :main2 — bot has no stops,
           ;; so advance-with-stops will scan forward and hit human's :end opponent-stop
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] db')
@@ -669,7 +669,7 @@
                  (h/add-opponent {:bot-archetype :goldfish}))
           human-eid (q/get-player-eid db :player-1)
           ;; Human has own stop at :main1 AND opponent-stop at :main1
-          db' (priority/set-opponent-stops db human-eid #{:main1})
+          db' (priority-flow/set-opponent-stops db human-eid #{:main1})
           ;; Manually set game to be in :upkeep (before :main1) so advance-with-stops
           ;; will advance to :main1 and hit the own-stop
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] db')
@@ -711,7 +711,7 @@
   (testing "both pass in auto-mode (:resolving)"
     (let [db (-> (h/create-test-db {:stops #{:main1}})
                  (h/add-opponent {:bot-archetype :goldfish})
-                 (priority/set-auto-mode :resolving))
+                 (priority-flow/set-auto-mode :resolving))
           app-db {:game/db db}
           result (priority-flow/negotiate-priority app-db)]
       (is (true? (:all-passed? result))))))
@@ -753,7 +753,7 @@
   (testing "resets passes in returned app-db when all passed (auto-mode)"
     (let [db (-> (h/create-test-db {:stops #{:main1}})
                  (h/add-opponent {:bot-archetype :goldfish})
-                 (priority/set-auto-mode :resolving))
+                 (priority-flow/set-auto-mode :resolving))
           app-db {:game/db db}
           result (priority-flow/negotiate-priority app-db)
           result-db (:game/db (:app-db result))]
@@ -799,7 +799,7 @@
                  (h/add-opponent {:bot-archetype :burn}))
           [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
           game-db (-> (rules/cast-spell db' :player-1 obj-id)
-                      (priority/set-auto-mode :resolving))
+                      (priority-flow/set-auto-mode :resolving))
           ;; Switch active player to bot
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db)
           opp-eid (q/get-player-eid game-db :player-2)
@@ -835,10 +835,10 @@
                  (h/add-opponent {:bot-archetype :goldfish}))
           [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
           game-db (-> (rules/cast-spell db' :player-1 obj-id)
-                      (priority/set-auto-mode :resolving))
+                      (priority-flow/set-auto-mode :resolving))
           app-db {:game/db game-db}
           result (priority-flow/yield-impl app-db)]
-      (is (nil? (priority/get-auto-mode (:game/db (:app-db result))))
+      (is (nil? (priority-flow/get-auto-mode (:game/db (:app-db result))))
           "Auto-mode should be cleared when stack empties during :resolving"))))
 
 
@@ -1019,7 +1019,7 @@
               [db' _] (h/add-card-to-zone db' :lightning-bolt :hand :player-2)
               [db' _] (h/add-card-to-zone db' :mountain :battlefield :player-2)
               game-db (-> (rules/cast-spell db' :player-1 obj-id)
-                          (priority/set-auto-mode :resolving))
+                          (priority-flow/set-auto-mode :resolving))
               app-db {:game/db game-db}
               result (priority-flow/negotiate-priority app-db)]
           (is (true? (:all-passed? result))
@@ -1091,7 +1091,7 @@
                  (h/add-opponent {:bot-archetype :goldfish}))
           ;; Set human's opponent-stops to #{:upkeep}
           human-eid (q/get-player-eid db :player-1)
-          game-db (priority/set-opponent-stops db human-eid #{:upkeep})
+          game-db (priority-flow/set-opponent-stops db human-eid #{:upkeep})
           ;; Switch active player to bot, starting from untap
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db)
           opp-eid (q/get-player-eid game-db :player-2)
@@ -1112,7 +1112,7 @@
                  (h/add-opponent {:bot-archetype :goldfish}))
           ;; Human has empty opponent-stops
           human-eid (q/get-player-eid db :player-1)
-          game-db (priority/set-opponent-stops db human-eid #{})
+          game-db (priority-flow/set-opponent-stops db human-eid #{})
           ;; Bot's turn — goldfish has stops #{:main1}
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db)
           opp-eid (q/get-player-eid game-db :player-2)
@@ -1132,7 +1132,7 @@
                  (h/add-opponent {:bot-archetype :goldfish}))
           ;; Human has opponent-stop at upkeep
           human-eid (q/get-player-eid db :player-1)
-          game-db (priority/set-opponent-stops db human-eid #{:upkeep})
+          game-db (priority-flow/set-opponent-stops db human-eid #{:upkeep})
           ;; Bot's turn at untap
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db)
           opp-eid (q/get-player-eid game-db :player-2)
@@ -1162,3 +1162,151 @@
           result-phase (:game/phase (q/get-game-state (:game/db (:app-db result))))]
       (is (= :main1 result-phase)
           "Should safely advance to main1 without throwing when opponent-stops is nil"))))
+
+
+;; === Yield epoch staleness guard tests ===
+
+(deftest stale-dispatch-later-yield-is-ignored
+  (testing "yield with stale epoch (from dispatch-later after bot actions) is a no-op"
+    (let [app-db (-> (setup-app-db)
+                     ;; Simulate: cascade set epoch to 0, then bot pause incremented to 1
+                     (assoc :yield/epoch 1
+                            :yield/step-count 3))]
+      ;; Stale timer fires [::yield 0] — epoch 0 doesn't match current epoch 1
+      (reset! rf-db/app-db app-db)
+      (rf/dispatch-sync [::priority-flow/yield 0])
+      (let [result @rf-db/app-db]
+        (is (= (:game/db app-db) (:game/db result))
+            "Game state should be unchanged — stale yield ignored")
+        (is (= 1 (:yield/epoch result))
+            "Epoch should remain at 1")))))
+
+
+(deftest yield-without-epoch-is-not-guarded
+  (testing "yield without expected-epoch (from bot pass or manual yield) always processes"
+    (let [app-db (-> (setup-app-db)
+                     (assoc :yield/epoch 5
+                            :yield/step-count 3))]
+      ;; [::yield] without epoch — should process normally
+      (reset! rf-db/app-db app-db)
+      (rf/dispatch-sync [::priority-flow/yield])
+      (let [result @rf-db/app-db]
+        (is (not= (:game/db app-db) (:game/db result))
+            "Game state should change — unguarded yield processed normally")))))
+
+
+(deftest yield-with-matching-epoch-processes-normally
+  (testing "yield with matching epoch (current timer) processes normally"
+    (let [app-db (-> (setup-app-db)
+                     (assoc :yield/epoch 2
+                            :yield/step-count 3))
+          game-db-before (:game/db app-db)]
+      ;; Timer fires [::yield 2] — matches current epoch
+      (reset! rf-db/app-db app-db)
+      (rf/dispatch-sync [::priority-flow/yield 2])
+      (let [result @rf-db/app-db]
+        (is (not= game-db-before (:game/db result))
+            "Game state should change — matching epoch yield processed")))))
+
+
+;; === Relocated from engine/priority_test: stop and auto-mode accessor tests ===
+;; These functions moved from engine/priority to events/priority-flow.
+
+(defn- setup-two-player-game-db
+  "Create a game db with two players. Returns [db p1-eid p2-eid]."
+  []
+  (let [db (-> (h/create-test-db)
+               (h/add-opponent))
+        p1-eid (q/get-player-eid db :player-1)
+        p2-eid (q/get-player-eid db :player-2)]
+    [db p1-eid p2-eid]))
+
+
+;; === check-stop ===
+
+(deftest pf-check-stop-true-for-stopped-phase
+  (let [[db p1-eid _] (setup-two-player-game-db)
+        db' (priority-flow/set-player-stops db p1-eid #{:main1 :main2})]
+    (is (true? (priority-flow/check-stop db' p1-eid :main1)))
+    (is (true? (priority-flow/check-stop db' p1-eid :main2)))))
+
+
+(deftest pf-check-stop-false-for-unstopped-phase
+  (let [[db p1-eid _] (setup-two-player-game-db)
+        db' (priority-flow/set-player-stops db p1-eid #{:main1})]
+    (is (false? (priority-flow/check-stop db' p1-eid :combat)))
+    (is (false? (priority-flow/check-stop db' p1-eid :end)))))
+
+
+(deftest pf-check-stop-false-when-no-stops-set
+  (let [[db p1-eid _] (setup-two-player-game-db)]
+    (is (false? (priority-flow/check-stop db p1-eid :main1)))))
+
+
+;; === auto-mode ===
+
+(deftest pf-auto-mode-initially-nil
+  (let [[db _ _] (setup-two-player-game-db)]
+    (is (nil? (priority-flow/get-auto-mode db)))))
+
+
+(deftest pf-set-auto-mode-resolving
+  (let [[db _ _] (setup-two-player-game-db)
+        db' (priority-flow/set-auto-mode db :resolving)]
+    (is (= :resolving (priority-flow/get-auto-mode db')))))
+
+
+(deftest pf-set-auto-mode-f6
+  (let [[db _ _] (setup-two-player-game-db)
+        db' (priority-flow/set-auto-mode db :f6)]
+    (is (= :f6 (priority-flow/get-auto-mode db')))))
+
+
+(deftest pf-clear-auto-mode
+  (let [[db _ _] (setup-two-player-game-db)
+        db' (-> db
+                (priority-flow/set-auto-mode :resolving)
+                priority-flow/clear-auto-mode)]
+    (is (nil? (priority-flow/get-auto-mode db')))))
+
+
+(deftest pf-clear-auto-mode-when-already-nil
+  (let [[db _ _] (setup-two-player-game-db)]
+    (is (nil? (priority-flow/get-auto-mode (priority-flow/clear-auto-mode db))))))
+
+
+;; === check-opponent-stop ===
+
+(deftest pf-check-opponent-stop-true-when-phase-in-set
+  (let [[db p1-eid _] (setup-two-player-game-db)
+        db' (priority-flow/set-opponent-stops db p1-eid #{:upkeep :main1})]
+    (is (true? (priority-flow/check-opponent-stop db' p1-eid :upkeep)))
+    (is (true? (priority-flow/check-opponent-stop db' p1-eid :main1)))))
+
+
+(deftest pf-check-opponent-stop-false-when-phase-not-in-set
+  (let [[db p1-eid _] (setup-two-player-game-db)
+        db' (priority-flow/set-opponent-stops db p1-eid #{:upkeep})]
+    (is (false? (priority-flow/check-opponent-stop db' p1-eid :main1)))
+    (is (false? (priority-flow/check-opponent-stop db' p1-eid :end)))))
+
+
+(deftest pf-check-opponent-stop-false-when-nil
+  ;; Bot entity will have no :player/opponent-stops attribute — must not throw
+  (let [[db _ p2-eid] (setup-two-player-game-db)]
+    (is (false? (priority-flow/check-opponent-stop db p2-eid :main1)))))
+
+
+(deftest pf-check-opponent-stop-false-when-empty-set
+  (let [[db p1-eid _] (setup-two-player-game-db)
+        db' (priority-flow/set-opponent-stops db p1-eid #{})]
+    (is (false? (priority-flow/check-opponent-stop db' p1-eid :main1)))))
+
+
+;; === set-opponent-stops ===
+
+(deftest pf-set-opponent-stops-persists-to-entity
+  (let [[db p1-eid _] (setup-two-player-game-db)
+        db' (priority-flow/set-opponent-stops db p1-eid #{:upkeep :main2})]
+    (is (= #{:upkeep :main2}
+           (:player/opponent-stops (d/pull db' [:player/opponent-stops] p1-eid))))))

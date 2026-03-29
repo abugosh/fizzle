@@ -17,7 +17,6 @@
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.cards :as cards]
     [fizzle.engine.mana :as mana]
-    [fizzle.engine.priority :as priority]
     [fizzle.events.priority-flow :as priority-flow]
     [fizzle.events.selection.costs :as sel-costs]
     [fizzle.history.core :as history]
@@ -301,7 +300,7 @@
                          :game/selected-card obj-id})
           result (dispatch-cast-and-yield app-db)]
       ;; Auto-mode must be nil — :resolving would cascade-resolve everything
-      (is (nil? (priority/get-auto-mode (:game/db result)))
+      (is (nil? (priority-flow/get-auto-mode (:game/db result)))
           "Auto-mode should be nil after cast-and-yield, not :resolving")
       ;; Stack should still have items (copies + spell)
       (is (pos? (count (queries/get-all-stack-items (:game/db result))))

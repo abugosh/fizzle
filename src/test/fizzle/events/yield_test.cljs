@@ -7,7 +7,6 @@
     [cljs.test :refer-macros [deftest testing is]]
     [fizzle.db.queries :as queries]
     [fizzle.engine.mana :as mana]
-    [fizzle.engine.priority :as priority]
     [fizzle.engine.rules :as rules]
     [fizzle.events.priority-flow :as priority-flow]
     [fizzle.history.core :as history]
@@ -62,7 +61,7 @@
                                        (queries/get-all-stack-items db))) 2)
                     "Setup: should have 2 spells on stack")
           ;; Build app-db WITH auto-mode (simulating yield-all / F6)
-          db (priority/set-auto-mode db :resolving)
+          db (priority-flow/set-auto-mode db :resolving)
           app-db (merge (history/init-history)
                         {:game/db db})
           result (priority-flow/yield-impl app-db)]
