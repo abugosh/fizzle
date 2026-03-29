@@ -42,7 +42,7 @@
     [fizzle.views.stack :as stack]
     [fizzle.views.zone-counts :as zone-counts]
     [re-frame.core :as rf]
-    [reagent.dom :as rdom]))
+    [reagent.dom.client :as rdom]))
 
 
 (defn- collapsible-right-column
@@ -131,10 +131,12 @@
        [game-screen])]))
 
 
+(defonce root (rdom/create-root (.getElementById js/document "app")))
+
 (defn ^:dev/after-load mount-root
   []
   (rf/clear-subscription-cache!)
-  (rdom/render [app] (.getElementById js/document "app")))
+  (rdom/render root [app]))
 
 
 (defn init

@@ -19,7 +19,8 @@
     [fizzle.bots.interceptor :as bot-interceptor]
     [fizzle.engine.state-based :as sba]
     [re-frame.core :as rf]
-    [re-frame.db :as rf-db]))
+    [re-frame.db :as rf-db]
+    [re-frame.registrar :as registrar]))
 
 
 (defn game-db-effect-handler
@@ -57,4 +58,5 @@
   "Register the custom :db effect handler. Call once during app initialization.
    Overrides re-frame's default :db effect with the SBA+bot chokepoint."
   []
+  (registrar/clear-handlers :fx :db)
   (rf/reg-fx :db game-db-effect-handler))
