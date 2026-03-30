@@ -42,14 +42,17 @@
                         :player/mana-pool {:white 0 :blue 0 :black 0
                                            :red 0 :green 0 :colorless 0}
                         :player/storm-count 0
-                        :player/land-plays-left 1}
+                        :player/land-plays-left 1
+                        :player/stops #{:main1 :main2}}
                        {:player/id :player-2
                         :player/name "Opponent"
                         :player/life 20
                         :player/mana-pool {:white 0 :blue 0 :black 0
                                            :red 0 :green 0 :colorless 0}
                         :player/storm-count 0
-                        :player/land-plays-left 1}])
+                        :player/land-plays-left 1
+                        :player/bot-archetype :goldfish
+                        :player/stops #{:main1}}])
     (let [player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] @conn)]
       (d/transact! conn [{:game/id :game-1
                           :game/turn 1
@@ -267,11 +270,10 @@
 
 ;; === Regression tests ===
 
-(deftest test-cast-and-yield-clears-auto-mode-after-resolve
-  (testing "Regression fizzle-4fpf: auto-mode should be nil after cast-and-yield (not :resolving)"
+(deftest test-cast-and-yield-storm-spell-does-not-cascade-resolve
+  (testing "Regression fizzle-4fpf: cast-and-yield resolves only one stack item (storm-meta), not all"
     ;; Storm spell: after resolving storm-meta, stack still has copies + spell.
-    ;; Bug: auto-mode stays :resolving, causing cascading resolution in the browser.
-    ;; Fix: auto-mode should be cleared after one resolve.
+    ;; The director resolves one item and stops (yield-all? false).
     (let [db (create-full-db)
           conn (d/conn-from-db db)
           _ (d/transact! conn [{:card/id :test-storm-ritual-auto
@@ -299,12 +301,9 @@
                         {:game/db db
                          :game/selected-card obj-id})
           result (dispatch-cast-and-yield app-db)]
-      ;; Auto-mode must be nil — :resolving would cascade-resolve everything
-      (is (nil? (priority-flow/get-auto-mode (:game/db result)))
-          "Auto-mode should be nil after cast-and-yield, not :resolving")
-      ;; Stack should still have items (copies + spell)
+      ;; Stack should still have items (copies + spell) — director stops after one resolve
       (is (pos? (count (queries/get-all-stack-items (:game/db result))))
-          "Stack should still have items (storm copies + spell)"))))
+          "Stack should still have items (storm copies + spell) — no infinite cascade"))))
 
 
 (deftest test-cast-and-yield-generic-mana-sets-continuation

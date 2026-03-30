@@ -3,20 +3,20 @@
 
    The handler intercepts every game-db mutation and:
    1. Runs check-and-execute-sbas when game-db changes (identical? guard)
-   2. Queues ::bot-decide when bot should act after game-db change
+
+   Bot decisions are handled inline by the game director (events/director.cljs),
+   not dispatched from here.
 
    Tests call game-db-effect-handler directly, manipulating rf-db/app-db atom
    to simulate before/after state."
   (:require
     [cljs.test :refer-macros [deftest testing is use-fixtures]]
     [datascript.core :as d]
-    [fizzle.bots.interceptor :as bot-interceptor]
     [fizzle.db.game-state :as game-state]
     [fizzle.db.queries :as q]
     [fizzle.engine.state-based :as sba]
     [fizzle.events.db-effect :as db-effect]
     [fizzle.test-helpers :as th]
-    [re-frame.core :as rf]
     [re-frame.db :as rf-db]))
 
 
@@ -99,51 +99,7 @@
           "app-db should be updated with the new value"))))
 
 
-;; === Test 4: bot queued after SBA when bot holds priority ===
-
-(deftest test-bot-queued-after-sba-when-bot-holds-priority
-  (testing "::bot-decide is dispatched when bot holds priority after game-db change"
-    (let [;; Create game-db with bot opponent holding priority
-          base-game-db (th/create-test-db)
-          ;; Add bot opponent
-          game-db-with-bot (th/add-opponent base-game-db {:bot-archetype :goldfish})
-          ;; Transfer priority to bot opponent
-          opp-eid (q/get-player-eid game-db-with-bot game-state/opponent-player-id)
-          game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db-with-bot)
-          game-db-bot-priority (d/db-with game-db-with-bot [[:db/add game-eid :game/priority opp-eid]])
-          new-app-db {:game/db game-db-bot-priority}
-          ;; Old app-db has different (non-identical) game-db
-          old-app-db {:game/db base-game-db}
-          dispatched-events (atom [])]
-      (reset! rf-db/app-db old-app-db)
-      (with-redefs [rf/dispatch (fn [event] (swap! dispatched-events conj event))]
-        (db-effect/game-db-effect-handler new-app-db))
-      (is (some #(= (first %) ::bot-interceptor/bot-decide) @dispatched-events)
-          "::bot-decide should be dispatched when bot holds priority"))))
-
-
-;; === Test 5: bot NOT queued when pending selection exists ===
-
-(deftest test-bot-not-queued-with-pending-selection
-  (testing "::bot-decide is NOT dispatched when a pending selection is active"
-    (let [base-game-db (th/create-test-db)
-          game-db-with-bot (th/add-opponent base-game-db {:bot-archetype :goldfish})
-          opp-eid (q/get-player-eid game-db-with-bot game-state/opponent-player-id)
-          game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db-with-bot)
-          game-db-bot-priority (d/db-with game-db-with-bot [[:db/add game-eid :game/priority opp-eid]])
-          ;; Pending selection in app-db prevents bot from acting
-          new-app-db {:game/db game-db-bot-priority
-                      :game/pending-selection {:selection/type :discard}}
-          old-app-db {:game/db base-game-db}
-          dispatched-events (atom [])]
-      (reset! rf-db/app-db old-app-db)
-      (with-redefs [rf/dispatch (fn [event] (swap! dispatched-events conj event))]
-        (db-effect/game-db-effect-handler new-app-db))
-      (is (not (some #(= (first %) ::bot-interceptor/bot-decide) @dispatched-events))
-          "::bot-decide should NOT be dispatched when pending selection exists"))))
-
-
-;; === Test 6: no-change pass-through when game-db identical but app-db differs ===
+;; === Test 4: no-change pass-through when game-db identical but app-db differs ===
 
 (deftest test-app-db-updated-when-only-ui-changes
   (testing "app-db is updated even when game-db is identical (non-game UI change)"

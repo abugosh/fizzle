@@ -1,42 +1,24 @@
 (ns fizzle.events.priority-flow
+  "Priority passing event handlers.
+
+   All game flow is orchestrated by the game director (events/director.cljs),
+   a pure synchronous function that runs the game loop until a human decision
+   point. Event handlers call the director and apply the result to app-db.
+
+   UX/orchestration accessors for stops are kept here (moved from engine/priority
+   in fizzle-psno). Auto-mode is removed — the director uses yield-all? flag."
   (:require
     [datascript.core :as d]
+    [fizzle.db.game-state :as game-state]
     [fizzle.db.queries :as queries]
     [fizzle.engine.priority :as priority]
     [fizzle.events.casting :as casting]
-    [fizzle.events.cleanup :as cleanup]
-    [fizzle.events.phases :as phases]
-    [fizzle.events.resolution :as resolution]
+    [fizzle.events.director :as director]
     [fizzle.events.selection.core :as sel-core]
     [re-frame.core :as rf]))
 
 
-;; === UX/Orchestration accessors (moved from engine/priority) ===
-
-(defn get-auto-mode
-  "Get the current auto-mode (:resolving, :f6, or nil)."
-  [db]
-  (:game/auto-mode (d/pull db [:game/auto-mode] [:game/id :game-1])))
-
-
-(defn set-auto-mode
-  "Set the auto-mode for priority passing.
-   Pure function: (db, mode) -> db"
-  [db mode]
-  (let [game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)]
-    (d/db-with db [[:db/add game-eid :game/auto-mode mode]])))
-
-
-(defn clear-auto-mode
-  "Clear the auto-mode (set to nil).
-   Pure function: (db) -> db"
-  [db]
-  (let [game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
-        current (get-auto-mode db)]
-    (if current
-      (d/db-with db [[:db/retract game-eid :game/auto-mode current]])
-      db)))
-
+;; === UX/Orchestration accessors (moved from engine/priority in fizzle-psno) ===
 
 (defn check-stop
   "Check if a player has a stop set for a given phase.
@@ -69,307 +51,69 @@
   (d/db-with db [[:db/add player-eid :player/opponent-stops stops]]))
 
 
-(defn advance-with-stops
-  "Advance phases until a stop is hit or a turn boundary is crossed.
-   Handles cleanup and start-turn automatically.
-   After crossing a turn boundary, returns immediately — the caller (yield-impl)
-   handles continuing through the new turn via recursive ::yield dispatch.
-   When ignore-stops? is true (F6 mode), skips active player's phase stop checks.
-   When ignore-opponent-stops? is true (F6 mode), skips non-active player's opponent-stops.
-   Also checks the non-active player's :player/opponent-stops at each priority phase.
-   Bot-agnostic: checks stops for any player the same way.
-   Returns {:app-db app-db'} with game-db at the stopped phase.
-   Pure function: (app-db, ignore-stops?, ignore-opponent-stops?) -> {:app-db app-db'}"
-  [app-db ignore-stops? ignore-opponent-stops?]
-  (let [game-db (:game/db app-db)
-        active-player-id (queries/get-active-player-id game-db)
-        player-eid (queries/get-player-eid game-db active-player-id)
-        non-active-id (queries/get-other-player-id game-db active-player-id)
-        non-active-eid (when non-active-id
-                         (queries/get-player-eid game-db non-active-id))]
-    (loop [gdb game-db]
-      (let [game-state (queries/get-game-state gdb)
-            current-phase (:game/phase game-state)
-            nxt (phases/next-phase current-phase)]
-        (if (= nxt :cleanup)
-          ;; Advancing to cleanup: advance phase, begin cleanup, then cross turn boundary
-          (let [advanced-db (phases/advance-phase gdb active-player-id)
-                cleanup-result (cleanup/begin-cleanup advanced-db active-player-id)]
-            (if (:pending-selection cleanup-result)
-              ;; Cleanup needs discard — pause with pending-selection
-              {:app-db (-> app-db
-                           (assoc :game/db (:db cleanup-result))
-                           (assoc :game/pending-selection (:pending-selection cleanup-result)))}
-              ;; No discard needed — cross turn boundary (start-turn switches active player)
-              (let [db-after-cleanup (:db cleanup-result)
-                    db-after-turn (phases/start-turn db-after-cleanup active-player-id)]
-                ;; Always return at turn boundary — yield-impl handles continuation
-                ;; via recursive ::yield dispatch (re-reads active player from db)
-                {:app-db (-> app-db
-                             (assoc :game/db db-after-turn)
-                             (dissoc :bot/action-count))})))
-          ;; Normal phase advance
-          (let [advanced-db (phases/advance-phase gdb active-player-id)
-                ;; Read actual phase from advanced-db (may differ from nxt
-                ;; when combat is skipped due to no creatures)
-                actual-phase (:game/phase (queries/get-game-state advanced-db))]
-            ;; Check if new phase triggers anything on the stack
-            (if (not (queries/stack-empty? advanced-db))
-              ;; Stack triggered — stop and give priority
-              {:app-db (assoc app-db :game/db advanced-db)}
-              ;; Check active player's own stop (skipped in F6 mode)
-              (if (and (not ignore-stops?)
-                       (check-stop advanced-db player-eid actual-phase))
-                ;; Stop hit — pause here
-                {:app-db (assoc app-db :game/db advanced-db)}
-                ;; Check non-active player's opponent-stop (skipped in F6 mode)
-                (if (and (not ignore-opponent-stops?)
-                         non-active-eid
-                         (check-opponent-stop advanced-db non-active-eid actual-phase))
-                  ;; Opponent-stop hit — pause here
-                  {:app-db (assoc app-db :game/db advanced-db)}
-                  ;; No stop — continue advancing
-                  (recur advanced-db))))))))))
+;; === Event Handlers ===
+
+(defn- apply-director-result
+  "Apply a director result to app-db and return re-frame effects map.
+   Always returns {:db updated-app-db} — no dispatch-later, no cascades."
+  [result]
+  {:db (:app-db result)})
 
 
-(defn- yield-resolve-stack
-  "Handle yield when all passed and stack is not empty: resolve top item.
-   Returns {:app-db, :continue-yield?} or {:app-db} with pending-selection."
+(defn- yield-human-priority
+  "Record the human player's priority pass in game-db.
+   When the human explicitly yields (clicking pass), we must record the pass
+   before running the director, since the director pauses at human stops
+   and only auto-passes when not at a stop. This pre-pass tells the director
+   the human has already decided to pass for this priority window.
+   Returns updated app-db."
   [app-db]
   (let [game-db (:game/db app-db)
-        auto-mode (get-auto-mode game-db)
-        result (resolution/resolve-one-item game-db)]
-    (if (:pending-selection result)
-      ;; Selection needed — clear auto-mode, return selection
-      {:app-db (-> app-db
-                   (assoc :game/db (clear-auto-mode (:db result)))
-                   (assoc :game/pending-selection (:pending-selection result)))}
-      ;; Resolved one item
-      (let [resolved-db (:db result)]
-        (if (not (queries/stack-empty? resolved-db))
-          ;; More items on stack — only cascade in auto-mode.
-          ;; Without auto-mode (manual yield), stop after one resolution
-          ;; so the player gets priority to respond to remaining items.
-          (if auto-mode
-            {:app-db (assoc app-db :game/db resolved-db)
-             :continue-yield? true}
-            {:app-db (assoc app-db :game/db resolved-db)})
-          ;; Stack empty — clear :resolving auto-mode if active
-          (let [resolved-db (if (= :resolving auto-mode)
-                              (clear-auto-mode resolved-db)
-                              resolved-db)]
-            {:app-db (cleanup/maybe-continue-cleanup
-                       (assoc app-db :game/db resolved-db))}))))))
-
-
-(defn- yield-advance-phase
-  "Handle yield when all passed and stack is empty: advance phases.
-   Uses advance-with-stops for ALL players — bot stops are derived from phase-actions
-   and set during init. Bot interceptor fires via db_effect after each stop.
-   F6 only ignores stops for the human player — other players' stops are always
-   respected so their interceptors (e.g., bot-decide) can fire at configured phases.
-   F6 also skips human's opponent-stops — human opted into full-auto mode.
-   Returns {:app-db, :continue-yield?} or {:app-db} with pending-selection."
-  [app-db]
-  (let [game-db (:game/db app-db)
-        auto-mode (get-auto-mode game-db)
-        f6? (= :f6 auto-mode)
-        active-player-id (queries/get-active-player-id game-db)
-        human-pid (queries/get-human-player-id game-db)
-        ;; F6 only skips the human's stops — other players' stops are always respected
-        ignore-stops? (and f6? (= active-player-id human-pid))
-        ;; F6 also skips human's opponent-stops (human opted into full-auto)
-        ignore-opponent-stops? f6?
-        result (advance-with-stops app-db ignore-stops? ignore-opponent-stops?)
-        result-db (:game/db (:app-db result))
-        new-active-id (queries/get-active-player-id result-db)
-        crossed-turn? (not= active-player-id new-active-id)]
-    (cond
-      ;; Pending selection (e.g., cleanup discard)
-      (:game/pending-selection (:app-db result))
-      result
-
-      ;; Turn boundary crossed — continue (next yield re-reads active player)
-      crossed-turn?
-      (let [landed-on-human? (= new-active-id human-pid)]
-        (if (and landed-on-human? f6?)
-          ;; Crossed to human turn with F6 — clear auto-mode, keep yielding to stop
-          {:app-db (update (:app-db result) :game/db clear-auto-mode)
-           :continue-yield? true}
-          ;; Crossed to other player — continue cascade
-          {:app-db (:app-db result)
-           :continue-yield? true}))
-
-      ;; F6 on human's turn, same turn — clear auto-mode (stop hit)
-      (and f6? (= active-player-id human-pid))
-      (update result :app-db
-              (fn [adb] (update adb :game/db clear-auto-mode)))
-
-      ;; Non-human player's turn stopped at their phase — keep auto-mode so cascade
-      ;; resumes after bot interceptor fires via db_effect
-      f6?
-      result
-
-      ;; Normal: same player's turn, stop here
-      :else
-      result)))
-
-
-(defn negotiate-priority
-  "Handle priority passing between players.
-   Returns {:app-db updated-app-db, :all-passed? bool}.
-
-   When all-passed? is true, passes are reset in the returned app-db.
-   When all-passed? is false, priority has been transferred to the opponent.
-
-   Auto-pass rules (player-type agnostic):
-   - In auto-mode (:resolving, :f6), opponent is auto-passed
-   - Without auto-mode, priority always transfers to opponent
-   - Bot opponents get priority via transfer, then db_effect fires ::bot-decide
-     which dispatches ::yield when the bot passes
-
-   Pure function: (app-db) -> {:app-db app-db', :all-passed? bool}"
-  [app-db]
-  (let [game-db (:game/db app-db)
-        auto-mode (get-auto-mode game-db)
-        holder-eid (priority/get-priority-holder-eid game-db)
-        ;; Step 1: current player passes
-        gdb (priority/yield-priority game-db holder-eid)
-        active-player-id (queries/get-active-player-id gdb)
-        active-eid (queries/get-player-eid gdb active-player-id)
-        opponent-player-id (queries/get-other-player-id gdb active-player-id)
-        ;; Step 2: auto-pass opponent only in auto-mode
-        should-auto-pass-opponent? (boolean auto-mode)
-        gdb (if (and should-auto-pass-opponent? opponent-player-id)
-              (let [opp-eid (queries/get-player-eid gdb opponent-player-id)]
-                (-> gdb
-                    (priority/yield-priority active-eid)
-                    (priority/yield-priority opp-eid)))
-              gdb)
-        all-passed (or (not opponent-player-id)
-                       (priority/both-passed? gdb))]
-    (if all-passed
-      {:app-db (assoc app-db :game/db (-> gdb
-                                          priority/reset-passes
-                                          (priority/set-priority-holder active-eid)))
-       :all-passed? true}
-      {:app-db (assoc app-db :game/db (priority/transfer-priority gdb holder-eid))
-       :all-passed? false})))
-
-
-(defn yield-impl
-  "Core priority passing logic. Pure function on app-db.
-   Returns map with:
-     :app-db          — updated app-db (always present)
-     :continue-yield? — true if ::yield should re-dispatch
-
-   1. Negotiate priority (pass for current player, auto-pass opponent if applicable)
-   2. If all passed and stack not empty → resolve top item
-   3. If all passed and stack empty → advance phases
-   4. If not all passed → priority transferred, wait"
-  [app-db]
-  (let [result (negotiate-priority app-db)]
-    (if (:all-passed? result)
-      (let [negotiated-app-db (:app-db result)
-            game-db (:game/db negotiated-app-db)]
-        (if (not (queries/stack-empty? game-db))
-          (yield-resolve-stack negotiated-app-db)
-          (yield-advance-phase negotiated-app-db)))
-      {:app-db (:app-db result)})))
-
-
-(def ^:private max-yield-steps
-  "Safety limit: maximum number of yield steps per auto-mode cascade.
-   Prevents infinite loops from bugs in phase/priority logic."
-  200)
-
-
-(defn- yield-handler
-  "Core yield event handler. Processes one cascade step.
-   expected-epoch guards against stale dispatch-later timers: when the cascade
-   pauses for bot actions, the epoch increments, invalidating any pending timer.
-   Without this guard, a stale timer's ::yield would advance past the bot's
-   phase stop, skipping the bot's turn actions."
-  [db expected-epoch]
-  (cond
-    ;; Guard: stale dispatch-later — epoch advanced via bot actions
-    (and (some? expected-epoch)
-         (not= expected-epoch (:yield/epoch db)))
-    {:db db}
-
-    (:game/pending-selection db)
-    {:db db}
-
-    :else
-    (let [result (yield-impl db)
-          auto-mode (get-auto-mode (:game/db (:app-db result)))
-          step-count (or (:yield/step-count (:app-db result)) 0)]
-      (cond
-        ;; Safety limit reached — stop cascade, clear auto-mode
-        (and auto-mode (:continue-yield? result) (>= step-count max-yield-steps))
-        {:db (-> (:app-db result)
-                 (update :game/db clear-auto-mode)
-                 (dissoc :yield/step-count :yield/epoch))}
-
-        ;; Continue yielding with auto-mode — animated cascade via dispatch-later
-        (and auto-mode (:continue-yield? result))
-        (let [epoch (or (:yield/epoch (:app-db result)) 0)]
-          {:db (update (:app-db result) :yield/step-count (fnil inc 0))
-           :fx [[:dispatch-later {:ms 100 :dispatch [::yield epoch]}]]})
-
-        ;; Continue yielding without auto-mode — immediate dispatch
-        (:continue-yield? result)
-        {:db (:app-db result)
-         :fx [[:dispatch [::yield]]]}
-
-        ;; Auto-mode active but paused (bot turn at priority phase) — keep
-        ;; step counter, increment epoch to invalidate any pending dispatch-later
-        auto-mode
-        {:db (-> (:app-db result)
-                 (update :yield/step-count (fnil inc 0))
-                 (update :yield/epoch (fnil inc 0)))}
-
-        ;; Done — clear step counter and epoch
-        :else
-        {:db (dissoc (:app-db result) :yield/step-count :yield/epoch)}))))
+        human-eid (queries/get-player-eid game-db game-state/human-player-id)
+        holder-eid (priority/get-priority-holder-eid game-db)]
+    (if (and human-eid (= holder-eid human-eid))
+      (let [passed-db (priority/yield-priority game-db human-eid)
+            all-passed? (priority/both-passed? passed-db)]
+        (if all-passed?
+          (let [active-pid (queries/get-active-player-id passed-db)
+                active-eid (queries/get-player-eid passed-db active-pid)
+                reset-db (-> passed-db
+                             priority/reset-passes
+                             (priority/set-priority-holder active-eid))]
+            (assoc app-db :game/db reset-db))
+          (assoc app-db :game/db (priority/transfer-priority passed-db human-eid))))
+      app-db)))
 
 
 (rf/reg-event-fx
   ::yield
-  (fn [{:keys [db]} [_ expected-epoch]]
-    (yield-handler db expected-epoch)))
-
-
-(defn- yield-all-handler
-  [db]
-  (if (:game/pending-selection db)
-    {:db db}
-    (let [game-db (:game/db db)
-          mode (if (queries/stack-empty? game-db) :f6 :resolving)]
-      {:db (-> db
-               (assoc :game/db (set-auto-mode game-db mode))
-               (assoc :yield/step-count 0)
-               (assoc :yield/epoch 0))
-       :fx [[:dispatch [::yield]]]})))
+  (fn [{:keys [db]} _]
+    (if (:game/pending-selection db)
+      {:db db}
+      (apply-director-result
+        (director/run-to-decision (yield-human-priority db) {:yield-all? false})))))
 
 
 (rf/reg-event-fx
   ::yield-all
   (fn [{:keys [db]} _]
-    (yield-all-handler db)))
+    (if (:game/pending-selection db)
+      {:db db}
+      (apply-director-result
+        (director/run-to-decision db {:yield-all? true})))))
 
 
 (defn- resolve-one-and-stop
-  "Resolve the top stack item with temporary :resolving auto-mode (so opponent
-   auto-passes), then clear auto-mode. Returns updated app-db. Used by
-   cast-and-yield and the :resolve-one-and-stop continuation."
+  "Resolve the top stack item, letting the director handle priority and resolution.
+   Returns updated app-db. Used by cast-and-yield and the :resolve-one-and-stop
+   continuation."
   [app-db]
   (if (or (:game/pending-selection app-db)
           (queries/stack-empty? (:game/db app-db)))
     app-db
-    (let [adb (update app-db :game/db set-auto-mode :resolving)
-          result (yield-impl adb)]
-      (update (:app-db result) :game/db clear-auto-mode))))
+    ;; Run director with yield-all? false but stack is non-empty:
+    ;; director will auto-pass (stack non-empty), bot passes, resolve one item, stop.
+    (:app-db (director/run-to-decision app-db {:yield-all? false}))))
 
 
 ;; Register continuation: :resolve-one-and-stop

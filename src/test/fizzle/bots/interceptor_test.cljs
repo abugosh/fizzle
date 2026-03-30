@@ -16,6 +16,7 @@
     [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.events.abilities :as abilities]
     [fizzle.events.casting :as casting]
+    [fizzle.events.director :as director]
     [fizzle.events.lands :as lands]
     [fizzle.events.priority-flow :as priority-flow]
     [fizzle.history.core :as history]
@@ -510,40 +511,15 @@
 
 
 (deftest bot-action-count-reset-at-turn-boundary
-  (testing "action count is cleared when turn boundary is crossed"
+  (testing "director clears coordination state (including action count) at start of run"
     (let [db (-> (th/create-test-db {:stops #{}})
                  (th/add-opponent {:bot-archetype :burn}))
-          ;; Start at human's turn with action count accumulated from bot's prior turn
+          ;; Start with action count accumulated from prior interaction
           app-db (merge (history/init-history)
                         {:game/db db
                          :bot/action-count 30})
-          ;; Advance human through all phases to turn boundary (crosses to bot turn)
-          result (priority-flow/advance-with-stops app-db true false)
+          ;; Director clears coordination state on entry and advances through turn boundary
+          result (director/run-to-decision app-db {:yield-all? true})
           result-app-db (:app-db result)]
       (is (nil? (:bot/action-count result-app-db))
-          "Action count should be cleared (dissoc'd) at turn boundary")))
-  (testing "action count is cleared on bot-turn-advance crossing turn boundary"
-    ;; Start at bot's turn, advance through to human turn
-    (let [db (-> (th/create-test-db {:stops #{}})
-                 (th/add-opponent {:bot-archetype :burn}))
-          ;; First get to bot's turn
-          result1 (priority-flow/advance-with-stops
-                    (merge (history/init-history) {:game/db db}) true false)
-          bot-app-db (:app-db result1)
-          ;; Set accumulated action count
-          bot-app-db (assoc bot-app-db :bot/action-count 25)
-          ;; Advance bot through all phases to turn boundary
-          final-app-db (loop [adb bot-app-db
-                              n 20]
-                         (if (zero? n)
-                           adb
-                           (let [gdb (:game/db adb)
-                                 active (q/get-active-player-id gdb)
-                                 result (priority-flow/advance-with-stops adb true false)
-                                 rdb (:game/db (:app-db result))
-                                 new-active (q/get-active-player-id rdb)]
-                             (if (not= active new-active)
-                               (:app-db result)
-                               (recur (:app-db result) (dec n))))))]
-      (is (nil? (:bot/action-count final-app-db))
-          "Action count should be cleared after bot turn ends"))))
+          "Director should clear :bot/action-count from result app-db"))))

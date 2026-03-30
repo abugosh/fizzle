@@ -7,8 +7,8 @@
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.state-based :as sba]
+    [fizzle.events.director :as director]
     [fizzle.events.phases :as phases]
-    [fizzle.events.priority-flow :as priority-flow]
     [fizzle.history.core :as history]
     [fizzle.test-helpers :as th]))
 
@@ -77,8 +77,8 @@
           "SBA should detect opponent's empty library draw and set loss condition"))))
 
 
-(deftest opponent-sba-via-yield-impl
-  (testing "yield-impl advances bot turn through draw step and SBA detects empty library"
+(deftest opponent-sba-via-director
+  (testing "director advances bot turn through draw step and SBA detects empty library"
     (let [db (-> (th/create-test-db {:stops #{}})
                  (th/add-opponent {:bot-archetype :goldfish}))
           ;; Clear opponent's library
@@ -91,20 +91,17 @@
                             [:db/add game-eid :game/turn 2]
                             [:db/add game-eid :game/phase :upkeep]])
           app-db (merge (history/init-history) {:game/db db})
-          ;; First yield: bot passes, priority transfers to human
-          result1 (priority-flow/yield-impl app-db)
-          ;; Second yield: human passes, both passed, advance to draw (empty library triggers)
-          result2 (priority-flow/yield-impl (:app-db result1))
-          result-db (:game/db (:app-db result2))
-          ;; The SBA interceptor would normally fire here. Let's check manually.
-          result-db-after-sba (sba/check-and-execute-sbas result-db)]
-      ;; SBA should detect the opponent drew from empty library
-      (is (= :empty-library (get-loss-condition result-db-after-sba))
-          "SBA should detect opponent's empty library draw after yield-impl"))))
+          ;; Run director: bot turn at upkeep → both pass → advance to draw (empty library)
+          ;; Director inline-runs SBAs after each step, so loss condition set automatically
+          result (director/run-to-decision app-db {:yield-all? false})
+          result-db (:game/db (:app-db result))]
+      ;; SBA should detect the opponent drew from empty library (run inline in director)
+      (is (= :empty-library (get-loss-condition result-db))
+          "SBA should detect opponent's empty library draw during director run"))))
 
 
-(deftest yield-impl-iterates-through-bot-draw-with-sba
-  (testing "Iterating yield-impl for full bot turn detects empty library via SBA"
+(deftest director-iterates-through-bot-draw-with-sba
+  (testing "Director running bot turn from untap detects empty library via inline SBA"
     (let [db (-> (th/create-test-db {:stops #{}})
                  (th/add-opponent {:bot-archetype :goldfish}))
           ;; Clear opponent's library
@@ -116,22 +113,12 @@
                             [:db/add game-eid :game/priority opp-eid]
                             [:db/add game-eid :game/turn 2]
                             [:db/add game-eid :game/phase :untap]])
-          app-db (merge (history/init-history) {:game/db db})]
-      ;; Simulate the event loop: yield-impl + SBA check repeatedly
-      ;; Each yield advances one phase during bot turn
-      (loop [adb app-db
-             iterations 0]
-        (if (>= iterations 10)
-          (is false "Safety limit reached — game should have ended")
-          (let [result (priority-flow/yield-impl adb)
-                result-adb (:app-db result)
-                result-game-db (:game/db result-adb)
-                ;; Simulate SBA interceptor
-                sba-db (sba/check-and-execute-sbas result-game-db)
-                loss (get-loss-condition sba-db)]
-            (if loss
-              (is (= :empty-library loss)
-                  "Loss should be from empty library draw")
-              ;; Continue iterating if no loss detected yet
-              (recur (assoc result-adb :game/db sba-db)
-                     (inc iterations)))))))))
+          app-db (merge (history/init-history) {:game/db db})
+          ;; Director runs inline from untap → draw (empty library) → SBAs fire → game-over
+          result (director/run-to-decision app-db {:yield-all? false})
+          result-db (:game/db (:app-db result))]
+      ;; Director's inline SBAs should detect loss during the run
+      (is (= :game-over (:reason result))
+          "Director should return :game-over after SBA detects empty library draw")
+      (is (= :empty-library (get-loss-condition result-db))
+          "Loss condition should be :empty-library"))))

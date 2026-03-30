@@ -8,8 +8,9 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
     [fizzle.events.cleanup :as cleanup]
+    [fizzle.events.director :as director]
     [fizzle.events.phases :as phases]
-    [fizzle.events.priority-flow :as priority-flow]
+    [fizzle.history.core :as history]
     [fizzle.test-helpers :as h]))
 
 
@@ -48,21 +49,17 @@
           "Active player's mana pool should be cleared on phase advance"))))
 
 
-;; === advance-with-stops uses active player ===
+;; === director uses active player for stops ===
 
-(deftest advance-with-stops-uses-active-player
-  (testing "advance-with-stops reads active player from db for stop checks"
+(deftest director-uses-active-player-stops
+  (testing "director reads active player from db for stop checks"
     (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
                  (h/add-opponent {:bot-archetype :goldfish}))
-          app-db {:game/db db}
-          ;; First yield: human passes, priority transfers to bot
-          result1 (priority-flow/yield-impl app-db)
-          ;; Second yield: bot passes, both passed, advance to main2
-          result2 (priority-flow/yield-impl (:app-db result1))
-          result-db (:game/db (:app-db result2))]
-      ;; Should advance to main2 (next stop for the active player)
-      (is (= :main2 (:game/phase (q/get-game-state result-db)))
-          "Should advance to main2 using active player's stops"))))
+          app-db (merge (history/init-history) {:game/db db})
+          ;; Director at main1 with stop should return :await-human (active player's stop)
+          result (director/run-to-decision app-db {:yield-all? false})]
+      (is (= :await-human (:reason result))
+          "Director should stop at main1 using active player's stops"))))
 
 
 ;; === maybe-continue-cleanup uses active player ===
@@ -83,33 +80,32 @@
           "Should return valid game db after cleanup"))))
 
 
-;; === yield-impl opponent lookup uses active player ===
+;; === director opponent lookup uses active player ===
 
-(deftest yield-impl-opponent-lookup-uses-active-player
-  (testing "yield-impl finds opponent relative to active player, not hardcoded :player-1"
-    (let [db (-> (h/create-test-db {:stops #{:main1 :main2}})
+(deftest director-opponent-lookup-uses-active-player
+  (testing "director finds opponent relative to active player, not hardcoded :player-1"
+    (let [db (-> (h/create-test-db {:stops #{:main2}})  ; stop at main2 only, not main1
                  (h/add-opponent {:bot-archetype :goldfish}))
-          app-db {:game/db db}
-          ;; Two yields: human passes → bot gets priority → bot passes → phase advances
-          result1 (priority-flow/yield-impl app-db)
-          result2 (priority-flow/yield-impl (:app-db result1))]
-      (is (= :main2 (:game/phase (q/get-game-state (:game/db (:app-db result2)))))
-          "Should advance phase after both players pass"))))
+          app-db (merge (history/init-history) {:game/db db})
+          ;; At main1 with no stop → director should auto-pass and advance to main2
+          result (director/run-to-decision app-db {:yield-all? false})
+          result-db (:game/db (:app-db result))]
+      (is (= :main2 (:game/phase (q/get-game-state result-db)))
+          "Should advance to main2 after both players pass"))))
 
 
-;; === yield-impl resolve-one-item uses active player ===
+;; === director resolve-one-item uses active player ===
 
-(deftest yield-impl-resolve-uses-active-player
-  (testing "yield-impl uses active player for resolve-one-item"
+(deftest director-resolve-uses-active-player
+  (testing "director uses active player for resolve-one-item"
     (let [db (-> (h/create-test-db {:mana {:black 1} :stops #{:main1 :main2}})
                  (h/add-opponent {:bot-archetype :goldfish}))
           [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
           game-db (rules/cast-spell db' :player-1 obj-id)
-          app-db {:game/db game-db}
-          ;; Two yields: human passes → bot gets priority → bot passes → spell resolves
-          result1 (priority-flow/yield-impl app-db)
-          result2 (priority-flow/yield-impl (:app-db result1))
-          result-db (:game/db (:app-db result2))
+          app-db (merge (history/init-history) {:game/db game-db})
+          ;; Director: stack non-empty → both auto-pass → resolve spell
+          result (director/run-to-decision app-db {:yield-all? false})
+          result-db (:game/db (:app-db result))
           pool (q/get-mana-pool result-db :player-1)]
       ;; Dark Ritual should resolve correctly using active player
       (is (= 3 (:black pool))

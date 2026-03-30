@@ -4,7 +4,6 @@
   (:require
     [cljs.test :refer-macros [deftest is testing]]
     [datascript.core :as d]
-    [fizzle.bots.interceptor :as bot-interceptor]
     [fizzle.bots.protocol :as bot]
     [fizzle.db.queries :as q]
     [fizzle.events.init :as init]
@@ -23,75 +22,22 @@
 
 (defn- setup-app-db
   "Create a full app-db with two players (player + goldfish bot),
-   player stops at main1+main2, starting at main1."
+   player stops at main1+main2, starting at main1.
+   Both players get library cards so draw-step triggers don't hit game-over."
   ([]
    (setup-app-db {}))
   ([opts]
-   (let [stops (or (:stops opts) #{:main1 :main2})
-         db (-> (h/create-test-db (merge {:stops stops} (select-keys opts [:mana :life])))
-                (h/add-opponent {:bot-archetype :goldfish}))]
-     (merge (history/init-history)
-            {:game/db db}))))
-
-
-(defn- process-bot-action!
-  "Simulate the bot interceptor synchronously. Calls bot-decide-handler,
-   applies db changes, and dispatches non-yield fx effects synchronously.
-   When bot passes (dispatches ::yield), only applies db changes — the main
-   loop will handle the next yield. When bot acts (play land, cast), dispatches
-   the action events synchronously.
-   Returns true if bot acted (not pass), false if bot passed or no bot."
-  []
-  (let [current @rf-db/app-db
-        game-db (:game/db current)]
-    (if (or (not game-db)
-            (:game/pending-selection current)
-            (not (bot-interceptor/bot-should-act? game-db)))
-      false
-      (let [effects (bot-interceptor/bot-decide-handler current)
-            fx-entries (:fx effects)
-            is-pass? (some (fn [[fx-type payload]]
-                             (and (= :dispatch fx-type)
-                                  (= (first payload) :fizzle.events.priority-flow/yield)))
-                           fx-entries)]
-        ;; Always apply db changes
-        (when (:db effects)
-          (reset! rf-db/app-db (:db effects)))
-        (if is-pass?
-          false
-          (do
-            (doseq [[fx-type payload] fx-entries]
-              (when (= :dispatch fx-type)
-                (rf/dispatch-sync payload)))
-            true))))))
+   (h/create-game-scenario (merge {:bot-archetype :goldfish} opts))))
 
 
 (defn- dispatch-yield-all
-  "Dispatch ::yield-all and drain the yield cascade synchronously.
-   ::yield-all sets auto-mode + step-count and dispatches ::yield via :dispatch.
-   Since :dispatch is async, we drain the cascade by repeatedly calling
-   dispatch-sync [::yield] until the cascade settles.
-   Between yields, simulates the bot interceptor (db_effect fires ::bot-decide
-   after game-db mutations)."
+  "Dispatch ::yield-all through re-frame and return the resulting app-db.
+   The game director runs synchronously, so a single dispatch-sync is sufficient.
+   The director handles bot actions and phase advancement inline."
   [app-db]
   (reset! rf-db/app-db app-db)
   (rf/dispatch-sync [::priority-flow/yield-all])
-  (loop [n 300]
-    (if (or (zero? n) (:game/pending-selection @rf-db/app-db))
-      @rf-db/app-db
-      (let [has-step-count? (contains? @rf-db/app-db :yield/step-count)
-            game-db (:game/db @rf-db/app-db)
-            bot-can-act? (and game-db (bot-interceptor/bot-should-act? game-db))]
-        (if (and (not has-step-count?) (not bot-can-act?))
-          @rf-db/app-db
-          (do
-            ;; Process bot actions (land play, cast, pass)
-            (loop [bot-n 20]
-              (when (and (pos? bot-n) (process-bot-action!))
-                (recur (dec bot-n))))
-            ;; Dispatch yield to continue the cascade
-            (rf/dispatch-sync [::priority-flow/yield])
-            (recur (dec n))))))))
+  @rf-db/app-db)
 
 
 ;; === start-turn switches active player ===
@@ -302,53 +248,3 @@
       (is (= (dec opp-library-before) opp-library-after)
           (str "Opponent library should decrease by 1 (drew a card). "
                "Before: " opp-library-before " after: " opp-library-after)))))
-
-
-;; === Bot auto-advance: each phase is separate yield ===
-
-(deftest bot-turn-uses-recursive-yield
-  (testing "bot's turn advances one phase and pauses for bot interceptor"
-    (let [app-db (setup-app-db {:stops #{:main1 :main2}})
-          game-db (:game/db app-db)
-          ;; Set active player to opponent (simulate start of bot's turn)
-          game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db)
-          opp-eid (q/get-player-eid game-db :player-2)
-          game-db (d/db-with game-db [[:db/add game-eid :game/active-player opp-eid]
-                                      [:db/add game-eid :game/priority opp-eid]
-                                      [:db/add game-eid :game/phase :main1]])
-          app-db (assoc app-db :game/db game-db)
-          ;; Single yield-impl should advance one phase and NOT signal continue
-          ;; (bot interceptor dispatches ::bot-decide instead of cascading)
-          result (priority-flow/yield-impl app-db)]
-      (is (not (:continue-yield? result))
-          "yield-impl should pause for bot interceptor at priority-granting phases"))))
-
-
-;; === Stale dispatch-later does not skip bot turn ===
-
-(deftest stale-timer-yield-does-not-skip-bot-turn
-  (testing "A stale dispatch-later yield (from pre-bot-pause) does not advance past bot's stop"
-    ;; Simulates the race condition: cascade crosses to bot's turn → dispatch-later
-    ;; queued → bot-decide fires and pauses at main1 (incrementing epoch) →
-    ;; stale timer fires with old epoch → should be ignored.
-    (let [app-db (setup-app-db {:stops #{:main1 :main2}})
-          game-db (:game/db app-db)
-          ;; Set up: bot's turn at main1 (where bot stop paused the cascade)
-          ;; with epoch=1 (bot pause incremented from 0 to 1)
-          game-eid (d/q '[:find ?e . :where [?e :game/id _]] game-db)
-          opp-eid (q/get-player-eid game-db :player-2)
-          game-db (d/db-with game-db [[:db/add game-eid :game/active-player opp-eid]
-                                      [:db/add game-eid :game/priority opp-eid]
-                                      [:db/add game-eid :game/phase :main1]])
-          app-db (-> app-db
-                     (assoc :game/db (priority-flow/set-auto-mode game-db :f6))
-                     (assoc :yield/epoch 1 :yield/step-count 3))]
-      ;; Stale timer fires [::yield 0] — epoch 0 from before bot pause
-      (reset! rf-db/app-db app-db)
-      (rf/dispatch-sync [::priority-flow/yield 0])
-      (let [result @rf-db/app-db
-            result-phase (:game/phase (q/get-game-state (:game/db result)))]
-        (is (= :main1 result-phase)
-            "Phase should still be main1 — stale timer yield was ignored")
-        (is (= :player-2 (q/get-active-player-id (:game/db result)))
-            "Active player should still be bot — turn didn't advance")))))

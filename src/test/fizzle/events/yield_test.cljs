@@ -1,27 +1,26 @@
 (ns fizzle.events.yield-test
-  "Tests for manual yield behavior with stack items.
+  "Tests for yield behavior with stack items.
 
-   Verifies that ::yield resolves one stack item and stops (no cascade)
-   when auto-mode is not set, giving the player priority to respond."
+   Verifies that yield (without yield-all) resolves one stack item and stops,
+   giving the player priority to respond to remaining stack items.
+   Verifies that yield-all resolves all stack items (cascade)."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [fizzle.db.queries :as queries]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.priority-flow :as priority-flow]
+    [fizzle.events.director :as director]
     [fizzle.history.core :as history]
     [fizzle.test-helpers :as th]))
 
 
 (deftest yield-resolves-one-item-and-stops-when-stack-has-more
-  (testing "Manual yield with 2 items on stack resolves one and stops"
+  (testing "yield with 2 items on stack resolves one and stops"
     (let [db (th/create-test-db {:mana {:black 1} :stops #{:main1}})
           db (th/add-opponent db {:bot-archetype :goldfish})
           ;; Cast two Dark Rituals to get 2 spells on the stack
-          ;; First: give enough mana and cast
           [db ritual-1] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           db (rules/cast-spell db :player-1 ritual-1)
-          ;; Second: add mana and cast another
           db (mana/add-mana db :player-1 {:black 1})
           [db ritual-2] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           db (rules/cast-spell db :player-1 ritual-2)
@@ -29,26 +28,24 @@
           stack-items (queries/get-all-stack-items db)
           spell-items (filter #(= :spell (:stack-item/type %)) stack-items)
           _ (assert (= 2 (count spell-items)) "Setup: should have 2 spells on stack")
-          ;; Build app-db (no auto-mode set)
+          ;; Build app-db (yield-all? false = manual yield)
           app-db (merge (history/init-history)
                         {:game/db db})
-          ;; First yield: human passes, priority transfers to bot (no auto-pass)
-          result1 (priority-flow/yield-impl app-db)
-          ;; Second yield: bot passes, both passed, resolve one stack item
-          result2 (priority-flow/yield-impl (:app-db result1))]
-      ;; After resolving one item, should NOT cascade (no continue-yield?)
-      (is (not (:continue-yield? result2))
-          "Manual yield should not cascade when stack has more items")
-      ;; Should have resolved exactly one spell
-      (let [result-db (:game/db (:app-db result2))
-            remaining-stack (queries/get-all-stack-items result-db)
+          ;; Run director: both players pass, resolve one item, stop (yield-all? false)
+          result (director/run-to-decision app-db {:yield-all? false})
+          result-db (:game/db (:app-db result))]
+      ;; Should have resolved exactly one spell (one ritual resolves)
+      (let [remaining-stack (queries/get-all-stack-items result-db)
             remaining-spells (filter #(= :spell (:stack-item/type %)) remaining-stack)]
         (is (= 1 (count remaining-spells))
-            "Should have 1 spell remaining on stack after resolving one")))))
+            "Should have 1 spell remaining on stack after resolving one"))
+      ;; Should have stopped (not cascaded through remaining stack)
+      (is (= :await-human (:reason result))
+          "Should stop at :await-human after resolving one stack item"))))
 
 
-(deftest yield-cascades-with-auto-mode
-  (testing "Yield with :resolving auto-mode continues cascade through stack"
+(deftest yield-all-resolves-entire-stack
+  (testing "yield-all with 2 items on stack resolves all items"
     (let [db (th/create-test-db {:mana {:black 1} :stops #{:main1}})
           db (th/add-opponent db {:bot-archetype :goldfish})
           ;; Cast two Dark Rituals
@@ -60,11 +57,16 @@
           _ (assert (>= (count (filter #(= :spell (:stack-item/type %))
                                        (queries/get-all-stack-items db))) 2)
                     "Setup: should have 2 spells on stack")
-          ;; Build app-db WITH auto-mode (simulating yield-all / F6)
-          db (priority-flow/set-auto-mode db :resolving)
           app-db (merge (history/init-history)
                         {:game/db db})
-          result (priority-flow/yield-impl app-db)]
-      ;; With auto-mode, should cascade
-      (is (true? (:continue-yield? result))
-          "Yield with auto-mode should cascade when stack has items"))))
+          ;; yield-all? true = F6 mode, cascade through stack
+          result (director/run-to-decision app-db {:yield-all? true})
+          result-db (:game/db (:app-db result))]
+      ;; Both rituals should have resolved (stack empty)
+      (is (empty? (queries/get-all-stack-items result-db))
+          "Stack should be empty after yield-all")
+      ;; Rituals should be in graveyard (proof they resolved)
+      (let [gy (queries/get-objects-in-zone result-db :player-1 :graveyard)
+            ritual-count (count (filter #(= :dark-ritual (get-in % [:object/card :card/id])) gy))]
+        (is (= 2 ritual-count)
+            "Both Dark Rituals should be in graveyard after resolution")))))

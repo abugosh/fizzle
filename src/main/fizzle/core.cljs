@@ -133,6 +133,7 @@
 
 (defonce root (rdom/create-root (.getElementById js/document "app")))
 
+
 (defn ^:dev/after-load mount-root
   []
   (rf/clear-subscription-cache!)

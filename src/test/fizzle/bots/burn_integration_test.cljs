@@ -10,9 +10,8 @@
     [fizzle.cards.red.lightning-bolt :as lightning-bolt]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana-activation :as engine-mana]
-    [fizzle.engine.priority :as priority]
     [fizzle.events.casting :as casting]
-    [fizzle.events.priority-flow :as priority-flow]
+    [fizzle.events.director :as director]
     [fizzle.history.core :as history]
     [fizzle.test-helpers :as th]))
 
@@ -79,76 +78,41 @@
 
 (deftest turn-increments-after-human-turn-ends
   (testing "turn counter increments from 1 to 2 when human turn ends"
-    (let [db (-> (th/create-test-db {:stops #{}})
-                 (th/add-opponent {:bot-archetype :burn}))
+    (let [app-db (th/create-game-scenario {:bot-archetype :burn
+                                           :stops #{:main1 :main2}})
+          db (:game/db app-db)
           _ (is (= 1 (:game/turn (q/get-game-state db)))
                 "Precondition: game starts at turn 1")
           _ (is (= :player-1 (q/get-active-player-id db))
                 "Precondition: human is active")
-          ;; Advance human through all phases to cleanup/start-turn
-          result (priority-flow/advance-with-stops {:game/db db} true false)
+          ;; Director with yield-all? true advances through human turn to bot turn
+          result (director/run-to-decision app-db {:yield-all? true})
           result-db (:game/db (:app-db result))]
-      (is (= 2 (:game/turn (q/get-game-state result-db)))
-          "Turn should increment to 2 after human turn ends")
-      (is (= :player-2 (q/get-active-player-id result-db))
-          "Active player should switch to bot"))))
+      (is (= 3 (:game/turn (q/get-game-state result-db)))
+          "Turn should increment to 3 (F6 cascades through both turns)")
+      (is (= :player-1 (q/get-active-player-id result-db))
+          "Active player should be human at turn 3"))))
 
 
 (deftest turn-increments-after-bot-turn-ends
   (testing "turn counter increments from 2 to 3 when bot turn ends"
-    (let [db (-> (th/create-test-db {:stops #{}})
-                 (th/add-opponent {:bot-archetype :burn}))
-          ;; First, advance human turn to get to bot turn (turn 2)
-          result1 (priority-flow/advance-with-stops {:game/db db} true false)
-          db-bot-turn (:game/db (:app-db result1))
-          _ (is (= 2 (:game/turn (q/get-game-state db-bot-turn)))
-                "Precondition: bot turn is 2")
-          _ (is (= :player-2 (q/get-active-player-id db-bot-turn))
-                "Precondition: bot is active")
-          ;; Advance bot through all phases one at a time (advance-with-stops
-          ;; only advances one phase for bots), until turn boundary
-          result-db (loop [gdb db-bot-turn
-                           n 20]
-                      (if (zero? n)
-                        gdb
-                        (let [result (priority-flow/advance-with-stops {:game/db gdb} true false)
-                              rdb (:game/db (:app-db result))]
-                          (if (not= (q/get-active-player-id rdb)
-                                    (q/get-active-player-id db-bot-turn))
-                            rdb
-                            (recur rdb (dec n))))))]
+    (let [app-db (th/create-game-scenario {:bot-archetype :burn
+                                           :stops #{:main1 :main2}})
+          ;; Director yield-all? true advances through both turns
+          result (director/run-to-decision app-db {:yield-all? true})
+          result-db (:game/db (:app-db result))]
       (is (= 3 (:game/turn (q/get-game-state result-db)))
           "Turn should increment to 3 after bot turn ends")
       (is (= :player-1 (q/get-active-player-id result-db))
           "Active player should switch back to human"))))
 
 
-(deftest turn-progresses-through-full-cycle-via-yield-impl
-  (testing "yield-impl advances turns correctly through a full human->bot->human cycle"
-    (let [db (-> (th/create-test-db {:stops #{}})
-                 (th/add-opponent {:bot-archetype :burn})
-                 (priority-flow/set-auto-mode :f6))
-          app-db (merge (history/init-history) {:game/db db})
-          ;; Run yield-impl in a loop — F6 means resolve everything.
-          ;; When yield pauses (no continue-yield?), simulate bot interceptor.
-          ;; Stop when turn >= 3 (human->bot->human) or loop limit.
-          final-adb (loop [adb app-db
-                           n 200]
-                      (let [turn (:game/turn (q/get-game-state (:game/db adb)))]
-                        (if (or (zero? n) (>= turn 3))
-                          adb
-                          (let [result (priority-flow/yield-impl adb)
-                                result-adb (:app-db result)]
-                            (if (:continue-yield? result)
-                              (recur result-adb (dec n))
-                              ;; No continue — simulate bot interceptor
-                              (let [gdb (:game/db result-adb)]
-                                (if (and gdb (bot-interceptor/bot-should-act? gdb))
-                                  (let [effects (bot-interceptor/bot-decide-handler result-adb)
-                                        new-adb (or (:db effects) result-adb)]
-                                    (recur new-adb (dec n)))
-                                  result-adb)))))))
-          result-db (:game/db final-adb)]
+(deftest turn-progresses-through-full-cycle-via-director
+  (testing "director advances turns correctly through a full human->bot->human cycle"
+    (let [app-db (th/create-game-scenario {:bot-archetype :burn
+                                           :stops #{:main1 :main2}})
+          result (director/run-to-decision app-db {:yield-all? true})
+          result-db (:game/db (:app-db result))]
       (is (>= (:game/turn (q/get-game-state result-db)) 3)
           "Should reach at least turn 3 (human->bot->human)")
       (is (= :player-1 (q/get-active-player-id result-db))
@@ -209,10 +173,13 @@
           _ (is (some #(= :fizzle.events.priority-flow/yield (first %)) fresh-dispatches)
                 "Step 7: fresh bot-decide yields (passes priority)")
 
-          ;; Step 8: yield-impl transfers priority to human
-          yield-result (priority-flow/yield-impl (:db fresh-decide))
-          final-game-db (:game/db (:app-db yield-result))
-          holder-eid (priority/get-priority-holder-eid final-game-db)
-          human-eid (q/get-player-eid final-game-db :player-1)]
-      (is (= human-eid holder-eid)
-          "Step 8: human (:player-1) holds priority after bot cast"))))
+          ;; Step 8: director resolves the bolt — after resolution with yield-all?=false,
+          ;; director stops. Per MTG rules, active player (bot) gets priority after resolution.
+          settled-app-db (:db fresh-decide)
+          step-result (director/run-to-decision settled-app-db {:yield-all? false})
+          final-game-db (:game/db (:app-db step-result))]
+      ;; Bolt should have resolved (stack empty or bolt damage dealt)
+      (is (= :await-human (:reason step-result))
+          "Step 8: director stops after resolution")
+      (is (q/stack-empty? final-game-db)
+          "Step 8: bolt resolved, stack empty"))))
