@@ -5,8 +5,7 @@
    priority (on an empty stack) for phases to advance. These functions
    operate on Datascript db values."
   (:require
-    [datascript.core :as d]
-    [fizzle.db.queries :as queries]))
+    [datascript.core :as d]))
 
 
 (def priority-phases
@@ -25,16 +24,16 @@
 (defn get-priority-holder-eid
   "Get the entity ID of the player who currently holds priority."
   [db]
-  (queries/q-safe '[:find ?p .
-                    :where [?g :game/id _]
-                    [?g :game/priority ?p]]
-                  db))
+  (d/q '[:find ?p .
+         :where [?g :game/id _]
+         [?g :game/priority ?p]]
+       db))
 
 
 (defn get-passed-eids
   "Get the set of entity IDs of players who have passed priority."
   [db]
-  (let [game (queries/pull-safe db [:game/passed] [:game/id :game-1])
+  (let [game (d/pull db [:game/passed] [:game/id :game-1])
         passed (:game/passed game)]
     (if passed
       (set (map :db/id passed))
@@ -45,7 +44,7 @@
   "Add a player to the passed set.
    Pure function: (db, player-eid) -> db"
   [db player-eid]
-  (let [game-eid (queries/q-safe '[:find ?e . :where [?e :game/id _]] db)]
+  (let [game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)]
     (d/db-with db [[:db/add game-eid :game/passed player-eid]])))
 
 
@@ -59,12 +58,12 @@
   "Transfer priority to the other player.
    Pure function: (db, current-eid) -> db"
   [db current-eid]
-  (let [game-eid (queries/q-safe '[:find ?e . :where [?e :game/id _]] db)
-        other-eid (queries/q-safe '[:find ?e .
-                                    :in $ ?current
-                                    :where [?e :player/id _]
-                                    [(not= ?e ?current)]]
-                                  db current-eid)]
+  (let [game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
+        other-eid (d/q '[:find ?e .
+                         :in $ ?current
+                         :where [?e :player/id _]
+                         [(not= ?e ?current)]]
+                       db current-eid)]
     (d/db-with db [[:db/add game-eid :game/priority other-eid]])))
 
 
@@ -72,7 +71,7 @@
   "Clear all passed flags.
    Pure function: (db) -> db"
   [db]
-  (let [game-eid (queries/q-safe '[:find ?e . :where [?e :game/id _]] db)
+  (let [game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
         passed (get-passed-eids db)]
     (if (seq passed)
       (d/db-with db (mapv (fn [p-eid] [:db/retract game-eid :game/passed p-eid])
@@ -84,5 +83,5 @@
   "Set the priority holder to a specific player.
    Pure function: (db, player-eid) -> db"
   [db player-eid]
-  (let [game-eid (queries/q-safe '[:find ?e . :where [?e :game/id _]] db)]
+  (let [game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)]
     (d/db-with db [[:db/add game-eid :game/priority player-eid]])))

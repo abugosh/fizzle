@@ -9,6 +9,7 @@
 
    Player references (:self/:opponent) are resolved via context."
   (:require
+    [datascript.core :as d]
     [fizzle.db.queries :as queries]
     [fizzle.engine.mana :as mana]))
 
@@ -44,10 +45,10 @@
   (let [db (:db context)
         player-id (:player-id context)
         card-id (:card-id condition)
-        card (queries/q-safe '[:find (pull ?e [:card/mana-cost]) .
-                               :in $ ?cid
-                               :where [?e :card/id ?cid]]
-                             db card-id)
+        card (d/q '[:find (pull ?e [:card/mana-cost]) .
+                    :in $ ?cid
+                    :where [?e :card/id ?cid]]
+                  db card-id)
         cost (:card/mana-cost card)]
     (if cost
       (mana/can-pay? db player-id cost)

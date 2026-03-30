@@ -1,4 +1,4 @@
-.PHONY: repl dev test clean help lint fmt-check fmt validate build-css lint-test-paths lint-datascript release
+.PHONY: repl dev test clean help lint fmt-check fmt validate build-css lint-test-paths release
 
 # Detect Java - try common locations
 JAVA_HOME ?= $(shell \
@@ -63,13 +63,5 @@ lint-test-paths:
 	@echo "Review matches above — happy-path tests should use th/ helpers instead."
 	@echo "Edge case tests calling internals directly are acceptable."
 
-lint-datascript:
-	@echo "Checking for direct d/q and d/pull calls outside db/queries.cljs..."
-	@! grep -rn '(d/q\b\|(d/pull\b' src/main/ --include="*.cljs" \
-		| grep -v 'db/queries.cljs' \
-		| grep -q . \
-		&& echo "  No direct d/q or d/pull calls found outside db/queries.cljs." \
-		|| (grep -rn '(d/q\b\|(d/pull\b' src/main/ --include="*.cljs" | grep -v 'db/queries.cljs'; exit 1)
-
 validate:
-	@$(MAKE) lint && $(MAKE) fmt-check && $(MAKE) lint-datascript && $(MAKE) test
+	@$(MAKE) lint && $(MAKE) fmt-check && $(MAKE) test

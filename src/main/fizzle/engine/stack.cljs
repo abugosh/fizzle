@@ -6,8 +6,7 @@
 
    All functions are pure: (db, args) -> db or value."
   (:require
-    [datascript.core :as d]
-    [fizzle.db.queries :as queries]))
+    [datascript.core :as d]))
 
 
 (defn get-next-stack-order
@@ -15,13 +14,13 @@
    Checks stack-items and objects on stack so they share a unified counter space.
    Returns current max + 1, or 0 if stack is empty."
   [db]
-  (let [stack-item-max (queries/q-safe '[:find (max ?pos) .
-                                         :where [?e :stack-item/position ?pos]]
-                                       db)
-        object-max (queries/q-safe '[:find (max ?pos) .
-                                     :where [?o :object/zone :stack]
-                                     [?o :object/position ?pos]]
-                                   db)
+  (let [stack-item-max (d/q '[:find (max ?pos) .
+                              :where [?e :stack-item/position ?pos]]
+                            db)
+        object-max (d/q '[:find (max ?pos) .
+                          :where [?o :object/zone :stack]
+                          [?o :object/position ?pos]]
+                        db)
         current-max (max (or stack-item-max -1)
                          (or object-max -1))]
     (inc current-max)))
@@ -52,9 +51,9 @@
   "Get the stack-item with the highest position (top of stack).
    Returns entity map or nil if stack is empty."
   [db]
-  (->> (queries/q-safe '[:find [(pull ?e [*]) ...]
-                         :where [?e :stack-item/position _]]
-                       db)
+  (->> (d/q '[:find [(pull ?e [*]) ...]
+              :where [?e :stack-item/position _]]
+            db)
        (sort-by :stack-item/position >)
        (first)))
 
@@ -63,13 +62,13 @@
   "Find the stack-item that references a given game object EID.
    Returns entity map or nil."
   [db object-eid]
-  (when-let [result (queries/q-safe '[:find (pull ?e [:db/id :stack-item/type :stack-item/controller
-                                                      :stack-item/position :stack-item/source :stack-item/effects
-                                                      :stack-item/targets :stack-item/description :stack-item/is-copy :stack-item/cast-mode
-                                                      :stack-item/chosen-x :stack-item/object-ref]) .
-                                      :in $ ?obj
-                                      :where [?e :stack-item/object-ref ?obj]]
-                                    db object-eid)]
+  (when-let [result (d/q '[:find (pull ?e [:db/id :stack-item/type :stack-item/controller
+                                           :stack-item/position :stack-item/source :stack-item/effects
+                                           :stack-item/targets :stack-item/description :stack-item/is-copy :stack-item/cast-mode
+                                           :stack-item/chosen-x :stack-item/object-ref]) .
+                           :in $ ?obj
+                           :where [?e :stack-item/object-ref ?obj]]
+                         db object-eid)]
     ;; Convert the nested entity map reference back to just the EID
     (if-let [obj-ref (:stack-item/object-ref result)]
       (assoc result :stack-item/object-ref (:db/id obj-ref))

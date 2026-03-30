@@ -41,7 +41,7 @@
   (if-not (queries/stack-empty? db)
     db
     (let [game-state (queries/get-game-state db)
-          game-eid (queries/q-safe '[:find ?e . :where [?e :game/id _]] db)
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
           current-phase (:game/phase game-state)
           new-phase (next-phase current-phase)
           ;; Skip combat when no creatures exist on battlefield
@@ -73,12 +73,12 @@
   [db player-id]
   (let [player-eid (queries/get-player-eid db player-id)
         ;; Find all tapped permanents controlled by player on battlefield
-        tapped-permanents (queries/q-safe '[:find ?e
-                                            :in $ ?controller
-                                            :where [?e :object/controller ?controller]
-                                            [?e :object/zone :battlefield]
-                                            [?e :object/tapped true]]
-                                          db player-eid)]
+        tapped-permanents (d/q '[:find ?e
+                                 :in $ ?controller
+                                 :where [?e :object/controller ?controller]
+                                 [?e :object/zone :battlefield]
+                                 [?e :object/tapped true]]
+                               db player-eid)]
     (if (seq tapped-permanents)
       (d/db-with db (mapv (fn [[eid]] [:db/add eid :object/tapped false])
                           tapped-permanents))
@@ -101,7 +101,7 @@
   (if-not (queries/stack-empty? db)
     db
     (let [game-state (queries/get-game-state db)
-          game-eid (queries/q-safe '[:find ?e . :where [?e :game/id _]] db)
+          game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
           ;; Switch active player to the other player
           next-player-id (or (queries/get-other-player-id db player-id) player-id)
           next-player-eid (queries/get-player-eid db next-player-id)

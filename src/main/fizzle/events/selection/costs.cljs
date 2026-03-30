@@ -534,10 +534,10 @@
   [db object-id]
   (let [obj-eid (queries/get-object-eid db object-id)]
     (when obj-eid
-      (queries/q-safe '[:find ?e .
-                        :in $ ?obj-eid
-                        :where [?e :stack-item/object-ref ?obj-eid]]
-                      db obj-eid))))
+      (d/q '[:find ?e .
+             :in $ ?obj-eid
+             :where [?e :stack-item/object-ref ?obj-eid]]
+           db obj-eid))))
 
 
 (defmethod core/execute-confirmed-selection :sacrifice-permanent-cost
@@ -621,10 +621,10 @@
         ;; Store chosen-x on the stack item
         obj-eid (queries/get-object-eid db-after-cast object-id)
         stack-item-eid (when obj-eid
-                         (queries/q-safe '[:find ?e .
-                                           :in $ ?obj-eid
-                                           :where [?e :stack-item/object-ref ?obj-eid]]
-                                         db-after-cast obj-eid))
+                         (d/q '[:find ?e .
+                                :in $ ?obj-eid
+                                :where [?e :stack-item/object-ref ?obj-eid]]
+                              db-after-cast obj-eid))
         db-final (if stack-item-eid
                    (d/db-with db-after-cast
                               [[:db/add stack-item-eid :stack-item/chosen-x x-value]])
@@ -657,10 +657,10 @@
         db-final (if pending-targets
                    (let [obj-eid (queries/get-object-eid db-after-cast object-id)
                          stack-item-eid (when obj-eid
-                                          (queries/q-safe '[:find ?e .
-                                                            :in $ ?obj-eid
-                                                            :where [?e :stack-item/object-ref ?obj-eid]]
-                                                          db-after-cast obj-eid))]
+                                          (d/q '[:find ?e .
+                                                 :in $ ?obj-eid
+                                                 :where [?e :stack-item/object-ref ?obj-eid]]
+                                               db-after-cast obj-eid))]
                      (if stack-item-eid
                        (d/db-with db-after-cast
                                   [[:db/add stack-item-eid :stack-item/targets pending-targets]])

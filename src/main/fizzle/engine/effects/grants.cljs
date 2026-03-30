@@ -19,10 +19,10 @@
                                                      db player-id count-val object-id)]))
                               raw-counters)]
     (if-let [obj-eid (q/get-object-eid db target-id)]
-      (let [existing (or (q/q-safe '[:find ?c .
-                                     :in $ ?e
-                                     :where [?e :object/counters ?c]]
-                                   db obj-eid)
+      (let [existing (or (d/q '[:find ?c .
+                                :in $ ?e
+                                :where [?e :object/counters ?c]]
+                              db obj-eid)
                          {})
             merged (merge-with + existing counters-to-add)]
         (d/db-with db [[:db/add obj-eid :object/counters merged]]))

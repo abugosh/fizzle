@@ -144,20 +144,20 @@
       (let [;; Read pending-sacrifice-info off spell object BEFORE cast (cast may clear it)
             spell-obj-eid (queries/get-object-eid game-db object-id)
             pending-sacrifice-info (when spell-obj-eid
-                                     (queries/q-safe '[:find ?info .
-                                                       :in $ ?e
-                                                       :where [?e :object/pending-sacrifice-info ?info]]
-                                                     game-db spell-obj-eid))
+                                     (d/q '[:find ?info .
+                                            :in $ ?e
+                                            :where [?e :object/pending-sacrifice-info ?info]]
+                                          game-db spell-obj-eid))
             ;; Cast via rules/cast-spell-mode (pays costs, moves to stack)
             db-after-cast (rules/cast-spell-mode game-db player-id object-id mode)
             ;; Find object EID to locate stack-item
             obj-eid (queries/get-object-eid db-after-cast object-id)
             ;; Find the stack-item by object reference
             stack-item (when obj-eid
-                         (queries/q-safe '[:find (pull ?e [:db/id]) .
-                                           :in $ ?obj-eid
-                                           :where [?e :stack-item/object-ref ?obj-eid]]
-                                         db-after-cast obj-eid))
+                         (d/q '[:find (pull ?e [:db/id]) .
+                                :in $ ?obj-eid
+                                :where [?e :stack-item/object-ref ?obj-eid]]
+                              db-after-cast obj-eid))
             stack-item-eid (:db/id stack-item)
             ;; Build txdata: always store targets, optionally store sacrifice-info,
             ;; and retract pending-sacrifice-info from spell object (temporary attribute)

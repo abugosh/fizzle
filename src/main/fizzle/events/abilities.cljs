@@ -1,5 +1,6 @@
 (ns fizzle.events.abilities
   (:require
+    [datascript.core :as d]
     [fizzle.db.queries :as queries]
     [fizzle.engine.abilities :as abilities]
     [fizzle.engine.effects :as effects]
@@ -113,10 +114,10 @@
                 ;; (set by sacrifice executor when chaining from sacrifice to targeting)
                 obj-eid (queries/get-object-eid db object-id)
                 pending-sacrifice-info (when obj-eid
-                                         (queries/q-safe '[:find ?info .
-                                                           :in $ ?e
-                                                           :where [?e :object/pending-sacrifice-info ?info]]
-                                                         db obj-eid))
+                                         (d/q '[:find ?info .
+                                                :in $ ?e
+                                                :where [?e :object/pending-sacrifice-info ?info]]
+                                              db obj-eid))
                 db-after-costs (abilities/pay-all-costs db object-id (:ability/cost ability))]
             (if db-after-costs
               (let [effects-list (:ability/effects ability [])

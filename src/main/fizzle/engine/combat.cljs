@@ -50,11 +50,11 @@
 (defn get-attacking-creatures
   "Get object-ids of all attacking creatures on the battlefield."
   [db]
-  (let [eids (q/q-safe '[:find [?e ...]
-                         :where [?e :object/zone :battlefield]
-                         [?e :object/attacking true]]
-                       db)]
-    (mapv (fn [eid] (:object/id (q/pull-safe db [:object/id] eid))) eids)))
+  (let [eids (d/q '[:find [?e ...]
+                    :where [?e :object/zone :battlefield]
+                    [?e :object/attacking true]]
+                  db)]
+    (mapv (fn [eid] (:object/id (d/pull db [:object/id] eid))) eids)))
 
 
 (defn get-eligible-blockers
@@ -88,14 +88,14 @@
   "Clear all attacking/blocking flags from battlefield creatures.
    Called at end of combat or cleanup."
   [db]
-  (let [attacking (q/q-safe '[:find ?e
-                              :where [?e :object/zone :battlefield]
-                              [?e :object/attacking true]]
-                            db)
-        blocking (q/q-safe '[:find ?e ?v
-                             :where [?e :object/zone :battlefield]
-                             [?e :object/blocking ?v]]
-                           db)
+  (let [attacking (d/q '[:find ?e
+                         :where [?e :object/zone :battlefield]
+                         [?e :object/attacking true]]
+                       db)
+        blocking (d/q '[:find ?e ?v
+                        :where [?e :object/zone :battlefield]
+                        [?e :object/blocking ?v]]
+                      db)
         txs (concat
               (mapv (fn [[eid]] [:db/retract eid :object/attacking true]) attacking)
               (mapv (fn [[eid v]] [:db/retract eid :object/blocking v]) blocking))]
@@ -109,12 +109,12 @@
    Pure function: (db, attacker-id) -> [blocker-ids]"
   [db attacker-id]
   (let [atk-eid (q/get-object-eid db attacker-id)
-        blocker-eids (q/q-safe '[:find [?e ...]
-                                 :in $ ?atk-eid
-                                 :where [?e :object/zone :battlefield]
-                                 [?e :object/blocking ?atk-eid]]
-                               db atk-eid)]
-    (mapv (fn [eid] (:object/id (q/pull-safe db [:object/id] eid)))
+        blocker-eids (d/q '[:find [?e ...]
+                            :in $ ?atk-eid
+                            :where [?e :object/zone :battlefield]
+                            [?e :object/blocking ?atk-eid]]
+                          db atk-eid)]
+    (mapv (fn [eid] (:object/id (d/pull db [:object/id] eid)))
           (or blocker-eids []))))
 
 
@@ -178,7 +178,7 @@
         atk-eid (:object/blocking obj)]
     (if-not atk-eid
       db
-      (let [atk-id (:object/id (q/pull-safe db [:object/id] atk-eid))
+      (let [atk-id (:object/id (d/pull db [:object/id] atk-eid))
             power (or (creatures/effective-power db blocker-id) 0)]
         (mark-damage db atk-id power)))))
 
@@ -193,11 +193,11 @@
   (let [attackers (get-attacking-creatures db)
         defender-id (q/get-other-player-id db controller)
         ;; All blockers on the battlefield
-        all-blockers (q/q-safe '[:find [?e ...]
-                                 :where [?e :object/zone :battlefield]
-                                 [?e :object/blocking _]]
-                               db)
-        blocker-ids (mapv (fn [eid] (:object/id (q/pull-safe db [:object/id] eid)))
+        all-blockers (d/q '[:find [?e ...]
+                            :where [?e :object/zone :battlefield]
+                            [?e :object/blocking _]]
+                          db)
+        blocker-ids (mapv (fn [eid] (:object/id (d/pull db [:object/id] eid)))
                           (or all-blockers []))
         ;; Step 1: Attackers deal damage
         db (reduce (fn [d atk-id]

@@ -12,6 +12,7 @@
    Domain-specific defmethods are registered in effects/ subdirectory modules.
    This namespace requires them to ensure multimethod dispatch works."
   (:require
+    [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.conditions :as conditions]
     [fizzle.engine.zones :as zones]))
@@ -40,11 +41,11 @@
   [db _player-id _dynamic object-id]
   (let [obj-eid (q/get-object-eid db object-id)
         chosen-x (when obj-eid
-                   (q/q-safe '[:find ?x .
-                               :in $ ?obj-eid
-                               :where [?e :stack-item/object-ref ?obj-eid]
-                               [?e :stack-item/chosen-x ?x]]
-                             db obj-eid))]
+                   (d/q '[:find ?x .
+                          :in $ ?obj-eid
+                          :where [?e :stack-item/object-ref ?obj-eid]
+                          [?e :stack-item/chosen-x ?x]]
+                        db obj-eid))]
     (or chosen-x 0)))
 
 
@@ -56,17 +57,17 @@
   (let [obj-eid (q/get-object-eid db object-id)
         ;; Try spell path: find stack item by object-ref
         sacrifice-info (or (when obj-eid
-                             (q/q-safe '[:find ?info .
-                                         :in $ ?obj-eid
-                                         :where [?e :stack-item/object-ref ?obj-eid]
-                                         [?e :stack-item/sacrifice-info ?info]]
-                                       db obj-eid))
+                             (d/q '[:find ?info .
+                                    :in $ ?obj-eid
+                                    :where [?e :stack-item/object-ref ?obj-eid]
+                                    [?e :stack-item/sacrifice-info ?info]]
+                                  db obj-eid))
                            ;; Try ability path: find stack item by source UUID
-                           (q/q-safe '[:find ?info .
-                                       :in $ ?src
-                                       :where [?e :stack-item/source ?src]
-                                       [?e :stack-item/sacrifice-info ?info]]
-                                     db object-id))]
+                           (d/q '[:find ?info .
+                                  :in $ ?src
+                                  :where [?e :stack-item/source ?src]
+                                  [?e :stack-item/sacrifice-info ?info]]
+                                db object-id))]
     (or (:power sacrifice-info) 0)))
 
 
@@ -75,10 +76,10 @@
   ;; Reads the CMC of the card(s) exiled as an exile-library-top cost.
   ;; The CMC is stored on the source object as :object/last-exiled-cmc by pay-cost.
   (if-let [obj-eid (q/get-object-eid db object-id)]
-    (or (q/q-safe '[:find ?cmc .
-                    :in $ ?e
-                    :where [?e :object/last-exiled-cmc ?cmc]]
-                  db obj-eid)
+    (or (d/q '[:find ?cmc .
+               :in $ ?e
+               :where [?e :object/last-exiled-cmc ?cmc]]
+             db obj-eid)
         0)
     0))
 

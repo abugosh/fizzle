@@ -20,7 +20,7 @@
         (if (seq hand)
           (let [card (rand-nth hand)
                 card-name (get-in card [:object/card :card/name])
-                game-eid (q/q-safe '[:find ?g . :where [?g :game/id _]] db)]
+                game-eid (d/q '[:find ?g . :where [?g :game/id _]] db)]
             (d/db-with db [[:db/add game-eid :game/peek-result card-name]]))
           db))
       db)))

@@ -13,7 +13,6 @@
     [datascript.core :as d]
     [fizzle.bots.protocol :as bot-protocol]
     [fizzle.db.game-state :as game-state]
-    [fizzle.db.queries :as queries]
     [fizzle.db.schema :refer [schema]]
     [fizzle.db.storage :as storage]
     [fizzle.engine.cards :as cards]
@@ -26,13 +25,13 @@
 (defn- get-card-eid
   "Look up a card's entity ID by its :card/id keyword."
   [db card-id]
-  (queries/q-safe '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] db card-id))
+  (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] db card-id))
 
 
 (defn- get-player-eid
   "Look up a player's entity ID by :player/id."
   [db player-id]
-  (queries/q-safe '[:find ?e . :in $ ?pid :where [?e :player/id ?pid]] db player-id))
+  (d/q '[:find ?e . :in $ ?pid :where [?e :player/id ?pid]] db player-id))
 
 
 ;; ---------------------------------------------------------------------------
@@ -59,7 +58,7 @@
 (defn- card-types-set
   "Return the set of card types for a card entity (pulled as {:db/id eid})."
   [db card-eid]
-  (let [types (queries/q-safe '[:find [?t ...] :in $ ?e :where [?e :card/types ?t]] db card-eid)]
+  (let [types (d/q '[:find [?t ...] :in $ ?e :where [?e :card/types ?t]] db card-eid)]
     (set types)))
 
 
@@ -72,7 +71,7 @@
 (defn- card-base-stat
   "Return a card stat field (e.g. :card/power) from the card entity, or nil."
   [db card-eid field]
-  (queries/q-safe '[:find ?v . :in $ ?e ?f :where [?e ?f ?v]] db card-eid field))
+  (d/q '[:find ?v . :in $ ?e ?f :where [?e ?f ?v]] db card-eid field))
 
 
 (defn- object-tx-for-zone
@@ -134,11 +133,11 @@
   [conn player-id]
   (let [db        @conn
         owner-eid (get-player-eid db player-id)
-        bf-objects (queries/q-safe '[:find [(pull ?o [:db/id {:object/card [:card/id :card/triggers]}]) ...]
-                                     :in $ ?owner
-                                     :where [?o :object/owner ?owner]
-                                     [?o :object/zone :battlefield]]
-                                   db owner-eid)]
+        bf-objects (d/q '[:find [(pull ?o [:db/id {:object/card [:card/id :card/triggers]}]) ...]
+                          :in $ ?owner
+                          :where [?o :object/owner ?owner]
+                          [?o :object/zone :battlefield]]
+                        db owner-eid)]
     (doseq [obj bf-objects]
       (let [card         (:object/card obj)
             card-triggers (:card/triggers card)]
@@ -200,7 +199,7 @@
           p1-eid   (get-player-eid db game-state/human-player-id)
           p2-eid   (get-player-eid db game-state/opponent-player-id)
           bot-archetype (when p2-eid
-                          (:player/bot-archetype (queries/pull-safe db [:player/bot-archetype] p2-eid)))]
+                          (:player/bot-archetype (d/pull db [:player/bot-archetype] p2-eid)))]
       (when p1-eid
         (d/transact! conn [[:db/add p1-eid :player/stops (:player stops)]
                            [:db/add p1-eid :player/opponent-stops (or (:opponent-stops stops) #{})]]))

@@ -9,7 +9,6 @@
   (:require
     [datascript.core :as d]
     [fizzle.db.game-state :as game-state]
-    [fizzle.db.queries :as queries]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.cards :as cards]))
 
@@ -33,9 +32,9 @@
     ;; 2. Create player with turn-based triggers
     (let [player-eid (game-state/create-complete-player conn game-state/human-player-id
                                                         {:player/name "Player"})
-          card-eid (queries/q-safe '[:find ?e .
-                                     :where [?e :card/id :dark-ritual]]
-                                   @conn)]
+          card-eid (d/q '[:find ?e .
+                          :where [?e :card/id :dark-ritual]]
+                        @conn)]
 
       ;; 3. Transact game object (Dark Ritual in hand)
       (d/transact! conn [{:object/id (random-uuid)

@@ -11,11 +11,11 @@
 (defn- clear-damage-marks
   "Clear :object/damage-marked on all creatures on the battlefield."
   [db]
-  (let [damaged (queries/q-safe '[:find ?e ?dmg
-                                  :where [?e :object/zone :battlefield]
-                                  [?e :object/damage-marked ?dmg]
-                                  [(> ?dmg 0)]]
-                                db)]
+  (let [damaged (d/q '[:find ?e ?dmg
+                       :where [?e :object/zone :battlefield]
+                       [?e :object/damage-marked ?dmg]
+                       [(> ?dmg 0)]]
+                     db)]
     (if (seq damaged)
       (d/db-with db (mapv (fn [[eid _]] [:db/add eid :object/damage-marked 0])
                           damaged))

@@ -69,10 +69,10 @@
            copy-eid (q/get-object-eid db-with-copy copy-id)
            ;; Resolve targets: use override if provided, else inherit from original
            targets (or target-override
-                       (let [original-si (q/q-safe '[:find (pull ?e [:stack-item/targets]) .
-                                                     :in $ ?src
-                                                     :where [?e :stack-item/source ?src]]
-                                                   db-with-copy source-object-id)]
+                       (let [original-si (d/q '[:find (pull ?e [:stack-item/targets]) .
+                                                :in $ ?src
+                                                :where [?e :stack-item/source ?src]]
+                                              db-with-copy source-object-id)]
                          (:stack-item/targets original-si)))
            ;; Create stack-item for the copy
            db-with-item (stack/create-stack-item db-with-copy
@@ -98,12 +98,12 @@
   [db player-id]
   (let [player-eid (q/get-player-eid db player-id)
         ;; Find all tapped permanents controlled by player on battlefield
-        tapped-permanents (q/q-safe '[:find ?e
-                                      :in $ ?controller
-                                      :where [?e :object/controller ?controller]
-                                      [?e :object/zone :battlefield]
-                                      [?e :object/tapped true]]
-                                    db player-eid)]
+        tapped-permanents (d/q '[:find ?e
+                                 :in $ ?controller
+                                 :where [?e :object/controller ?controller]
+                                 [?e :object/zone :battlefield]
+                                 [?e :object/tapped true]]
+                               db player-eid)]
     (if (seq tapped-permanents)
       (d/db-with db (mapv (fn [[eid]] [:db/add eid :object/tapped false])
                           tapped-permanents))
@@ -126,12 +126,12 @@
    Only clears for the active player's creatures at their untap step."
   [db player-id]
   (let [player-eid (q/get-player-eid db player-id)
-        sick-creatures (q/q-safe '[:find ?e
-                                   :in $ ?controller
-                                   :where [?e :object/controller ?controller]
-                                   [?e :object/zone :battlefield]
-                                   [?e :object/summoning-sick true]]
-                                 db player-eid)]
+        sick-creatures (d/q '[:find ?e
+                              :in $ ?controller
+                              :where [?e :object/controller ?controller]
+                              [?e :object/zone :battlefield]
+                              [?e :object/summoning-sick true]]
+                            db player-eid)]
     (if (seq sick-creatures)
       (d/db-with db (mapv (fn [[eid]] [:db/retract eid :object/summoning-sick true])
                           sick-creatures))

@@ -19,6 +19,7 @@
    - Bot acts applied inline via pure engine functions
    - SBAs run after each engine step"
   (:require
+    [datascript.core :as d]
     [fizzle.bots.interceptor :as bot-interceptor]
     [fizzle.bots.protocol :as bot-protocol]
     [fizzle.db.game-state :as game-state]
@@ -62,7 +63,7 @@
   "Get the stops set for a player entity. Returns #{} if none."
   [game-db player-eid]
   (if player-eid
-    (or (:player/stops (queries/pull-safe game-db [:player/stops] player-eid)) #{})
+    (or (:player/stops (d/pull game-db [:player/stops] player-eid)) #{})
     #{}))
 
 
@@ -70,7 +71,7 @@
   "Get the opponent-stops set for a player entity. Returns #{} if none."
   [game-db player-eid]
   (if player-eid
-    (or (:player/opponent-stops (queries/pull-safe game-db [:player/opponent-stops] player-eid)) #{})
+    (or (:player/opponent-stops (d/pull game-db [:player/opponent-stops] player-eid)) #{})
     #{}))
 
 

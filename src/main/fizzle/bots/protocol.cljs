@@ -7,20 +7,20 @@
    - bot-phase-action: what the bot does at a given phase during its turn
    - bot-deck: the deck list for a bot archetype"
   (:require
+    [datascript.core :as d]
     [fizzle.bots.definitions :as definitions]
-    [fizzle.bots.rules :as rules]
-    [fizzle.db.queries :as queries]))
+    [fizzle.bots.rules :as rules]))
 
 
 (defn get-bot-archetype
   "Get the bot archetype for a player, or nil if the player is human.
    Pure function: (db, player-id) -> keyword | nil"
   [db player-id]
-  (queries/q-safe '[:find ?arch .
-                    :in $ ?pid
-                    :where [?e :player/id ?pid]
-                    [?e :player/bot-archetype ?arch]]
-                  db player-id))
+  (d/q '[:find ?arch .
+         :in $ ?pid
+         :where [?e :player/id ?pid]
+         [?e :player/bot-archetype ?arch]]
+       db player-id))
 
 
 (defn bot-priority-decision

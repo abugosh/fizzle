@@ -54,11 +54,11 @@
   "Find all objects that have grants.
    Returns sequence of [object-eid object-id grants] tuples."
   [db]
-  (->> (q/q-safe '[:find ?e ?oid ?grants
-                   :where
-                   [?e :object/id ?oid]
-                   [?e :object/grants ?grants]]
-                 db)
+  (->> (d/q '[:find ?e ?oid ?grants
+              :where
+              [?e :object/id ?oid]
+              [?e :object/grants ?grants]]
+            db)
        (filter (fn [[_ _ grants]] (seq grants)))))
 
 
@@ -88,10 +88,10 @@
   [db player-id]
   (let [player-eid (q/get-player-eid db player-id)]
     (if player-eid
-      (or (q/q-safe '[:find ?grants .
-                      :in $ ?e
-                      :where [?e :player/grants ?grants]]
-                    db player-eid)
+      (or (d/q '[:find ?grants .
+                 :in $ ?e
+                 :where [?e :player/grants ?grants]]
+               db player-eid)
           [])
       [])))
 
@@ -135,11 +135,11 @@
   "Find all players that have grants.
    Returns sequence of [player-eid player-id grants] tuples."
   [db]
-  (->> (q/q-safe '[:find ?e ?pid ?grants
-                   :where
-                   [?e :player/id ?pid]
-                   [?e :player/grants ?grants]]
-                 db)
+  (->> (d/q '[:find ?e ?pid ?grants
+              :where
+              [?e :player/id ?pid]
+              [?e :player/grants ?grants]]
+            db)
        (filter (fn [[_ _ grants]] (seq grants)))))
 
 

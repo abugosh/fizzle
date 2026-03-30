@@ -2,7 +2,7 @@
   "Trigger entities in Datascript. Pure query and transaction functions.
    No mutable state -- all triggers are immutable DB values."
   (:require
-    [fizzle.db.queries :as queries]))
+    [datascript.core :as d]))
 
 
 (defmulti trigger-type->event-type
@@ -79,10 +79,10 @@
   (into {}
         (map (fn [[k v]]
                (if (= v :self-controller)
-                 (let [player-id (queries/q-safe '[:find ?pid .
-                                                   :in $ ?e
-                                                   :where [?e :player/id ?pid]]
-                                                 db player-eid)]
+                 (let [player-id (d/q '[:find ?pid .
+                                        :in $ ?e
+                                        :where [?e :player/id ?pid]]
+                                      db player-eid)]
                    [k player-id])
                  [k v]))
              filter-map)))
@@ -158,9 +158,9 @@
    Returns:
      Seq of trigger entity maps (empty seq if none)"
   [db]
-  (queries/q-safe '[:find [(pull ?e [*]) ...]
-                    :where [?e :trigger/event-type _]]
-                  db))
+  (d/q '[:find [(pull ?e [*]) ...]
+         :where [?e :trigger/event-type _]]
+       db))
 
 
 (defn get-triggers-for-event
@@ -178,8 +178,8 @@
      Seq of trigger entity maps matching the event (empty seq if none)"
   [db event]
   (let [event-type (:event/type event)
-        candidates (queries/q-safe '[:find [(pull ?e [*]) ...]
-                                     :in $ ?et
-                                     :where [?e :trigger/event-type ?et]]
-                                   db event-type)]
+        candidates (d/q '[:find [(pull ?e [*]) ...]
+                          :in $ ?et
+                          :where [?e :trigger/event-type ?et]]
+                        db event-type)]
     (filter #(matches-filter? % event) candidates)))

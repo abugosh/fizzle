@@ -8,78 +8,46 @@
     [datascript.core :as d]))
 
 
-;; === Closure advanced-compilation safe wrappers ===
-;;
-;; Under Google Closure :advanced optimizations, keywords lose identity
-;; across compilation units. Datascript d/q :in params and d/pull lookup
-;; refs use keyword identity comparison, which fails. Re-interning keywords
-;; via (keyword ns name) forces them through the same constructor.
-
-(defn- reintern-kw
-  "Re-intern a keyword so identity holds under Closure advanced compilation."
-  [arg]
-  (if (keyword? arg)
-    (keyword (namespace arg) (name arg))
-    arg))
-
-
-(defn q-safe
-  "Closure-safe wrapper for d/q. Re-interns keyword :in params before
-   passing them to Datascript so keyword identity holds under :advanced."
-  [query db & args]
-  (apply d/q query db (map reintern-kw args)))
-
-
-(defn pull-safe
-  "Closure-safe wrapper for d/pull. If eid-or-lookup is a lookup ref
-   vector [attr val], re-interns the keyword value so identity holds
-   under Closure :advanced (Datascript compares the value against stored values)."
-  [db pattern eid-or-lookup]
-  (if (vector? eid-or-lookup)
-    (d/pull db pattern [(first eid-or-lookup) (reintern-kw (second eid-or-lookup))])
-    (d/pull db pattern eid-or-lookup)))
-
-
 (defn get-player-eid
   "Get the entity ID for a player by their :player/id.
    Returns nil if player doesn't exist."
   [db player-id]
-  (q-safe '[:find ?e .
-            :in $ ?pid
-            :where [?e :player/id ?pid]]
-          db player-id))
+  (d/q '[:find ?e .
+         :in $ ?pid
+         :where [?e :player/id ?pid]]
+       db player-id))
 
 
 (defn get-object-eid
   "Get the Datascript entity ID for a game object by its UUID.
    Returns nil if object doesn't exist."
   [db object-id]
-  (q-safe '[:find ?e .
-            :in $ ?oid
-            :where [?e :object/id ?oid]]
-          db object-id))
+  (d/q '[:find ?e .
+         :in $ ?oid
+         :where [?e :object/id ?oid]]
+       db object-id))
 
 
 (defn get-mana-pool
   "Get the mana pool for a player.
    Returns nil if player doesn't exist."
   [db player-id]
-  (q-safe '[:find ?pool .
-            :in $ ?pid
-            :where [?e :player/id ?pid]
-            [?e :player/mana-pool ?pool]]
-          db player-id))
+  (d/q '[:find ?pool .
+         :in $ ?pid
+         :where [?e :player/id ?pid]
+         [?e :player/mana-pool ?pool]]
+       db player-id))
 
 
 (defn get-storm-count
   "Get the storm count (spells cast this turn) for a player.
    Returns nil if player doesn't exist."
   [db player-id]
-  (q-safe '[:find ?count .
-            :in $ ?pid
-            :where [?e :player/id ?pid]
-            [?e :player/storm-count ?count]]
-          db player-id))
+  (d/q '[:find ?count .
+         :in $ ?pid
+         :where [?e :player/id ?pid]
+         [?e :player/storm-count ?count]]
+       db player-id))
 
 
 (defn get-hand
@@ -90,11 +58,11 @@
   [db player-id]
   (let [player-eid (get-player-eid db player-id)]
     (when player-eid
-      (->> (q-safe '[:find [(pull ?obj [* {:object/card [*]}]) ...]
-                     :in $ ?owner
-                     :where [?obj :object/owner ?owner]
-                     [?obj :object/zone :hand]]
-                   db player-eid)
+      (->> (d/q '[:find [(pull ?obj [* {:object/card [*]}]) ...]
+                  :in $ ?owner
+                  :where [?obj :object/owner ?owner]
+                  [?obj :object/zone :hand]]
+                db player-eid)
            (vec)))))
 
 
@@ -102,21 +70,21 @@
   "Get the card definition for a game object by its :object/id.
    Returns nil if object doesn't exist or has no card reference."
   [db object-id]
-  (q-safe '[:find (pull ?card [*]) .
-            :in $ ?oid
-            :where [?obj :object/id ?oid]
-            [?obj :object/card ?card]]
-          db object-id))
+  (d/q '[:find (pull ?card [*]) .
+         :in $ ?oid
+         :where [?obj :object/id ?oid]
+         [?obj :object/card ?card]]
+       db object-id))
 
 
 (defn get-object
   "Get a game object by its :object/id with card data pulled in.
    Returns nil if object doesn't exist."
   [db object-id]
-  (q-safe '[:find (pull ?obj [* {:object/card [*]}]) .
-            :in $ ?oid
-            :where [?obj :object/id ?oid]]
-          db object-id))
+  (d/q '[:find (pull ?obj [* {:object/card [*]}]) .
+         :in $ ?oid
+         :where [?obj :object/id ?oid]]
+       db object-id))
 
 
 (defn get-objects-in-zone
@@ -125,20 +93,20 @@
   [db player-id zone]
   (let [player-eid (get-player-eid db player-id)]
     (when player-eid
-      (->> (q-safe '[:find [(pull ?obj [* {:object/card [*]}]) ...]
-                     :in $ ?owner ?zone
-                     :where [?obj :object/owner ?owner]
-                     [?obj :object/zone ?zone]]
-                   db player-eid zone)
+      (->> (d/q '[:find [(pull ?obj [* {:object/card [*]}]) ...]
+                  :in $ ?owner ?zone
+                  :where [?obj :object/owner ?owner]
+                  [?obj :object/zone ?zone]]
+                db player-eid zone)
            (vec)))))
 
 
 (defn get-game-state
   "Get the game state entity."
   [db]
-  (q-safe '[:find (pull ?g [* {:game/active-player [:player/id :player/name]}]) .
-            :where [?g :game/id _]]
-          db))
+  (d/q '[:find (pull ?g [* {:game/active-player [:player/id :player/name]}]) .
+         :where [?g :game/id _]]
+       db))
 
 
 (defn get-active-player-id
@@ -146,32 +114,32 @@
    Resolves the :game/active-player ref to a player-id keyword.
    Returns nil if no game state exists."
   [db]
-  (q-safe '[:find ?pid .
-            :where [?g :game/id _]
-            [?g :game/active-player ?p]
-            [?p :player/id ?pid]]
-          db))
+  (d/q '[:find ?pid .
+         :where [?g :game/id _]
+         [?g :game/active-player ?p]
+         [?p :player/id ?pid]]
+       db))
 
 
 (defn stack-empty?
   "Check if the stack has no items (no spells and no stack-items).
    The stack is shared between all players (MTG Rules 117, 405)."
   [db]
-  (and (nil? (q-safe '[:find ?e .
-                       :where [?e :object/zone :stack]]
-                     db))
-       (nil? (q-safe '[:find ?e .
-                       :where [?e :stack-item/position _]]
-                     db))))
+  (and (nil? (d/q '[:find ?e .
+                    :where [?e :object/zone :stack]]
+                  db))
+       (nil? (d/q '[:find ?e .
+                    :where [?e :stack-item/position _]]
+                  db))))
 
 
 (defn get-all-stack-items
   "Get all stack-items in LIFO order (highest position first).
    Returns vector, or empty vector if stack is empty."
   [db]
-  (->> (q-safe '[:find [(pull ?e [*]) ...]
-                 :where [?e :stack-item/position _]]
-               db)
+  (->> (d/q '[:find [(pull ?e [*]) ...]
+              :where [?e :stack-item/position _]]
+            db)
        (sort-by :stack-item/position >)
        (vec)))
 
@@ -180,9 +148,9 @@
   "Get the stack-item with the highest position (top of stack).
    Returns entity map or nil if stack is empty."
   [db]
-  (->> (q-safe '[:find [(pull ?e [*]) ...]
-                 :where [?e :stack-item/position _]]
-               db)
+  (->> (d/q '[:find [(pull ?e [*]) ...]
+              :where [?e :stack-item/position _]]
+            db)
        (sort-by :stack-item/position >)
        (first)))
 
@@ -205,13 +173,13 @@
   [db player-id n]
   (let [player-eid (get-player-eid db player-id)]
     (when player-eid
-      (->> (q-safe '[:find ?oid ?pos
-                     :in $ ?owner
-                     :where [?obj :object/owner ?owner]
-                     [?obj :object/zone :library]
-                     [?obj :object/id ?oid]
-                     [?obj :object/position ?pos]]
-                   db player-eid)
+      (->> (d/q '[:find ?oid ?pos
+                  :in $ ?owner
+                  :where [?obj :object/owner ?owner]
+                  [?obj :object/zone :library]
+                  [?obj :object/id ?oid]
+                  [?obj :object/position ?pos]]
+                db player-eid)
            (sort-by second)  ; sort by position ascending (0 = top)
            (take n)
            (mapv first)))))  ; extract just object-ids
@@ -221,19 +189,19 @@
   "Get the :player/id keyword for a player entity ID.
    Returns nil if entity is not a player."
   [db eid]
-  (q-safe '[:find ?pid .
-            :in $ ?e
-            :where [?e :player/id ?pid]]
-          db eid))
+  (d/q '[:find ?pid .
+         :in $ ?e
+         :where [?e :player/id ?pid]]
+       db eid))
 
 
 (defn get-priority-holder-eid
   "Get the entity ID of the player who currently holds priority."
   [db]
-  (q-safe '[:find ?p .
-            :where [?g :game/id _]
-            [?g :game/priority ?p]]
-          db))
+  (d/q '[:find ?p .
+         :where [?g :game/id _]
+         [?g :game/priority ?p]]
+       db))
 
 
 (defn get-human-player-id
@@ -241,10 +209,10 @@
    Returns the stored :game/human-player-id from game state.
    Returns :player-1 as fallback if not set."
   [db]
-  (or (q-safe '[:find ?hid .
-                :where [?g :game/id _]
-                [?g :game/human-player-id ?hid]]
-              db)
+  (or (d/q '[:find ?hid .
+             :where [?g :game/id _]
+             [?g :game/human-player-id ?hid]]
+           db)
       :player-1))
 
 
@@ -253,12 +221,12 @@
    Returns the player-id of the player marked as opponent.
    Returns nil if no opponent exists."
   [db player-id]
-  (q-safe '[:find ?pid .
-            :in $ ?my-pid
-            :where [?p :player/id ?pid]
-            [?p :player/is-opponent true]
-            [(not= ?pid ?my-pid)]]
-          db player-id))
+  (d/q '[:find ?pid .
+         :in $ ?my-pid
+         :where [?p :player/id ?pid]
+         [?p :player/is-opponent true]
+         [(not= ?pid ?my-pid)]]
+       db player-id))
 
 
 (defn get-other-player-id
@@ -266,22 +234,22 @@
    Returns the player-id of any player that isn't the given player-id.
    Returns nil if no other player exists."
   [db player-id]
-  (q-safe '[:find ?pid .
-            :in $ ?my-pid
-            :where [?p :player/id ?pid]
-            [(not= ?pid ?my-pid)]]
-          db player-id))
+  (d/q '[:find ?pid .
+         :in $ ?my-pid
+         :where [?p :player/id ?pid]
+         [(not= ?pid ?my-pid)]]
+       db player-id))
 
 
 (defn get-max-hand-size
   "Get the maximum hand size for a player.
    Returns 7 (MTG default) if :player/max-hand-size is not set."
   [db player-id]
-  (or (q-safe '[:find ?max .
-                :in $ ?pid
-                :where [?e :player/id ?pid]
-                [?e :player/max-hand-size ?max]]
-              db player-id)
+  (or (d/q '[:find ?max .
+             :in $ ?pid
+             :where [?e :player/id ?pid]
+             [?e :player/max-hand-size ?max]]
+           db player-id)
       7))
 
 
@@ -289,11 +257,11 @@
   "Get the life total for a player.
    Returns nil if player doesn't exist."
   [db player-id]
-  (q-safe '[:find ?life .
-            :in $ ?pid
-            :where [?e :player/id ?pid]
-            [?e :player/life ?life]]
-          db player-id))
+  (d/q '[:find ?life .
+         :in $ ?pid
+         :where [?e :player/id ?pid]
+         [?e :player/life ?life]]
+       db player-id))
 
 
 (defn matches-criteria?
@@ -349,23 +317,23 @@
    Returns vector of objects with card data.
    Used for scanning battlefield for static abilities."
   [db zone]
-  (->> (q-safe '[:find [(pull ?obj [* {:object/card [*]}]) ...]
-                 :in $ ?zone
-                 :where [?obj :object/zone ?zone]]
-               db zone)
+  (->> (d/q '[:find [(pull ?obj [* {:object/card [*]}]) ...]
+              :in $ ?zone
+              :where [?obj :object/zone ?zone]]
+            db zone)
        (vec)))
 
 
 (defn count-cards-named-in-zone
   "Count objects with the given card name in the specified zone across all players."
   [db card-name zone]
-  (or (q-safe '[:find (count ?e) .
-                :in $ ?name ?zone
-                :where
-                [?e :object/zone ?zone]
-                [?e :object/card ?c]
-                [?c :card/name ?name]]
-              db card-name zone)
+  (or (d/q '[:find (count ?e) .
+             :in $ ?name ?zone
+             :where
+             [?e :object/zone ?zone]
+             [?e :object/card ?c]
+             [?c :card/name ?name]]
+           db card-name zone)
       0))
 
 

@@ -1,5 +1,6 @@
 (ns fizzle.subs.game
   (:require
+    [datascript.core :as d]
     [fizzle.db.game-state :as game-state]
     [fizzle.db.queries :as queries]
     [fizzle.engine.creatures :as creatures]
@@ -69,9 +70,9 @@
                                      si))
                                  non-spell-items)
             ;; Stack is shared — show ALL players' spells, not just human's
-            spells (queries/q-safe '[:find [(pull ?obj [* {:object/card [*]}]) ...]
-                                     :where [?obj :object/zone :stack]]
-                                   game-db)
+            spells (d/q '[:find [(pull ?obj [* {:object/card [*]}]) ...]
+                          :where [?obj :object/zone :stack]]
+                        game-db)
             order-key (fn [item]
                         (or (:stack-item/position item)
                             (:object/position item)
@@ -162,7 +163,7 @@
     (when game-db
       (let [human-pid (queries/get-human-player-id game-db)
             player-eid (queries/get-player-eid game-db human-pid)]
-        (or (:player/stops (queries/pull-safe game-db [:player/stops] player-eid)) #{})))))
+        (or (:player/stops (d/pull game-db [:player/stops] player-eid)) #{})))))
 
 
 (rf/reg-sub
@@ -173,7 +174,7 @@
       (let [human-pid (queries/get-human-player-id game-db)
             human-eid (queries/get-player-eid game-db human-pid)]
         (if human-eid
-          (or (:player/opponent-stops (queries/pull-safe game-db [:player/opponent-stops] human-eid)) #{})
+          (or (:player/opponent-stops (d/pull game-db [:player/opponent-stops] human-eid)) #{})
           #{})))))
 
 
@@ -197,7 +198,7 @@
             game-state (queries/get-game-state game-db)
             winner-ref (:game/winner game-state)]
         (when winner-ref
-          (let [winner-pid (:player/id (queries/pull-safe game-db [:player/id] (:db/id winner-ref)))
+          (let [winner-pid (:player/id (d/pull game-db [:player/id] (:db/id winner-ref)))
                 outcome (if (= human-pid winner-pid) :win :loss)]
             {:outcome outcome
              :turn (:game/turn game-state)

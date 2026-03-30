@@ -38,11 +38,11 @@
   (if-not (rules/can-play-land? db player-id object-id)
     db
     (let [player-eid (queries/get-player-eid db player-id)
-          land-plays (queries/q-safe '[:find ?plays .
-                                       :in $ ?pid
-                                       :where [?e :player/id ?pid]
-                                       [?e :player/land-plays-left ?plays]]
-                                     db player-id)
+          land-plays (d/q '[:find ?plays .
+                            :in $ ?pid
+                            :where [?e :player/id ?pid]
+                            [?e :player/land-plays-left ?plays]]
+                          db player-id)
           db-after-move (-> db
                             (zones/move-to-zone object-id :battlefield)
                             (d/db-with [[:db/add player-eid :player/land-plays-left (dec land-plays)]]))
