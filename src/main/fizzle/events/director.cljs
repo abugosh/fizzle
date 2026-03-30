@@ -207,10 +207,10 @@
         active-pid (queries/get-active-player-id game-db)
         on-opp-turn? (not= active-pid human-pid)
         opp-stops (get-player-opponent-stops game-db human-eid)
-        current-phase (:game/phase (queries/get-game-state game-db))
-        opp-stop-hit? (and on-opp-turn? (not yield-all?) (contains? opp-stops current-phase))
-        auto-pass? (and (human-should-auto-pass game-db human-eid human-stops yield-all?)
-                        (not opp-stop-hit?))]
+        ;; On opponent's turn: only opponent-stops can pause (own stops don't apply)
+        ;; On own turn: only own stops can pause (opponent-stops don't apply)
+        effective-stops (if on-opp-turn? opp-stops human-stops)
+        auto-pass? (human-should-auto-pass game-db human-eid effective-stops yield-all?)]
     (if-not auto-pass?
       {:done {:app-db app-db :reason :await-human}}
       (let [holder-eid (priority/get-priority-holder-eid game-db)
