@@ -149,3 +149,70 @@
       (let [player-eid (q/get-player-eid db :player-1)
             player (d/pull db '[:player/stops] player-eid)]
         (is (= #{:main1 :main2 :combat} (:player/stops player)))))))
+
+
+(deftest create-game-scenario-returns-app-db-test
+  (testing "create-game-scenario returns app-db with :game/db and history keys"
+    (let [app-db (th/create-game-scenario {})]
+      (is (some? (:game/db app-db)) "should have :game/db key")
+      (is (vector? (:history/main app-db)) "should have :history/main")
+      (is (map? (:history/forks app-db)) "should have :history/forks")
+      (is (= -1 (:history/position app-db)) "history position should be -1"))))
+
+
+(deftest create-game-scenario-both-players-exist-test
+  (testing "create-game-scenario creates both player-1 and player-2"
+    (let [app-db (th/create-game-scenario {})
+          db (:game/db app-db)]
+      (is (pos-int? (q/get-player-eid db :player-1)) "player-1 should exist")
+      (is (pos-int? (q/get-player-eid db :player-2)) "player-2 should exist"))))
+
+
+(deftest create-game-scenario-both-players-have-library-test
+  (testing "create-game-scenario gives both players default 10 library cards"
+    (let [app-db (th/create-game-scenario {})
+          db (:game/db app-db)]
+      (is (= 10 (th/get-zone-count db :library :player-1))
+          "player-1 should have 10 library cards")
+      (is (= 10 (th/get-zone-count db :library :player-2))
+          "player-2 should have 10 library cards"))))
+
+
+(deftest create-game-scenario-default-stops-test
+  (testing "create-game-scenario sets default stops #{:main1 :main2} for human"
+    (let [app-db (th/create-game-scenario {})
+          db (:game/db app-db)
+          player-eid (q/get-player-eid db :player-1)
+          player (d/pull db '[:player/stops] player-eid)]
+      (is (= #{:main1 :main2} (:player/stops player))))))
+
+
+(deftest create-game-scenario-custom-library-count-test
+  (testing "create-game-scenario respects :human-library and :bot-library opts"
+    (let [app-db (th/create-game-scenario {:human-library 5 :bot-library 3})
+          db (:game/db app-db)]
+      (is (= 5 (th/get-zone-count db :library :player-1)))
+      (is (= 3 (th/get-zone-count db :library :player-2))))))
+
+
+(deftest create-game-scenario-bot-archetype-test
+  (testing "create-game-scenario sets bot-archetype on player-2 (default :goldfish)"
+    (let [app-db (th/create-game-scenario {})
+          db (:game/db app-db)
+          player-eid (q/get-player-eid db :player-2)
+          player (d/pull db '[:player/bot-archetype] player-eid)]
+      (is (= :goldfish (:player/bot-archetype player)))))
+  (testing "create-game-scenario sets explicit bot-archetype when given"
+    (let [app-db (th/create-game-scenario {:bot-archetype :goldfish})
+          db (:game/db app-db)
+          player-eid (q/get-player-eid db :player-2)
+          player (d/pull db '[:player/bot-archetype] player-eid)]
+      (is (= :goldfish (:player/bot-archetype player))))))
+
+
+(deftest create-game-scenario-passes-mana-and-life-test
+  (testing "create-game-scenario passes mana and life opts to human player"
+    (let [app-db (th/create-game-scenario {:mana {:blue 2} :life 15})
+          db (:game/db app-db)]
+      (is (= 2 (:blue (q/get-mana-pool db :player-1))))
+      (is (= 15 (q/get-life-total db :player-1))))))

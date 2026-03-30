@@ -21,7 +21,8 @@
     [fizzle.events.lands :as lands]
     [fizzle.events.resolution :as resolution]
     [fizzle.events.selection.core :as sel-core]
-    [fizzle.events.selection.targeting :as sel-targeting]))
+    [fizzle.events.selection.targeting :as sel-targeting]
+    [fizzle.history.core :as history]))
 
 
 (defn create-test-db
@@ -196,6 +197,32 @@
                      bot-stops (assoc :player/stops bot-stops))]
      (game-state/create-complete-player conn game-state/opponent-player-id overrides)
      @conn)))
+
+
+(defn create-game-scenario
+  "Create valid game state for tests that run the game loop.
+   Both players have libraries, stops, and turn-based triggers.
+   Returns app-db (not just game-db) with history initialized.
+   opts: {:bot-archetype :goldfish
+          :stops #{:main1 :main2}
+          :mana {:black 3}
+          :life 20
+          :human-library 10
+          :bot-library 10}"
+  ([opts]
+   (let [bot-archetype (get opts :bot-archetype :goldfish)
+         human-library-count (get opts :human-library 10)
+         bot-library-count (get opts :bot-library 10)
+         stops (get opts :stops #{:main1 :main2})
+         db (create-test-db (-> opts
+                                (assoc :stops stops)
+                                (dissoc :bot-archetype :human-library :bot-library)))
+         db (add-opponent db {:bot-archetype bot-archetype})
+         island-ids (vec (repeat human-library-count :island))
+         [db _] (add-cards-to-library db island-ids game-state/human-player-id)
+         bot-island-ids (vec (repeat bot-library-count :island))
+         [db _] (add-cards-to-library db bot-island-ids game-state/opponent-player-id)]
+     (merge (history/init-history) {:game/db db}))))
 
 
 (defn tap-permanent
