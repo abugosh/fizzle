@@ -16,8 +16,7 @@
     [fizzle.db.schema :refer [schema]]
     [fizzle.db.storage :as storage]
     [fizzle.engine.cards :as cards]
-    [fizzle.engine.trigger-db :as trigger-db]
-    [fizzle.engine.turn-based :as turn-based]))
+    [fizzle.engine.trigger-db :as trigger-db]))
 
 
 ;; ---------------------------------------------------------------------------
@@ -38,20 +37,19 @@
 ;; ---------------------------------------------------------------------------
 ;; Player transactions
 
-(defn- player-tx
-  "Build transaction data for restoring one player from a portable player map."
-  [player-id player-map is-opponent bot-archetype]
-  (let [overrides (cond-> {:player/name            (if is-opponent "Opponent" "Player")
-                           :player/life            (or (:player/life player-map) 20)
-                           :player/mana-pool       (or (:player/mana-pool player-map)
-                                                       game-state/empty-mana-pool)
-                           :player/storm-count     (or (:player/storm-count player-map) 0)
-                           :player/land-plays-left (or (:player/land-plays-left player-map) 1)
-                           :player/max-hand-size   (or (:player/max-hand-size player-map) 7)
-                           :player/grants          (or (:player/grants player-map) [])}
-                    is-opponent   (assoc :player/is-opponent true)
-                    bot-archetype (assoc :player/bot-archetype bot-archetype))]
-    (game-state/create-player-tx player-id overrides)))
+(defn- player-overrides-from-snapshot
+  "Build player attribute overrides from a portable player map."
+  [player-map is-opponent bot-archetype]
+  (cond-> {:player/name            (if is-opponent "Opponent" "Player")
+           :player/life            (or (:player/life player-map) 20)
+           :player/mana-pool       (or (:player/mana-pool player-map)
+                                       game-state/empty-mana-pool)
+           :player/storm-count     (or (:player/storm-count player-map) 0)
+           :player/land-plays-left (or (:player/land-plays-left player-map) 1)
+           :player/max-hand-size   (or (:player/max-hand-size player-map) 7)
+           :player/grants          (or (:player/grants player-map) [])}
+    is-opponent   (assoc :player/is-opponent true)
+    bot-archetype (assoc :player/bot-archetype bot-archetype)))
 
 
 ;; ---------------------------------------------------------------------------
@@ -190,11 +188,12 @@
         _      (d/transact! conn cards/all-cards)
         stops  (storage/load-stops)
         players (:players snapshot)]
-    ;; Transact players
+    ;; Transact players (entity + turn-based triggers)
     (doseq [[player-id player-map] players]
-      (let [is-opp       (boolean (:player/is-opponent player-map))
-            bot-archetype (:player/bot-archetype player-map)]
-        (d/transact! conn (player-tx player-id player-map is-opp bot-archetype))))
+      (let [is-opp        (boolean (:player/is-opponent player-map))
+            bot-archetype (:player/bot-archetype player-map)
+            overrides     (player-overrides-from-snapshot player-map is-opp bot-archetype)]
+        (game-state/create-complete-player conn player-id overrides)))
     ;; Add player stops from localStorage (same as init.cljs)
     (let [db       @conn
           p1-eid   (get-player-eid db game-state/human-player-id)
@@ -216,11 +215,6 @@
     ;; Create triggers for battlefield permanents
     (doseq [[player-id _] players]
       (create-battlefield-triggers! conn player-id))
-    ;; Create turn-based triggers for each player
-    (doseq [[player-id _] players]
-      (let [db       @conn
-            player-eid (get-player-eid db player-id)]
-        (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid player-id))))
     ;; Transact game state entity
     (transact-game-state! conn snapshot)
     ;; Build app-db map (mirrors init-game-state shape, but :active-screen :game)

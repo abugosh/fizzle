@@ -7,6 +7,9 @@
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.db.game-state :as gs]
+    [fizzle.db.queries :as q]
+    [fizzle.db.schema :refer [schema]]
+    [fizzle.engine.cards :as cards]
     [fizzle.events.init :refer [init-game-state]]))
 
 
@@ -113,6 +116,90 @@
       (is (= :combat (:game/phase entity)))
       ;; other defaults unchanged
       (is (= 1 (:game/turn entity))))))
+
+
+;; === create-complete-player ===
+
+(defn- make-test-conn
+  []
+  (let [conn (d/create-conn schema)]
+    (d/transact! conn cards/all-cards)
+    conn))
+
+
+(deftest test-create-complete-player-registers-draw-step-trigger
+  (testing "create-complete-player registers draw-step trigger"
+    (let [conn (make-test-conn)
+          _ (gs/create-complete-player conn gs/human-player-id {:player/name "Player"})
+          db @conn
+          triggers (d/q '[:find [?type ...] :where [?e :trigger/type ?type]] db)]
+      (is (contains? (set triggers) :draw-step)))))
+
+
+(deftest test-create-complete-player-registers-untap-step-trigger
+  (testing "create-complete-player registers untap-step trigger"
+    (let [conn (make-test-conn)
+          _ (gs/create-complete-player conn gs/human-player-id {:player/name "Player"})
+          db @conn
+          triggers (d/q '[:find [?type ...] :where [?e :trigger/type ?type]] db)]
+      (is (contains? (set triggers) :untap-step)))))
+
+
+(deftest test-create-complete-player-overrides-merge-correctly
+  (testing "overrides are merged into player entity without clobbering defaults"
+    (let [conn (make-test-conn)
+          _ (gs/create-complete-player conn gs/human-player-id {:player/name "Custom" :player/life 10})
+          db @conn
+          player (d/pull db [:player/name :player/life :player/storm-count :player/land-plays-left]
+                         (q/get-player-eid db gs/human-player-id))]
+      (is (= "Custom" (:player/name player)))
+      (is (= 10 (:player/life player)))
+      (is (= 0 (:player/storm-count player)))
+      (is (= 1 (:player/land-plays-left player))))))
+
+
+(deftest test-create-complete-player-twice-on-same-conn
+  (testing "create-complete-player called twice (two players) on same conn — no collision"
+    (let [conn (make-test-conn)
+          _ (gs/create-complete-player conn gs/human-player-id {:player/name "Player"})
+          p1-eid (q/get-player-eid @conn gs/human-player-id)
+          _ (gs/create-game-entity-tx p1-eid {})
+          _ (d/transact! conn (gs/create-game-entity-tx p1-eid {}))
+          _ (gs/create-complete-player conn gs/opponent-player-id {:player/name "Opponent" :player/is-opponent true})
+          db @conn
+          p1 (q/get-player-eid db gs/human-player-id)
+          p2 (q/get-player-eid db gs/opponent-player-id)]
+      (is (some? p1))
+      (is (some? p2))
+      (is (not= p1 p2))
+      ;; Both players get triggers: 2 players × 2 triggers = 4
+      (is (= 4 (count (d/q '[:find [?e ...] :where [?e :trigger/type _]] db)))))))
+
+
+(deftest test-create-complete-player-returns-player-eid
+  (testing "returns the integer entity ID of the created player"
+    (let [conn (make-test-conn)
+          eid (gs/create-complete-player conn gs/human-player-id {:player/name "Player"})]
+      (is (integer? eid))
+      (is (= eid (q/get-player-eid @conn gs/human-player-id))))))
+
+
+(deftest test-create-complete-player-player-id-from-constants
+  (testing "player-id must come from game-state constants, not hardcoded literals"
+    (let [conn (make-test-conn)
+          _ (gs/create-complete-player conn gs/human-player-id {:player/name "Player"})
+          _ (gs/create-complete-player conn gs/opponent-player-id {:player/name "Opponent" :player/is-opponent true})
+          db @conn
+          p1-eid (q/get-player-eid db gs/human-player-id)
+          p2-eid (q/get-player-eid db gs/opponent-player-id)]
+      ;; Both players exist and have the expected IDs from constants
+      (is (some? p1-eid) "human player entity should exist")
+      (is (some? p2-eid) "opponent player entity should exist")
+      ;; Verify IDs via direct pull
+      (is (= gs/human-player-id (:player/id (d/pull db [:player/id] p1-eid))))
+      (is (= gs/opponent-player-id (:player/id (d/pull db [:player/id] p2-eid))))
+      ;; Explicitly confirm :opponent is NOT used (ADR-016)
+      (is (not= :opponent (:player/id (d/pull db [:player/id] p2-eid)))))))
 
 
 ;; === Integration: init-game-state creates opponent as :player-2 ===

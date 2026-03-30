@@ -9,7 +9,6 @@
     [fizzle.db.storage :as storage]
     [fizzle.engine.card-spec :as card-spec]
     [fizzle.engine.cards :as cards]
-    [fizzle.engine.turn-based :as turn-based]
     [re-frame.core :as rf]))
 
 
@@ -52,12 +51,6 @@
   "Look up a card's entity ID by its :card/id keyword."
   [db card-id]
   (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] db card-id))
-
-
-(defn- get-player-eid
-  "Look up a player's entity ID by :player/id."
-  [db player-id]
-  (d/q '[:find ?e . :in $ ?pid :where [?e :player/id ?pid]] db player-id))
 
 
 (defn- objects-tx
@@ -114,15 +107,12 @@
   (card-spec/validate-cards! cards/all-cards)
   (let [conn (d/create-conn schema)
         _ (d/transact! conn cards/all-cards)
-        _ (d/transact! conn (game-state/create-player-tx game-state/human-player-id
-                                                         {:player/name "Player"}))
-        _ (d/transact! conn (game-state/create-player-tx game-state/opponent-player-id
-                                                         {:player/name "Opponent"
-                                                          :player/is-opponent true
-                                                          :player/bot-archetype bot-archetype}))
-        db @conn
-        player-eid (get-player-eid db game-state/human-player-id)
-        opp-eid (get-player-eid db game-state/opponent-player-id)
+        player-eid (game-state/create-complete-player conn game-state/human-player-id
+                                                      {:player/name "Player"})
+        opp-eid (game-state/create-complete-player conn game-state/opponent-player-id
+                                                   {:player/name "Opponent"
+                                                    :player/is-opponent true
+                                                    :player/bot-archetype bot-archetype})
         stops (storage/load-stops)
         shuffled-deck (deck-to-card-ids main-deck)
         [sculpted-ids remaining] (extract-sculpted-card-ids shuffled-deck must-contain)
@@ -140,8 +130,6 @@
         (d/transact! conn (objects-tx @conn sb-card-ids :sideboard player-eid
                                       (repeatedly (count sb-card-ids) random-uuid)))))
     (d/transact! conn (game-state/create-game-entity-tx player-eid {}))
-    (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid game-state/human-player-id))
-    (d/transact! conn (turn-based/create-turn-based-triggers-tx opp-eid game-state/opponent-player-id))
     (d/transact! conn [[:db/add player-eid :player/stops (:player stops)]
                        [:db/add player-eid :player/opponent-stops (or (:opponent-stops stops) #{})]
                        [:db/add opp-eid :player/stops (bot-protocol/bot-stops bot-archetype)]])

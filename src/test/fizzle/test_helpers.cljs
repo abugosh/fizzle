@@ -18,7 +18,6 @@
     [fizzle.engine.effects-registry]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
-    [fizzle.engine.turn-based :as turn-based]
     [fizzle.events.lands :as lands]
     [fizzle.events.resolution :as resolution]
     [fizzle.events.selection.core :as sel-core]
@@ -40,10 +39,8 @@
                      (:storm-count opts) (assoc :player/storm-count (:storm-count opts))
                      (:land-plays opts) (assoc :player/land-plays-left (:land-plays opts)))]
      (d/transact! conn cards/all-cards)
-     (d/transact! conn (game-state/create-player-tx game-state/human-player-id overrides))
-     (let [player-eid (q/get-player-eid @conn game-state/human-player-id)]
+     (let [player-eid (game-state/create-complete-player conn game-state/human-player-id overrides)]
        (d/transact! conn (game-state/create-game-entity-tx player-eid {}))
-       (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid game-state/human-player-id))
        (when-let [stops (:stops opts)]
          (d/transact! conn [[:db/add player-eid :player/stops stops]])))
      @conn)))
@@ -197,9 +194,7 @@
                      (:bot-archetype opts) (assoc :player/bot-archetype (:bot-archetype opts))
                      (:stops opts) (assoc :player/stops (:stops opts))
                      bot-stops (assoc :player/stops bot-stops))]
-     (d/transact! conn (game-state/create-player-tx game-state/opponent-player-id overrides))
-     (let [opp-eid (q/get-player-eid @conn game-state/opponent-player-id)]
-       (d/transact! conn (turn-based/create-turn-based-triggers-tx opp-eid game-state/opponent-player-id)))
+     (game-state/create-complete-player conn game-state/opponent-player-id overrides)
      @conn)))
 
 

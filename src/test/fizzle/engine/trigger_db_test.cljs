@@ -110,7 +110,9 @@
           conn (d/conn-from-db db)
           _ (d/transact! conn tx)
           new-db @conn
-          triggers (trigger-db/get-all-triggers new-db)]
+          ;; Filter to the card trigger we just added (not turn-based triggers)
+          triggers (filter #(= :permanent-tapped (:trigger/event-type %))
+                           (trigger-db/get-all-triggers new-db))]
       (is (= 1 (count triggers)))
       (let [t (first triggers)]
         (is (= :permanent-tapped (:trigger/event-type t)))
@@ -132,7 +134,9 @@
           conn (d/conn-from-db db)
           _ (d/transact! conn tx)
           new-db @conn
-          triggers (trigger-db/get-all-triggers new-db)]
+          ;; Filter to card triggers only (not turn-based)
+          triggers (filter #(= :permanent-tapped (:trigger/event-type %))
+                           (trigger-db/get-all-triggers new-db))]
       (is (= 1 (count triggers)))
       (let [t (first triggers)]
         (is (= :permanent-tapped (:trigger/event-type t)))
@@ -150,7 +154,9 @@
           conn (d/conn-from-db db)
           _ (d/transact! conn tx)
           new-db @conn
-          triggers (trigger-db/get-all-triggers new-db)]
+          ;; Filter to card triggers only (not turn-based)
+          triggers (filter #(= :permanent-tapped (:trigger/event-type %))
+                           (trigger-db/get-all-triggers new-db))]
       (is (= {:event/object-id :self} (:trigger/filter (first triggers)))))))
 
 
@@ -166,7 +172,9 @@
           conn (d/conn-from-db db)
           _ (d/transact! conn tx)
           new-db @conn
-          triggers (trigger-db/get-all-triggers new-db)]
+          ;; Filter to the card trigger we just added
+          triggers (filter #(= :land-entered (:trigger/type %))
+                           (trigger-db/get-all-triggers new-db))]
       (is (= {:exclude-self true} (:trigger/filter (first triggers)))))))
 
 
@@ -199,7 +207,9 @@
           conn (d/conn-from-db db)
           _ (d/transact! conn tx)
           new-db @conn
-          triggers (trigger-db/get-all-triggers new-db)]
+          ;; Filter to the game-rule trigger we just added (draw-step with :draw phase filter)
+          triggers (filter #(= {:event/phase :draw} (:trigger/filter %))
+                           (trigger-db/get-all-triggers new-db))]
       (is (= 1 (count triggers)))
       (let [t (first triggers)]
         (is (true? (:trigger/always-active? t)))
@@ -423,14 +433,17 @@
           tx (trigger-db/create-triggers-for-card-tx db obj-eid player-eid card-triggers)
           conn (d/conn-from-db db)
           _ (d/transact! conn tx)
-          db-with-triggers @conn]
-      ;; Verify trigger exists
-      (is (= 1 (count (trigger-db/get-all-triggers db-with-triggers))))
+          db-with-triggers @conn
+          ;; Count only card triggers (linked to an object source — not turn-based)
+          card-trigger-count (count (filter :trigger/source (trigger-db/get-all-triggers db-with-triggers)))]
+      ;; Verify card trigger exists (turn-based triggers are also present but not counted here)
+      (is (= 1 card-trigger-count))
       ;; Retract the source object
       (d/transact! conn [[:db.fn/retractEntity obj-eid]])
-      (let [db-after-retract @conn]
-        ;; Trigger should be auto-retracted via component cascade
-        (is (= 0 (count (trigger-db/get-all-triggers db-after-retract))))))))
+      (let [db-after-retract @conn
+            card-trigger-count-after (count (filter :trigger/source (trigger-db/get-all-triggers db-after-retract)))]
+        ;; Card trigger should be auto-retracted via component cascade
+        (is (= 0 card-trigger-count-after))))))
 
 
 ;; === get-all-triggers ===
@@ -438,6 +451,7 @@
 (deftest test-get-all-triggers-returns-all
   (testing "get-all-triggers returns all trigger entities"
     (let [db (init-game-state)
+          before-count (count (trigger-db/get-all-triggers db))
           player-eid (get-player-eid db)
           [db obj-eid] (transact-object db player-eid)
           tx1 (trigger-db/create-trigger-tx
@@ -453,4 +467,5 @@
           conn (d/conn-from-db db)
           _ (d/transact! conn (vec (concat tx1 tx2)))
           new-db @conn]
-      (is (= 2 (count (trigger-db/get-all-triggers new-db)))))))
+      ;; get-all-triggers returns all triggers including the 2 we added
+      (is (= (+ before-count 2) (count (trigger-db/get-all-triggers new-db)))))))

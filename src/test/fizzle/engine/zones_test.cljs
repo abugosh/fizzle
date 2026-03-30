@@ -265,26 +265,28 @@
           ;; Create a Datascript trigger entity linked to this object
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db-bf obj-id)
           player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] db-bf)
+          before-trigger-count (count (trigger-db/get-all-triggers db-bf))
           db-with-trigger (d/db-with db-bf
                                      [{:db/id obj-eid
                                        :object/triggers [{:trigger/type :test-type
                                                           :trigger/event-type :permanent-tapped
                                                           :trigger/source obj-eid
                                                           :trigger/controller player-eid}]}])
-          ;; Verify trigger exists
-          _ (is (= 1 (count (trigger-db/get-all-triggers db-with-trigger)))
+          ;; Verify card trigger exists (+1 over baseline)
+          _ (is (= (+ before-trigger-count 1) (count (trigger-db/get-all-triggers db-with-trigger)))
                 "Precondition: trigger should exist")
           ;; Move off battlefield to graveyard
           db-gy (zones/move-to-zone db-with-trigger obj-id :graveyard)]
-      ;; Trigger should be retracted
-      (is (= 0 (count (trigger-db/get-all-triggers db-gy)))
-          "Trigger should be retracted when source leaves battlefield")
+      ;; Card trigger should be retracted; turn-based triggers remain
+      (is (= before-trigger-count (count (trigger-db/get-all-triggers db-gy)))
+          "Card trigger should be retracted when source leaves battlefield")
       (is (= :graveyard (:object/zone (q/get-object db-gy obj-id)))))))
 
 
 (deftest test-move-non-battlefield-doesnt-unregister
   (testing "move-to-zone from non-battlefield zone does NOT retract triggers"
     (let [db (init-game-state)
+          before-count (count (trigger-db/get-all-triggers db))
           hand (q/get-hand db :player-1)
           obj-id (:object/id (first hand))
           ;; Create a trigger on a DIFFERENT object on battlefield
@@ -303,6 +305,6 @@
                                                 :trigger/controller player-eid}]}])
           ;; Move hand card to graveyard (not from battlefield)
           db-gy (zones/move-to-zone db obj-id :graveyard)]
-      ;; Trigger for other source should still exist
-      (is (= 1 (count (trigger-db/get-all-triggers db-gy)))
+      ;; Trigger for other source should still exist (+1 over baseline)
+      (is (= (+ before-count 1) (count (trigger-db/get-all-triggers db-gy)))
           "Trigger for other source should survive non-battlefield zone change"))))

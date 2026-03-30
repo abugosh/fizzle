@@ -9,7 +9,11 @@
    should import from here instead of constructing entities inline.
 
    ADR-016: :opponent as a player-id is forbidden — it collides with
-   effect target directives (:effect/target :opponent). Use :player-2.")
+   effect target directives (:effect/target :opponent). Use :player-2."
+  (:require
+    [datascript.core :as d]
+    [fizzle.db.queries :as q]
+    [fizzle.engine.turn-based :as turn-based]))
 
 
 (def human-player-id
@@ -74,3 +78,19 @@
            :game/priority      active-player-eid
            :game/human-player-id human-player-id}
           overrides)])
+
+
+(defn create-complete-player
+  "Create a complete player: entity + turn-based triggers.
+   Transacts both into conn. Returns player-eid.
+
+   player-id: keyword identifying the player (human-player-id or opponent-player-id)
+   overrides: map merged into player defaults (life, mana, name, etc.)
+
+   This is the canonical way to add a player — callers must not call
+   create-player-tx + create-turn-based-triggers-tx independently."
+  [conn player-id overrides]
+  (d/transact! conn (create-player-tx player-id overrides))
+  (let [player-eid (q/get-player-eid @conn player-id)]
+    (d/transact! conn (turn-based/create-turn-based-triggers-tx player-eid player-id))
+    player-eid))
