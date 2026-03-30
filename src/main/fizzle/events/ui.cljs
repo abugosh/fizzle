@@ -2,7 +2,6 @@
   "UI toggle and display events: screen switching, panel collapsing,
    graveyard sort, card selection, phase stops."
   (:require
-    [datascript.core :as d]
     [fizzle.db.game-state :as game-state]
     [fizzle.db.queries :as queries]
     [fizzle.db.storage :as storage]
@@ -72,12 +71,12 @@
           updated-stops (storage/toggle-stop all-stops role phase)]
       (storage/save-stops! updated-stops)
       (if (= role :opponent)
-        (let [current-opp-stops (or (:player/opponent-stops (d/pull game-db [:player/opponent-stops] human-eid)) #{})
+        (let [current-opp-stops (or (:player/opponent-stops (queries/pull-safe game-db [:player/opponent-stops] human-eid)) #{})
               new-opp-stops (if (contains? current-opp-stops phase)
                               (disj current-opp-stops phase)
                               (conj current-opp-stops phase))]
           (assoc db :game/db (priority-flow/set-opponent-stops game-db human-eid new-opp-stops)))
-        (let [current-stops (or (:player/stops (d/pull game-db [:player/stops] human-eid)) #{})
+        (let [current-stops (or (:player/stops (queries/pull-safe game-db [:player/stops] human-eid)) #{})
               new-stops (if (contains? current-stops phase)
                           (disj current-stops phase)
                           (conj current-stops phase))]

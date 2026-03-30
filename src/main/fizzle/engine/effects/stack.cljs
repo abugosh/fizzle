@@ -1,7 +1,6 @@
 (ns fizzle.engine.effects.stack
   "Stack-interaction effects: counter-spell, counter-ability, chain-bounce."
   (:require
-    [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.stack :as stack]))
@@ -19,7 +18,7 @@
           (if unless-pay
             (let [controller-eid (:db/id (:object/controller target-obj))
                   controller-id (when controller-eid
-                                  (:player/id (d/pull db [:player/id] controller-eid)))]
+                                  (:player/id (q/pull-safe db [:player/id] controller-eid)))]
               {:db db :needs-selection (assoc effect :unless-pay/controller controller-id)})
             (effects/counter-target-spell db target-id)))
         db))))
@@ -30,7 +29,7 @@
   (let [target-eid (:effect/target effect)]
     (if-not target-eid
       db
-      (if-let [stack-item (d/pull db '[*] target-eid)]
+      (if-let [stack-item (q/pull-safe db '[*] target-eid)]
         (let [item-type (:stack-item/type stack-item)
               ability-type (:stack-item/ability-type stack-item)]
           (cond
@@ -55,7 +54,7 @@
             controller-eid (when target-obj
                              (:db/id (:object/controller target-obj)))
             controller-id (when controller-eid
-                            (:player/id (d/pull db [:player/id] controller-eid)))]
+                            (:player/id (q/pull-safe db [:player/id] controller-eid)))]
         {:db db :needs-selection (cond-> effect
                                    controller-id (assoc :chain/controller controller-id)
                                    target-id (assoc :chain/target-id target-id))}))))

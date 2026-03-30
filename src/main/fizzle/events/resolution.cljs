@@ -17,7 +17,7 @@
   [game-db stack-item]
   (or (when-let [obj-ref-raw (:stack-item/object-ref stack-item)]
         (let [obj-ref (if (map? obj-ref-raw) (:db/id obj-ref-raw) obj-ref-raw)
-              obj (d/pull game-db [:object/id] obj-ref)]
+              obj (queries/pull-safe game-db [:object/id] obj-ref)]
           (:object/id obj)))
       (:stack-item/source stack-item)))
 
@@ -55,7 +55,7 @@
   [db]
   (let [game-state (queries/get-game-state db)]
     (if-let [old-val (:game/peek-result game-state)]
-      (let [game-eid (d/q '[:find ?g . :where [?g :game/id _]] db)]
+      (let [game-eid (queries/q-safe '[:find ?g . :where [?g :game/id _]] db)]
         (d/db-with db [[:db/retract game-eid :game/peek-result old-val]]))
       db)))
 

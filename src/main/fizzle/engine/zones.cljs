@@ -25,11 +25,11 @@
   [db player-id]
   (let [player-eid (q/get-player-eid db player-id)]
     (if player-eid
-      (let [library-cards (d/q '[:find ?e
-                                 :in $ ?owner
-                                 :where [?e :object/owner ?owner]
-                                 [?e :object/zone :library]]
-                               db player-eid)]
+      (let [library-cards (q/q-safe '[:find ?e
+                                      :in $ ?owner
+                                      :where [?e :object/owner ?owner]
+                                      [?e :object/zone :library]]
+                                    db player-eid)]
         (if (seq library-cards)
           (let [shuffled-eids (vec (shuffle library-cards))
                 position-txs (map-indexed (fn [pos [eid]]
@@ -67,17 +67,17 @@
             ;; Retract Datascript trigger entities when leaving battlefield
             trigger-retract-txs
             (when (= current-zone :battlefield)
-              (let [trigger-eids (d/q '[:find [?t ...]
-                                        :in $ ?obj
-                                        :where [?obj :object/triggers ?t]]
-                                      db obj-eid)]
+              (let [trigger-eids (q/q-safe '[:find [?t ...]
+                                             :in $ ?obj
+                                             :where [?obj :object/triggers ?t]]
+                                           db obj-eid)]
                 (mapv (fn [teid] [:db.fn/retractEntity teid]) trigger-eids)))
             ;; Retract creature fields when leaving battlefield
             creature-leave-txs
             (when (= current-zone :battlefield)
-              (let [obj (d/pull db [:object/power :object/toughness
-                                    :object/summoning-sick :object/damage-marked
-                                    :object/attacking :object/blocking] obj-eid)]
+              (let [obj (q/pull-safe db [:object/power :object/toughness
+                                         :object/summoning-sick :object/damage-marked
+                                         :object/attacking :object/blocking] obj-eid)]
                 (cond-> []
                   (some? (:object/power obj))
                   (conj [:db/retract obj-eid :object/power (:object/power obj)])
@@ -94,7 +94,7 @@
             ;; Add creature fields when entering battlefield
             creature-enter-txs
             (when (= new-zone :battlefield)
-              (let [card (d/pull db [{:object/card [:card/types :card/power :card/toughness]}] obj-eid)
+              (let [card (q/pull-safe db [{:object/card [:card/types :card/power :card/toughness]}] obj-eid)
                     card-data (:object/card card)
                     card-types (set (:card/types card-data))]
                 (when (contains? card-types :creature)
@@ -123,12 +123,12 @@
    Pure function: (db, object-id, player-id) -> db"
   [db object-id player-id]
   (let [player-eid (q/get-player-eid db player-id)
-        max-pos (or (d/q '[:find (max ?pos) .
-                           :in $ ?owner
-                           :where [?e :object/owner ?owner]
-                           [?e :object/zone :library]
-                           [?e :object/position ?pos]]
-                         db player-eid)
+        max-pos (or (q/q-safe '[:find (max ?pos) .
+                                :in $ ?owner
+                                :where [?e :object/owner ?owner]
+                                [?e :object/zone :library]
+                                [?e :object/position ?pos]]
+                              db player-eid)
                     -1)
         db (move-to-zone db object-id :library)
         obj-eid (q/get-object-eid db object-id)]

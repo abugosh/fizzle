@@ -88,14 +88,14 @@
    and :game/winner set atomically. The winner is the other player (not the loser).
    If no other player exists, only sets :game/loss-condition."
   [db condition losing-player-id]
-  (let [game-eid (d/q '[:find ?e .
-                        :where [?e :game/id _]]
-                      db)
-        winner-eid (d/q '[:find ?e .
-                          :in $ ?loser-pid
-                          :where [?e :player/id ?pid]
-                          [(not= ?pid ?loser-pid)]]
-                        db losing-player-id)
+  (let [game-eid (q/q-safe '[:find ?e .
+                             :where [?e :game/id _]]
+                           db)
+        winner-eid (q/q-safe '[:find ?e .
+                               :in $ ?loser-pid
+                               :where [?e :player/id ?pid]
+                               [(not= ?pid ?loser-pid)]]
+                             db losing-player-id)
         txs (cond-> [[:db/add game-eid :game/loss-condition condition]]
               winner-eid (conj [:db/add game-eid :game/winner winner-eid]))]
     (d/db-with db txs)))
@@ -109,10 +109,10 @@
     ;; Don't fire if game already has a loss condition (prevents infinite loop)
     (if (:game/loss-condition game)
       []
-      (let [players (d/q '[:find ?pid ?life
-                           :where [?e :player/id ?pid]
-                           [?e :player/life ?life]]
-                         db)]
+      (let [players (q/q-safe '[:find ?pid ?life
+                                :where [?e :player/id ?pid]
+                                [?e :player/life ?life]]
+                              db)]
         (into []
               (comp
                 (filter (fn [[_pid life]] (<= life 0)))
@@ -133,10 +133,10 @@
     ;; Don't fire if game already has a loss condition
     (if (:game/loss-condition game)
       []
-      (let [flagged (d/q '[:find ?pid
-                           :where [?e :player/id ?pid]
-                           [?e :player/drew-from-empty true]]
-                         db)]
+      (let [flagged (q/q-safe '[:find ?pid
+                                :where [?e :player/id ?pid]
+                                [?e :player/drew-from-empty true]]
+                              db)]
         (mapv (fn [[pid]] {:sba/type :empty-library :sba/player-id pid})
               flagged)))))
 
@@ -155,12 +155,12 @@
 
 (defmethod check-sba :token-cleanup
   [db _type]
-  (let [tokens-outside-bf (d/q '[:find ?oid ?zone
-                                 :where [?e :object/is-token true]
-                                 [?e :object/id ?oid]
-                                 [?e :object/zone ?zone]
-                                 [(not= ?zone :battlefield)]]
-                               db)]
+  (let [tokens-outside-bf (q/q-safe '[:find ?oid ?zone
+                                      :where [?e :object/is-token true]
+                                      [?e :object/id ?oid]
+                                      [?e :object/zone ?zone]
+                                      [(not= ?zone :battlefield)]]
+                                    db)]
     (mapv (fn [[oid _zone]] {:sba/type :token-cleanup :sba/target oid})
           tokens-outside-bf)))
 
@@ -170,7 +170,7 @@
   (let [token-id (:sba/target sba)]
     (if-let [token-eid (q/get-object-eid db token-id)]
       ;; Retract the token entity and its synthetic card entity
-      (let [obj (d/pull db [{:object/card [:db/id]}] token-eid)
+      (let [obj (q/pull-safe db [{:object/card [:db/id]}] token-eid)
             card-eid (get-in obj [:object/card :db/id])
             txs (cond-> [[:db.fn/retractEntity token-eid]]
                   card-eid (conj [:db.fn/retractEntity card-eid]))]
@@ -183,12 +183,12 @@
 
 (defmethod check-sba :lethal-damage
   [db _type]
-  (let [damaged (d/q '[:find ?oid ?dmg
-                       :where [?e :object/zone :battlefield]
-                       [?e :object/id ?oid]
-                       [?e :object/damage-marked ?dmg]
-                       [(> ?dmg 0)]]
-                     db)]
+  (let [damaged (q/q-safe '[:find ?oid ?dmg
+                            :where [?e :object/zone :battlefield]
+                            [?e :object/id ?oid]
+                            [?e :object/damage-marked ?dmg]
+                            [(> ?dmg 0)]]
+                          db)]
     (into []
           (comp
             (filter (fn [[oid dmg]]
@@ -211,10 +211,10 @@
 
 (defmethod check-sba :zero-toughness
   [db _type]
-  (let [bf-creatures (d/q '[:find [?oid ...]
-                            :where [?e :object/zone :battlefield]
-                            [?e :object/id ?oid]]
-                          db)]
+  (let [bf-creatures (q/q-safe '[:find [?oid ...]
+                                 :where [?e :object/zone :battlefield]
+                                 [?e :object/id ?oid]]
+                               db)]
     (into []
           (comp
             (filter (fn [oid]
@@ -252,11 +252,11 @@
    Prevents duplicate triggers from firing every SBA cycle."
   [db object-id _description]
   (boolean
-    (d/q '[:find ?e .
-           :in $ ?src
-           :where [?e :stack-item/type :state-check-trigger]
-           [?e :stack-item/source ?src]]
-         db object-id)))
+    (q/q-safe '[:find ?e .
+                :in $ ?src
+                :where [?e :stack-item/type :state-check-trigger]
+                [?e :stack-item/source ?src]]
+              db object-id)))
 
 
 (defn- check-state-condition
@@ -297,10 +297,10 @@
 (defmethod check-sba :state-check-trigger
   [db _type]
   ;; Find all battlefield objects and check their state triggers
-  (let [bf-objects (d/q '[:find [?oid ...]
-                          :where [?e :object/zone :battlefield]
-                          [?e :object/id ?oid]]
-                        db)]
+  (let [bf-objects (q/q-safe '[:find [?oid ...]
+                               :where [?e :object/zone :battlefield]
+                               [?e :object/id ?oid]]
+                             db)]
     (into []
           (mapcat (fn [oid]
                     (let [obj (q/get-object db oid)

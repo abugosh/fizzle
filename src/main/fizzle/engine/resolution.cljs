@@ -135,10 +135,10 @@
       (if (= destination :battlefield)
         (let [controller-ref (:object/controller obj)
               controller-eid (if (map? controller-ref) (:db/id controller-ref) controller-ref)
-              controller-id (d/q '[:find ?pid .
-                                   :in $ ?e
-                                   :where [?e :player/id ?pid]]
-                                 db-after-move controller-eid)
+              controller-id (queries/q-safe '[:find ?pid .
+                                              :in $ ?e
+                                              :where [?e :player/id ?pid]]
+                                            db-after-move controller-eid)
               ;; Register persistent triggers (e.g., becomes-tapped, land-entered)
               db-with-triggers (if (seq (:card/triggers card))
                                  (let [obj-eid (queries/get-object-eid db-after-move object-id)
@@ -206,7 +206,7 @@
   (let [obj-ref-raw (:stack-item/object-ref stack-item)
         obj-ref (if (map? obj-ref-raw) (:db/id obj-ref-raw) obj-ref-raw)
         obj (when obj-ref
-              (let [pulled (d/pull db [:object/id] obj-ref)]
+              (let [pulled (queries/pull-safe db [:object/id] obj-ref)]
                 (when (:object/id pulled)
                   (queries/get-object db (:object/id pulled)))))]
     (if-not obj

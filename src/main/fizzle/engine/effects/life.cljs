@@ -73,7 +73,7 @@
               cmc (or (:card/cmc card) 0)
               controller-eid (:db/id (:object/controller target-obj))
               controller-id (when controller-eid
-                              (:player/id (d/pull db [:player/id] controller-eid)))]
+                              (:player/id (q/pull-safe db [:player/id] controller-eid)))]
           (if (or (<= cmc 0) (nil? controller-id))
             db
             (let [current-life (q/get-life-total db controller-id)

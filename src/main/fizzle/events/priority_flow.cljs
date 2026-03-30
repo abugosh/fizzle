@@ -22,7 +22,7 @@
   "Check if a player has a stop set for a given phase.
    Returns true if the player's :player/stops contains the phase."
   [db player-eid phase]
-  (let [stops (:player/stops (d/pull db [:player/stops] player-eid))]
+  (let [stops (:player/stops (queries/pull-safe db [:player/stops] player-eid))]
     (boolean (and stops (contains? stops phase)))))
 
 
@@ -38,7 +38,7 @@
    Returns true if the player's :player/opponent-stops contains the phase.
    Returns false when :player/opponent-stops is nil (e.g., bot entity)."
   [db player-eid phase]
-  (let [stops (:player/opponent-stops (d/pull db [:player/opponent-stops] player-eid))]
+  (let [stops (:player/opponent-stops (queries/pull-safe db [:player/opponent-stops] player-eid))]
     (boolean (and stops (contains? stops phase)))))
 
 

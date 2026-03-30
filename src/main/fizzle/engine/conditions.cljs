@@ -5,7 +5,6 @@
    Conditions are used by effects (:effect/condition) and abilities (:ability/condition).
    All functions are pure: (db, player-id, condition) -> boolean"
   (:require
-    [datascript.core :as d]
     [fizzle.db.queries :as q]))
 
 
@@ -48,10 +47,10 @@
       (let [target-id (:condition/target condition)
             counter-type (:condition/counter-type condition)]
         (if-let [obj-eid (q/get-object-eid db target-id)]
-          (let [counters (or (d/q '[:find ?c .
-                                    :in $ ?e
-                                    :where [?e :object/counters ?c]]
-                                  db obj-eid)
+          (let [counters (or (q/q-safe '[:find ?c .
+                                         :in $ ?e
+                                         :where [?e :object/counters ?c]]
+                                       db obj-eid)
                              {})
                 count-value (get counters counter-type 0)]
             (<= count-value 0))

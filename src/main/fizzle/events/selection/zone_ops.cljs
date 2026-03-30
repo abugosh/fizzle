@@ -179,7 +179,7 @@
                 copy-obj-ref (let [raw (:stack-item/object-ref copy-stack-item)]
                                (if (map? raw) (:db/id raw) raw))
                 copy-object-id (when copy-obj-ref
-                                 (:object/id (d/pull db [:object/id] copy-obj-ref)))]
+                                 (:object/id (queries/pull-safe db [:object/id] copy-obj-ref)))]
             (build-chain-bounce-target-selection
               db chain-controller spell-id
               copy-object-id (:db/id copy-stack-item))))))))

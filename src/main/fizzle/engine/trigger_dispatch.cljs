@@ -6,7 +6,6 @@
 
    All triggers are Datascript entities. Dispatch queries Datascript directly."
   (:require
-    [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.trigger-db :as trigger-db]
@@ -64,16 +63,16 @@
     (cond-> trigger
       controller-eid
       (assoc :trigger/controller
-             (d/q '[:find ?pid .
-                    :in $ ?e
-                    :where [?e :player/id ?pid]]
-                  db controller-eid))
+             (q/q-safe '[:find ?pid .
+                         :in $ ?e
+                         :where [?e :player/id ?pid]]
+                       db controller-eid))
       source-eid
       (assoc :trigger/source
-             (d/q '[:find ?oid .
-                    :in $ ?e
-                    :where [?e :object/id ?oid]]
-                  db source-eid)))))
+             (q/q-safe '[:find ?oid .
+                         :in $ ?e
+                         :where [?e :object/id ?oid]]
+                       db source-eid)))))
 
 
 (defn- registry-trigger->stack-trigger

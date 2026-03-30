@@ -7,7 +7,6 @@
    Currently supports :cost-modifier type for cards like Sphere of Resistance,
    Defense Grid, and Chill."
   (:require
-    [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.conditions :as conditions]))
 
@@ -126,8 +125,8 @@
    Checks conditions (e.g., threshold) against the object's controller.
    Returns vector of {:power N :toughness N} maps for applicable modifiers."
   [db object-eid]
-  (let [obj (d/pull db '[{:object/card [:card/static-abilities]}
-                         {:object/controller [:player/id]}] object-eid)
+  (let [obj (q/pull-safe db '[{:object/card [:card/static-abilities]}
+                              {:object/controller [:player/id]}] object-eid)
         abilities (get-in obj [:object/card :card/static-abilities])
         controller-id (get-in obj [:object/controller :player/id])]
     (if (seq abilities)

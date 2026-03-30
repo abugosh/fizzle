@@ -9,7 +9,7 @@
    Zone contents are plain vectors of object maps.
    Library is sorted ascending by :object/position (index 0 = top)."
   (:require
-    [datascript.core :as d]))
+    [fizzle.db.queries :as queries]))
 
 
 ;; ---------------------------------------------------------------------------
@@ -18,26 +18,26 @@
 (defn- resolve-player-ref
   "Given a db and a raw player entity ID (integer), return the :player/id keyword."
   [db eid]
-  (d/q '[:find ?pid .
-         :in $ ?e
-         :where [?e :player/id ?pid]]
-       db eid))
+  (queries/q-safe '[:find ?pid .
+                    :in $ ?e
+                    :where [?e :player/id ?pid]]
+                  db eid))
 
 
 (defn- all-player-ids
   "Return all :player/id keywords in the db."
   [db]
-  (d/q '[:find [?pid ...]
-         :where [_ :player/id ?pid]]
-       db))
+  (queries/q-safe '[:find [?pid ...]
+                    :where [_ :player/id ?pid]]
+                  db))
 
 
 (defn- player-eid
   [db player-id]
-  (d/q '[:find ?e .
-         :in $ ?pid
-         :where [?e :player/id ?pid]]
-       db player-id))
+  (queries/q-safe '[:find ?e .
+                    :in $ ?pid
+                    :where [?e :player/id ?pid]]
+                  db player-id))
 
 
 (defn- pull-card-id
@@ -56,10 +56,10 @@
   (let [card-id (or (pull-card-id (:object/card obj))
                     ;; card may be stored as eid integer
                     (when (integer? (:object/card obj))
-                      (d/q '[:find ?cid .
-                             :in $ ?e
-                             :where [?e :card/id ?cid]]
-                           db (:object/card obj))))
+                      (queries/q-safe '[:find ?cid .
+                                        :in $ ?e
+                                        :where [?e :card/id ?cid]]
+                                      db (:object/card obj))))
         owner-id (cond
                    (map? (:object/owner obj))      (:player/id (:object/owner obj))
                    (integer? (:object/owner obj))  (resolve-player-ref db (:object/owner obj))
@@ -84,13 +84,13 @@
   "Return pulled objects for player-id in the given zone."
   [db pid zone]
   (let [peid (player-eid db pid)]
-    (->> (d/q '[:find [(pull ?obj [* {:object/card [:card/id]}
-                                   {:object/owner [:player/id]}
-                                   {:object/controller [:player/id]}]) ...]
-                :in $ ?owner ?zone
-                :where [?obj :object/owner ?owner]
-                [?obj :object/zone ?zone]]
-              db peid zone)
+    (->> (queries/q-safe '[:find [(pull ?obj [* {:object/card [:card/id]}
+                                              {:object/owner [:player/id]}
+                                              {:object/controller [:player/id]}]) ...]
+                           :in $ ?owner ?zone
+                           :where [?obj :object/owner ?owner]
+                           [?obj :object/zone ?zone]]
+                         db peid zone)
          (mapv #(extract-object db %)))))
 
 
@@ -106,17 +106,17 @@
   "Extract full state for one player."
   [db pid]
   (let [peid (player-eid db pid)
-        p    (d/pull db [:player/life
-                         :player/mana-pool
-                         :player/storm-count
-                         :player/land-plays-left
-                         :player/max-hand-size
-                         :player/grants
-                         :player/is-opponent
-                         :player/bot-archetype
-                         :player/stops
-                         :player/drew-from-empty]
-                     peid)]
+        p    (queries/pull-safe db [:player/life
+                                    :player/mana-pool
+                                    :player/storm-count
+                                    :player/land-plays-left
+                                    :player/max-hand-size
+                                    :player/grants
+                                    :player/is-opponent
+                                    :player/bot-archetype
+                                    :player/stops
+                                    :player/drew-from-empty]
+                                peid)]
     (-> p
         (dissoc :db/id)
         (update :player/grants         #(or % []))
@@ -146,16 +146,16 @@
     :game/human-player-id keyword
     :players            {:player-id {player-state + zones}}}"
   [db]
-  (let [game   (d/pull db [:game/turn
-                           :game/phase
-                           :game/step
-                           :game/auto-mode
-                           :game/loss-condition
-                           {:game/active-player [:player/id]}
-                           {:game/priority      [:player/id]}
-                           {:game/winner        [:player/id]}
-                           :game/human-player-id]
-                       [:game/id :game-1])
+  (let [game   (queries/pull-safe db [:game/turn
+                                      :game/phase
+                                      :game/step
+                                      :game/auto-mode
+                                      :game/loss-condition
+                                      {:game/active-player [:player/id]}
+                                      {:game/priority      [:player/id]}
+                                      {:game/winner        [:player/id]}
+                                      :game/human-player-id]
+                                  [:game/id :game-1])
         pids   (all-player-ids db)]
     {:game/turn           (:game/turn game)
      :game/phase          (:game/phase game)

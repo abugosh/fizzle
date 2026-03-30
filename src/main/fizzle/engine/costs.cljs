@@ -13,20 +13,20 @@
    Returns nil if object doesn't exist."
   [db object-id]
   (when-let [obj-eid (q/get-object-eid db object-id)]
-    (d/q '[:find ?c .
-           :in $ ?e
-           :where [?e :object/controller ?c]]
-         db obj-eid)))
+    (q/q-safe '[:find ?c .
+                :in $ ?e
+                :where [?e :object/controller ?c]]
+              db obj-eid)))
 
 
 (defn get-player-id-from-eid
   "Get the :player/id for a player entity.
    Returns nil if entity is not a player."
   [db player-eid]
-  (d/q '[:find ?pid .
-         :in $ ?e
-         :where [?e :player/id ?pid]]
-       db player-eid))
+  (q/q-safe '[:find ?pid .
+              :in $ ?e
+              :where [?e :player/id ?pid]]
+            db player-eid))
 
 
 (defmulti pay-cost
@@ -67,10 +67,10 @@
   ;; 1. Object exists
   ;; 2. Object is not already tapped
   (if-let [obj-eid (q/get-object-eid db object-id)]
-    (let [tapped (d/q '[:find ?tapped .
-                        :in $ ?e
-                        :where [?e :object/tapped ?tapped]]
-                      db obj-eid)]
+    (let [tapped (q/q-safe '[:find ?tapped .
+                             :in $ ?e
+                             :where [?e :object/tapped ?tapped]]
+                           db obj-eid)]
       (not tapped))
     false))
 
@@ -90,10 +90,10 @@
   ;; 2. Object has sufficient counters of required type(s)
   (if-let [obj-eid (q/get-object-eid db object-id)]
     (let [required (:remove-counter cost)
-          current (or (d/q '[:find ?c .
-                             :in $ ?e
-                             :where [?e :object/counters ?c]]
-                           db obj-eid)
+          current (or (q/q-safe '[:find ?c .
+                                  :in $ ?e
+                                  :where [?e :object/counters ?c]]
+                                db obj-eid)
                       {})]
       (every? (fn [[counter-type amount]]
                 (>= (get current counter-type 0) amount))
@@ -106,10 +106,10 @@
   (when (can-pay? db object-id cost)
     (let [obj-eid (q/get-object-eid db object-id)
           required (:remove-counter cost)
-          current (or (d/q '[:find ?c .
-                             :in $ ?e
-                             :where [?e :object/counters ?c]]
-                           db obj-eid)
+          current (or (q/q-safe '[:find ?c .
+                                  :in $ ?e
+                                  :where [?e :object/counters ?c]]
+                                db obj-eid)
                       {})
           new-counters (merge-with - current required)]
       (d/db-with db [[:db/add obj-eid :object/counters new-counters]]))))
@@ -122,10 +122,10 @@
   ;; 1. Object exists
   ;; 2. Object is on the battlefield
   (if-let [obj-eid (q/get-object-eid db object-id)]
-    (= :battlefield (d/q '[:find ?z .
-                           :in $ ?e
-                           :where [?e :object/zone ?z]]
-                         db obj-eid))
+    (= :battlefield (q/q-safe '[:find ?z .
+                                :in $ ?e
+                                :where [?e :object/zone ?z]]
+                              db obj-eid))
     false))
 
 
@@ -144,10 +144,10 @@
   ;; 2. Object is on the battlefield
   ;; Note: Can always discard hand (even if empty)
   (if-let [obj-eid (q/get-object-eid db object-id)]
-    (= :battlefield (d/q '[:find ?z .
-                           :in $ ?e
-                           :where [?e :object/zone ?z]]
-                         db obj-eid))
+    (= :battlefield (q/q-safe '[:find ?z .
+                                :in $ ?e
+                                :where [?e :object/zone ?z]]
+                              db obj-eid))
     false))
 
 
@@ -158,17 +158,17 @@
   ;; The object may have been sacrificed by a prior cost (:sacrifice-self),
   ;; so we can't re-check zone. We just need the controller reference.
   (if-let [obj-eid (q/get-object-eid db object-id)]
-    (let [controller-eid (d/q '[:find ?c .
-                                :in $ ?e
-                                :where [?e :object/controller ?c]]
-                              db obj-eid)
+    (let [controller-eid (q/q-safe '[:find ?c .
+                                     :in $ ?e
+                                     :where [?e :object/controller ?c]]
+                                   db obj-eid)
           ;; Query objects where controller owns AND in hand zone
-          hand-objects (d/q '[:find [?e ...]
-                              :in $ ?owner
-                              :where [?e :object/owner ?owner]
-                              [?e :object/zone ?zone]
-                              [(= ?zone :hand)]]
-                            db controller-eid)]
+          hand-objects (q/q-safe '[:find [?e ...]
+                                   :in $ ?owner
+                                   :where [?e :object/owner ?owner]
+                                   [?e :object/zone ?zone]
+                                   [(= ?zone :hand)]]
+                                 db controller-eid)]
       (if (seq hand-objects)
         (d/db-with db (mapv (fn [eid] [:db/add eid :object/zone :graveyard])
                             hand-objects))
@@ -184,14 +184,14 @@
   ;; 2. Controller has life >= required amount
   ;; Note: Can pay life even if it would reduce to 0 (MTG rules)
   (if-let [obj-eid (q/get-object-eid db object-id)]
-    (let [controller-eid (d/q '[:find ?c .
-                                :in $ ?e
-                                :where [?e :object/controller ?c]]
-                              db obj-eid)
-          current-life (d/q '[:find ?life .
-                              :in $ ?p
-                              :where [?p :player/life ?life]]
-                            db controller-eid)
+    (let [controller-eid (q/q-safe '[:find ?c .
+                                     :in $ ?e
+                                     :where [?e :object/controller ?c]]
+                                   db obj-eid)
+          current-life (q/q-safe '[:find ?life .
+                                   :in $ ?p
+                                   :where [?p :player/life ?life]]
+                                 db controller-eid)
           required (:pay-life cost)]
       (>= (or current-life 0) required))
     false))
@@ -204,14 +204,14 @@
   ;; The object may have been sacrificed by a prior cost (:sacrifice-self),
   ;; so we can't re-check zone. We just need the controller reference.
   (if-let [obj-eid (q/get-object-eid db object-id)]
-    (let [controller-eid (d/q '[:find ?c .
-                                :in $ ?e
-                                :where [?e :object/controller ?c]]
-                              db obj-eid)
-          current-life (d/q '[:find ?life .
-                              :in $ ?p
-                              :where [?p :player/life ?life]]
-                            db controller-eid)
+    (let [controller-eid (q/q-safe '[:find ?c .
+                                     :in $ ?e
+                                     :where [?e :object/controller ?c]]
+                                   db obj-eid)
+          current-life (q/q-safe '[:find ?life .
+                                   :in $ ?p
+                                   :where [?p :player/life ?life]]
+                                 db controller-eid)
           required (:pay-life cost)
           new-life (- current-life required)]
       (d/db-with db [[:db/add controller-eid :player/life new-life]]))
@@ -227,14 +227,14 @@
   ;; 3. Remaining mana covers generic (:colorless) portion
   ;; The :colorless key is treated as generic mana (payable by any color).
   (if-let [obj-eid (q/get-object-eid db object-id)]
-    (let [controller-eid (d/q '[:find ?c .
-                                :in $ ?e
-                                :where [?e :object/controller ?c]]
-                              db obj-eid)
-          current-pool (or (d/q '[:find ?pool .
-                                  :in $ ?p
-                                  :where [?p :player/mana-pool ?pool]]
-                                db controller-eid)
+    (let [controller-eid (q/q-safe '[:find ?c .
+                                     :in $ ?e
+                                     :where [?e :object/controller ?c]]
+                                   db obj-eid)
+          current-pool (or (q/q-safe '[:find ?pool .
+                                       :in $ ?p
+                                       :where [?p :player/mana-pool ?pool]]
+                                     db controller-eid)
                            {})
           required (:mana cost)
           generic (get required :colorless 0)
@@ -253,14 +253,14 @@
   ;; NOTE: No can-pay? guard here - by the time pay-cost is called,
   ;; can-activate? has already verified all costs are payable.
   (if-let [obj-eid (q/get-object-eid db object-id)]
-    (let [controller-eid (d/q '[:find ?c .
-                                :in $ ?e
-                                :where [?e :object/controller ?c]]
-                              db obj-eid)
-          current-pool (or (d/q '[:find ?pool .
-                                  :in $ ?p
-                                  :where [?p :player/mana-pool ?pool]]
-                                db controller-eid)
+    (let [controller-eid (q/q-safe '[:find ?c .
+                                     :in $ ?e
+                                     :where [?e :object/controller ?c]]
+                                   db obj-eid)
+          current-pool (or (q/q-safe '[:find ?pool .
+                                       :in $ ?p
+                                       :where [?p :player/mana-pool ?pool]]
+                                     db controller-eid)
                            {})
           required (:mana cost)
           new-pool (merge-with - current-pool required)]

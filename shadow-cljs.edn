@@ -16,8 +16,7 @@
   {:target :browser
    :output-dir "resources/public/js"
    :asset-path "/js"
-   :modules {:main {:init-fn fizzle.core/init}}
-   :release {:compiler-options {:optimizations :simple}}}
+   :modules {:main {:init-fn fizzle.core/init}}}
 
   :test
   {:target :node-test

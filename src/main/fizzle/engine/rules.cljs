@@ -551,11 +551,11 @@
         phase (:game/phase game-state)
         active-player-id (q/get-active-player-id db)
         player-eid (q/get-player-eid db player-id)
-        land-plays (d/q '[:find ?plays .
-                          :in $ ?pid
-                          :where [?e :player/id ?pid]
-                          [?e :player/land-plays-left ?plays]]
-                        db player-id)
+        land-plays (q/q-safe '[:find ?plays .
+                               :in $ ?pid
+                               :where [?e :player/id ?pid]
+                               [?e :player/land-plays-left ?plays]]
+                             db player-id)
         obj (q/get-object db object-id)
         owner-eid (:db/id (:object/owner obj))]
     (boolean

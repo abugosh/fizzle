@@ -5,6 +5,7 @@
     [datascript.core :as d]
     [fizzle.bots.protocol :as bot-protocol]
     [fizzle.db.game-state :as game-state]
+    [fizzle.db.queries :as queries]
     [fizzle.db.schema :refer [schema]]
     [fizzle.db.storage :as storage]
     [fizzle.engine.card-spec :as card-spec]
@@ -50,7 +51,7 @@
 (defn- get-card-eid
   "Look up a card's entity ID by its :card/id keyword."
   [db card-id]
-  (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] db card-id))
+  (queries/q-safe '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] db card-id))
 
 
 (defn- objects-tx
