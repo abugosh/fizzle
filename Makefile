@@ -1,4 +1,4 @@
-.PHONY: repl dev test clean help lint fmt-check fmt validate build-css lint-test-paths
+.PHONY: repl dev test clean help lint fmt-check fmt validate build-css lint-test-paths release
 
 # Detect Java - try common locations
 JAVA_HOME ?= $(shell \
@@ -37,6 +37,9 @@ test:
 build-css:
 	mkdir -p resources/public/css
 	npx postcss src/css/app.css -o resources/public/css/app.css
+
+release: clean build-css
+	npx shadow-cljs release app
 
 clean:
 	rm -rf out/ .shadow-cljs/ resources/public/js/ resources/public/css/
