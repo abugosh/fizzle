@@ -9,9 +9,7 @@
    in fizzle-psno). Auto-mode is removed — the director uses yield-all? flag."
   (:require
     [datascript.core :as d]
-    [fizzle.db.game-state :as game-state]
     [fizzle.db.queries :as queries]
-    [fizzle.engine.priority :as priority]
     [fizzle.events.casting :as casting]
     [fizzle.events.director :as director]
     [fizzle.events.selection.core :as sel-core]
@@ -60,38 +58,13 @@
   {:db (:app-db result)})
 
 
-(defn- yield-human-priority
-  "Record the human player's priority pass in game-db.
-   When the human explicitly yields (clicking pass), we must record the pass
-   before running the director, since the director pauses at human stops
-   and only auto-passes when not at a stop. This pre-pass tells the director
-   the human has already decided to pass for this priority window.
-   Returns updated app-db."
-  [app-db]
-  (let [game-db (:game/db app-db)
-        human-eid (queries/get-player-eid game-db game-state/human-player-id)
-        holder-eid (priority/get-priority-holder-eid game-db)]
-    (if (and human-eid (= holder-eid human-eid))
-      (let [passed-db (priority/yield-priority game-db human-eid)
-            all-passed? (priority/both-passed? passed-db)]
-        (if all-passed?
-          (let [active-pid (queries/get-active-player-id passed-db)
-                active-eid (queries/get-player-eid passed-db active-pid)
-                reset-db (-> passed-db
-                             priority/reset-passes
-                             (priority/set-priority-holder active-eid))]
-            (assoc app-db :game/db reset-db))
-          (assoc app-db :game/db (priority/transfer-priority passed-db human-eid))))
-      app-db)))
-
-
 (rf/reg-event-fx
   ::yield
   (fn [{:keys [db]} _]
     (if (:game/pending-selection db)
       {:db db}
       (apply-director-result
-        (director/run-to-decision (yield-human-priority db) {:yield-all? false})))))
+        (director/run-to-decision db {:yield-all? false :human-yielded? true})))))
 
 
 (rf/reg-event-fx

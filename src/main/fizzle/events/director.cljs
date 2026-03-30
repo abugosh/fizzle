@@ -201,7 +201,7 @@
 
 
 (defn- step-human-action
-  [app-db game-db human-pid yield-all?]
+  [app-db game-db human-pid yield-all? human-yielded?]
   (let [human-eid (queries/get-player-eid game-db human-pid)
         human-stops (get-player-stops game-db human-eid)
         active-pid (queries/get-active-player-id game-db)
@@ -210,7 +210,9 @@
         ;; On opponent's turn: only opponent-stops can pause (own stops don't apply)
         ;; On own turn: only own stops can pause (opponent-stops don't apply)
         effective-stops (if on-opp-turn? opp-stops human-stops)
-        auto-pass? (human-should-auto-pass game-db human-eid effective-stops yield-all?)]
+        ;; human-yielded?: human explicitly clicked Yield — auto-pass once regardless of stops
+        auto-pass? (or human-yielded?
+                       (human-should-auto-pass game-db human-eid effective-stops yield-all?))]
     (if-not auto-pass?
       {:done {:app-db app-db :reason :await-human}}
       (let [holder-eid (priority/get-priority-holder-eid game-db)
@@ -272,7 +274,9 @@
    Pure function: (app-db, opts) -> {:app-db, :reason}
 
    opts:
-     :yield-all? -- true for F6 mode: human auto-passes all stops
+     :yield-all?     -- true for F6 mode: human auto-passes all stops
+     :human-yielded? -- true when human explicitly clicked Yield: auto-pass once
+                        (skip current stop, then stops apply normally)
 
    Reasons:
      :await-human       -- human has a stop at current phase
@@ -283,9 +287,11 @@
   (let [app-db (dissoc app-db :yield/epoch :yield/step-count
                        :bot/action-pending? :bot/action-count)
         human-pid game-state/human-player-id
-        yield-all-init? (boolean (:yield-all? opts))]
+        yield-all-init? (boolean (:yield-all? opts))
+        human-yielded-init? (boolean (:human-yielded? opts))]
     (loop [app-db app-db
            yield-all? yield-all-init?
+           human-yielded? human-yielded-init?
            steps 0]
       (cond
         (>= steps max-director-steps)
@@ -311,7 +317,8 @@
                     (step-bot-action app-db game-db holder-pid yield-all?)
 
                     (= holder-pid human-pid)
-                    (step-human-action app-db game-db human-pid yield-all?)
+                    (step-human-action app-db game-db human-pid
+                                       yield-all? human-yielded?)
 
                     :else
                     {:done {:app-db app-db :reason :await-human}})]
@@ -319,4 +326,5 @@
                 (:done step-result)
                 (recur (:continue step-result)
                        (:yield-all? step-result)
+                       false ; human-yielded? consumed after first human action
                        (inc steps))))))))))
