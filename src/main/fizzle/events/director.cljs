@@ -117,10 +117,20 @@
                                   {:player-id player-id
                                    :object-id (:object-id action)
                                    :target (:target action)})]
-                (if (:game/pending-selection cast-result)
+                (cond
+                  ;; Cast created a selection (targeting, etc.)
+                  (:game/pending-selection cast-result)
                   {:action-type :cast-spell
                    :game-db db-tapped
                    :pending-selection (:game/pending-selection cast-result)}
+
+                  ;; Cast failed (e.g., can't cast during untap) — treat as pass,
+                  ;; use original game-db (don't keep the tapped lands from failed attempt)
+                  (identical? (:game/db cast-result) db-tapped)
+                  {:action-type :pass :game-db game-db}
+
+                  ;; Cast succeeded — spell is on the stack
+                  :else
                   {:action-type :cast-spell
                    :game-db (sba/check-and-execute-sbas (:game/db cast-result))})))))))))
 
@@ -344,5 +354,6 @@
                 (recur (:continue step-result)
                        (:yield-all? step-result)
                        (:yield-through-stack? step-result)
-                       false ; human-yielded? consumed after first human action
+                       ;; Only consume human-yielded? after a human action, not bot actions
+                       (if (= holder-pid human-pid) false human-yielded?)
                        (inc steps))))))))))
