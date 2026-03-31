@@ -67,6 +67,7 @@ make lint       # Run clj-kondo linter
 make fmt        # Auto-fix formatting (cljstyle)
 make validate   # lint + format check + tests (the full pre-commit gauntlet)
 make repl       # Start a ClojureScript REPL
+make arch       # Browse architecture diagrams (LikeC4 dev server)
 make release    # Production build
 make clean      # Remove build artifacts
 ```
@@ -149,6 +150,14 @@ src/main/fizzle/
   views/                 # Reagent UI components
     selection/           # Selection UI (zone-pick, accumulator, reorder)
   subs/                  # re-frame subscriptions (derived state)
+```
+
+### Architecture Diagrams
+
+Interactive architecture diagrams are maintained as [LikeC4](https://likec4.dev/) models in `docs/arch/`. To browse them locally:
+
+```bash
+make arch    # Starts the LikeC4 dev server
 ```
 
 ### Architecture Decision Records

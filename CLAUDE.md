@@ -38,6 +38,7 @@ make repl      # Start node REPL - ready to eval immediately
 make dev       # Start browser dev server with hot reload
 make test      # Run all tests
 make clean     # Remove build artifacts (out/, .shadow-cljs/)
+make arch      # Start LikeC4 architecture diagram server (docs/arch/)
 
 # Validation
 make lint      # Run clj-kondo linter

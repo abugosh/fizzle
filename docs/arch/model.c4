@@ -7,7 +7,7 @@ model {
   extend fizzle {
     // Top-level relationships between components
     views_ui -> subs 'subscribes to derived game state'
-    views_ui -> events_game 'dispatches game action events'
+    views_ui -> events_game 'dispatches game action events to casting, phases, priority_flow, and other event modules'
     views_ui -> events_selection 'dispatches selection interaction events'
     views_ui -> events_abilities 'dispatches ability activation events'
     subs -> db 'queries Datascript entities for derived state'
@@ -21,9 +21,9 @@ model {
     events_abilities -> db 'reads and writes Datascript game state'
     engine -> db 'reads Datascript for rules evaluation'
     engine -> cards 'looks up card definitions from registry'
-    bots -> events_game 'dispatches same events as human players'
+    bots -> events_game 'dispatches same casting, land-play, and priority events as human players; director calls bot-decide-action inline'
     bots -> engine 'queries game state for decision making'
-    history -> events_game 'intercepts events for history tracking (orthogonal, transparent)'
+    history -> events_game 'intercepts re-frame events across all event modules for history tracking (orthogonal, transparent)'
     sharing -> db 'reads schema for reconstruction, uses storage for persistence'
     sharing -> engine 'uses card lookup, trigger registration, and turn state for restoration'
     views_ui -> sharing 'dispatches save/load snapshot commands'

@@ -1,4 +1,4 @@
-.PHONY: repl dev test clean help lint fmt-check fmt validate build-css lint-test-paths release
+.PHONY: repl dev test clean help lint fmt-check fmt validate build-css lint-test-paths release arch
 
 # Detect Java - try common locations
 JAVA_HOME ?= $(shell \
@@ -21,6 +21,7 @@ help:
 	@echo "  make fmt-check - Check code formatting"
 	@echo "  make fmt       - Auto-fix code formatting"
 	@echo "  make validate  - Run lint + fmt-check + test"
+	@echo "  make arch      - Start LikeC4 architecture diagram server"
 	@echo "  make clean     - Remove build artifacts"
 
 repl:
@@ -62,6 +63,9 @@ lint-test-paths:
 		|| echo "  No production path bypasses found."
 	@echo "Review matches above — happy-path tests should use th/ helpers instead."
 	@echo "Edge case tests calling internals directly are acceptable."
+
+arch:
+	npx likec4 start docs/arch/
 
 validate:
 	@$(MAKE) lint && $(MAKE) fmt-check && $(MAKE) test

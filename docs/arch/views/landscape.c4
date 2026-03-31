@@ -1,6 +1,16 @@
 views {
   view landscape of fizzle {
     title 'Fizzle — MTG Combo Practice Tool — Landscape'
-    include * -> *
+    include
+      *,
+      fizzle.engine.*,
+      fizzle.views_ui.*,
+      fizzle.events_game.*,
+      fizzle.events_selection.*,
+      fizzle.db.*,
+      fizzle.bots.*,
+      fizzle.history.*,
+      fizzle.sharing.*,
+      * -> *
   }
 }

@@ -3,12 +3,20 @@
 model {
   extend fizzle {
     events_game = component 'Game Events' {
-      description 're-frame event handlers orchestrating game flow — casting spells, resolving stack, phase/turn transitions, priority passing. Decomposed into focused modules (cast, resolve, stack, phase, turn).'
+      description 're-frame event handlers orchestrating game flow — decomposed into 16+ focused modules: casting, resolution, phases, priority_flow, director, db_effect, init, lands, opening_hand, cleanup, cycling, ui, setup, calculator, abilities, selection. The director module is the central synchronous orchestration loop that runs after every player action.'
       link ./events_game.md 'Documentation'
-      link ../../../src/main/fizzle/events/game/ 'Source'
+      link ../../../src/main/fizzle/events/ 'Source'
       metadata {
         layer 'orchestration'
         stability_state 'exploring'
+      }
+
+      events_director = component 'Director' {
+        description 'Synchronous orchestration loop (run-to-decision) that runs after every player action. Drives bot turns inline via pure function calls, resolves stack items, advances phases, and evaluates auto-pass logic. Returns on human decision points: await-human, pending-selection, game-over, or safety-limit. Replaces the former dispatch-later chain and db_effect bot-decide chain with a single pure loop.'
+        metadata {
+          layer 'orchestration'
+          stability_state 'exploring'
+        }
       }
     }
   }

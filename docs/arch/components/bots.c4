@@ -36,7 +36,7 @@ model {
       }
 
       bot_interceptor = component 'Turn Driver' {
-        description 'Global re-frame interceptor driving bot turns automatically. Fires after priority passes, evaluates should-act?/choose-action, and dispatches the chosen event.'
+        description 'Registers ::bot-decide and ::bot-action-complete re-frame event handlers. Provides bot-decide-action as a pure function called by the director inline during run-to-decision. The event handlers also fire via the db_effect chokepoint for compound actions (tap+cast sequences requiring re-frame dispatch).'
         metadata {
           layer 'orchestration'
           stability_state 'exploring'

@@ -43,10 +43,19 @@ model {
         }
       }
 
+      db_game_state = component 'Game State' {
+        description 'Single source of truth for player identity constants (human-player-id :player-1, opponent-player-id :player-2) and game entity factory functions (create-player-tx, create-game-entity-tx, create-complete-player). All consumers must import player identity from here — ADR-016 forbids using :opponent as a player-id. Used by events/init, events/director, events/ui, bots/interceptor, sharing/restorer, and subs/game.'
+        metadata {
+          layer 'data'
+          stability_state 'exploring'
+        }
+      }
+
       // Internal relationships
       db_queries -> db_schema 'queries defined against schema'
       db_init -> db_schema 'creates db from schema'
       db_storage -> db_init 'loads/saves full db state'
+      db_game_state -> db_queries 'uses get-player-eid for create-complete-player'
     }
   }
 }
