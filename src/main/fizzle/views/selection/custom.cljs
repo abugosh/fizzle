@@ -254,6 +254,46 @@
          "Cancel"]]])))
 
 
+;; === Land Type Selection ===
+
+(def ^:private land-type-display-names
+  "Human-readable display names for the 5 basic land types."
+  {:plains   "Plains"
+   :island   "Island"
+   :swamp    "Swamp"
+   :mountain "Mountain"
+   :forest   "Forest"})
+
+
+(defn land-type-selection-modal
+  "Modal for :land-type-source and :land-type-target selection.
+   Displays basic land type options as clickable buttons.
+   Source selection: choose one of 5 types. Target: choose one of 4 (source excluded)."
+  [selection]
+  (let [selected (or (:selection/selected selection) #{})
+        options (:selection/options selection)
+        valid? @(rf/subscribe [::subs/selection-valid?])
+        title (if (= :land-type-source (:selection/type selection))
+                "Choose source land type"
+                (str "Change " (land-type-display-names (:selection/source-type selection) "land")
+                     "s to..."))]
+    [common/modal-wrapper {:title title :max-width "400px" :text-align "center"}
+     [:div {:class "flex flex-wrap justify-center gap-2 mb-5"}
+      (for [land-type options]
+        ^{:key land-type}
+        [:button {:class (str "py-3 px-5 rounded-lg cursor-pointer text-text text-sm "
+                              "font-bold min-w-[100px] transition-all duration-100 "
+                              (if (contains? selected land-type)
+                                "border-[3px] border-border-accent bg-modal-selected-bg"
+                                "border-2 border-border bg-surface-raised"))
+                  :on-click #(rf/dispatch [::selection-events/toggle-selection land-type])}
+         (land-type-display-names land-type (name land-type))])]
+     [:div {:class "flex justify-center"}
+      [common/confirm-button {:label "Confirm" :valid? valid?
+                              :on-confirm #(rf/dispatch [::selection-events/confirm-selection])
+                              :extra-class "py-2.5 px-8"}]]]))
+
+
 (defn spell-mode-selection-modal
   [selection _cards]
   [:div {:class common/overlay-class

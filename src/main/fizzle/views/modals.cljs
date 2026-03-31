@@ -97,6 +97,8 @@
   (object-target s c :battlefield "1 land selected" "Select a land to return to hand"))
 
 
+(defmethod render-selection-modal :land-type-source [s _] [custom/land-type-selection-modal s])
+(defmethod render-selection-modal :land-type-target [s _] [custom/land-type-selection-modal s])
 (defmethod render-selection-modal :spell-mode [s c] [custom/spell-mode-selection-modal s c])
 (defmethod render-selection-modal :discard-specific-cost [s c] [zone-pick/zone-pick-modal s c])
 (defmethod render-selection-modal :unless-pay [_ _] nil)

@@ -21,7 +21,7 @@
     :bounce :bounce-all :chain-bounce :counter-spell :counter-ability
     :peek-random-hand :grant-mana-ability :create-token :apply-pt-modifier
     :welder-swap :untap-lands :tap-all :untap-all
-    :lose-life-equal-to-toughness :phase-out})
+    :lose-life-equal-to-toughness :phase-out :change-land-types})
 
 
 (def valid-cost-types

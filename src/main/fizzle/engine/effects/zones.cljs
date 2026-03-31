@@ -146,6 +146,13 @@
         db))))
 
 
+(defmethod effects/execute-effect-impl :change-land-types
+  [db _player-id effect _object-id]
+  ;; Interactive: returns needs-selection for source land type choice.
+  ;; The selection system handles the two-step chained selection and grant application.
+  {:db db :needs-selection effect})
+
+
 (defmethod effects/execute-effect-impl :bounce-all
   [db _player-id effect _object-id]
   ;; Mass bounce: return all permanents matching :effect/criteria on target player's

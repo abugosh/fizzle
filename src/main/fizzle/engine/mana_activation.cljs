@@ -43,10 +43,25 @@
                player-eid
                (= (:object/zone obj) :battlefield)
                (= (:db/id (:object/controller obj)) player-eid))
-        ;; Find mana ability from card data
+        ;; Find mana ability from card data (with override grant support)
         (let [card (:object/card obj)
               card-abilities (:card/abilities card)
-              all-mana-abilities (filter #(= :mana (:ability/type %)) card-abilities)
+              ;; Check for :land-type-override grants — applies when Vision Charm
+              ;; or similar effects change what a land produces until EOT.
+              ;; If present, replace each mana ability's :ability/produces with
+              ;; the grant's :new-produces value.
+              override-grants (filterv #(= :land-type-override (:grant/type %))
+                                       (or (:object/grants obj) []))
+              effective-abilities (if (seq override-grants)
+                                    (let [override (first override-grants)
+                                          new-produces (get-in override [:grant/data :new-produces])]
+                                      (mapv (fn [ability]
+                                              (if (= :mana (:ability/type ability))
+                                                (assoc ability :ability/produces new-produces)
+                                                ability))
+                                            card-abilities))
+                                    card-abilities)
+              all-mana-abilities (filter #(= :mana (:ability/type %)) effective-abilities)
               ;; Find mana ability that produces the requested color
               ;; Handles multiple patterns:
               ;; 1. :ability/produces {:blue 1} - direct match

@@ -15,6 +15,7 @@
     [fizzle.events.priority-flow]
     [fizzle.events.resolution]
     [fizzle.events.selection]
+    [fizzle.events.selection.land-types]
     [fizzle.events.selection.library]
     [fizzle.events.selection.untap]
     [fizzle.events.selection.zone-ops]
