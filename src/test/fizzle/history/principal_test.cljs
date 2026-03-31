@@ -5,7 +5,6 @@
     [fizzle.db.queries :as queries]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.cards :as cards]
-    [fizzle.engine.priority :as priority]
     [fizzle.history.core :as history]
     [fizzle.history.interceptor :as interceptor]))
 
@@ -48,7 +47,7 @@
       (is (nil? (queries/get-player-id db 99999))))))
 
 
-;; === determine-principal tests ===
+;; === principal integration tests via pending-entry ===
 
 (defn- create-two-player-game-db
   "Create a Datascript db with two players and a game state.
@@ -96,12 +95,10 @@
 
 
 (defn- run-interceptor
-  "Run both :before and :after phases of the history interceptor on a context."
+  "Run the :after phase of the history interceptor on a context."
   [context]
-  (let [before-fn (:before interceptor/history-interceptor)
-        after-fn (:after interceptor/history-interceptor)
-        ctx-after-before (before-fn context)]
-    (after-fn ctx-after-before)))
+  (let [after-fn (:after interceptor/history-interceptor)]
+    (after-fn context)))
 
 
 (deftest test-determine-principal-cast-spell-human
@@ -153,33 +150,45 @@
 
 
 (deftest test-determine-principal-yield
-  (testing "yield returns priority holder player-id"
+  (testing "yield handler sets principal from priority-holder via pending-entry"
     (let [game-db (create-two-player-game-db)
-          ;; Transfer priority to player-2
-          game-db' (priority/transfer-priority game-db
-                                               (priority/get-priority-holder-eid game-db))
-          pre-db (make-db-with-history game-db')
-          ;; Simulate phase advancement
-          conn (d/conn-from-db game-db')
-          game-eid (d/q '[:find ?e . :where [?e :game/id :game-1]] game-db')
+          pre-db (make-db-with-history game-db)
+          conn (d/conn-from-db game-db)
+          game-eid (d/q '[:find ?e . :where [?e :game/id :game-1]] game-db)
           _ (d/transact! conn [[:db/add game-eid :game/phase :combat]])
-          post-db (make-db-with-history @conn)
+          new-game-db @conn
+          ;; yield handler computes principal from priority-holder before yielding
+          pending-entry {:description "Yield -> Combat"
+                         :snapshot new-game-db
+                         :event-type :fizzle.events.priority-flow/yield
+                         :turn 1
+                         :principal :player-1}
+          post-db (assoc (make-db-with-history new-game-db)
+                         :history/pending-entry pending-entry)
           event [:fizzle.events.priority-flow/yield]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])
           entry (first (:history/main result-db))]
-      (is (= :player-2 (:entry/principal entry))))))
+      (is (= :player-1 (:entry/principal entry))))))
 
 
 (deftest test-determine-principal-activate-mana-human
-  (testing "activate-mana-ability without explicit player-id returns human"
+  (testing "activate-mana-ability without explicit player-id uses human player-id in pending-entry"
     (let [game-db (create-two-player-game-db)
           pre-db (make-db-with-history game-db)
           conn (d/conn-from-db game-db)
           _ (d/transact! conn [[:db/add (queries/get-player-eid game-db :player-1)
                                 :player/storm-count 1]])
-          post-db (make-db-with-history @conn)
+          new-game-db @conn
+          ;; activate-mana-ability handler sets pid = (or player-id human-player-id)
+          pending-entry {:description "Tap for B"
+                         :snapshot new-game-db
+                         :event-type :fizzle.events.abilities/activate-mana-ability
+                         :turn 1
+                         :principal :player-1}
+          post-db (assoc (make-db-with-history new-game-db)
+                         :history/pending-entry pending-entry)
           event [:fizzle.events.abilities/activate-mana-ability :obj-1 :black]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
@@ -189,13 +198,21 @@
 
 
 (deftest test-determine-principal-activate-mana-bot
-  (testing "activate-mana-ability with explicit player-id returns that player-id"
+  (testing "activate-mana-ability with explicit player-id uses that player-id in pending-entry"
     (let [game-db (create-two-player-game-db)
           pre-db (make-db-with-history game-db)
           conn (d/conn-from-db game-db)
           _ (d/transact! conn [[:db/add (queries/get-player-eid game-db :player-2)
                                 :player/storm-count 1]])
-          post-db (make-db-with-history @conn)
+          new-game-db @conn
+          ;; activate-mana-ability handler uses explicit player-id from args
+          pending-entry {:description "Tap for B"
+                         :snapshot new-game-db
+                         :event-type :fizzle.events.abilities/activate-mana-ability
+                         :turn 1
+                         :principal :player-2}
+          post-db (assoc (make-db-with-history new-game-db)
+                         :history/pending-entry pending-entry)
           event [:fizzle.events.abilities/activate-mana-ability :obj-1 :black :player-2]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
@@ -205,13 +222,21 @@
 
 
 (deftest test-determine-principal-play-land
-  (testing "play-land with explicit player-id returns that player-id"
+  (testing "play-land handler sets player-id principal in pending-entry"
     (let [game-db (create-two-player-game-db)
           pre-db (make-db-with-history game-db)
           conn (d/conn-from-db game-db)
           _ (d/transact! conn [[:db/add (queries/get-player-eid game-db :player-2)
                                 :player/storm-count 1]])
-          post-db (make-db-with-history @conn)
+          new-game-db @conn
+          ;; play-land handler sets pid from args as principal
+          pending-entry {:description "Play land"
+                         :snapshot new-game-db
+                         :event-type :fizzle.events.lands/play-land
+                         :turn 1
+                         :principal :player-2}
+          post-db (assoc (make-db-with-history new-game-db)
+                         :history/pending-entry pending-entry)
           event [:fizzle.events.lands/play-land :obj-1 :player-2]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
@@ -224,7 +249,14 @@
   (testing "init-game returns nil principal (system event)"
     (let [game-db (create-two-player-game-db)
           pre-db (merge {:game/db nil} (history/init-history))
-          post-db (make-db-with-history game-db)
+          ;; init-game handler sets pending-entry with nil principal inline
+          pending-entry {:description "Game started"
+                         :snapshot game-db
+                         :event-type :fizzle.events.init/init-game
+                         :turn 0
+                         :principal nil}
+          post-db (assoc (make-db-with-history game-db)
+                         :history/pending-entry pending-entry)
           event [:fizzle.events.init/init-game]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
