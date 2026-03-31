@@ -67,8 +67,10 @@
         candidates (or (:selection/candidates selection)
                        (:selection/candidate-ids selection))
         ;; Universal candidate membership check
+        ;; Coerce to set: contains? on vectors checks indices, not values
         candidates-valid? (if candidates
-                            (every? #(contains? candidates %) selected)
+                            (let [cand-set (set candidates)]
+                              (every? #(contains? cand-set %) selected))
                             true)
         ;; Count validation based on :selection/validation
         count-valid? (case (:selection/validation selection)
