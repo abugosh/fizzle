@@ -133,6 +133,20 @@
         db))))
 
 
+(defmethod effects/execute-effect-impl :bounce-all
+  [db _player-id effect _object-id]
+  ;; Mass bounce: return all permanents matching :effect/criteria on target player's
+  ;; battlefield to their hand. Non-interactive — criteria applied at resolution.
+  (let [target-player (:effect/target effect)
+        criteria (or (:effect/criteria effect) {})
+        bf-objects (or (q/get-objects-in-zone db target-player :battlefield) [])
+        matching (filterv #(q/matches-criteria? % criteria) bf-objects)]
+    (reduce (fn [db' obj]
+              (zones/move-to-zone db' (:object/id obj) :hand))
+            db
+            matching)))
+
+
 (defmethod effects/execute-effect-impl :untap-lands
   [db _player-id effect _object-id]
   ;; Interactive: player chooses which tapped lands to untap.

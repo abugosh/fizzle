@@ -268,10 +268,11 @@
   "Check if an object's card matches the given criteria.
    All fields use OR logic within their category, AND logic between categories.
    Criteria map supports:
-     :match/types     - Set of types, object must have ANY (OR - artifact OR enchantment)
-     :match/not-types - Set of types, object must NOT have ANY (exclusion filter)
-     :match/colors    - Set of colors, object must have ANY (OR - blue OR white)
-     :match/subtypes  - Set of subtypes, object must have ANY (OR - island OR swamp)"
+     :match/types      - Set of types, object must have ANY (OR - artifact OR enchantment)
+     :match/not-types  - Set of types, object must NOT have ANY (exclusion filter)
+     :match/colors     - Set of colors, object must have ANY (OR - blue OR white)
+     :match/not-colors - Set of colors, object must NOT have ANY (exclusion filter)
+     :match/subtypes   - Set of subtypes, object must have ANY (OR - island OR swamp)"
   [obj criteria]
   (let [card (:object/card obj)
         card-types (set (or (:card/types card) #{}))
@@ -288,6 +289,10 @@
       ;; At least one required color (OR logic) - empty criteria = matches all
       (or (empty? (get criteria :match/colors #{}))
           (some card-colors (get criteria :match/colors #{})))
+      ;; Exclusion: object must NOT have any color in the not-colors set
+      (let [not-colors (get criteria :match/not-colors #{})]
+        (or (empty? not-colors)
+            (empty? (set/intersection card-colors not-colors))))
       ;; At least one required subtype (OR logic)
       (or (empty? (get criteria :match/subtypes #{}))
           (some card-subtypes (get criteria :match/subtypes #{}))))))
@@ -298,10 +303,11 @@
    Pure function: (db, player-id, zone, criteria) -> vector
 
    Criteria map supports:
-     :match/types     - Set of types, object must have ANY (OR - artifact OR enchantment)
-     :match/not-types - Set of types, object must NOT have ANY (exclusion filter)
-     :match/colors    - Set of colors, object must have ANY (OR - blue OR white)
-     :match/subtypes  - Set of subtypes, object must have ANY (OR)
+     :match/types      - Set of types, object must have ANY (OR - artifact OR enchantment)
+     :match/not-types  - Set of types, object must NOT have ANY (exclusion filter)
+     :match/colors     - Set of colors, object must have ANY (OR - blue OR white)
+     :match/not-colors - Set of colors, object must NOT have ANY (exclusion filter)
+     :match/subtypes   - Set of subtypes, object must have ANY (OR)
 
    Returns vector of objects with card data, or [] if no matches.
    Returns nil if player doesn't exist."
@@ -342,10 +348,11 @@
    Pure function: (db, player-id, criteria) -> vector
 
    Criteria map supports:
-     :match/types     - Set of types, object must have ANY (OR - artifact OR enchantment)
-     :match/not-types - Set of types, object must NOT have ANY (exclusion filter)
-     :match/colors    - Set of colors, object must have ANY (OR - blue OR white)
-     :match/subtypes  - Set of subtypes, object must have ANY (OR)
+     :match/types      - Set of types, object must have ANY (OR - artifact OR enchantment)
+     :match/not-types  - Set of types, object must NOT have ANY (exclusion filter)
+     :match/colors     - Set of colors, object must have ANY (OR - blue OR white)
+     :match/not-colors - Set of colors, object must NOT have ANY (exclusion filter)
+     :match/subtypes   - Set of subtypes, object must have ANY (OR)
 
    Returns vector of objects with card data, or [] if no matches.
    Returns nil if player doesn't exist."

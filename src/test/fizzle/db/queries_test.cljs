@@ -818,3 +818,125 @@
   (testing "returns empty vector for nonexistent object"
     (let [db (th/create-test-db)]
       (is (= [] (q/get-grants db (random-uuid)))))))
+
+
+;; === :match/not-colors tests ===
+
+(deftest matches-criteria-not-colors-excludes-black-test
+  (testing ":match/not-colors #{:black} excludes black card"
+    ;; Catches: missing exclusion logic for not-colors
+    (let [db (th/create-test-db)
+          ;; Dark Ritual is black instant
+          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          result (q/query-zone-by-criteria db' :player-1 :hand {:match/not-colors #{:black}})]
+      (is (= 0 (count result))
+          "Black card should be excluded by :match/not-colors #{:black}"))))
+
+
+(deftest matches-criteria-not-colors-allows-blue-test
+  (testing ":match/not-colors #{:black} allows blue card"
+    ;; Catches: over-filtering (excluding too many cards)
+    (let [db (th/create-test-db)
+          ;; Brain Freeze is blue instant
+          [db' _] (th/add-card-to-zone db :brain-freeze :hand :player-1)
+          result (q/query-zone-by-criteria db' :player-1 :hand {:match/not-colors #{:black}})]
+      (is (= 1 (count result))
+          "Blue card should NOT be excluded by :match/not-colors #{:black}")
+      (is (= "Brain Freeze" (get-in (first result) [:object/card :card/name]))
+          "Brain Freeze (blue) should match"))))
+
+
+(deftest matches-criteria-not-colors-allows-colorless-test
+  (testing ":match/not-colors #{:black} allows colorless artifact"
+    ;; Catches: colorless treated as having colors — colorless objects have empty
+    ;; colors set (#{}) so set/intersection with #{:black} = #{} → should NOT be excluded
+    (let [db (th/create-test-db)
+          ;; Lotus Petal is a colorless artifact
+          [db' _] (th/add-card-to-zone db :lotus-petal :hand :player-1)
+          result (q/query-zone-by-criteria db' :player-1 :hand {:match/not-colors #{:black}})]
+      (is (= 1 (count result))
+          "Colorless artifact should NOT be excluded by :match/not-colors #{:black}")
+      (is (= "Lotus Petal" (get-in (first result) [:object/card :card/name]))
+          "Lotus Petal (colorless) should match"))))
+
+
+(deftest matches-criteria-not-colors-empty-set-matches-all-test
+  (testing ":match/not-colors #{} matches everything"
+    ;; Catches: empty set mishandled (excluding everything or causing error)
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          [db'' _] (th/add-card-to-zone db' :brain-freeze :hand :player-1)
+          [db''' _] (th/add-card-to-zone db'' :lotus-petal :hand :player-1)
+          result (q/query-zone-by-criteria db''' :player-1 :hand {:match/not-colors #{}})]
+      (is (= 3 (count result))
+          "Empty not-colors should match all objects"))))
+
+
+(deftest matches-criteria-not-colors-multi-color-set-test
+  (testing ":match/not-colors #{:black :blue} excludes object with either color"
+    ;; Catches: OR vs AND logic bug — should exclude if object has ANY excluded color
+    (let [db (th/create-test-db)
+          ;; Dark Ritual is black - should be excluded
+          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          ;; Brain Freeze is blue - should be excluded
+          [db'' _] (th/add-card-to-zone db' :brain-freeze :hand :player-1)
+          ;; Lotus Petal is colorless - should match
+          [db''' _] (th/add-card-to-zone db'' :lotus-petal :hand :player-1)
+          result (q/query-zone-by-criteria db''' :player-1 :hand {:match/not-colors #{:black :blue}})]
+      (is (= 1 (count result))
+          "Both black and blue cards should be excluded")
+      (is (= "Lotus Petal" (get-in (first result) [:object/card :card/name]))
+          "Only colorless artifact should remain"))))
+
+
+(deftest matches-criteria-types-and-not-colors-combined-test
+  (testing ":match/types #{:instant} + :match/not-colors #{:black} — Vendetta pattern"
+    ;; Catches: combined criteria not working together correctly
+    ;; Vendetta targets nonblack creatures — here we test the not-colors half
+    (let [db (th/create-test-db)
+          ;; Brain Freeze is blue instant - should match (instant, not black)
+          [db' _] (th/add-card-to-zone db :brain-freeze :hand :player-1)
+          ;; Dark Ritual is black instant - should not match (instant but black)
+          [db'' _] (th/add-card-to-zone db' :dark-ritual :hand :player-1)
+          ;; Lotus Petal is colorless artifact - should not match (not instant)
+          [db''' _] (th/add-card-to-zone db'' :lotus-petal :hand :player-1)
+          result (q/query-zone-by-criteria db''' :player-1 :hand
+                                           {:match/types #{:instant}
+                                            :match/not-colors #{:black}})]
+      (is (= 1 (count result))
+          "Only nonblack instant should match")
+      (is (= "Brain Freeze" (get-in (first result) [:object/card :card/name]))
+          "Brain Freeze (blue instant) should match"))))
+
+
+(deftest matches-criteria-not-colors-partial-overlap-test
+  (testing "object with multiple colors #{:black :blue} excluded by :match/not-colors #{:black}"
+    ;; Catches: partial color match bug — Diabolic Vision has #{:blue :black}
+    ;; even though it's also blue, it should still be excluded
+    (let [db (th/create-test-db)
+          ;; Diabolic Vision is blue+black multicolor
+          [db' _] (th/add-card-to-zone db :diabolic-vision :hand :player-1)
+          result (q/query-zone-by-criteria db' :player-1 :hand {:match/not-colors #{:black}})]
+      (is (= 0 (count result))
+          "Multicolor card with black should be excluded by :match/not-colors #{:black}"))))
+
+
+(deftest matches-criteria-not-colors-with-colors-combined-test
+  (testing ":match/colors #{:blue} combined with :match/not-colors #{:black}"
+    ;; Catches: interaction between positive and negative color filters
+    ;; {:match/colors #{:blue} :match/not-colors #{:black}} should match blue-only
+    ;; but exclude blue-black multicolor (Diabolic Vision)
+    (let [db (th/create-test-db)
+          ;; Brain Freeze is blue-only instant - should match
+          [db' _] (th/add-card-to-zone db :brain-freeze :hand :player-1)
+          ;; Diabolic Vision is blue+black - should NOT match (excluded by not-colors)
+          [db'' _] (th/add-card-to-zone db' :diabolic-vision :hand :player-1)
+          ;; Dark Ritual is black-only - should NOT match (missing required blue color)
+          [db''' _] (th/add-card-to-zone db'' :dark-ritual :hand :player-1)
+          result (q/query-zone-by-criteria db''' :player-1 :hand
+                                           {:match/colors #{:blue}
+                                            :match/not-colors #{:black}})]
+      (is (= 1 (count result))
+          "Only pure blue card should match")
+      (is (= "Brain Freeze" (get-in (first result) [:object/card :card/name]))
+          "Brain Freeze (blue, not black) should match"))))

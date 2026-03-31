@@ -2030,3 +2030,272 @@
       ;; Second land still on battlefield with its grant intact
       (is (= :battlefield (:object/zone (q/get-object db'' land2-id))))
       (is (= 1 (count (q/get-grants db'' land2-id)))))))
+
+
+;; === Test helpers for :bounce-all and :lose-life-equal-to-toughness ===
+
+(defn add-artifact-to-battlefield
+  "Add a Lotus Petal (artifact) to the battlefield for a player.
+   Returns [db object-id]."
+  [db player-id]
+  (th/add-card-to-zone db :lotus-petal :battlefield player-id))
+
+
+(defn add-creature-to-battlefield
+  "Add a creature card to the battlefield for a player.
+   card-id must be a registered creature card (e.g., :nimble-mongoose, :xantid-swarm).
+   Returns [db object-id]."
+  [db player-id card-id]
+  (th/add-card-to-zone db card-id :battlefield player-id))
+
+
+(defn add-creature-with-toughness
+  "Add a fake creature object directly to the db with specified toughness.
+   Used when we need a creature with specific toughness but no registered card exists.
+   The :object/card is a real card eid with toughness injected via a synthetic card map.
+   Instead, we insert a synthetic card entity with the given toughness.
+   Returns [db object-id card-eid]."
+  [db player-id toughness colors]
+  (let [conn (d/conn-from-db db)
+        player-eid (q/get-player-eid db player-id)
+        card-id (keyword (str "synthetic-creature-" (random-uuid)))
+        object-id (random-uuid)
+        ;; Insert a synthetic card entity
+        card-tx {:db/id -1
+                 :card/id card-id
+                 :card/name (str "Synthetic Creature " toughness)
+                 :card/cmc 3
+                 :card/mana-cost {:generic 3}
+                 :card/colors (or colors #{})
+                 :card/types #{:creature}
+                 :card/text ""
+                 :card/power 2
+                 :card/toughness toughness}
+        _ (d/transact! conn [card-tx])
+        card-eid (d/q '[:find ?e .
+                        :in $ ?cid
+                        :where [?e :card/id ?cid]]
+                      @conn card-id)
+        obj-tx {:object/id object-id
+                :object/card card-eid
+                :object/zone :battlefield
+                :object/owner player-eid
+                :object/controller player-eid
+                :object/tapped false
+                :object/power 2
+                :object/toughness toughness
+                :object/summoning-sick true
+                :object/damage-marked 0}
+        _ (d/transact! conn [obj-tx])]
+    [@conn object-id card-eid]))
+
+
+;; === execute-effect :bounce-all tests ===
+
+(deftest test-bounce-all-returns-artifacts-to-hand
+  (testing ":bounce-all returns all artifacts from target player's battlefield to hand"
+    ;; Catches: basic :bounce-all logic failure
+    (let [db (th/create-test-db)
+          [db art1-id] (add-artifact-to-battlefield db :player-1)
+          [db art2-id] (add-artifact-to-battlefield db :player-1)
+          _ (is (= :battlefield (:object/zone (q/get-object db art1-id))))
+          _ (is (= :battlefield (:object/zone (q/get-object db art2-id))))
+          effect {:effect/type :bounce-all
+                  :effect/target :player-1
+                  :effect/criteria {:match/types #{:artifact}}}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= :hand (:object/zone (q/get-object db' art1-id)))
+          "First artifact should be in hand")
+      (is (= :hand (:object/zone (q/get-object db' art2-id)))
+          "Second artifact should be in hand"))))
+
+
+(deftest test-bounce-all-does-not-bounce-non-artifacts
+  (testing ":bounce-all with {:match/types #{:artifact}} does not bounce lands or instants on battlefield"
+    ;; Catches: missing criteria filtering (bouncing everything)
+    (let [db (th/create-test-db)
+          [db land-id] (th/add-card-to-zone db :island :battlefield :player-1)
+          effect {:effect/type :bounce-all
+                  :effect/target :player-1
+                  :effect/criteria {:match/types #{:artifact}}}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= :battlefield (:object/zone (q/get-object db' land-id)))
+          "Land should NOT be bounced by :bounce-all with artifact criteria"))))
+
+
+(deftest test-bounce-all-does-not-bounce-opponent-artifacts
+  (testing ":bounce-all with :effect/target :player-1 does not bounce player-2's artifacts"
+    ;; Catches: wrong player targeting (bouncing both players' artifacts)
+    (let [db (-> (th/create-test-db)
+                 (th/add-opponent))
+          [db art1-id] (add-artifact-to-battlefield db :player-1)
+          [db art2-id] (add-artifact-to-battlefield db :player-2)
+          effect {:effect/type :bounce-all
+                  :effect/target :player-1
+                  :effect/criteria {:match/types #{:artifact}}}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= :hand (:object/zone (q/get-object db' art1-id)))
+          "Player-1's artifact should be bounced")
+      (is (= :battlefield (:object/zone (q/get-object db' art2-id)))
+          "Player-2's artifact should NOT be bounced"))))
+
+
+(deftest test-bounce-all-empty-battlefield-is-noop
+  (testing ":bounce-all with empty battlefield returns db unchanged without error"
+    ;; Catches: NPE on empty battlefield or nil from get-objects-in-zone
+    (let [db (th/create-test-db)
+          effect {:effect/type :bounce-all
+                  :effect/target :player-1
+                  :effect/criteria {:match/types #{:artifact}}}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 0 (count (q/get-objects-in-zone db' :player-1 :battlefield)))
+          "Battlefield should still be empty")
+      (is (= 0 (count (q/get-objects-in-zone db' :player-1 :hand)))
+          "Hand should still be empty"))))
+
+
+(deftest test-bounce-all-three-plus-artifacts-all-returned
+  (testing ":bounce-all returns 3+ artifacts simultaneously"
+    ;; Catches: reduce accumulator bug (only processing first item)
+    (let [db (-> (th/create-test-db)
+                 (th/add-opponent))
+          [db art1-id] (add-artifact-to-battlefield db :player-1)
+          [db art2-id] (add-artifact-to-battlefield db :player-2)
+          [db art3-id] (add-artifact-to-battlefield db :player-1)
+          [db art4-id] (add-artifact-to-battlefield db :player-1)
+          effect {:effect/type :bounce-all
+                  :effect/target :player-1
+                  :effect/criteria {:match/types #{:artifact}}}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= :hand (:object/zone (q/get-object db' art1-id)))
+          "First artifact should be in hand")
+      (is (= :hand (:object/zone (q/get-object db' art3-id)))
+          "Third artifact should be in hand")
+      (is (= :hand (:object/zone (q/get-object db' art4-id)))
+          "Fourth artifact should be in hand")
+      (is (= :battlefield (:object/zone (q/get-object db' art2-id)))
+          "Player-2's artifact should stay on battlefield"))))
+
+
+(deftest test-bounce-all-mixed-battlefield-only-artifacts-bounce
+  (testing ":bounce-all with mixed battlefield: only artifacts bounce"
+    ;; Catches: criteria bleed (bouncing non-matching objects)
+    (let [db (th/create-test-db)
+          [db art-id] (add-artifact-to-battlefield db :player-1)
+          [db land-id] (th/add-card-to-zone db :island :battlefield :player-1)
+          effect {:effect/type :bounce-all
+                  :effect/target :player-1
+                  :effect/criteria {:match/types #{:artifact}}}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= :hand (:object/zone (q/get-object db' art-id)))
+          "Artifact should be in hand")
+      (is (= :battlefield (:object/zone (q/get-object db' land-id)))
+          "Land should remain on battlefield"))))
+
+
+(deftest test-bounce-all-no-matching-permanents-stays-unchanged
+  (testing ":bounce-all with no matching artifacts bounces nothing"
+    ;; Catches: empty-match handling errors
+    (let [db (th/create-test-db)
+          [db land-id] (th/add-card-to-zone db :island :battlefield :player-1)
+          effect {:effect/type :bounce-all
+                  :effect/target :player-1
+                  :effect/criteria {:match/types #{:artifact}}}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= :battlefield (:object/zone (q/get-object db' land-id)))
+          "Land should remain on battlefield when no artifacts exist")
+      (is (= 0 (count (q/get-objects-in-zone db' :player-1 :hand)))
+          "Hand should be empty when no artifacts matched"))))
+
+
+;; === execute-effect :lose-life-equal-to-toughness tests ===
+
+(deftest test-lose-life-equal-to-toughness-basic
+  (testing "caster loses life equal to target creature's toughness (e.g., 3 for 2/3)"
+    ;; Catches: basic logic failure — wrong field read or wrong amount
+    (let [[db target-id _] (add-creature-with-toughness (th/create-test-db) :player-1 3 #{:green})
+          _ (is (= :battlefield (:object/zone (q/get-object db target-id))))
+          effect {:effect/type :lose-life-equal-to-toughness
+                  :effect/target target-id}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 17 (q/get-life-total db' :player-1))
+          "Player should lose 3 life (creature toughness = 3)"))))
+
+
+(deftest test-lose-life-equal-to-toughness-zero-toughness
+  (testing "target creature with toughness 0 causes no life loss"
+    ;; Catches: zero-toughness handling — must be a no-op
+    (let [[db target-id _] (add-creature-with-toughness (th/create-test-db) :player-1 0 #{:green})
+          effect {:effect/type :lose-life-equal-to-toughness
+                  :effect/target target-id}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 20 (q/get-life-total db' :player-1))
+          "Player should lose no life when creature toughness is 0"))))
+
+
+(deftest test-lose-life-equal-to-toughness-missing-target-is-noop
+  (testing "target object not in db — no-op, no crash"
+    ;; Catches: NPE when target doesn't exist in db
+    (let [db (th/create-test-db)
+          nonexistent-id (random-uuid)
+          effect {:effect/type :lose-life-equal-to-toughness
+                  :effect/target nonexistent-id}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 20 (q/get-life-total db' :player-1))
+          "Player life should be unchanged when target doesn't exist"))))
+
+
+(deftest test-lose-life-equal-to-toughness-life-goes-negative
+  (testing "life loss can push life below 0 (no floor)"
+    ;; Catches: incorrect floor at 0 — MTG allows life to go negative
+    (let [db (th/create-test-db {:life 2})
+          [db target-id _] (add-creature-with-toughness db :player-1 5 #{:green})
+          effect {:effect/type :lose-life-equal-to-toughness
+                  :effect/target target-id}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= -3 (q/get-life-total db' :player-1))
+          "Player at 2 life losing 5 should be at -3 life"))))
+
+
+(deftest test-lose-life-equal-to-toughness-after-destroy-sequence
+  (testing "reads :card/toughness correctly even after creature is destroyed (Vendetta sequence)"
+    ;; Catches: reading :object/toughness (retracted on zone change) vs
+    ;; :card/toughness (permanent, on card entity) — Vendetta's destroy-then-life-loss
+    ;; After :destroy, creature moves to graveyard and :object/toughness is retracted.
+    ;; The :lose-life-equal-to-toughness effect must still read the card toughness.
+    (let [[db target-id _] (add-creature-with-toughness (th/create-test-db) :player-1 4 #{:green})
+          ;; Destroy the creature first (simulating Vendetta's first effect)
+          destroy-effect {:effect/type :destroy
+                          :effect/target target-id}
+          db-after-destroy (fx/execute-effect db :player-1 destroy-effect)
+          ;; Verify creature is now in graveyard
+          _ (is (= :graveyard (:object/zone (q/get-object db-after-destroy target-id)))
+                "Precondition: creature should be in graveyard after destroy")
+          ;; Now apply lose-life-equal-to-toughness (second effect of Vendetta)
+          life-effect {:effect/type :lose-life-equal-to-toughness
+                       :effect/target target-id}
+          db' (fx/execute-effect db-after-destroy :player-1 life-effect)]
+      (is (= 16 (q/get-life-total db' :player-1))
+          "Player should lose 4 life even though creature is already in graveyard"))))
+
+
+(deftest test-lose-life-equal-to-toughness-high-toughness
+  (testing "high toughness creature (0/7) causes 7 life loss"
+    ;; Catches: off-by-one or wrong field read for high toughness values
+    (let [[db target-id _] (add-creature-with-toughness (th/create-test-db) :player-1 7 #{:green})
+          effect {:effect/type :lose-life-equal-to-toughness
+                  :effect/target target-id}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 13 (q/get-life-total db' :player-1))
+          "Player should lose 7 life for 0/7 creature"))))
+
+
+(deftest test-lose-life-equal-to-toughness-nil-target-is-noop
+  (testing "nil target returns db unchanged"
+    ;; Catches: NPE on nil target-id
+    (let [db (th/create-test-db)
+          effect {:effect/type :lose-life-equal-to-toughness
+                  :effect/target nil}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 20 (q/get-life-total db' :player-1))
+          "Player life should be unchanged when target is nil"))))

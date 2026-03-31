@@ -18,9 +18,10 @@
     :destroy :discard :tutor :scry :peek-and-select :peek-and-reorder
     :grant-flashback :grant-delayed-draw :add-restriction :storm-copies
     :exile-zone :gain-life-equal-to-cmc :discard-from-revealed-hand
-    :bounce :chain-bounce :counter-spell :counter-ability
+    :bounce :bounce-all :chain-bounce :counter-spell :counter-ability
     :peek-random-hand :grant-mana-ability :create-token :apply-pt-modifier
-    :welder-swap :untap-lands :tap-all :untap-all})
+    :welder-swap :untap-lands :tap-all :untap-all
+    :lose-life-equal-to-toughness})
 
 
 (def valid-cost-types

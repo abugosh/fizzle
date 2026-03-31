@@ -80,3 +80,26 @@
                   new-life (+ current-life cmc)]
               (d/db-with db [[:db/add controller-eid :player/life new-life]]))))
         db))))
+
+
+(defmethod effects/execute-effect-impl :lose-life-equal-to-toughness
+  [db player-id effect _object-id]
+  ;; Caster (player-id) loses life equal to target's toughness.
+  ;; Reads :card/toughness (card definition data, zone-independent) NOT :object/toughness
+  ;; (battlefield runtime attribute retracted when creature leaves battlefield).
+  ;; This allows Vendetta's destroy-then-life-loss sequence to work correctly:
+  ;; even after :destroy moves the creature to graveyard, :card/toughness persists.
+  (let [target-id (:effect/target effect)]
+    (if-not target-id
+      db
+      (if-let [target-obj (q/get-object db target-id)]
+        (let [card (:object/card target-obj)
+              toughness (or (:card/toughness card) 0)]
+          (if (<= toughness 0)
+            db
+            (if-let [player-eid (q/get-player-eid db player-id)]
+              (let [current-life (q/get-life-total db player-id)
+                    new-life (- current-life toughness)]
+                (d/db-with db [[:db/add player-eid :player/life new-life]]))
+              db)))
+        db))))
