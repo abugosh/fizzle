@@ -10,6 +10,7 @@
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.engine.zones :as zones]
+    [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
 
 
@@ -71,8 +72,13 @@
   ::play-land
   (fn [db [_ object-id player-id]]
     (let [game-db (:game/db db)
-          pid (or player-id (queries/get-human-player-id game-db))]
-      (assoc db :game/db (play-land game-db pid object-id)))))
+          pid (or player-id (queries/get-human-player-id game-db))
+          game-db-after (play-land game-db pid object-id)
+          description (descriptions/describe-play-land object-id game-db-after)]
+      (-> db
+          (assoc :game/db game-db-after)
+          (assoc :history/pending-entry
+                 (descriptions/build-pending-entry game-db-after ::play-land description pid))))))
 
 
 (defn tap-permanent

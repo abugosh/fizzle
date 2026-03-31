@@ -147,5 +147,12 @@
 (rf/reg-event-db
   ::init-game
   (fn [_ [_ config]]
-    (-> (init-game-state config)
-        (dissoc :bot/action-pending? :bot/action-count))))
+    (let [app-db (-> (init-game-state config)
+                     (dissoc :bot/action-pending? :bot/action-count))
+          game-db (:game/db app-db)]
+      (assoc app-db :history/pending-entry
+             {:description "Game started"
+              :snapshot    game-db
+              :event-type  ::init-game
+              :turn        0
+              :principal   nil}))))

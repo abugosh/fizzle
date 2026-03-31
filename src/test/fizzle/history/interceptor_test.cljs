@@ -49,12 +49,12 @@
 
 
 (deftest test-after-appends-entry-on-game-db-change
-  (testing "When :game/db changes, a history entry is appended"
+  (testing "When :game/db changes, a history entry is appended (inference path)"
     (let [old-game-db :db-old
           new-game-db :db-new
           pre-db (make-db-with-history old-game-db)
           post-db (make-db-with-history new-game-db)
-          event [:fizzle.events.casting/cast-spell]
+          event [:fizzle.events.lands/play-land :obj-1]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])]
@@ -106,7 +106,7 @@
                  (history/step-to 1))
           new-game-db :db-diverge
           post-db (assoc db :game/db new-game-db)
-          event [:fizzle.events.casting/cast-spell]
+          event [:fizzle.events.lands/play-land :obj-1]
           context (make-context db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])]
@@ -119,22 +119,22 @@
 
 
 (deftest test-entry-has-correct-fields
-  (testing "Appended entry has all required fields"
+  (testing "Appended entry has all required fields (inference path via play-land)"
     (let [old-game-db :db-old
           new-game-db :db-new
           pre-db (make-db-with-history old-game-db)
           post-db (make-db-with-history new-game-db)
-          event [:fizzle.events.casting/cast-spell]
+          event [:fizzle.events.lands/play-land :obj-1]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])
           entry (first (:history/main result-db))]
       (is (= new-game-db (:entry/snapshot entry))
           "Snapshot should be the new game-db")
-      (is (= :fizzle.events.casting/cast-spell (:entry/event-type entry))
+      (is (= :fizzle.events.lands/play-land (:entry/event-type entry))
           "Event type should be the event keyword")
-      (is (= "Cast spell" (:entry/description entry))
-          "Description should come from describe-event")
+      (is (string? (:entry/description entry))
+          "Description should be a string")
       (is (= 0 (:entry/turn entry))
           "Turn should be 0 for mock game-db (no game state to query)"))))
 
@@ -152,16 +152,14 @@
 
 
 (deftest test-priority-events-all-have-descriptions
-  (testing "All priority events produce named descriptions (not fallback)"
-    (doseq [event [[:fizzle.events.casting/cast-spell]
-                   [:fizzle.events.priority-flow/cast-and-yield]
+  (testing "Remaining inference-path events produce named descriptions"
+    (doseq [event [;; yield/yield-all use pending-entry from handlers but still pass through priority-events
+                   ;; init-game, play-land, cycle-card, activate-mana-ability use inference path
                    [:fizzle.events.priority-flow/yield]
                    [:fizzle.events.priority-flow/yield-all]
-                   ;; start-turn creates its own history entries (not via interceptor)
                    [:fizzle.events.lands/play-land :obj-1]
                    [:fizzle.events.init/init-game]
-                   [:fizzle.events.abilities/activate-mana-ability :obj-1 :black]
-                   [:fizzle.events.abilities/activate-ability :obj-1 0]]]
+                   [:fizzle.events.abilities/activate-mana-ability :obj-1 :black]]]
       (let [pre-db (make-db-with-history :db-old)
             post-db (make-db-with-history :db-new)
             context (make-context pre-db post-db event)
@@ -173,7 +171,19 @@
             (str (first event) " should have a non-empty description"))
         (is (not= (name (first event)) (:entry/description entry))
             (str (first event) " should not use fallback name")))))
-  (testing "Selection confirm events with priority selection types produce descriptions"
+  (testing "cast-spell, cast-and-yield, activate-ability no longer use inference — they use pending-entry"
+    (doseq [event [[:fizzle.events.casting/cast-spell]
+                   [:fizzle.events.priority-flow/cast-and-yield]
+                   [:fizzle.events.abilities/activate-ability :obj-1 0]]]
+      (let [pre-db (make-db-with-history :db-old)
+            post-db (make-db-with-history :db-new)
+            context (make-context pre-db post-db event)
+            result (run-interceptor context)
+            result-db (get-in result [:effects :db])]
+        ;; Without pending-entry set by handler, no entry is created via inference
+        (is (zero? (count (:history/main result-db)))
+            (str (first event) " should NOT create entry via inference path (uses pending-entry)")))))
+  (testing "confirm-selection no longer creates entries via priority-selection-types"
     (doseq [selection-type [:cast-time-targeting :x-mana-cost :exile-cards-cost :ability-targeting]]
       (let [pre-db (assoc (make-db-with-history :db-old)
                           :game/pending-selection {:selection/type selection-type})
@@ -181,13 +191,10 @@
             event [:fizzle.events.selection/confirm-selection]
             context (make-context pre-db post-db event)
             result (run-interceptor context)
-            result-db (get-in result [:effects :db])
-            entry (first (:history/main result-db))]
-        (is (and (string? (:entry/description entry))
-                 (pos? (count (:entry/description entry))))
-            (str "confirm-selection with " selection-type " should have a non-empty description"))
-        (is (not= "confirm-selection" (:entry/description entry))
-            (str "confirm-selection with " selection-type " should not use fallback name"))))))
+            result-db (get-in result [:effects :db])]
+        ;; confirm-selection does NOT create entries via interceptor inference anymore
+        (is (zero? (count (:history/main result-db)))
+            (str "confirm-selection with " selection-type " no longer creates entries via inference"))))))
 
 
 (deftest test-init-game-creates-first-entry
@@ -306,22 +313,31 @@
 
 
 (deftest test-cast-spell-description-with-real-db
-  (testing "Cast spell description includes card name with real Datascript db"
+  (testing "Cast spell entry created when pending-entry set by handler (pending-entry mechanism)"
     (let [db-before (create-game-db)
           [db-with-card obj-id] (add-card-to-zone db-before :dark-ritual :hand :player-1)
           db-mana (mana/add-mana db-with-card :player-1 {:black 1})
           db-after-cast (rules/cast-spell db-mana :player-1 obj-id)
+          ;; Simulate what cast-spell-handler would set: pending-entry on app-db
+          pending-entry {:description "Cast Dark Ritual"
+                         :snapshot db-after-cast
+                         :event-type :fizzle.events.casting/cast-spell
+                         :turn 1
+                         :principal :player-1}
           pre-db (make-db-with-history db-before)
-          post-db (make-db-with-history db-after-cast)
+          post-db (assoc (make-db-with-history db-after-cast)
+                         :history/pending-entry pending-entry)
           event [:fizzle.events.casting/cast-spell]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])
           entry (first (:history/main result-db))]
       (is (= "Cast Dark Ritual" (:entry/description entry))
-          "Should include card name when real db has spell on stack")
+          "Should include card name from pending-entry")
       (is (= 1 (:entry/turn entry))
-          "Turn should be 1 from real game state"))))
+          "Turn should be 1 from pending-entry")
+      (is (nil? (:history/pending-entry result-db))
+          "pending-entry should be cleared after processing"))))
 
 
 (deftest test-yield-description-with-real-db
@@ -389,11 +405,16 @@
 
 
 (deftest test-cast-and-yield-creates-history-entry
-  (testing "cast-and-yield creates a history entry when game-db changes"
-    (let [old-game-db :db-old
-          new-game-db :db-new
-          pre-db (make-db-with-history old-game-db)
-          post-db (make-db-with-history new-game-db)
+  (testing "cast-and-yield creates a history entry via pending-entry mechanism"
+    (let [game-db :db-new
+          pending-entry {:description "Cast & Yield"
+                         :snapshot game-db
+                         :event-type :fizzle.events.priority-flow/cast-and-yield
+                         :turn 0
+                         :principal :player-1}
+          pre-db (make-db-with-history :db-old)
+          post-db (assoc (make-db-with-history game-db)
+                         :history/pending-entry pending-entry)
           event [:fizzle.events.priority-flow/cast-and-yield]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
@@ -421,24 +442,30 @@
 
 
 (deftest test-cast-and-yield-description-with-real-db
-  (testing "Cast-and-yield description includes card name with real Datascript db"
+  (testing "Cast-and-yield description includes card name via pending-entry mechanism"
     (let [db-before (create-game-db)
           [db-with-card obj-id] (add-card-to-zone db-before :dark-ritual :hand :player-1)
           db-mana (mana/add-mana db-with-card :player-1 {:black 1})
           db-after-cast (rules/cast-spell db-mana :player-1 obj-id)
           ;; Simulate full cast-and-yield: spell cast and resolved
           db-after-resolve (rules/resolve-spell db-after-cast :player-1 obj-id)
-          ;; pre-db has the spell in hand (before cast), selected-card set
+          ;; Simulate pending-entry set by cast-and-yield-handler
+          pending-entry {:description "Cast & Yield Dark Ritual"
+                         :snapshot db-after-resolve
+                         :event-type :fizzle.events.priority-flow/cast-and-yield
+                         :turn 1
+                         :principal :player-1}
           pre-db (assoc (make-db-with-history db-mana)
                         :game/selected-card obj-id)
-          post-db (make-db-with-history db-after-resolve)
+          post-db (assoc (make-db-with-history db-after-resolve)
+                         :history/pending-entry pending-entry)
           event [:fizzle.events.priority-flow/cast-and-yield]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])
           entry (first (:history/main result-db))]
       (is (= "Cast & Yield Dark Ritual" (:entry/description entry))
-          "Should include card name for cast-and-yield"))))
+          "Should include card name from pending-entry"))))
 
 
 (deftest test-pending-entry-creates-history

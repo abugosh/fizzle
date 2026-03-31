@@ -11,6 +11,7 @@
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.selection.core :as selection-core]
     [fizzle.events.selection.costs :as sel-costs]
+    [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
 
 
@@ -26,8 +27,13 @@
   ::activate-mana-ability
   (fn [db [_ object-id mana-color player-id]]
     (let [game-db (:game/db db)
-          pid (or player-id (queries/get-human-player-id game-db))]
-      (assoc db :game/db (activate-mana-ability game-db pid object-id mana-color)))))
+          pid (or player-id (queries/get-human-player-id game-db))
+          description (descriptions/describe-activate-mana object-id mana-color game-db)
+          game-db-after (activate-mana-ability game-db pid object-id mana-color)]
+      (-> db
+          (assoc :game/db game-db-after)
+          (assoc :history/pending-entry
+                 (descriptions/build-pending-entry game-db-after ::activate-mana-ability description pid))))))
 
 
 ;; === Activate Non-Mana Ability ===
@@ -284,12 +290,29 @@
   ::activate-ability
   (fn [db [_ object-id ability-index]]
     (let [game-db (:game/db db)
-          result (activate-ability game-db (queries/get-human-player-id game-db) object-id ability-index)]
-      (cond-> (assoc db :game/db (:db result))
-        ;; Clear selected card after activation (sacrifice may move it to graveyard,
-        ;; and stale selection causes it to appear highlighted there)
-        true (dissoc :game/selected-card)
-        (:pending-selection result) (assoc :game/pending-selection (:pending-selection result))))))
+          player-id (queries/get-human-player-id game-db)
+          result (activate-ability game-db player-id object-id ability-index)
+          base-db (cond-> (assoc db :game/db (:db result))
+                    ;; Clear selected card after activation (sacrifice may move it to graveyard,
+                    ;; and stale selection causes it to appear highlighted there)
+                    true (dissoc :game/selected-card)
+                    (:pending-selection result) (assoc :game/pending-selection (:pending-selection result)))]
+      (if (:pending-selection result)
+        ;; Targeting needed — defer history entry until selection chain completes
+        (assoc base-db :history/deferred-entry
+               {:type :activate-ability
+                :object-id object-id
+                :pre-game-db game-db
+                :principal player-id
+                :event-type :fizzle.events.abilities/activate-ability})
+        ;; No targeting — create history entry now
+        (let [desc (descriptions/describe-activate-ability object-id ability-index game-db)]
+          (assoc base-db :history/pending-entry
+                 (descriptions/build-pending-entry
+                   (:db result)
+                   :fizzle.events.abilities/activate-ability
+                   desc
+                   player-id)))))))
 
 
 (defmethod selection-core/execute-confirmed-selection :ability-targeting

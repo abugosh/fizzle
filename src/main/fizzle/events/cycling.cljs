@@ -5,6 +5,7 @@
     [fizzle.db.queries :as queries]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.zones :as zones]
+    [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
 
 
@@ -48,5 +49,10 @@
   (fn [db [_ object-id player-id]]
     (let [game-db (:game/db db)
           pid (or player-id (queries/get-human-player-id game-db))
-          result (cycle-card game-db pid object-id)]
-      (assoc db :game/db (:db result)))))
+          description (descriptions/describe-cycle-card object-id game-db)
+          result (cycle-card game-db pid object-id)
+          game-db-after (:db result)]
+      (-> db
+          (assoc :game/db game-db-after)
+          (assoc :history/pending-entry
+                 (descriptions/build-pending-entry game-db-after ::cycle-card description pid))))))

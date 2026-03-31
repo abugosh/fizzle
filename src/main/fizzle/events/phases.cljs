@@ -11,6 +11,7 @@
     [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.engine.turn-based :as turn-based]
     [fizzle.events.cleanup :as cleanup]
+    [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
 
 
@@ -150,5 +151,10 @@
       ;; Block start-turn if pending selection exists (e.g., cleanup discard)
       (if (:game/pending-selection db)
         db
-        (let [active-player-id (queries/get-active-player-id game-db)]
-          (assoc db :game/db (start-turn game-db active-player-id)))))))
+        (let [active-player-id (queries/get-active-player-id game-db)
+              game-db-after (start-turn game-db active-player-id)
+              description (descriptions/describe-start-turn game-db-after)]
+          (-> db
+              (assoc :game/db game-db-after)
+              (assoc :history/pending-entry
+                     (descriptions/build-pending-entry game-db-after ::start-turn description nil))))))))

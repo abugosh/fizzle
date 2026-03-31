@@ -3,6 +3,29 @@
     [fizzle.db.queries :as queries]))
 
 
+(defn get-turn
+  "Get current turn number from game-db. Returns 0 if not available."
+  [game-db]
+  (try
+    (if game-db
+      (let [game-state (queries/get-game-state game-db)]
+        (or (:game/turn game-state) 0))
+      0)
+    (catch :default _
+      0)))
+
+
+(defn build-pending-entry
+  "Build a :history/pending-entry map for use by event handlers.
+   snapshot is game-db after the action; principal is player-id keyword or nil."
+  [game-db event-type description principal]
+  {:description description
+   :snapshot    game-db
+   :event-type  event-type
+   :turn        (get-turn game-db)
+   :principal   principal})
+
+
 (def ^:private phase-names
   "Human-readable names for game phases."
   {:untap   "Untap"
@@ -52,7 +75,7 @@
     ""))
 
 
-(defn- describe-cast-spell
+(defn describe-cast-spell
   "Describe a cast-spell event using game-db-after (spell is now on stack).
    Falls back to casting-spell-id when spell hasn't reached the stack yet
    (e.g., mid-chain through X cost → mana allocation)."
@@ -70,7 +93,7 @@
        "Cast spell"))))
 
 
-(defn- describe-cast-and-yield
+(defn describe-cast-and-yield
   "Describe a cast-and-yield event. After this event, the spell is typically
    resolved (off the stack), so we use casting-spell-id or pre-game-db to
    find the card name. Falls back to game-db-after stack top if spell is
@@ -143,7 +166,7 @@
     "Advance phase"))
 
 
-(defn- describe-start-turn
+(defn describe-start-turn
   "Describe a start-turn event using game-db-after."
   [game-db-after]
   (if game-db-after
@@ -201,13 +224,13 @@
       :else "Yield")))
 
 
-(defn- describe-yield
+(defn describe-yield
   "Describe a yield event: what resolved and/or where we ended up."
   [pre-game-db game-db-after]
   (format-yield-description pre-game-db game-db-after))
 
 
-(defn- describe-yield-all
+(defn describe-yield-all
   "Describe a yield-all event: where we ended up after resolving everything."
   [pre-game-db game-db-after]
   (let [phase-desc (describe-phase-result pre-game-db game-db-after)]
@@ -216,7 +239,7 @@
       "Yield All")))
 
 
-(defn- describe-play-land
+(defn describe-play-land
   "Describe a play-land event. Event args contain [_ object-id]."
   [object-id game-db-after]
   (if-let [card-name (get-card-name game-db-after object-id)]
@@ -232,7 +255,7 @@
     nil))
 
 
-(defn- describe-activate-mana
+(defn describe-activate-mana
   "Describe an activate-mana-ability event. Event args contain [_ object-id color]."
   [object-id mana-color pre-game-db]
   (let [card-name (get-card-name pre-game-db object-id)
@@ -243,7 +266,15 @@
       :else "Activate mana ability")))
 
 
-(defn- describe-activate-ability
+(defn describe-cycle-card
+  "Describe a cycle-card event. Uses pre-game-db to look up the card name."
+  [object-id pre-game-db]
+  (if-let [card-name (get-card-name pre-game-db object-id)]
+    (str "Cycle " card-name)
+    "Cycle"))
+
+
+(defn describe-activate-ability
   "Describe an activate-ability event. Event args contain [_ object-id ability-index].
    Uses pre-game-db because source may be sacrificed as cost."
   [object-id ability-index pre-game-db]
@@ -262,7 +293,7 @@
     "Activate ability"))
 
 
-(defn- describe-activate-from-stack
+(defn describe-activate-from-stack
   "Describe an ability activation using game-db-after (ability is now on stack).
    Used for confirm-ability-target where the source may have been sacrificed as cost."
   [game-db-after]

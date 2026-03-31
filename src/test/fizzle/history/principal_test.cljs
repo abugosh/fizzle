@@ -105,14 +105,21 @@
 
 
 (deftest test-determine-principal-cast-spell-human
-  (testing "cast-spell by human returns human player-id"
+  (testing "cast-spell by human: principal set via pending-entry mechanism"
     (let [game-db (create-two-player-game-db)
           pre-db (make-db-with-history game-db)
-          ;; Simulate game-db change
           conn (d/conn-from-db game-db)
           _ (d/transact! conn [[:db/add (queries/get-player-eid game-db :player-1)
                                 :player/storm-count 1]])
-          post-db (make-db-with-history @conn)
+          new-game-db @conn
+          ;; cast-spell-handler sets :history/pending-entry with principal
+          pending-entry {:description "Cast spell"
+                         :snapshot new-game-db
+                         :event-type :fizzle.events.casting/cast-spell
+                         :turn 1
+                         :principal :player-1}
+          post-db (assoc (make-db-with-history new-game-db)
+                         :history/pending-entry pending-entry)
           event [:fizzle.events.casting/cast-spell]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
@@ -122,13 +129,21 @@
 
 
 (deftest test-determine-principal-cast-spell-bot
-  (testing "cast-spell with bot player-id opts returns bot player-id"
+  (testing "cast-spell with bot player-id: principal set via pending-entry mechanism"
     (let [game-db (create-two-player-game-db)
           pre-db (make-db-with-history game-db)
           conn (d/conn-from-db game-db)
           _ (d/transact! conn [[:db/add (queries/get-player-eid game-db :player-2)
                                 :player/storm-count 1]])
-          post-db (make-db-with-history @conn)
+          new-game-db @conn
+          ;; Bot cast: handler sets principal as :player-2 in pending-entry
+          pending-entry {:description "Cast spell"
+                         :snapshot new-game-db
+                         :event-type :fizzle.events.casting/cast-spell
+                         :turn 1
+                         :principal :player-2}
+          post-db (assoc (make-db-with-history new-game-db)
+                         :history/pending-entry pending-entry)
           event [:fizzle.events.casting/cast-spell {:player-id :player-2}]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
@@ -220,15 +235,21 @@
 
 
 (deftest test-determine-principal-confirm-selection
-  (testing "confirm-selection uses selection's player-id"
+  (testing "confirm-selection principal comes from deferred-entry processing via pending-entry"
     (let [game-db (create-two-player-game-db)
-          pre-db (assoc (make-db-with-history game-db)
-                        :game/pending-selection {:selection/type :cast-time-targeting
-                                                 :selection/player-id :player-2})
           conn (d/conn-from-db game-db)
           _ (d/transact! conn [[:db/add (queries/get-player-eid game-db :player-2)
                                 :player/storm-count 1]])
-          post-db (make-db-with-history @conn)
+          new-game-db @conn
+          ;; process-deferred-entry creates pending-entry with principal from deferred-entry
+          pending-entry {:description "Cast spell"
+                         :snapshot new-game-db
+                         :event-type :fizzle.events.casting/cast-spell
+                         :turn 1
+                         :principal :player-2}
+          pre-db (make-db-with-history game-db)
+          post-db (assoc (make-db-with-history new-game-db)
+                         :history/pending-entry pending-entry)
           event [:fizzle.events.selection/confirm-selection]
           context (make-context pre-db post-db event)
           result (run-interceptor context)

@@ -10,6 +10,7 @@
     [fizzle.events.selection.core :as sel-core]
     [fizzle.events.selection.costs :as sel-costs]
     [fizzle.events.selection.targeting :as sel-targeting]
+    [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
 
 
@@ -228,23 +229,31 @@
    Pure function: (app-db, opts?) -> app-db"
   ([app-db] (cast-spell-handler app-db nil))
   ([app-db opts]
-   (let [game-db (:game/db app-db)
+   (let [game-db-before (:game/db app-db)
          player-id (or (:player-id opts)
-                       (queries/get-human-player-id game-db))
+                       (queries/get-human-player-id game-db-before))
          object-id (or (:object-id opts)
                        (:game/selected-card app-db))
          target (:target opts)]
-     (if (and object-id (rules/can-cast? game-db player-id object-id))
-       (let [obj (queries/get-object game-db object-id)
+     (if (and object-id (rules/can-cast? game-db-before player-id object-id))
+       (let [obj (queries/get-object game-db-before object-id)
              card (:object/card obj)
-             valid-spell-modes (get-valid-spell-modes game-db player-id card)]
+             valid-spell-modes (get-valid-spell-modes game-db-before player-id card)]
          (if (seq valid-spell-modes)
-           ;; Modal card: spell mode selection through standard selection system
-           (assoc app-db :game/pending-selection
-                  (build-spell-mode-selection player-id object-id valid-spell-modes))
+           ;; Modal card: spell mode selection through standard selection system.
+           ;; Set deferred-entry — entry will be created when selection chain completes.
+           (-> app-db
+               (assoc :game/pending-selection
+                      (build-spell-mode-selection player-id object-id valid-spell-modes))
+               (assoc :history/deferred-entry
+                      {:type :cast-spell
+                       :object-id object-id
+                       :pre-game-db game-db-before
+                       :principal player-id
+                       :event-type :fizzle.events.casting/cast-spell}))
            ;; Non-modal card: proceed with casting mode selection
-           (let [modes (rules/get-casting-modes game-db player-id object-id)
-                 castable-modes (filterv #(rules/can-cast-mode? game-db player-id object-id %) modes)]
+           (let [modes (rules/get-casting-modes game-db-before player-id object-id)
+                 castable-modes (filterv #(rules/can-cast-mode? game-db-before player-id object-id %) modes)]
              (cond
                ;; No castable modes - shouldn't happen if can-cast? passed
                (empty? castable-modes)
@@ -258,7 +267,24 @@
 
                ;; Single mode: check for X costs, targeting, then cast
                :else
-               (initiate-cast-with-mode app-db player-id object-id (first castable-modes) target)))))
+               (let [result (initiate-cast-with-mode app-db player-id object-id (first castable-modes) target)]
+                 (if (:game/pending-selection result)
+                   ;; Pre-cast selection needed — defer history entry
+                   (assoc result :history/deferred-entry
+                          {:type :cast-spell
+                           :object-id object-id
+                           :pre-game-db game-db-before
+                           :principal player-id
+                           :event-type :fizzle.events.casting/cast-spell})
+                   ;; Immediate cast — set pending-entry now
+                   (let [game-db-after (:game/db result)
+                         desc (descriptions/describe-cast-spell game-db-after object-id)]
+                     (assoc result :history/pending-entry
+                            (descriptions/build-pending-entry
+                              game-db-after
+                              :fizzle.events.casting/cast-spell
+                              desc
+                              player-id)))))))))
        app-db))))
 
 
