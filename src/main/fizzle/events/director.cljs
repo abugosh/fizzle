@@ -10,7 +10,7 @@
      Runs the loop until a human decision point.
 
    Component functions (also pure, also testable):
-     human-should-auto-pass  -- (game-db, player-eid, stops, yield-all?) -> boolean
+     human-should-auto-pass  -- (game-db, player-eid, stops, yield-all?, yield-through-stack?) -> boolean
      bot-act                 -- (game-db, player-id) -> action-result
 
    Architecture:
@@ -46,16 +46,16 @@
 
    Rules:
    - yield-all? true: always auto-pass (F6 mode — empty-stack yield-all)
-   - Stack is non-empty: always auto-pass (stops only prevent phase advancement)
-   - Stack is empty: auto-pass if current phase is NOT in player's stops
-   Note: yield-through-stack? does NOT affect this — it only controls
-   whether step-resolve-stack continues the loop.
+   - yield-through-stack? true + stack non-empty: auto-pass (resolving stack from yield-all)
+   - Stack non-empty: STOP (human gets priority to respond to spells/abilities)
+   - Stack empty: auto-pass if current phase is NOT in player's stops
 
-   Pure function: (game-db, player-eid, stops, yield-all?) -> boolean"
-  [game-db _player-eid stops yield-all?]
+   Pure function: (game-db, player-eid, stops, yield-all?, yield-through-stack?) -> boolean"
+  [game-db _player-eid stops yield-all? yield-through-stack?]
   (cond
     yield-all? true
-    (not (queries/stack-empty? game-db)) true
+    (and yield-through-stack? (not (queries/stack-empty? game-db))) true
+    (not (queries/stack-empty? game-db)) false
     :else (not (contains? stops (:game/phase (queries/get-game-state game-db))))))
 
 
@@ -216,7 +216,8 @@
         effective-stops (if on-opp-turn? opp-stops human-stops)
         ;; human-yielded?: human explicitly clicked Yield — auto-pass once regardless of stops
         auto-pass? (or human-yielded?
-                       (human-should-auto-pass game-db human-eid effective-stops yield-all?))]
+                       (human-should-auto-pass game-db human-eid effective-stops
+                                               yield-all? yield-through-stack?))]
     (if-not auto-pass?
       {:done {:app-db app-db :reason :await-human}}
       (let [holder-eid (priority/get-priority-holder-eid game-db)

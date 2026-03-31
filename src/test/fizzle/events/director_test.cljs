@@ -34,7 +34,7 @@
           game-state (q/get-game-state game-db)
           phase (:game/phase game-state)]
       ;; phase should NOT be in stops #{:main1}
-      (is (director/human-should-auto-pass game-db player-eid #{:main1} false)
+      (is (director/human-should-auto-pass game-db player-eid #{:main1} false false)
           (str "Human should auto-pass at " phase " when only :main1 is in stops")))))
 
 
@@ -43,7 +43,7 @@
     (let [db (th/create-test-db {:stops #{:main1}})
           player-eid (q/get-player-eid db :player-1)]
       ;; Game starts at main1 which IS in stops
-      (is (false? (director/human-should-auto-pass db player-eid #{:main1} false))
+      (is (false? (director/human-should-auto-pass db player-eid #{:main1} false false))
           "Human should pause at :main1 when :main1 is in stops"))))
 
 
@@ -52,7 +52,7 @@
     (let [db (th/create-test-db {:stops #{:main1 :main2 :upkeep :draw :end}})
           player-eid (q/get-player-eid db :player-1)]
       ;; Even with stops at every phase, yield-all? true forces auto-pass
-      (is (true? (director/human-should-auto-pass db player-eid #{:main1 :main2} true))
+      (is (true? (director/human-should-auto-pass db player-eid #{:main1 :main2} true false))
           "yield-all? true should always auto-pass"))))
 
 

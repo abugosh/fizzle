@@ -173,13 +173,12 @@
           _ (is (some #(= :fizzle.events.priority-flow/yield (first %)) fresh-dispatches)
                 "Step 7: fresh bot-decide yields (passes priority)")
 
-          ;; Step 8: director resolves the bolt — after resolution with yield-all?=false,
-          ;; director stops. Per MTG rules, active player (bot) gets priority after resolution.
+          ;; Step 8: director runs — human gets priority with bolt on stack.
+          ;; Human can respond to the bolt before it resolves.
           settled-app-db (:db fresh-decide)
           step-result (director/run-to-decision settled-app-db {:yield-all? false})
           final-game-db (:game/db (:app-db step-result))]
-      ;; Bolt should have resolved (stack empty or bolt damage dealt)
       (is (= :await-human (:reason step-result))
-          "Step 8: director stops after resolution")
-      (is (q/stack-empty? final-game-db)
-          "Step 8: bolt resolved, stack empty"))))
+          "Step 8: director stops for human priority")
+      (is (not (q/stack-empty? final-game-db))
+          "Step 8: bolt on stack — human has priority to respond"))))

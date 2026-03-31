@@ -103,8 +103,8 @@
           [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
           game-db (rules/cast-spell db' :player-1 obj-id)
           app-db (merge (history/init-history) {:game/db game-db})
-          ;; Director: stack non-empty → both auto-pass → resolve spell
-          result (director/run-to-decision app-db {:yield-all? false})
+          ;; Director: human yields, both pass, resolve spell
+          result (director/run-to-decision app-db {:yield-all? false :human-yielded? true})
           result-db (:game/db (:app-db result))
           pool (q/get-mana-pool result-db :player-1)]
       ;; Dark Ritual should resolve correctly using active player

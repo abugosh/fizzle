@@ -31,8 +31,8 @@
           ;; Build app-db (yield-all? false = manual yield)
           app-db (merge (history/init-history)
                         {:game/db db})
-          ;; Run director: both players pass, resolve one item, stop (yield-all? false)
-          result (director/run-to-decision app-db {:yield-all? false})
+          ;; Run director: human yields (passes once), both pass, resolve one item, stop
+          result (director/run-to-decision app-db {:yield-all? false :human-yielded? true})
           result-db (:game/db (:app-db result))]
       ;; Should have resolved exactly one spell (one ritual resolves)
       (let [remaining-stack (queries/get-all-stack-items result-db)

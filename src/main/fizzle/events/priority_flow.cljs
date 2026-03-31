@@ -70,10 +70,12 @@
             result (apply-director-result
                      (director/run-to-decision db {:yield-all? false :human-yielded? true}))
             db-after (:db result)
-            game-db-after (:game/db db-after)
-            description (descriptions/describe-yield pre-game-db game-db-after)]
-        (assoc-in result [:db :history/pending-entry]
-                  (descriptions/build-pending-entry game-db-after ::yield description principal))))))
+            game-db-after (:game/db db-after)]
+        (if (identical? pre-game-db game-db-after)
+          result
+          (let [description (descriptions/describe-yield pre-game-db game-db-after)]
+            (assoc-in result [:db :history/pending-entry]
+                      (descriptions/build-pending-entry game-db-after ::yield description principal))))))))
 
 
 (rf/reg-event-fx
@@ -87,23 +89,24 @@
             result (apply-director-result
                      (director/run-to-decision db {:yield-all? true}))
             db-after (:db result)
-            game-db-after (:game/db db-after)
-            description (descriptions/describe-yield-all pre-game-db game-db-after)]
-        (assoc-in result [:db :history/pending-entry]
-                  (descriptions/build-pending-entry game-db-after ::yield-all description principal))))))
+            game-db-after (:game/db db-after)]
+        (if (identical? pre-game-db game-db-after)
+          result
+          (let [description (descriptions/describe-yield-all pre-game-db game-db-after)]
+            (assoc-in result [:db :history/pending-entry]
+                      (descriptions/build-pending-entry game-db-after ::yield-all description principal))))))))
 
 
 (defn- resolve-one-and-stop
   "Resolve the top stack item, letting the director handle priority and resolution.
    Returns updated app-db. Used by cast-and-yield and the :resolve-one-and-stop
-   continuation."
+   continuation. Passes human-yielded? true so the human auto-passes once
+   (the human chose Cast & Yield, meaning they want the spell to resolve)."
   [app-db]
   (if (or (:game/pending-selection app-db)
           (queries/stack-empty? (:game/db app-db)))
     app-db
-    ;; Run director with yield-all? false but stack is non-empty:
-    ;; director will auto-pass (stack non-empty), bot passes, resolve one item, stop.
-    (:app-db (director/run-to-decision app-db {:yield-all? false}))))
+    (:app-db (director/run-to-decision app-db {:yield-all? false :human-yielded? true}))))
 
 
 ;; Register continuation: :resolve-one-and-stop
