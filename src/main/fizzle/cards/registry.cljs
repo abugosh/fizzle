@@ -50,6 +50,7 @@
     [fizzle.cards.blue.stifle :as stifle]
     [fizzle.cards.blue.tinker :as tinker]
     [fizzle.cards.blue.turnabout :as turnabout]
+    [fizzle.cards.blue.vision-charm :as vision-charm]
     [fizzle.cards.blue.words-of-wisdom :as words-of-wisdom]
     [fizzle.cards.green.crumble :as crumble]
     [fizzle.cards.green.hunting-pack :as hunting-pack]
@@ -146,7 +147,8 @@
        xantid-swarm/card
        diabolic-vision/card
        hurkyls-recall/card
-       vendetta/card]
+       vendetta/card
+       vision-charm/card]
       ;; Cycle cards
       basic-lands/cards
       pain-lands/cards
