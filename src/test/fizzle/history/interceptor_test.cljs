@@ -404,18 +404,20 @@
           "Should have Cast & Yield description"))))
 
 
-(deftest test-cast-and-yield-selection-triggers-entry
-  (testing "cast-and-yield creates entry when selection created but game-db unchanged"
+(deftest test-cast-and-yield-selection-defers-to-confirm
+  (testing "cast-and-yield does NOT create entry when selection created — defers to confirm-selection"
     (let [same-db :db-same
           pre-db (make-db-with-history same-db)
           post-db (assoc (make-db-with-history same-db)
-                         :game/pending-selection {:selection/type :peek-and-select})
+                         :game/pending-selection {:selection/type :cast-time-targeting
+                                                  :selection/on-complete
+                                                  {:continuation/type :resolve-one-and-stop}})
           event [:fizzle.events.priority-flow/cast-and-yield]
           context (make-context pre-db post-db event)
           result (run-interceptor context)
           result-db (get-in result [:effects :db])]
-      (is (= 1 (count (:history/main result-db)))
-          "Entry should be created when cast-and-yield creates a pending-selection"))))
+      (is (= 0 (count (:history/main result-db)))
+          "No entry — confirm-selection will create the single Cast & Yield entry"))))
 
 
 (deftest test-cast-and-yield-description-with-real-db

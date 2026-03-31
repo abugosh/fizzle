@@ -117,6 +117,10 @@
                     had-pending? (some? (:game/pending-selection db))
                     casting-spell-id (or (get-in db [:game/pending-selection :selection/spell-id])
                                          (:game/selected-card db))
+                    cast-and-yield? (= :resolve-one-and-stop
+                                       (get-in db [:game/pending-selection
+                                                   :selection/on-complete
+                                                   :continuation/type]))
                     principal (or (determine-principal event game-db)
                                   (get-in db [:game/pending-selection :selection/player-id]))]
                 (-> context
@@ -124,6 +128,7 @@
                     (assoc-in [:coeffects :history/selection-type] selection-type)
                     (assoc-in [:coeffects :history/had-pending?] had-pending?)
                     (assoc-in [:coeffects :history/casting-spell-id] casting-spell-id)
+                    (assoc-in [:coeffects :history/cast-and-yield?] cast-and-yield?)
                     (assoc-in [:coeffects :history/principal] principal))))
     :after (fn [context]
              (let [event (get-in context [:coeffects :event])
@@ -141,19 +146,20 @@
                        had-pending? (get-in context [:coeffects :history/had-pending?])
                        selection-created (and (not had-pending?)
                                               (some? (:game/pending-selection db-after)))
-                       ;; yield/yield-all/cast-and-yield trigger on selection-created.
-                       ;; cast-spell and activate-ability create selections that chain
-                       ;; to confirm-selection (which has its own priority entry).
+                       ;; yield/yield-all trigger on selection-created.
+                       ;; cast-and-yield defers to confirm-selection for its entry
+                       ;; (so targeted/X-cost spells get one "Cast & Yield" entry, not two).
                        selection-triggers-entry (and selection-created
                                                      (#{:fizzle.events.priority-flow/yield
-                                                        :fizzle.events.priority-flow/yield-all
-                                                        :fizzle.events.priority-flow/cast-and-yield} event-id))
-                       casting-spell-id (get-in context [:coeffects :history/casting-spell-id])]
+                                                        :fizzle.events.priority-flow/yield-all} event-id))
+                       casting-spell-id (get-in context [:coeffects :history/casting-spell-id])
+                       cast-and-yield? (get-in context [:coeffects :history/cast-and-yield?])]
                    (if (and db-after game-db-after
                             (or game-db-changed selection-triggers-entry))
                      (let [description (or (descriptions/describe-event
                                              event pre-game-db game-db-after
-                                             selection-type casting-spell-id)
+                                             selection-type casting-spell-id
+                                             cast-and-yield?)
                                            (name event-id))
                            ;; Use pre-game-db for snapshot when game-db unchanged
                            ;; (selection-created case), since that's the meaningful state

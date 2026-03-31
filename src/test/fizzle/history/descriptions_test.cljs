@@ -251,6 +251,22 @@
              [:fizzle.events.selection/confirm-selection] nil nil :exile-cards-cost)))))
 
 
+(deftest test-confirm-selection-cast-and-yield-uses-yield-label
+  (testing "confirm-selection with cast-and-yield? uses Cast & Yield label"
+    (let [db (make-db)
+          [db card-eid] (add-card db {:card/id :test-targeted-spell
+                                      :card/name "Orim's Chant"
+                                      :card/cmc 1
+                                      :card/types #{:instant}
+                                      :card/effects [{:effect/type :add-restriction}]})
+          [db obj-id] (add-object db card-eid :hand)]
+      (is (= "Cast & Yield Orim's Chant"
+             (descriptions/describe-event
+               [:fizzle.events.selection/confirm-selection]
+               db nil :cast-time-targeting obj-id true))
+          "cast-and-yield? true should use Cast & Yield prefix via pre-game-db"))))
+
+
 (deftest test-confirm-ability-target-shows-card-and-target
   (testing "confirm-selection with ability-targeting shows card name and target"
     (let [db (make-db)

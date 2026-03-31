@@ -282,10 +282,12 @@
    Returns string or nil.
    Only priority-action events need descriptions (the interceptor filters others)."
   ([[event-id & _args] pre-game-db game-db-after]
-   (describe-event (into [event-id] _args) pre-game-db game-db-after nil nil))
+   (describe-event (into [event-id] _args) pre-game-db game-db-after nil nil false))
   ([[event-id & _args] pre-game-db game-db-after selection-type]
-   (describe-event (into [event-id] _args) pre-game-db game-db-after selection-type nil))
+   (describe-event (into [event-id] _args) pre-game-db game-db-after selection-type nil false))
   ([[event-id & _args] pre-game-db game-db-after selection-type casting-spell-id]
+   (describe-event (into [event-id] _args) pre-game-db game-db-after selection-type casting-spell-id false))
+  ([[event-id & _args] pre-game-db game-db-after selection-type casting-spell-id cast-and-yield?]
    (case event-id
      :fizzle.events.init/init-game
      "Game started"
@@ -329,7 +331,9 @@
      :fizzle.events.selection/confirm-selection
      (case selection-type
        (:cast-time-targeting :x-mana-cost :exile-cards-cost)
-       (describe-cast-spell game-db-after casting-spell-id)
+       (if cast-and-yield?
+         (describe-cast-and-yield pre-game-db game-db-after casting-spell-id)
+         (describe-cast-spell game-db-after casting-spell-id))
 
        :ability-targeting
        (describe-activate-from-stack game-db-after)
@@ -339,4 +343,4 @@
      nil))
   ;; Backward-compatible 1-arity: no game-dbs available
   ([event]
-   (describe-event event nil nil nil nil)))
+   (describe-event event nil nil nil nil false)))
