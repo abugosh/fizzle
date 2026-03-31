@@ -45,9 +45,11 @@
    Returns true if auto-pass, false if await input.
 
    Rules:
-   - yield-all? true: always auto-pass (F6 mode)
+   - yield-all? true: always auto-pass (F6 mode — empty-stack yield-all)
    - Stack is non-empty: always auto-pass (stops only prevent phase advancement)
    - Stack is empty: auto-pass if current phase is NOT in player's stops
+   Note: yield-through-stack? does NOT affect this — it only controls
+   whether step-resolve-stack continues the loop.
 
    Pure function: (game-db, player-eid, stops, yield-all?) -> boolean"
   [game-db _player-eid stops yield-all?]
@@ -162,12 +164,13 @@
 
 
 (defn- step-bot-action
-  [app-db game-db holder-pid yield-all?]
+  [app-db game-db holder-pid yield-all? yield-through-stack?]
   (let [action (bot-act game-db holder-pid)
         atype (:action-type action)]
     (cond
       (= atype :play-land)
-      {:continue (assoc app-db :game/db (:game-db action)) :yield-all? yield-all?}
+      {:continue (assoc app-db :game/db (:game-db action))
+       :yield-all? yield-all? :yield-through-stack? yield-through-stack?}
 
       (and (= atype :cast-spell) (:pending-selection action))
       {:done {:app-db (-> app-db
@@ -179,7 +182,8 @@
       (let [passed-db (priority/yield-priority
                         (:game-db action)
                         (priority/get-priority-holder-eid (:game-db action)))]
-        {:continue (assoc app-db :game/db passed-db) :yield-all? yield-all?})
+        {:continue (assoc app-db :game/db passed-db)
+         :yield-all? yield-all? :yield-through-stack? yield-through-stack?})
 
       :else ; :pass
       (let [holder-eid (priority/get-priority-holder-eid game-db)
@@ -188,7 +192,7 @@
         (if-not all-passed?
           ;; Not all passed — transfer priority to other player, continue
           {:continue (assoc app-db :game/db (priority/transfer-priority passed-db holder-eid))
-           :yield-all? yield-all?}
+           :yield-all? yield-all? :yield-through-stack? yield-through-stack?}
           ;; Both passed — reset and resolve or advance
           (let [active-pid (queries/get-active-player-id passed-db)
                 active-eid (queries/get-player-eid passed-db active-pid)
@@ -196,12 +200,12 @@
                              priority/reset-passes
                              (priority/set-priority-holder active-eid))]
             (if-not (queries/stack-empty? reset-db)
-              (step-resolve-stack app-db reset-db yield-all?)
-              (step-advance-phase app-db reset-db active-pid yield-all?))))))))
+              (step-resolve-stack app-db reset-db yield-all? yield-through-stack?)
+              (step-advance-phase app-db reset-db active-pid yield-all? yield-through-stack?))))))))
 
 
 (defn- step-human-action
-  [app-db game-db human-pid yield-all? human-yielded?]
+  [app-db game-db human-pid yield-all? yield-through-stack? human-yielded?]
   (let [human-eid (queries/get-player-eid game-db human-pid)
         human-stops (get-player-stops game-db human-eid)
         active-pid (queries/get-active-player-id game-db)
@@ -221,19 +225,19 @@
         (if-not all-passed?
           ;; Not all passed — transfer priority to other player, continue
           {:continue (assoc app-db :game/db (priority/transfer-priority passed-db holder-eid))
-           :yield-all? yield-all?}
+           :yield-all? yield-all? :yield-through-stack? yield-through-stack?}
           (let [active-pid' (queries/get-active-player-id passed-db)
                 active-eid' (queries/get-player-eid passed-db active-pid')
                 reset-db (-> passed-db
                              priority/reset-passes
                              (priority/set-priority-holder active-eid'))]
             (if-not (queries/stack-empty? reset-db)
-              (step-resolve-stack app-db reset-db yield-all?)
-              (step-advance-phase app-db reset-db active-pid' yield-all?))))))))
+              (step-resolve-stack app-db reset-db yield-all? yield-through-stack?)
+              (step-advance-phase app-db reset-db active-pid' yield-all? yield-through-stack?))))))))
 
 
 (defn- step-resolve-stack
-  [app-db game-db yield-all?]
+  [app-db game-db yield-all? yield-through-stack?]
   (let [result (resolution/resolve-one-item game-db)]
     (if (:pending-selection result)
       {:done {:app-db (-> app-db
@@ -244,13 +248,14 @@
             new-app-db (cleanup/maybe-continue-cleanup (assoc app-db :game/db resolved-db))]
         (if (:game/pending-selection new-app-db)
           {:done {:app-db new-app-db :reason :pending-selection}}
-          (if yield-all?
-            {:continue new-app-db :yield-all? yield-all?}
+          (if (or yield-all? yield-through-stack?)
+            {:continue new-app-db :yield-all? yield-all?
+             :yield-through-stack? yield-through-stack?}
             {:done {:app-db new-app-db :reason :await-human}}))))))
 
 
 (defn- step-advance-phase
-  [app-db game-db active-pid yield-all?]
+  [app-db game-db active-pid yield-all? yield-through-stack?]
   (let [advance-result (advance-one-phase game-db active-pid)]
     (if (:pending-selection advance-result)
       {:done {:app-db (-> app-db
@@ -264,7 +269,9 @@
             new-yield-all? (if (and yield-all? crossed-turn? (= new-active-pid human-pid))
                              false
                              yield-all?)]
-        {:continue (assoc app-db :game/db advanced-db) :yield-all? new-yield-all?}))))
+        {:continue (assoc app-db :game/db advanced-db)
+         :yield-all? new-yield-all?
+         :yield-through-stack? yield-through-stack?}))))
 
 
 ;; === Main Director Loop ===
@@ -274,7 +281,9 @@
    Pure function: (app-db, opts) -> {:app-db, :reason}
 
    opts:
-     :yield-all?     -- true for F6 mode: human auto-passes all stops
+     :yield-all?     -- true for F6 mode: human auto-passes all stops.
+                        When stack has items at entry, auto-downgraded to
+                        yield-through-stack (resolve stack, then stop).
      :human-yielded? -- true when human explicitly clicked Yield: auto-pass once
                         (skip current stop, then stops apply normally)
 
@@ -287,10 +296,17 @@
   (let [app-db (dissoc app-db :yield/epoch :yield/step-count
                        :bot/action-pending? :bot/action-count)
         human-pid game-state/human-player-id
-        yield-all-init? (boolean (:yield-all? opts))
+        yield-all-requested? (boolean (:yield-all? opts))
+        game-db (:game/db app-db)
+        stack-has-items? (and game-db (not (queries/stack-empty? game-db)))
+        ;; yield-all with non-empty stack: resolve stack then stop (no F6)
+        ;; yield-all with empty stack: F6 through phases
+        yield-all-init? (and yield-all-requested? (not stack-has-items?))
+        yield-through-stack-init? (and yield-all-requested? stack-has-items?)
         human-yielded-init? (boolean (:human-yielded? opts))]
     (loop [app-db app-db
            yield-all? yield-all-init?
+           yield-through-stack? yield-through-stack-init?
            human-yielded? human-yielded-init?
            steps 0]
       (cond
@@ -314,11 +330,11 @@
                   step-result
                   (cond
                     (bot-protocol/get-bot-archetype game-db holder-pid)
-                    (step-bot-action app-db game-db holder-pid yield-all?)
+                    (step-bot-action app-db game-db holder-pid yield-all? yield-through-stack?)
 
                     (= holder-pid human-pid)
                     (step-human-action app-db game-db human-pid
-                                       yield-all? human-yielded?)
+                                       yield-all? yield-through-stack? human-yielded?)
 
                     :else
                     {:done {:app-db app-db :reason :await-human}})]
@@ -326,5 +342,6 @@
                 (:done step-result)
                 (recur (:continue step-result)
                        (:yield-all? step-result)
+                       (:yield-through-stack? step-result)
                        false ; human-yielded? consumed after first human action
                        (inc steps))))))))))

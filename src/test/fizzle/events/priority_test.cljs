@@ -186,7 +186,7 @@
 ;; === yield-all tests ===
 
 (deftest yield-all-resolves-entire-stack
-  (testing "yield-all with non-empty stack resolves all items"
+  (testing "yield-all with non-empty stack resolves all items then stops"
     (let [scenario (setup-app-db {:mana {:black 2} :stops #{:main1 :main2}})
           db (:game/db scenario)
           [db' obj1] (h/add-card-to-zone db :dark-ritual :hand :player-1)
@@ -195,13 +195,13 @@
           game-db2 (rules/cast-spell db'' :player-1 obj2)
           app-db (assoc scenario :game/db game-db2)
           result (dispatch-yield-all app-db)]
-      ;; yield-all (F6 mode) resolves all stack items then cascades through the
-      ;; entire turn cycle (player T1 -> opponent T2 -> player T3 main1).
-      ;; Mana empties at phase boundaries, so it's 0 by the time we return.
+      ;; yield-all with non-empty stack resolves all items then stops at current stop
       (is (empty? (q/get-all-stack-items (:game/db result)))
           "Stack should be empty after yield-all")
+      (is (= 1 (:game/turn (q/get-game-state (:game/db result))))
+          "Should stay on turn 1 — yield-all with stack should not F6")
       (is (= :main1 (:game/phase (q/get-game-state (:game/db result))))
-          "Should land on main1 after F6 cascades through full turn cycle"))))
+          "Should remain at main1 after resolving stack"))))
 
 
 (deftest yield-all-empty-stack-f6-advances-to-new-turn

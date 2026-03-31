@@ -45,7 +45,7 @@
 
 
 (deftest yield-all-resolves-entire-stack
-  (testing "yield-all with 2 items on stack resolves all items"
+  (testing "yield-all with 2 items on stack resolves all items but stays on same turn"
     (let [db (th/create-test-db {:mana {:black 1} :stops #{:main1}})
           db (th/add-opponent db {:bot-archetype :goldfish})
           ;; Cast two Dark Rituals
@@ -59,12 +59,18 @@
                     "Setup: should have 2 spells on stack")
           app-db (merge (history/init-history)
                         {:game/db db})
-          ;; yield-all? true = F6 mode, cascade through stack
+          ;; yield-all with non-empty stack: resolve all items, then stop
           result (director/run-to-decision app-db {:yield-all? true})
           result-db (:game/db (:app-db result))]
       ;; Both rituals should have resolved (stack empty)
       (is (empty? (queries/get-all-stack-items result-db))
           "Stack should be empty after yield-all")
+      ;; Should stay on turn 1 — yield-all with stack items should NOT F6
+      (is (= 1 (:game/turn (queries/get-game-state result-db)))
+          "Should stay on turn 1 — yield-all with stack should not F6")
+      ;; Should stop at human's stop
+      (is (= :await-human (:reason result))
+          "Should stop at :await-human after stack empties")
       ;; Rituals should be in graveyard (proof they resolved)
       (let [gy (queries/get-objects-in-zone result-db :player-1 :graveyard)
             ritual-count (count (filter #(= :dark-ritual (get-in % [:object/card :card/id])) gy))]
