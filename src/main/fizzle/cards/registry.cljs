@@ -36,6 +36,7 @@
     [fizzle.cards.blue.flash-of-insight :as flash-of-insight]
     [fizzle.cards.blue.foil :as foil]
     [fizzle.cards.blue.frantic-search :as frantic-search]
+    [fizzle.cards.blue.hurkyls-recall :as hurkyls-recall]
     [fizzle.cards.blue.hydroblast :as hydroblast]
     [fizzle.cards.blue.impulse :as impulse]
     [fizzle.cards.blue.intuition :as intuition]
@@ -142,7 +143,8 @@
        hunting-pack/card
        nimble-mongoose/card
        xantid-swarm/card
-       diabolic-vision/card]
+       diabolic-vision/card
+       hurkyls-recall/card]
       ;; Cycle cards
       basic-lands/cards
       pain-lands/cards
