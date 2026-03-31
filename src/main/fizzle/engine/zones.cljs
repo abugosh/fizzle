@@ -3,7 +3,7 @@
 
    All functions are pure: (db, args) -> db
 
-   Valid zones: :hand, :library, :graveyard, :stack, :battlefield, :exile, :sideboard
+   Valid zones: :hand, :library, :graveyard, :stack, :battlefield, :exile, :sideboard, :phased-out
 
    Stack-item safety: When an object leaves the :stack zone (via move-to-zone
    or remove-object), any associated stack-item is automatically cleaned up.
@@ -115,6 +115,28 @@
                     (into creature-leave-txs)
                     (into creature-enter-txs))]
         (d/db-with db txs)))))
+
+
+(defn phase-out
+  "Phase out a permanent. Direct zone change to :phased-out — bypasses
+   move-to-zone intentionally to preserve all object state (tapped,
+   counters, creature fields, triggers). Does NOT retract triggers or
+   reset tapped state."
+  [db object-id]
+  (if-let [obj-eid (q/get-object-eid db object-id)]
+    (d/db-with db [[:db/add obj-eid :object/zone :phased-out]])
+    db))
+
+
+(defn phase-in
+  "Phase in a permanent. Direct zone change back to :battlefield —
+   bypasses move-to-zone intentionally. Does NOT trigger ETB, does NOT
+   reset tapped state, does NOT add summoning sickness. Preserves all
+   object state exactly as it was when phased out."
+  [db object-id]
+  (if-let [obj-eid (q/get-object-eid db object-id)]
+    (d/db-with db [[:db/add obj-eid :object/zone :battlefield]])
+    db))
 
 
 (defn move-to-bottom-of-library

@@ -9,7 +9,8 @@
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.effects :as effects]
-    [fizzle.engine.stack :as stack]))
+    [fizzle.engine.stack :as stack]
+    [fizzle.engine.zones :as zones]))
 
 
 (defmulti resolve-trigger
@@ -121,6 +122,25 @@
       db)))
 
 
+(defn- phase-in-permanents
+  "Phase in all phased-out permanents owned by the active player.
+   Called at beginning of untap step, before untapping.
+   Ownership (not controller) determines who phases in the permanent.
+   Direct zone change — does NOT trigger ETB."
+  [db player-id]
+  (let [player-eid (q/get-player-eid db player-id)
+        phased-out (when player-eid
+                     (d/q '[:find [(pull ?obj [:object/id]) ...]
+                            :in $ ?owner
+                            :where [?obj :object/owner ?owner]
+                            [?obj :object/zone :phased-out]]
+                          db player-eid))]
+    (reduce (fn [db' obj]
+              (zones/phase-in db' (:object/id obj)))
+            db
+            (or phased-out []))))
+
+
 (defn- clear-summoning-sickness
   "Clear summoning sickness for all creatures controlled by a player on battlefield.
    Only clears for the active player's creatures at their untap step."
@@ -142,5 +162,6 @@
   [db trigger]
   (let [active-player (:trigger/controller trigger)]
     (-> db
+        (phase-in-permanents active-player)
         (untap-all-permanents active-player)
         (clear-summoning-sickness active-player))))

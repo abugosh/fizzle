@@ -133,6 +133,19 @@
         db))))
 
 
+(defmethod effects/execute-effect-impl :phase-out
+  [db _player-id effect _object-id]
+  ;; Phase out a targeted permanent. Direct zone change to :phased-out —
+  ;; bypasses move-to-zone to preserve all object state (tapped, creature
+  ;; fields, grants, triggers). Does NOT trigger ETB on phase-in.
+  (let [target-id (:effect/target effect)]
+    (if-not target-id
+      db
+      (if (q/get-object-eid db target-id)
+        (zones/phase-out db target-id)
+        db))))
+
+
 (defmethod effects/execute-effect-impl :bounce-all
   [db _player-id effect _object-id]
   ;; Mass bounce: return all permanents matching :effect/criteria on target player's
