@@ -21,6 +21,7 @@
     [fizzle.cards.black.ill-gotten-gains :as ill-gotten-gains]
     [fizzle.cards.black.necrologia :as necrologia]
     [fizzle.cards.black.rain-of-filth :as rain-of-filth]
+    [fizzle.cards.black.vendetta :as vendetta]
     [fizzle.cards.blue.accumulated-knowledge :as accumulated-knowledge]
     [fizzle.cards.blue.annul :as annul]
     [fizzle.cards.blue.blue-elemental-blast :as blue-elemental-blast]
@@ -144,7 +145,8 @@
        nimble-mongoose/card
        xantid-swarm/card
        diabolic-vision/card
-       hurkyls-recall/card]
+       hurkyls-recall/card
+       vendetta/card]
       ;; Cycle cards
       basic-lands/cards
       pain-lands/cards
