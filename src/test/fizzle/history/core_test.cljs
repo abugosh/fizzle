@@ -142,6 +142,20 @@
           "Pending mode selection should be cleared after step-to"))))
 
 
+(deftest test-clear-stale-clears-history-keys
+  (testing "step-to clears :history/pending-entry and :history/deferred-entry"
+    (let [db (-> (build-3-entry-db)
+                 (assoc :history/pending-entry {:description "pending" :snapshot :db-snap
+                                                :event-type :some/event :turn 1 :principal nil})
+                 (assoc :history/deferred-entry {:description "deferred" :snapshot :db-snap
+                                                 :event-type :some/event :turn 1 :principal nil}))
+          db' (history/step-to db 0)]
+      (is (nil? (:history/pending-entry db'))
+          ":history/pending-entry should be cleared after step-to")
+      (is (nil? (:history/deferred-entry db'))
+          ":history/deferred-entry should be cleared after step-to"))))
+
+
 (deftest test-can-step-back
   (testing "can-step-back? false at 0, true at > 0"
     (let [db (build-3-entry-db)]

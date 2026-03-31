@@ -439,3 +439,57 @@
           entry (first (:history/main result-db))]
       (is (= "Cast & Yield Dark Ritual" (:entry/description entry))
           "Should include card name for cast-and-yield"))))
+
+
+(deftest test-pending-entry-creates-history
+  (testing "pending-entry on post-db creates a history entry and is cleared"
+    (let [game-db :db-snap
+          pre-db (make-db-with-history :db-old)
+          pending-entry {:description "Dark Ritual resolved"
+                         :snapshot game-db
+                         :event-type :fizzle.events.casting/cast-spell
+                         :turn 3
+                         :principal :player-1}
+          post-db (assoc (make-db-with-history :db-old)
+                         :history/pending-entry pending-entry)
+          ;; Use a non-priority event so ONLY the pending-entry mechanism fires
+          event [:fizzle.events.selection/confirm-selection]
+          context (make-context pre-db post-db event)
+          result (run-interceptor context)
+          result-db (get-in result [:effects :db])
+          entry (first (:history/main result-db))]
+      (is (= 1 (count (:history/main result-db)))
+          "One entry should be created from pending-entry")
+      (is (= "Dark Ritual resolved" (:entry/description entry))
+          "Entry description should match pending-entry :description")
+      (is (= :player-1 (:entry/principal entry))
+          "Entry principal should match pending-entry :principal")
+      (is (= game-db (:entry/snapshot entry))
+          "Entry snapshot should be pending-entry :snapshot")
+      (is (nil? (:history/pending-entry result-db))
+          "pending-entry key should be cleared after processing"))))
+
+
+(deftest test-pending-entry-auto-forks
+  (testing "pending-entry auto-forks when position is not at tip"
+    (let [db (-> (make-db-with-history :db-0)
+                 (history/append-entry (history/make-entry :db-0 :evt-0 "Entry 0" 1))
+                 (history/append-entry (history/make-entry :db-1 :evt-1 "Entry 1" 1))
+                 ;; Rewind to position 0 (not at tip)
+                 (history/step-to 0))
+          pending-entry {:description "New action"
+                         :snapshot :db-fork
+                         :event-type :fizzle.events.casting/cast-spell
+                         :turn 1
+                         :principal :player-1}
+          post-db (assoc db :history/pending-entry pending-entry)
+          event [:fizzle.events.selection/confirm-selection]
+          context (make-context db post-db event)
+          result (run-interceptor context)
+          result-db (get-in result [:effects :db])]
+      (is (uuid? (:history/current-branch result-db))
+          "Should have auto-forked to a new branch")
+      (is (= 2 (count (:history/main result-db)))
+          "Main timeline should be preserved with 2 entries")
+      (is (nil? (:history/pending-entry result-db))
+          "pending-entry key should be cleared after processing"))))

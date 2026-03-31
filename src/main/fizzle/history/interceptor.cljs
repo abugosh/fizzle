@@ -131,47 +131,57 @@
                     (assoc-in [:coeffects :history/cast-and-yield?] cast-and-yield?)
                     (assoc-in [:coeffects :history/principal] principal))))
     :after (fn [context]
-             (let [event (get-in context [:coeffects :event])
-                   event-id (first event)
-                   selection-type (get-in context [:coeffects :history/selection-type])]
-               (if-not (priority-event? event-id selection-type)
-                 context
-                 (let [pre-game-db (get-in context [:coeffects :history/pre-game-db])
-                       db-after (get-in context [:effects :db])
-                       game-db-after (when db-after (:game/db db-after))
-                       game-db-changed (and game-db-after
-                                            (not (identical? pre-game-db game-db-after)))
-                       ;; Also trigger on pending-selection creation (e.g., resolve-top
-                       ;; for spells that need player selection before changing game-db)
-                       had-pending? (get-in context [:coeffects :history/had-pending?])
-                       selection-created (and (not had-pending?)
-                                              (some? (:game/pending-selection db-after)))
-                       ;; yield/yield-all trigger on selection-created.
-                       ;; cast-and-yield defers to confirm-selection for its entry
-                       ;; (so targeted/X-cost spells get one "Cast & Yield" entry, not two).
-                       selection-triggers-entry (and selection-created
-                                                     (#{:fizzle.events.priority-flow/yield
-                                                        :fizzle.events.priority-flow/yield-all} event-id))
-                       casting-spell-id (get-in context [:coeffects :history/casting-spell-id])
-                       cast-and-yield? (get-in context [:coeffects :history/cast-and-yield?])]
-                   (if (and db-after game-db-after
-                            (or game-db-changed selection-triggers-entry))
-                     (let [description (or (descriptions/describe-event
-                                             event pre-game-db game-db-after
-                                             selection-type casting-spell-id
-                                             cast-and-yield?)
-                                           (name event-id))
-                           ;; Use pre-game-db for snapshot when game-db unchanged
-                           ;; (selection-created case), since that's the meaningful state
-                           snapshot-db (if game-db-changed game-db-after pre-game-db)
-                           turn (get-turn snapshot-db)
-                           principal (get-in context [:coeffects :history/principal])
-                           entry (history/make-entry snapshot-db event-id description turn principal)]
-                       (if (or (= -1 (:history/position db-after))
-                               (history/at-tip? db-after))
-                         (assoc-in context [:effects :db] (history/append-entry db-after entry))
-                         (assoc-in context [:effects :db] (history/auto-fork db-after entry))))
-                     context)))))))
+             (let [db-after (get-in context [:effects :db])]
+               (if-let [pending (and db-after (:history/pending-entry db-after))]
+                 ;; pending-entry mechanism: explicit entry from event handler
+                 (let [{:keys [description snapshot event-type turn principal]} pending
+                       entry (history/make-entry snapshot event-type description turn principal)
+                       db-cleared (dissoc db-after :history/pending-entry)]
+                   (if (or (= -1 (:history/position db-cleared))
+                           (history/at-tip? db-cleared))
+                     (assoc-in context [:effects :db] (history/append-entry db-cleared entry))
+                     (assoc-in context [:effects :db] (history/auto-fork db-cleared entry))))
+                 ;; Fall through to existing inference logic
+                 (let [event (get-in context [:coeffects :event])
+                       event-id (first event)
+                       selection-type (get-in context [:coeffects :history/selection-type])]
+                   (if-not (priority-event? event-id selection-type)
+                     context
+                     (let [pre-game-db (get-in context [:coeffects :history/pre-game-db])
+                           game-db-after (when db-after (:game/db db-after))
+                           game-db-changed (and game-db-after
+                                                (not (identical? pre-game-db game-db-after)))
+                           ;; Also trigger on pending-selection creation (e.g., resolve-top
+                           ;; for spells that need player selection before changing game-db)
+                           had-pending? (get-in context [:coeffects :history/had-pending?])
+                           selection-created (and (not had-pending?)
+                                                  (some? (:game/pending-selection db-after)))
+                           ;; yield/yield-all trigger on selection-created.
+                           ;; cast-and-yield defers to confirm-selection for its entry
+                           ;; (so targeted/X-cost spells get one "Cast & Yield" entry, not two).
+                           selection-triggers-entry (and selection-created
+                                                         (#{:fizzle.events.priority-flow/yield
+                                                            :fizzle.events.priority-flow/yield-all} event-id))
+                           casting-spell-id (get-in context [:coeffects :history/casting-spell-id])
+                           cast-and-yield? (get-in context [:coeffects :history/cast-and-yield?])]
+                       (if (and db-after game-db-after
+                                (or game-db-changed selection-triggers-entry))
+                         (let [description (or (descriptions/describe-event
+                                                 event pre-game-db game-db-after
+                                                 selection-type casting-spell-id
+                                                 cast-and-yield?)
+                                               (name event-id))
+                               ;; Use pre-game-db for snapshot when game-db unchanged
+                               ;; (selection-created case), since that's the meaningful state
+                               snapshot-db (if game-db-changed game-db-after pre-game-db)
+                               turn (get-turn snapshot-db)
+                               principal (get-in context [:coeffects :history/principal])
+                               entry (history/make-entry snapshot-db event-id description turn principal)]
+                           (if (or (= -1 (:history/position db-after))
+                                   (history/at-tip? db-after))
+                             (assoc-in context [:effects :db] (history/append-entry db-after entry))
+                             (assoc-in context [:effects :db] (history/auto-fork db-after entry))))
+                         context)))))))))
 
 
 (defn register!
