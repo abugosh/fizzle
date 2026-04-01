@@ -200,16 +200,18 @@
      continuation - Map with :continuation/type and continuation-specific data
      app-db - The current app-db (selection already dissoc'd)
 
-   Returns updated app-db.
+   Returns {:app-db updated-app-db} or {:app-db updated-app-db :then next-continuation}.
+   When :then is present, confirm-selection-impl will apply the next continuation
+   immediately, chaining until :then is absent or nil.
 
-   Defmethods are registered by domain modules (e.g., events/game.cljs
+   Defmethods are registered by domain modules (e.g., priority_flow.cljs
    registers :resolve-one-and-stop)."
   (fn [continuation _app-db] (:continuation/type continuation)))
 
 
 (defmethod apply-continuation :default
   [_ app-db]
-  app-db)
+  {:app-db app-db})
 
 
 ;; =====================================================
@@ -333,6 +335,16 @@
 ;; Confirm Selection Wrapper
 ;; =====================================================
 
+(defn- drain-continuation-chain
+  "Apply a continuation and drain the :then chain until exhausted.
+   Returns the final app-db after all continuations in the chain have run."
+  [on-complete app-db]
+  (loop [result (apply-continuation on-complete app-db)]
+    (if-let [next-cont (:then result)]
+      (recur (apply-continuation next-cont (:app-db result)))
+      (:app-db result))))
+
+
 (defn- standard-path
   "Standard lifecycle: execute remaining-effects and cleanup source.
    If remaining-effects contain an interactive effect, pauses and builds
@@ -360,7 +372,7 @@
                         (assoc :game/db db-final)
                         (dissoc :game/pending-selection))]
         (if on-complete
-          (apply-continuation on-complete updated)
+          (drain-continuation-chain on-complete updated)
           updated)))))
 
 
@@ -374,7 +386,7 @@
                   true (dissoc :game/pending-selection)
                   clear-selected-card? (dissoc :game/selected-card))]
     (if on-complete
-      (apply-continuation on-complete updated)
+      (drain-continuation-chain on-complete updated)
       updated)))
 
 

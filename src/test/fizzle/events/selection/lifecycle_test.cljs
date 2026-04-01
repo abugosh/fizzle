@@ -93,7 +93,7 @@
           ;; Register a test continuation that sets a marker on app-db
           _ (defmethod core/apply-continuation :test-marker
               [_continuation app-db]
-              (assoc app-db :test/marker true))
+              {:app-db (assoc app-db :test/marker true)})
           app-db (make-app-db db {:selection/type :test-standard
                                   :selection/lifecycle :standard
                                   :selection/player-id :player-1
@@ -238,3 +238,43 @@
   (testing "build-chain-selection :default method returns nil"
     (let [db (th/create-test-db)]
       (is (nil? (core/build-chain-selection db {:selection/type :unknown-type}))))))
+
+
+;; =====================================================
+;; apply-continuation return shape tests (ADR-020)
+;; =====================================================
+
+(deftest test-apply-continuation-default-returns-map-shape
+  (testing "apply-continuation :default returns {:app-db app-db} not raw app-db"
+    (let [db (th/create-test-db)
+          app-db {:game/db db}
+          result (core/apply-continuation {:continuation/type :unknown-continuation-type} app-db)]
+      (is (map? result))
+      (is (contains? result :app-db))
+      (is (= app-db (:app-db result)))
+      (is (not (contains? result :then))))))
+
+
+(deftest test-continuation-chain-drains-via-then
+  (testing "confirm-selection-impl drains :then chain from apply-continuation"
+    (let [db (th/create-test-db)
+          ;; Register a chained continuation: :test-chain-a -> :test-chain-b -> done
+          _ (defmethod core/apply-continuation :test-chain-a
+              [_cont app-db]
+              {:app-db (assoc app-db :test/chain-a-ran true)
+               :then {:continuation/type :test-chain-b}})
+          _ (defmethod core/apply-continuation :test-chain-b
+              [_cont app-db]
+              {:app-db (assoc app-db :test/chain-b-ran true)})
+          app-db (make-app-db db {:selection/type :test-finalized
+                                  :selection/lifecycle :finalized
+                                  :selection/player-id :player-1
+                                  :selection/selected #{}
+                                  :selection/validation :always
+                                  :selection/auto-confirm? false
+                                  :selection/on-complete {:continuation/type :test-chain-a}})
+          result (core/confirm-selection-impl app-db)]
+      (is (nil? (:game/pending-selection result)))
+      ;; Both continuations in the chain must have run
+      (is (true? (:test/chain-a-ran result)))
+      (is (true? (:test/chain-b-ran result))))))

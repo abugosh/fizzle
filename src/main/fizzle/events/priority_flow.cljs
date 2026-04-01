@@ -114,9 +114,9 @@
 ;; After resolving, process any deferred entry (cast-and-yield with targeting).
 (defmethod sel-core/apply-continuation :resolve-one-and-stop
   [_ app-db]
-  (-> app-db
-      resolve-one-and-stop
-      sel-core/process-deferred-entry))
+  {:app-db (-> app-db
+               resolve-one-and-stop
+               sel-core/process-deferred-entry)})
 
 
 (defn- cast-and-yield-handler

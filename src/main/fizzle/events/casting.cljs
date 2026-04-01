@@ -226,17 +226,17 @@
       (and cast-and-yield?
            (:game/pending-selection result)
            (not (:selection/on-complete (:game/pending-selection result))))
-      (assoc-in result [:game/pending-selection :selection/on-complete]
-                {:continuation/type :resolve-one-and-stop})
+      {:app-db (assoc-in result [:game/pending-selection :selection/on-complete]
+                         {:continuation/type :resolve-one-and-stop})}
 
       ;; Non-targeted mode in cast-and-yield: spell cast directly,
       ;; dispatch auto-resolve (can't call priority-flow directly — circular dep).
       (and cast-and-yield?
            (nil? (:game/pending-selection result)))
       (do (rf/dispatch [:fizzle.events.priority-flow/cast-and-yield-resolve])
-          result)
+          {:app-db result})
 
-      :else result)))
+      :else {:app-db result})))
 
 
 (defn cast-spell-handler
