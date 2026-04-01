@@ -217,8 +217,26 @@
         player-id (queries/get-human-player-id game-db)
         modes (rules/get-casting-modes game-db player-id object-id)
         primary (first (filter #(= :primary (:mode/id %)) modes))
-        casting-mode (or primary (first modes))]
-    (initiate-cast-with-mode app-db player-id object-id casting-mode nil)))
+        casting-mode (or primary (first modes))
+        result (initiate-cast-with-mode app-db player-id object-id casting-mode nil)
+        cast-and-yield? (= :cast-and-yield (:type (:history/deferred-entry result)))]
+    (cond
+      ;; Targeted mode in cast-and-yield: propagate resolve-one-and-stop
+      ;; to the new selection so auto-resolve fires after targeting.
+      (and cast-and-yield?
+           (:game/pending-selection result)
+           (not (:selection/on-complete (:game/pending-selection result))))
+      (assoc-in result [:game/pending-selection :selection/on-complete]
+                {:continuation/type :resolve-one-and-stop})
+
+      ;; Non-targeted mode in cast-and-yield: spell cast directly,
+      ;; dispatch auto-resolve (can't call priority-flow directly — circular dep).
+      (and cast-and-yield?
+           (nil? (:game/pending-selection result)))
+      (do (rf/dispatch [:fizzle.events.priority-flow/cast-and-yield-resolve])
+          result)
+
+      :else result)))
 
 
 (defn cast-spell-handler
