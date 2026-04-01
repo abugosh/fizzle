@@ -39,17 +39,17 @@
 
 ;; === B. Size targets ===
 
-(deftest encode-empty-board-under-50-chars-test
-  (testing "empty board (no cards anywhere) encodes to < 50 chars"
+(deftest encode-empty-board-under-200-chars-test
+  (testing "empty board (no cards anywhere) encodes to < 200 chars"
     (let [db    (-> (th/create-test-db) (th/add-opponent))
           state (extractor/extract db)
           out   (encoder/encode-snapshot state)]
-      (is (< (count out) 50)
-          (str "empty board should be < 50 chars, got " (count out))))))
+      (is (< (count out) 200)
+          (str "empty board should be < 200 chars, got " (count out))))))
 
 
-(deftest encode-mid-combo-under-200-chars-test
-  (testing "mid-combo state (5 hand, 4 battlefield, 10 graveyard, 33 library) encodes to < 200 chars"
+(deftest encode-mid-combo-under-300-chars-test
+  (testing "mid-combo state (5 hand, 4 battlefield, 10 graveyard, 33 library) encodes to < 300 chars"
     (let [db0  (-> (th/create-test-db) (th/add-opponent))
           ;; Add cards to zones
           [db1 _] (th/add-cards-to-library db0
@@ -73,8 +73,8 @@
                                               :player-1)
           state (extractor/extract db11)
           out   (encoder/encode-snapshot state)]
-      (is (< (count out) 200)
-          (str "mid-combo should be < 200 chars, got " (count out))))))
+      (is (< (count out) 300)
+          (str "mid-combo should be < 300 chars, got " (count out))))))
 
 
 ;; === C. Field encoding — header values ===

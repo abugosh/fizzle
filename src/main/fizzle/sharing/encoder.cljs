@@ -190,10 +190,12 @@
 
 (defn- write-header
   "Write the fixed header."
-  [w state p1-id p2-id has-grants?]
+  [w state p1-id p2-id has-grants? has-meta?]
   (let [p1     (get-in state [:players p1-id])
         p2     (get-in state [:players p2-id])
-        flags  (if has-grants? 2 0)
+        flags  (cond-> 0
+                 has-grants? (bit-or 2)
+                 has-meta?   (bit-or 4))
         p1-life (clamp (+ (or (:player/life p1) 20) 128) 0 255)
         p2-life (clamp (+ (or (:player/life p2) 20) 128) 0 255)
         p1-storm (clamp (or (:player/storm-count p1) 0) 0 63)
@@ -237,6 +239,23 @@
       (encode-edn-blob (or (seq p2-grants) []))))
 
 
+(defn- extract-player-metadata
+  "Extract non-binary player properties for EDN encoding.
+   Removes nil values — absent keys are omitted, not nil-encoded."
+  [player-state]
+  (let [m (select-keys player-state
+                       [:player/is-opponent :player/bot-archetype :player/max-hand-size])]
+    (into {} (remove (comp nil? val)) m)))
+
+
+(defn- write-player-metadata
+  "Write per-player metadata as EDN blobs after grants."
+  [w p1-meta p2-meta]
+  (-> w
+      (encode-edn-blob p1-meta)
+      (encode-edn-blob p2-meta)))
+
+
 (defn encode-snapshot
   "Encode a portable game-state map (from extractor/extract) to a base64url string.
    Returns nil if the result would exceed the URL character limit."
@@ -245,12 +264,17 @@
         p1-grants    (get-in state [:players p1-id :player/grants])
         p2-grants    (get-in state [:players p2-id :player/grants])
         has-grants?  (or (seq p1-grants) (seq p2-grants))
+        p1-meta      (extract-player-metadata (get (:players state) p1-id))
+        p2-meta      (extract-player-metadata (get (:players state) p2-id))
+        has-meta?    true  ; always encode metadata blobs for forward consistency
         w            (-> (bits/writer)
-                         (write-header state p1-id p2-id has-grants?)
+                         (write-header state p1-id p2-id has-grants? has-meta?)
                          (write-player-zones (get (:players state) p1-id))
                          (write-player-zones (get (:players state) p2-id))
                          (cond-> has-grants?
-                           (as-> ww (write-player-grants ww p1-grants p2-grants))))
+                           (as-> ww (write-player-grants ww p1-grants p2-grants)))
+                         (cond-> has-meta?
+                           (as-> ww (write-player-metadata ww p1-meta p2-meta))))
         result       (bits/base64url-encode (bits/finish w))]
     (when (<= (count result) url-char-limit)
       result)))

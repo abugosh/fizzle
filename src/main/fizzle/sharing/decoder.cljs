@@ -224,15 +224,18 @@
         (when (not= 1 version)
           (throw (ex-info (str "Unsupported snapshot version " version)
                           {:bad-version version})))
-        (let [hdr           (read-header r version)
-              flags         (:flags hdr)
-              has-grants?   (pos? (bit-and flags 2))
-              active-id     (if (= 0 (:active-bit hdr)) p1-id p2-id)
-              prio-id       (if (= 0 (:prio-bit hdr)) p1-id p2-id)
-              p1-zones      (read-player-zones r)
-              p2-zones      (read-player-zones r)
-              p1-grants     (if has-grants? (read-edn-blob r) [])
-              p2-grants     (if has-grants? (read-edn-blob r) [])]
+        (let [hdr            (read-header r version)
+              flags          (:flags hdr)
+              has-grants?    (pos? (bit-and flags 2))
+              has-metadata?  (pos? (bit-and flags 4))
+              active-id      (if (= 0 (:active-bit hdr)) p1-id p2-id)
+              prio-id        (if (= 0 (:prio-bit hdr)) p1-id p2-id)
+              p1-zones       (read-player-zones r)
+              p2-zones       (read-player-zones r)
+              p1-grants      (if has-grants? (read-edn-blob r) [])
+              p2-grants      (if has-grants? (read-edn-blob r) [])
+              p1-meta        (if has-metadata? (read-edn-blob r) {})
+              p2-meta        (if has-metadata? (read-edn-blob r) {})]
           {:game/turn            (:turn hdr)
            :game/phase           (:phase hdr)
            :game/step            (:step hdr)
@@ -249,14 +252,16 @@
                           :player/storm-count     (:p1-storm hdr)
                           :player/land-plays-left (:p1-land hdr)
                           :player/max-hand-size   7
-                          :player/grants          p1-grants})
+                          :player/grants          p1-grants}
+                         p1-meta)
             p2-id (merge p2-zones
                          {:player/life            (:p2-life hdr)
                           :player/mana-pool       (:p2-mana hdr)
                           :player/storm-count     (:p2-storm hdr)
                           :player/land-plays-left (:p2-land hdr)
                           :player/max-hand-size   7
-                          :player/grants          p2-grants})}}))
+                          :player/grants          p2-grants}
+                         p2-meta)}}))
       (catch ExceptionInfo e
         (let [data (ex-data e)]
           (cond

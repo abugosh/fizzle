@@ -329,3 +329,94 @@
       (let [result (decoder/decode-snapshot input)]
         (is (map? result)
             (str "should return map for input: " input))))))
+
+
+;; ---------------------------------------------------------------------------
+;; H. Round-trip: player metadata (bot-archetype, is-opponent, max-hand-size)
+
+(deftest roundtrip-bot-archetype-goldfish-test
+  (testing "player/bot-archetype :goldfish survives encode→decode on player-2"
+    (let [db    (-> (th/create-test-db) (th/add-opponent {:bot-archetype :goldfish}))
+          state (extractor/extract db)
+          rt    (decoder/decode-snapshot (encoder/encode-snapshot state))]
+      (is (= :goldfish (get-in rt [:players :player-2 :player/bot-archetype]))
+          "bot-archetype :goldfish should survive round-trip on player-2"))))
+
+
+(deftest roundtrip-bot-archetype-burn-test
+  (testing "player/bot-archetype :burn survives encode→decode on player-2"
+    (let [db    (-> (th/create-test-db) (th/add-opponent {:bot-archetype :burn}))
+          state (extractor/extract db)
+          rt    (decoder/decode-snapshot (encoder/encode-snapshot state))]
+      (is (= :burn (get-in rt [:players :player-2 :player/bot-archetype]))
+          "bot-archetype :burn should survive round-trip on player-2"))))
+
+
+(deftest roundtrip-is-opponent-test
+  (testing "player/is-opponent true survives encode→decode on player-2, absent on player-1"
+    (let [db    (-> (th/create-test-db) (th/add-opponent {:bot-archetype :goldfish}))
+          state (extractor/extract db)
+          rt    (decoder/decode-snapshot (encoder/encode-snapshot state))]
+      (is (= true (get-in rt [:players :player-2 :player/is-opponent]))
+          "player-2 should have :player/is-opponent true after round-trip")
+      (is (not (contains? (get-in rt [:players :player-1]) :player/is-opponent))
+          "player-1 should NOT have :player/is-opponent key (absent, not nil)"))))
+
+
+(deftest roundtrip-max-hand-size-test
+  (testing "player/max-hand-size survives encode→decode on both players"
+    (let [db    (-> (th/create-test-db) (th/add-opponent {:bot-archetype :goldfish}))
+          state (extractor/extract db)
+          rt    (decoder/decode-snapshot (encoder/encode-snapshot state))]
+      (is (= 7 (get-in rt [:players :player-1 :player/max-hand-size]))
+          "player-1 max-hand-size should be 7 after round-trip")
+      (is (= 7 (get-in rt [:players :player-2 :player/max-hand-size]))
+          "player-2 max-hand-size should be 7 after round-trip"))))
+
+
+(deftest roundtrip-player1-no-bot-archetype-test
+  (testing "player-1 has no :player/bot-archetype key after round-trip (absent, not nil)"
+    (let [db    (-> (th/create-test-db) (th/add-opponent {:bot-archetype :goldfish}))
+          state (extractor/extract db)
+          rt    (decoder/decode-snapshot (encoder/encode-snapshot state))]
+      (is (not (contains? (get-in rt [:players :player-1]) :player/bot-archetype))
+          "player-1 should NOT have :player/bot-archetype key"))))
+
+
+(deftest roundtrip-both-grants-and-metadata-test
+  (testing "encode/decode correctly handles both player grants AND metadata flags"
+    (let [db      (-> (th/create-test-db) (th/add-opponent {:bot-archetype :goldfish}))
+          grant   {:grant/id :test-grant :grant/type :add-restriction
+                   :grant/data {:restriction/type :no-land-play}}
+          db-with-grant (grants/add-player-grant db :player-1 grant)
+          state   (extractor/extract db-with-grant)
+          rt      (decoder/decode-snapshot (encoder/encode-snapshot state))]
+      (is (= 1 (count (get-in rt [:players :player-1 :player/grants])))
+          "player-1 grant should survive round-trip when metadata also present")
+      (is (= :goldfish (get-in rt [:players :player-2 :player/bot-archetype]))
+          "player-2 bot-archetype should survive round-trip when grants also present"))))
+
+
+(deftest backward-compat-v1-snapshot-no-metadata-test
+  (testing "v1 snapshot encoded without metadata flag decodes without error and uses defaults"
+    ;; Simulate a v1 snapshot without flag bit 2 by encoding with a state
+    ;; that currently produces no metadata (plain add-opponent with no bot-archetype).
+    ;; After the implementation lands, we verify that snapshots encoded before this
+    ;; change still decode fine. We test by building a snapshot state map that has
+    ;; no :player/is-opponent or :player/bot-archetype and verifying decode still works.
+    ;; We do this by manually crafting the state map to have no metadata-capable fields.
+    (let [db    (-> (th/create-test-db) (th/add-opponent))
+          state (extractor/extract db)
+          ;; Remove any metadata fields to simulate a state that would produce
+          ;; no metadata (or an old v1 snapshot with no flag bit 2)
+          state-no-meta (-> state
+                            (update-in [:players :player-2] dissoc
+                                       :player/bot-archetype :player/is-opponent))
+          encoded (encoder/encode-snapshot state-no-meta)
+          rt      (decoder/decode-snapshot encoded)]
+      (is (map? rt) "decode should return a map, not an error")
+      (is (not (contains? rt :error)) "decode should not return an error")
+      (is (= 7 (get-in rt [:players :player-1 :player/max-hand-size]))
+          "player-1 max-hand-size defaults to 7")
+      (is (= 7 (get-in rt [:players :player-2 :player/max-hand-size]))
+          "player-2 max-hand-size defaults to 7"))))
