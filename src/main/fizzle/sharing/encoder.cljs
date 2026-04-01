@@ -5,7 +5,7 @@
 
    Header (~14 bytes):
      version       4 bits  (value: 1)
-     flags         4 bits  (bit1=has-player-grants, reserved)
+     flags         4 bits  (bit1=has-player-grants, bit2=has-player-metadata, reserved)
      p1 life       8 bits  (stored as life+128, clamped 0-255)
      p2 life       8 bits
      p1 storm      6 bits  (0-63)
@@ -30,6 +30,12 @@
      graveyard:   6-bit count, N × (7-bit card-index + grants-trailer)
      exile:       6-bit count, N × (7-bit card-index + grants-trailer)
      library:     7-bit count, N × (7-bit card-index + grants-trailer) (position order, 0=top)
+
+   Trailer (after zones, in order):
+     Player grants (if flags bit1): EDN blob p1-grants, EDN blob p2-grants
+     Player metadata (if flags bit2): EDN blob p1-meta, EDN blob p2-meta
+       metadata keys: :player/bot-archetype, :player/is-opponent, :player/max-hand-size
+       (nil values omitted; always written for forward compatibility)
 
    Complex data: pr-str EDN, 16-bit length prefix (bytes), then UTF-8 bytes.
 
