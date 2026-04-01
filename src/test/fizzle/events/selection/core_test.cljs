@@ -1,7 +1,8 @@
 (ns fizzle.events.selection.core-test
   "Tests for the selection mechanism in events/selection/core.cljs.
    Covers validate-selection (5 validation types + nil-reject + candidate membership)
-   and auto-confirm behavior (data-driven via :selection/auto-confirm? flag)."
+   and auto-confirm behavior (data-driven via :selection/auto-confirm? flag).
+   Also covers confirm-selection-impl validation absorption and deferred entry processing."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [fizzle.engine.validation :as validation]
@@ -195,3 +196,152 @@
           result (selection-core/cleanup-selection-source db selection)]
       (is (= db result)
           "Should return db unchanged when no spell-id"))))
+
+
+;; =====================================================
+;; confirm-selection-impl validation absorption tests
+;; (ADR-019: validation moves from handler into impl)
+;; =====================================================
+
+;; Test executor: returns db unchanged — purely for routing tests.
+;; The lifecycle tests in lifecycle_test.cljs cover routing; these
+;; tests focus on the validation gate added to confirm-selection-impl.
+(defmethod selection-core/execute-confirmed-selection :test-impl-validation
+  [game-db _selection]
+  {:db game-db})
+
+
+;; Test chaining executor + chain builder: used to verify deferred entry
+;; is NOT processed when chaining continues (chain not complete).
+(defmethod selection-core/execute-confirmed-selection :test-chaining-for-deferred
+  [game-db _selection]
+  {:db game-db})
+
+
+(defmethod selection-core/build-chain-selection :test-chaining-for-deferred
+  [_db _selection]
+  {:selection/type :test-impl-validation
+   :selection/selected #{}
+   :selection/validation :always
+   :selection/auto-confirm? false
+   :selection/player-id :player-1})
+
+
+(deftest test-confirm-impl-returns-unchanged-on-invalid-count
+  (testing "confirm-selection-impl returns app-db unchanged when count is invalid"
+    (let [db (th/create-test-db)
+          ;; Two items selected but select-count is 1 — exact validation fails
+          sel {:selection/type :test-impl-validation
+               :selection/lifecycle :finalized
+               :selection/player-id :player-1
+               :selection/selected #{:a :b}
+               :selection/select-count 1
+               :selection/validation :exact}
+          app-db {:game/db db :game/pending-selection sel}
+          result (selection-core/confirm-selection-impl app-db)]
+      (is (= app-db result)
+          "confirm-selection-impl must return app-db unchanged on invalid count"))))
+
+
+(deftest test-confirm-impl-returns-unchanged-on-non-candidate-selected
+  (testing "confirm-selection-impl returns app-db unchanged when selected item not in candidates"
+    (let [db (th/create-test-db)
+          ;; :mountain not in candidates [:island :forest]
+          sel {:selection/type :test-impl-validation
+               :selection/lifecycle :finalized
+               :selection/player-id :player-1
+               :selection/selected #{:mountain}
+               :selection/candidates [:island :forest]
+               :selection/select-count 1
+               :selection/validation :exact}
+          app-db {:game/db db :game/pending-selection sel}
+          result (selection-core/confirm-selection-impl app-db)]
+      (is (= app-db result)
+          "confirm-selection-impl must return app-db unchanged when selected item not in candidates"))))
+
+
+(deftest test-confirm-impl-regression-vector-candidates-value-membership
+  (testing "regression: vector candidates use set coercion for membership, not contains?-on-vector"
+    (let [db (th/create-test-db)
+          ;; Use mode maps as candidates (vectors, like build-spell-mode-selection does)
+          ;; contains? on a vector checks indices, not values — this is the shipped bug
+          mode-a {:mode/id :mode-a :mode/name "Mode A"}
+          mode-b {:mode/id :mode-b :mode/name "Mode B"}
+          candidates [mode-a mode-b]
+          ;; Select mode-a which IS in the vector — must pass membership check
+          sel {:selection/type :test-impl-validation
+               :selection/lifecycle :finalized
+               :selection/player-id :player-1
+               :selection/selected #{mode-a}
+               :selection/candidates candidates
+               :selection/select-count 1
+               :selection/validation :exact}
+          app-db {:game/db db :game/pending-selection sel}
+          result (selection-core/confirm-selection-impl app-db)]
+      ;; Valid selection: should be processed (app-db CHANGED — pending-selection cleared)
+      (is (nil? (:game/pending-selection result))
+          "Valid selection with vector candidates must be processed — membership check must coerce to set"))))
+
+
+(deftest test-confirm-impl-processes-deferred-entry-when-chain-complete
+  (testing "confirm-selection-impl processes deferred entry when selection chain is complete"
+    (let [db (th/create-test-db)
+          ;; Valid finalized selection — no chaining, chain will be complete after confirm
+          sel {:selection/type :test-impl-validation
+               :selection/lifecycle :finalized
+               :selection/player-id :player-1
+               :selection/selected #{}
+               :selection/validation :always}
+          ;; Deferred entry of type :cast-spell (describe-cast-spell handles nil object-id gracefully)
+          deferred {:type :cast-spell
+                    :object-id nil
+                    :event-type :fizzle.events.casting/cast-spell
+                    :principal :player-1}
+          app-db {:game/db db
+                  :game/pending-selection sel
+                  :history/deferred-entry deferred}
+          result (selection-core/confirm-selection-impl app-db)]
+      (is (nil? (:history/deferred-entry result))
+          "Deferred entry must be consumed when chain is complete")
+      (is (some? (:history/pending-entry result))
+          "Pending entry must be produced from deferred entry"))))
+
+
+(deftest test-confirm-impl-skips-deferred-entry-when-chaining-continues
+  (testing "confirm-selection-impl does NOT process deferred entry when chaining continues"
+    (let [db (th/create-test-db)
+          ;; Chaining selection — confirm-selection-impl will set a new pending-selection
+          sel {:selection/type :test-chaining-for-deferred
+               :selection/lifecycle :chaining
+               :selection/player-id :player-1
+               :selection/selected #{}
+               :selection/validation :always}
+          deferred {:type :cast-spell
+                    :object-id nil
+                    :event-type :fizzle.events.casting/cast-spell
+                    :principal :player-1}
+          app-db {:game/db db
+                  :game/pending-selection sel
+                  :history/deferred-entry deferred}
+          result (selection-core/confirm-selection-impl app-db)]
+      ;; Chain continues: new pending-selection was set
+      (is (some? (:game/pending-selection result))
+          "Chaining must produce a new pending-selection")
+      ;; Deferred entry must NOT be processed yet — chain not complete
+      (is (some? (:history/deferred-entry result))
+          "Deferred entry must be preserved when chaining continues"))))
+
+
+(deftest test-confirm-impl-valid-finalized-selection-works
+  (testing "confirm-selection-impl processes valid finalized selection correctly"
+    (let [db (th/create-test-db)
+          sel {:selection/type :test-impl-validation
+               :selection/lifecycle :finalized
+               :selection/player-id :player-1
+               :selection/selected #{:a}
+               :selection/select-count 1
+               :selection/validation :exact}
+          app-db {:game/db db :game/pending-selection sel}
+          result (selection-core/confirm-selection-impl app-db)]
+      (is (nil? (:game/pending-selection result))
+          "Valid finalized selection must clear pending-selection"))))

@@ -304,6 +304,33 @@
 
 
 ;; =====================================================
+;; Deferred Entry Processing
+;; =====================================================
+
+(defn process-deferred-entry
+  "Process a :history/deferred-entry on app-db if present.
+   Returns updated app-db with :history/pending-entry set and
+   :history/deferred-entry cleared, or app-db unchanged if no deferred entry."
+  [app-db]
+  (if-let [deferred (:history/deferred-entry app-db)]
+    (let [game-db (:game/db app-db)
+          desc (case (:type deferred)
+                 :cast-spell (descriptions/describe-cast-spell game-db (:object-id deferred))
+                 :cast-and-yield (descriptions/describe-cast-and-yield
+                                   (:pre-game-db deferred) game-db (:object-id deferred))
+                 :activate-ability (descriptions/describe-activate-from-stack game-db))]
+      (-> app-db
+          (dissoc :history/deferred-entry)
+          (assoc :history/pending-entry
+                 (descriptions/build-pending-entry
+                   game-db
+                   (:event-type deferred)
+                   desc
+                   (:principal deferred)))))
+    app-db))
+
+
+;; =====================================================
 ;; Confirm Selection Wrapper
 ;; =====================================================
 
@@ -369,11 +396,13 @@
 
 (defn confirm-selection-impl
   "Shared wrapper for all selection confirmations.
-   1. Gets game-db and selection from app-db
-   2. Reads :selection/on-complete continuation BEFORE dissoc
-   3. Calls execute-confirmed-selection multimethod
-   4. Routes based on :selection/lifecycle
-   5. Applies continuation (if present) after selection is cleared
+   1. Validates selection — returns app-db unchanged on failure (no exceptions)
+   2. Gets game-db and selection from app-db
+   3. Reads :selection/on-complete continuation BEFORE dissoc
+   4. Calls execute-confirmed-selection multimethod
+   5. Routes based on :selection/lifecycle
+   6. Applies continuation (if present) after selection is cleared
+   7. Processes deferred history entry when selection chain is complete
 
    Lifecycle values (:selection/lifecycle on selection map):
      :standard  — remaining-effects applied, source cleaned up (default)
@@ -382,16 +411,24 @@
 
    Returns updated app-db."
   [app-db]
-  (let [selection (:game/pending-selection app-db)
-        on-complete (:selection/on-complete selection)
-        game-db (:game/db app-db)
-        result (execute-confirmed-selection game-db selection)
-        lifecycle (or (:selection/lifecycle selection) :standard)]
-    (case lifecycle
-      :chaining (chaining-path app-db result selection on-complete)
-      :finalized (finalized-path app-db result on-complete
-                                 (:selection/clear-selected-card? selection))
-      :standard (standard-path app-db result selection on-complete))))
+  (let [selection (:game/pending-selection app-db)]
+    (if-not (validation/validate-selection selection)
+      app-db
+      (let [on-complete (:selection/on-complete selection)
+            game-db (:game/db app-db)
+            result (execute-confirmed-selection game-db selection)
+            lifecycle (or (:selection/lifecycle selection) :standard)
+            routed (case lifecycle
+                     :chaining (chaining-path app-db result selection on-complete)
+                     :finalized (finalized-path app-db result on-complete
+                                                (:selection/clear-selected-card? selection))
+                     :standard (standard-path app-db result selection on-complete))]
+        ;; Process deferred entry only when selection chain is complete:
+        ;; no pending-selection and no continuation ran that set a new one.
+        (if (and (:history/deferred-entry routed)
+                 (nil? (:game/pending-selection routed)))
+          (process-deferred-entry routed)
+          routed)))))
 
 
 ;; =====================================================
@@ -454,54 +491,13 @@
 
 
 ;; =====================================================
-;; Deferred Entry Processing
-;; =====================================================
-
-(defn process-deferred-entry
-  "Process a :history/deferred-entry on app-db if present.
-   Returns updated app-db with :history/pending-entry set and
-   :history/deferred-entry cleared, or app-db unchanged if no deferred entry."
-  [app-db]
-  (if-let [deferred (:history/deferred-entry app-db)]
-    (let [game-db (:game/db app-db)
-          desc (case (:type deferred)
-                 :cast-spell (descriptions/describe-cast-spell game-db (:object-id deferred))
-                 :cast-and-yield (descriptions/describe-cast-and-yield
-                                   (:pre-game-db deferred) game-db (:object-id deferred))
-                 :activate-ability (descriptions/describe-activate-from-stack game-db))]
-      (-> app-db
-          (dissoc :history/deferred-entry)
-          (assoc :history/pending-entry
-                 (descriptions/build-pending-entry
-                   game-db
-                   (:event-type deferred)
-                   desc
-                   (:principal deferred)))))
-    app-db))
-
-
-;; =====================================================
 ;; Confirm Selection Handler
 ;; =====================================================
 
 (defn confirm-selection-handler
-  "Handle confirm-selection event. Uses validate-selection for data-driven
-   validation, then delegates to confirm-selection-impl.
-
-   After confirm-selection-impl completes, if there is a deferred history entry
-   and no pending-selection remains (chain complete), the deferred entry is
-   processed into a pending-entry. This handles cast-spell/activate-ability
-   that required pre-cast selection.
+  "Handle confirm-selection event. Thin pass-through to confirm-selection-impl,
+   which handles validation, lifecycle routing, and deferred entry processing.
 
    Returns updated app-db."
   [app-db]
-  (let [selection (:game/pending-selection app-db)]
-    (if (validation/validate-selection selection)
-      (let [result (confirm-selection-impl app-db)]
-        ;; Process deferred entry only when selection chain is complete:
-        ;; no pending-selection and no continuation ran that set a new one.
-        (if (and (:history/deferred-entry result)
-                 (nil? (:game/pending-selection result)))
-          (process-deferred-entry result)
-          result))
-      app-db)))
+  (confirm-selection-impl app-db))

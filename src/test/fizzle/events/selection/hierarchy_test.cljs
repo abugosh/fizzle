@@ -534,7 +534,7 @@
   (testing "build-chain-selection defmethod count reduced by at least 50%"
     (let [all-methods (methods core/build-chain-selection)
           ;; Exclude :default and test-only registrations
-          test-keys #{:default :test-chaining :test-chaining-nil}
+          test-keys #{:default :test-chaining :test-chaining-nil :test-chaining-for-deferred}
           production-methods (remove (fn [[k _]] (test-keys k)) all-methods)
           count-methods (count production-methods)]
       ;; Original: 8 production defmethods. Target: <= 8 (reduced from 8, +1 for combat blockers, +1 for ability-targeting, +1 for sacrifice-permanent-cost, +1 for land-type-source)
