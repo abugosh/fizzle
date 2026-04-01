@@ -18,6 +18,7 @@
     [fizzle.engine.effects-registry]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
+    [fizzle.events.casting :as casting]
     [fizzle.events.lands :as lands]
     [fizzle.events.resolution :as resolution]
     [fizzle.events.selection.core :as sel-core]
@@ -280,8 +281,13 @@
 
 (defn cast-mode-with-target
   "Casts a modal+targeted spell using the given spell mode and target through
-   the production flow. For spells like BEB/REB/Hydroblast that require both
-   mode selection and targeting.
+   the full production selection pipeline. For spells like BEB/REB/Hydroblast
+   that require both mode selection and targeting.
+
+   Pipeline: build-spell-mode-selection → set :selection/selected → confirm-selection-impl
+   (spell-mode executor sets :object/chosen-mode, cast-after-spell-mode continuation
+   initiates casting with targeting selection).
+
    spell-mode: the card mode from (:card/modes card), e.g. counter or destroy
    Validates can-cast?, spell mode has valid targets, and target is valid.
    Returns db with spell on stack, chosen-mode set, and target assigned."
@@ -291,22 +297,28 @@
   ;; Validate spell mode has valid targets (mirrors get-valid-spell-modes in cast-spell-handler)
   (assert (spell-mode-has-valid-targets? db player-id spell-mode)
           (str "Spell mode has no valid targets: " (:mode/label spell-mode)))
-  ;; Store chosen spell mode on object (mirrors spell-mode executor)
-  (let [obj-eid (q/get-object-eid db obj-id)
-        db-with-mode (d/db-with db [[:db/add obj-eid :object/chosen-mode spell-mode]])
-        ;; Get casting mode (primary) for mana payment
-        modes (rules/get-casting-modes db-with-mode player-id obj-id)
-        casting-mode (or (first (filter #(= :primary (:mode/id %)) modes))
-                         (first modes))
-        ;; Build targeting selection using the spell mode's targeting requirements
-        target-req (first (:mode/targeting spell-mode))
-        selection (sel-targeting/build-cast-time-target-selection
-                    db-with-mode player-id obj-id casting-mode target-req)]
-    (assert (some #{target-id} (:selection/valid-targets selection))
-            (str target-id " not in valid targets: " (:selection/valid-targets selection)))
+  ;; Build spell-mode selection via production builder, then confirm with chosen mode.
+  ;; This exercises the full :spell-mode pipeline including the :object/chosen-mode executor.
+  (let [card (q/get-card db obj-id)
+        card-modes (:card/modes card)
+        sel (casting/build-spell-mode-selection player-id obj-id card-modes)
+        sel-with-selected (assoc sel :selection/selected #{spell-mode})
+        app-db {:game/db db :game/pending-selection sel-with-selected}
+        ;; confirm-selection-impl validates candidates + executes :spell-mode executor
+        ;; which sets :object/chosen-mode on the object, then applies cast-after-spell-mode
+        ;; continuation which initiates casting and sets up the targeting selection.
+        after-mode (sel-core/confirm-selection-impl app-db)
+        db-after-mode (:game/db after-mode)
+        ;; Targeting selection is now pending (set by cast-after-spell-mode continuation)
+        targeting-sel (:game/pending-selection after-mode)]
+    (assert targeting-sel
+            (str "Expected targeting selection after spell-mode confirm for " obj-id))
+    (assert (some #{target-id} (:selection/valid-targets targeting-sel))
+            (str target-id " not in valid targets: " (:selection/valid-targets targeting-sel)))
+    ;; Confirm the targeting selection using the production path
     (sel-targeting/confirm-cast-time-target
-      db-with-mode
-      (assoc selection :selection/selected #{target-id}))))
+      db-after-mode
+      (assoc targeting-sel :selection/selected #{target-id}))))
 
 
 (defn resolve-top

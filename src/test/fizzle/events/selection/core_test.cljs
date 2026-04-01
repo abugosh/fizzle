@@ -345,3 +345,120 @@
           result (selection-core/confirm-selection-impl app-db)]
       (is (nil? (:game/pending-selection result))
           "Valid finalized selection must clear pending-selection"))))
+
+
+;; =====================================================
+;; toggle-selection-impl return type tests
+;; (ADR-019: toggle-selection-impl returns {:app-db ... :auto-confirm? bool})
+;; =====================================================
+
+(deftest test-toggle-impl-returns-data-map-not-app-db
+  (testing "toggle-selection-impl returns a map with :app-db and :auto-confirm? keys"
+    (let [db (th/create-test-db)
+          sel {:selection/type :test-impl-validation
+               :selection/lifecycle :finalized
+               :selection/player-id :player-1
+               :selection/selected #{}
+               :selection/candidates #{:a :b}
+               :selection/select-count 1
+               :selection/auto-confirm? true
+               :selection/validation :exact}
+          app-db {:game/db db :game/pending-selection sel}
+          result (selection-core/toggle-selection-impl app-db :a)]
+      (is (map? result)
+          "toggle-selection-impl must return a map")
+      (is (contains? result :app-db)
+          "Result must have :app-db key")
+      (is (contains? result :auto-confirm?)
+          "Result must have :auto-confirm? key"))))
+
+
+(deftest test-toggle-impl-auto-confirm-true-on-single-select
+  (testing "toggle with select-count 1 and auto-confirm? true signals auto-confirm"
+    (let [db (th/create-test-db)
+          sel {:selection/type :test-impl-validation
+               :selection/lifecycle :finalized
+               :selection/player-id :player-1
+               :selection/selected #{}
+               :selection/candidates #{:a :b}
+               :selection/select-count 1
+               :selection/auto-confirm? true
+               :selection/validation :exact}
+          app-db {:game/db db :game/pending-selection sel}
+          result (selection-core/toggle-selection-impl app-db :a)]
+      (is (true? (:auto-confirm? result))
+          "auto-confirm? must be true for single-select with auto-confirm? flag")
+      (is (contains? (get-in (:app-db result) [:game/pending-selection :selection/selected]) :a)
+          ":a must be in :selection/selected on returned app-db"))))
+
+
+(deftest test-toggle-impl-auto-confirm-false-on-deselect
+  (testing "deselecting an already-selected item does not signal auto-confirm"
+    (let [db (th/create-test-db)
+          sel {:selection/type :test-impl-validation
+               :selection/lifecycle :finalized
+               :selection/player-id :player-1
+               :selection/selected #{:a}
+               :selection/candidates #{:a :b}
+               :selection/select-count 1
+               :selection/auto-confirm? true
+               :selection/validation :exact}
+          app-db {:game/db db :game/pending-selection sel}
+          result (selection-core/toggle-selection-impl app-db :a)]
+      (is (false? (:auto-confirm? result))
+          "auto-confirm? must be false when deselecting"))))
+
+
+(deftest test-toggle-impl-auto-confirm-false-on-multi-select
+  (testing "toggle with select-count 3 does not signal auto-confirm even after adding item"
+    (let [db (th/create-test-db)
+          sel {:selection/type :test-impl-validation
+               :selection/lifecycle :finalized
+               :selection/player-id :player-1
+               :selection/selected #{}
+               :selection/candidates #{:a :b :c}
+               :selection/select-count 3
+               :selection/auto-confirm? false
+               :selection/validation :exact}
+          app-db {:game/db db :game/pending-selection sel}
+          result (selection-core/toggle-selection-impl app-db :a)]
+      (is (false? (:auto-confirm? result))
+          "auto-confirm? must be false for multi-select"))))
+
+
+(deftest test-toggle-impl-auto-confirm-false-when-at-limit-rejected
+  (testing "toggling a new item when at limit is rejected and does not signal auto-confirm"
+    (let [db (th/create-test-db)
+          sel {:selection/type :test-impl-validation
+               :selection/lifecycle :finalized
+               :selection/player-id :player-1
+               :selection/selected #{:a :b}
+               :selection/candidates #{:a :b :c}
+               :selection/select-count 2
+               :selection/auto-confirm? false
+               :selection/validation :exact}
+          app-db {:game/db db :game/pending-selection sel}
+          result (selection-core/toggle-selection-impl app-db :c)]
+      (is (false? (:auto-confirm? result))
+          "auto-confirm? must be false when toggle is rejected at limit")
+      (is (= app-db (:app-db result))
+          "app-db must be unchanged when toggle is rejected"))))
+
+
+(deftest test-toggle-impl-rejects-invalid-target
+  (testing "toggling an id not in valid-targets does not change app-db and returns false auto-confirm"
+    (let [db (th/create-test-db)
+          sel {:selection/type :test-impl-validation
+               :selection/lifecycle :finalized
+               :selection/player-id :player-1
+               :selection/selected #{}
+               :selection/valid-targets [:a :b]
+               :selection/select-count 1
+               :selection/auto-confirm? true
+               :selection/validation :exact}
+          app-db {:game/db db :game/pending-selection sel}
+          result (selection-core/toggle-selection-impl app-db :c)]
+      (is (false? (:auto-confirm? result))
+          "auto-confirm? must be false when target is rejected")
+      (is (= app-db (:app-db result))
+          "app-db must be unchanged when target is invalid"))))

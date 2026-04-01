@@ -17,8 +17,7 @@
     [fizzle.engine.stack :as stack]
     [fizzle.engine.validation :as validation]
     [fizzle.engine.zones :as zones]
-    [fizzle.history.descriptions :as descriptions]
-    [re-frame.core :as rf]))
+    [fizzle.history.descriptions :as descriptions]))
 
 
 ;; =====================================================
@@ -440,7 +439,11 @@
    universally (no type-specific max-count logic) and :selection/auto-confirm?
    flag instead of static type set.
 
-   Returns updated app-db."
+   Returns {:app-db updated-app-db :auto-confirm? bool}.
+   The caller (re-frame handler) reads :auto-confirm? and dispatches
+   ::confirm-selection as an fx effect when true. This ensures the confirmation
+   goes through the event system and hits the :db effect handler chokepoint
+   (for SBA + bot checks)."
   [app-db id]
   (let [selection (get app-db :game/pending-selection)
         selected (get selection :selection/selected #{})
@@ -478,16 +481,12 @@
            true]
 
           ;; At limit: ignore
-          :else [app-db false])]
-    ;; Auto-confirm: dispatch ::confirm-selection instead of calling inline.
-    ;; This ensures the confirmation goes through the event system and hits
-    ;; the :db effect handler chokepoint (for SBA + bot checks).
-    (if (and selected?
-             (= select-count 1)
-             (:selection/auto-confirm? selection))
-      (do (rf/dispatch [:fizzle.events.selection/confirm-selection])
-          new-db)
-      new-db)))
+          :else [app-db false])
+        auto-confirm? (and selected?
+                           (= select-count 1)
+                           (:selection/auto-confirm? selection))]
+    {:app-db new-db
+     :auto-confirm? (boolean auto-confirm?)}))
 
 
 ;; =====================================================

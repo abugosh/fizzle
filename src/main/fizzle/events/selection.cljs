@@ -23,10 +23,12 @@
     (assoc db :game/pending-selection selection-state)))
 
 
-(rf/reg-event-db
+(rf/reg-event-fx
   ::toggle-selection
-  (fn [db [_ id]]
-    (core/toggle-selection-impl db id)))
+  (fn [{:keys [db]} [_ id]]
+    (let [result (core/toggle-selection-impl db id)]
+      (cond-> {:db (:app-db result)}
+        (:auto-confirm? result) (assoc :fx [[:dispatch [::confirm-selection]]])))))
 
 
 (rf/reg-event-db

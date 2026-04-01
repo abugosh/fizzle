@@ -181,7 +181,7 @@
              card-modes)))
 
 
-(defn- build-spell-mode-selection
+(defn build-spell-mode-selection
   "Build a spell-mode selection for a modal card.
    Mode maps are used as candidate identifiers — select-count 1, auto-confirm true.
    Per-mode targeting evaluation happens here (valid modes only).
