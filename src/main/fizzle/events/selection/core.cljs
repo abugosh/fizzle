@@ -434,10 +434,10 @@
                      :finalized (finalized-path app-db result on-complete
                                                 (:selection/clear-selected-card? selection))
                      :standard (standard-path app-db result selection on-complete))]
-        ;; Process deferred entry only when selection chain is complete:
-        ;; no pending-selection and no continuation ran that set a new one.
-        (if (and (:history/deferred-entry routed)
-                 (nil? (:game/pending-selection routed)))
+        ;; Process deferred entry as the terminal step when the selection chain
+        ;; is complete (no pending-selection). process-deferred-entry is a no-op
+        ;; when no deferred entry is present, so this is unconditional.
+        (if (nil? (:game/pending-selection routed))
           (process-deferred-entry routed)
           routed)))))
 

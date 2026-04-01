@@ -6,6 +6,7 @@
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [fizzle.engine.validation :as validation]
+    [fizzle.events.priority-flow]
     [fizzle.events.selection.core :as selection-core]
     [fizzle.test-helpers :as th]))
 
@@ -462,3 +463,28 @@
           "auto-confirm? must be false when target is rejected")
       (is (= app-db (:app-db result))
           "app-db must be unchanged when target is invalid"))))
+
+
+;; =====================================================
+;; :resolve-one-and-stop continuation deferred-entry ownership
+;; (fizzle-f4gc: deferred-entry owned by confirm-selection-impl, not continuation)
+;; =====================================================
+
+(deftest test-resolve-one-and-stop-continuation-does-not-consume-deferred-entry
+  (testing ":resolve-one-and-stop continuation does not consume :history/deferred-entry
+           — deferred-entry processing belongs to confirm-selection-impl's terminal step"
+    ;; Stack-empty case: resolve-one-and-stop is a no-op when stack is empty.
+    ;; The continuation should leave :history/deferred-entry intact so that
+    ;; confirm-selection-impl can process it as the single owner.
+    (let [db (th/create-test-db)
+          deferred {:type :cast-and-yield
+                    :object-id nil
+                    :pre-game-db db
+                    :event-type :fizzle.events.priority-flow/cast-and-yield
+                    :principal :player-1}
+          app-db {:game/db db
+                  :history/deferred-entry deferred}
+          continuation {:continuation/type :resolve-one-and-stop}
+          result (selection-core/apply-continuation continuation app-db)]
+      (is (some? (get-in result [:app-db :history/deferred-entry]))
+          ":resolve-one-and-stop must NOT consume :history/deferred-entry — that is confirm-selection-impl's responsibility"))))

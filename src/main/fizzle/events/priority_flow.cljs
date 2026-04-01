@@ -111,12 +111,11 @@
 
 ;; Register continuation: :resolve-one-and-stop
 ;; Called by confirm-selection-impl when selection completes with this continuation.
-;; After resolving, process any deferred entry (cast-and-yield with targeting).
+;; Deferred entry processing is handled by confirm-selection-impl's terminal step,
+;; not here — confirm-selection-impl is the single owner of deferred-entry processing.
 (defmethod sel-core/apply-continuation :resolve-one-and-stop
   [_ app-db]
-  {:app-db (-> app-db
-               resolve-one-and-stop
-               sel-core/process-deferred-entry)})
+  {:app-db (resolve-one-and-stop app-db)})
 
 
 (defn- cast-and-yield-handler
@@ -173,14 +172,3 @@
   ::cast-and-yield
   (fn [{:keys [db]} _]
     (cast-and-yield-handler db)))
-
-
-(defn- cast-and-yield-resolve-handler
-  [db]
-  (resolve-one-and-stop db))
-
-
-(rf/reg-event-db
-  ::cast-and-yield-resolve
-  (fn [db _]
-    (cast-and-yield-resolve-handler db)))

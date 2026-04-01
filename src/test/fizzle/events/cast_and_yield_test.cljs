@@ -349,21 +349,62 @@
           result (dispatch-cast-and-yield app-db)
           _ (is (some? (:game/pending-selection result))
                 "Should have pending mana allocation selection")
-          ;; Step 2: complete mana allocation (allocate 1 black for generic cost)
+          ;; Step 2: complete mana allocation — auto-resolves via :then continuation chain
           _ (reset! rf-db/app-db result)
           _ (rf/dispatch-sync [::sel-costs/allocate-mana-color :black])
+          after-alloc @rf-db/app-db]
+      ;; After mana allocation, spell should be resolved via :then chain — no extra dispatch needed
+      (is (nil? (:game/pending-selection after-alloc))
+          "Selection should be cleared after mana allocation completes")
+      (is (= :graveyard (:object/zone (queries/get-object (:game/db after-alloc) obj-id)))
+          "Spell should be in graveyard synchronously after mana alloc — no extra dispatch needed"))))
+
+
+(deftest test-cast-and-yield-non-targeted-modal-uses-continuation-chain
+  (testing "Non-targeted cast-and-yield modal path uses :then continuation — no async dispatch"
+    ;; After mode selection + mana allocation, the spell should be resolved
+    ;; synchronously via drain-continuation-chain, without any extra rf/dispatch-sync.
+    ;; This tests the :then chaining path from :cast-after-spell-mode.
+    (let [db (create-full-db)
+          conn (d/conn-from-db db)
+          _ (d/transact! conn [{:card/id :test-modal-non-targeted
+                                :card/name "Test Modal Non-Targeted"
+                                :card/mana-cost {:colorless 1 :blue 1}
+                                :card/cmc 2
+                                :card/types #{:instant}
+                                :card/colors #{:blue}
+                                :card/modes [{:mode/id :primary
+                                              :mode/effects [{:effect/type :draw
+                                                              :effect/amount 1}]}]}])
+          db @conn
+          [db obj-id] (add-card-to-zone db :test-modal-non-targeted :hand :player-1)
+          ;; Provide blue + black so mana allocation is needed for the 1 generic
+          db (mana/add-mana db :player-1 {:blue 1 :black 1})
+          app-db (merge (history/init-history)
+                        {:game/db db
+                         :game/selected-card obj-id})
+          ;; Step 1: cast-and-yield — modal spell shows spell-mode selection first
+          result (dispatch-cast-and-yield app-db)
+          _ (is (= :spell-mode (:selection/type (:game/pending-selection result)))
+                "Should have spell-mode selection after cast-and-yield")
+          ;; Step 2: select the mode — auto-confirm? true means confirm fires after toggle.
+          ;; :cast-after-spell-mode continuation then runs and returns mana allocation selection.
+          _ (reset! rf-db/app-db result)
+          mode (first (get-in result [:game/pending-selection :selection/candidates]))
+          _ (rf/dispatch-sync [:fizzle.events.selection/toggle-selection mode])
+          _ (rf/dispatch-sync [:fizzle.events.selection/confirm-selection])
+          after-mode @rf-db/app-db
+          _ (is (= :mana-allocation (:selection/type (:game/pending-selection after-mode)))
+                "Should have mana-allocation selection after mode confirmed")
+          ;; Step 3: allocate mana — this completes the chain synchronously via :then
+          _ (rf/dispatch-sync [::sel-costs/allocate-mana-color :black])
           after-alloc @rf-db/app-db
-          ;; Step 3: selection should be cleared (spell was cast)
+          ;; Key assertion: the spell is already resolved WITHOUT any extra dispatch
           _ (is (nil? (:game/pending-selection after-alloc))
-                "Selection should be cleared after mana allocation completes")
-          ;; Step 4: drain the resolve dispatch that should have been queued
-          _ (rf/dispatch-sync [::priority-flow/cast-and-yield-resolve])
-          after-yield @rf-db/app-db]
-      ;; Test spell should be resolved (in graveyard)
-      ;; The key point: the resolve after allocation should resolve the spell
-      ;; Bug: without the fix, spell stays on stack after allocation
-      (is (= :graveyard (:object/zone (queries/get-object (:game/db after-yield) obj-id)))
-          "Spell should be in graveyard after auto-resolve"))))
+                "Selection should be cleared after mana allocation")]
+      ;; Spell must be in graveyard — synchronous via :then chain, no extra dispatch
+      (is (= :graveyard (:object/zone (queries/get-object (:game/db after-alloc) obj-id)))
+          "Spell should be in graveyard synchronously after mana alloc — no extra dispatch needed"))))
 
 
 (deftest test-cast-and-yield-targeted-exact-mana-auto-resolves

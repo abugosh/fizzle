@@ -230,11 +230,10 @@
                          {:continuation/type :resolve-one-and-stop})}
 
       ;; Non-targeted mode in cast-and-yield: spell cast directly,
-      ;; dispatch auto-resolve (can't call priority-flow directly — circular dep).
+      ;; chain resolve-one-and-stop via continuation (no circular dep).
       (and cast-and-yield?
            (nil? (:game/pending-selection result)))
-      (do (rf/dispatch [:fizzle.events.priority-flow/cast-and-yield-resolve])
-          {:app-db result})
+      {:app-db result :then {:continuation/type :resolve-one-and-stop}}
 
       :else {:app-db result})))
 
