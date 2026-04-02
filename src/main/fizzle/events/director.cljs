@@ -15,7 +15,7 @@
 
    Architecture:
    - No dispatch-later
-   - No :yield/epoch, :yield/step-count, :bot/action-pending?, :bot/action-count
+   - No :yield/epoch, :yield/step-count
    - Bot acts applied inline via pure engine functions
    - SBAs run after each engine step"
   (:require
@@ -304,8 +304,7 @@
      :game-over         -- game has a loss condition
      :safety-limit      -- loop limit reached"
   [app-db opts]
-  (let [app-db (dissoc app-db :yield/epoch :yield/step-count
-                       :bot/action-pending? :bot/action-count)
+  (let [app-db (dissoc app-db :yield/epoch :yield/step-count)
         human-pid game-state/human-player-id
         yield-all-requested? (boolean (:yield-all? opts))
         game-db (:game/db app-db)

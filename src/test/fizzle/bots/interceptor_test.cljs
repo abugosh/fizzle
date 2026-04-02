@@ -14,7 +14,6 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.events.casting :as casting]
-    [fizzle.events.director :as director]
     [fizzle.history.core :as history]
     [fizzle.test-helpers :as th]))
 
@@ -323,20 +322,3 @@
             "1 tap for red")
         (is (= 1 (count non-red-taps))
             "1 tap for generic (from plains)")))))
-
-
-;; === Turn Boundary Tests ===
-
-(deftest bot-action-count-reset-at-turn-boundary
-  (testing "director clears coordination state (including action count) at start of run"
-    (let [db (-> (th/create-test-db {:stops #{}})
-                 (th/add-opponent {:bot-archetype :burn}))
-          ;; Start with action count accumulated from prior interaction
-          app-db (merge (history/init-history)
-                        {:game/db db
-                         :bot/action-count 30})
-          ;; Director clears coordination state on entry and advances through turn boundary
-          result (director/run-to-decision app-db {:yield-all? true})
-          result-app-db (:app-db result)]
-      (is (nil? (:bot/action-count result-app-db))
-          "Director should clear :bot/action-count from result app-db"))))

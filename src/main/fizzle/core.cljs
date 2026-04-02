@@ -1,6 +1,5 @@
 (ns fizzle.core
   (:require
-    [fizzle.bots.interceptor]
     [fizzle.engine.effects-registry]
     [fizzle.events.abilities]
     [fizzle.events.calculator :as calc-events]

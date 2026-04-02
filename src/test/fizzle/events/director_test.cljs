@@ -208,21 +208,17 @@
 
 
 (deftest director-clears-coordination-state
-  (testing "result app-db has no coordination state like :yield/epoch or :bot/action-pending?"
+  (testing "result app-db has no coordination state like :yield/epoch"
     (let [db (-> (th/create-test-db {:stops #{:main1}})
                  (th/add-opponent {:bot-archetype :goldfish}))
-          ;; Simulate old state with coordination artifacts
+          ;; Simulate old state with yield coordination artifacts
           app-db (merge (history/init-history)
                         {:game/db db
                          :yield/epoch 5
-                         :yield/step-count 10
-                         :bot/action-pending? true
-                         :bot/action-count 3})
+                         :yield/step-count 10})
           result (director/run-to-decision app-db {:yield-all? false})
           result-app-db (:app-db result)]
       (is (nil? (:yield/epoch result-app-db))
           "Result should not contain :yield/epoch")
       (is (nil? (:yield/step-count result-app-db))
-          "Result should not contain :yield/step-count")
-      (is (nil? (:bot/action-pending? result-app-db))
-          "Result should not contain :bot/action-pending?"))))
+          "Result should not contain :yield/step-count"))))
