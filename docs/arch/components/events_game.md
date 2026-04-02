@@ -4,7 +4,7 @@
 
 re-frame event handlers that orchestrate the top-level game flow. This component is decomposed into 16+ focused modules: `casting`, `resolution`, `phases`, `priority_flow`, `director`, `db_effect`, `init`, `lands`, `opening_hand`, `cleanup`, `cycling`, `ui`, `setup`, `calculator`, `abilities`, and `selection/`. The `director` module is the central orchestration seam — a synchronous `run-to-decision` loop that drives bot turns inline, resolves the stack, advances phases, and evaluates auto-pass logic after every player action.
 
-Event handlers coordinate between the Engine (for rules) and the Data Foundation (for state reads/writes) but contain no game rules themselves. The `db_effect` module is the chokepoint through which all game-db mutations flow, including the re-frame bot-decide event handler triggers.
+Event handlers coordinate between the Engine (for rules) and the Data Foundation (for state reads/writes) but contain no game rules themselves. The `db_effect` module is the chokepoint through which all game-db mutations flow, triggering SBA processing after every game-db change.
 
 ## Interface Contract
 

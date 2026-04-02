@@ -3,7 +3,7 @@
 model {
   extend fizzle {
     bots = component 'Opponent AI' {
-      description 'Bot system for opponent simulation — IBot multimethod protocol dispatching on archetype, bot definitions (goldfish, burn), behavior rules, global re-frame interceptor driving bot turns. Bots dispatch the same events as human players.'
+      description 'Bot system for opponent simulation — IBot multimethod protocol dispatching on archetype, bot definitions (goldfish, burn), behavior rules, pure decision functions called inline by the director. Bots dispatch the same events as human players through the standard event pipeline.'
       link ./bots.md 'Documentation'
       link ../../../src/main/fizzle/bots/ 'Source'
       metadata {
@@ -36,7 +36,7 @@ model {
       }
 
       bot_interceptor = component 'Turn Driver' {
-        description 'Registers ::bot-decide and ::bot-action-complete re-frame event handlers. Provides bot-decide-action as a pure function called by the director inline during run-to-decision. The event handlers also fire via the db_effect chokepoint for compound actions (tap+cast sequences requiring re-frame dispatch).'
+        description 'Pure computation functions called inline by the director. Provides bot-should-act? (checks if priority holder is a bot), bot-decide-action (asks IBot protocol for an action plan), and find-tap-sequence (allocates mana-producing lands to pay a cost). No re-frame event handlers — the director applies the resulting actions through the standard event pipeline.'
         metadata {
           layer 'orchestration'
           stability_state 'exploring'

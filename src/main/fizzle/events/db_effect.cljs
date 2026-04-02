@@ -44,7 +44,7 @@
 
 (defn register!
   "Register the custom :db effect handler. Call once during app initialization.
-   Overrides re-frame's default :db effect with the SBA+bot chokepoint."
+   Overrides re-frame's default :db effect with game-db SBA processing."
   []
   (registrar/clear-handlers :fx :db)
   (rf/reg-fx :db game-db-effect-handler))

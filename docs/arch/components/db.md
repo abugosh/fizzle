@@ -10,7 +10,7 @@ Datascript schema definitions, entity-level query/transaction helpers, and game 
 
 - Datascript transaction maps from event handlers (Game Events, Selection Events, Ability Events)
 - Datalog query calls from the Engine and Subscriptions layer
-- Factory function calls from events/init, events/director, bots/interceptor, sharing/restorer, and subs/game for player identity and entity creation
+- Factory function calls from events/init, events/director, bots/decisions, sharing/restorer, and subs/game for player identity and entity creation
 
 ### OUT
 
