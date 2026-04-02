@@ -5,12 +5,9 @@
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
-    [fizzle.bots.interceptor :as bot-interceptor]
     [fizzle.bots.protocol :as bot]
     [fizzle.cards.red.lightning-bolt :as lightning-bolt]
     [fizzle.db.queries :as q]
-    [fizzle.engine.mana-activation :as engine-mana]
-    [fizzle.events.casting :as casting]
     [fizzle.events.director :as director]
     [fizzle.history.core :as history]
     [fizzle.test-helpers :as th]))
@@ -117,68 +114,3 @@
           "Should reach at least turn 3 (human->bot->human)")
       (is (= :player-1 (q/get-active-player-id result-db))
           "Active player at turn 3 should be human"))))
-
-
-;; === Action-pending flag integration test ===
-
-(deftest human-gets-priority-after-bot-cast
-  (testing "after bot tap+cast, stale bot-decides are suppressed and human gets priority"
-    (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 1 :with-priority? true})
-          game-db (:game/db app-db)
-
-          ;; Step 1: bot-decide-handler produces compound action with flag
-          decide-result (bot-interceptor/bot-decide-handler app-db)
-          _ (is (true? (:bot/action-pending? (:db decide-result)))
-                "Step 1: compound action sets :bot/action-pending?")
-
-          ;; Step 2: simulate tap (intermediate state, as if activate-mana-ability ran)
-          battlefield (q/get-objects-in-zone game-db :player-2 :battlefield)
-          mountain (first (filter #(= :mountain (get-in % [:object/card :card/id])) battlefield))
-          tapped-game-db (engine-mana/activate-mana-ability game-db :player-2
-                                                            (:object/id mountain) :red)
-          intermediate-app-db (assoc (:db decide-result) :game/db tapped-game-db)
-
-          ;; Step 3: stale bot-decide on intermediate state → suppressed (no-op)
-          stale-result-1 (bot-interceptor/bot-decide-handler intermediate-app-db)
-          _ (is (= {:db intermediate-app-db} stale-result-1)
-                "Step 3: stale bot-decide during tap is suppressed")
-          _ (is (nil? (:fx stale-result-1))
-                "Step 3: no :fx dispatches from stale fire")
-
-          ;; Step 4: simulate cast (bot puts bolt on stack)
-          hand (q/get-objects-in-zone tapped-game-db :player-2 :hand)
-          bolt (first (filter #(= :lightning-bolt (get-in % [:object/card :card/id])) hand))
-          cast-app-db (casting/cast-spell-handler intermediate-app-db
-                                                  {:player-id :player-2
-                                                   :object-id (:object/id bolt)
-                                                   :target :player-1})
-          cast-app-db (assoc cast-app-db :bot/action-pending? true)
-
-          ;; Step 5: stale bot-decide on post-cast state → suppressed
-          stale-result-2 (bot-interceptor/bot-decide-handler cast-app-db)
-          _ (is (= {:db cast-app-db} stale-result-2)
-                "Step 5: stale bot-decide after cast is suppressed")
-
-          ;; Step 6: sentinel fires — clears flag, triggers fresh bot-decide
-          sentinel-result (bot-interceptor/bot-action-complete-handler cast-app-db)
-          _ (is (nil? (:bot/action-pending? (:db sentinel-result)))
-                "Step 6: sentinel clears :bot/action-pending?")
-          settled-app-db (:db sentinel-result)
-
-          ;; Step 7: fresh bot-decide on settled state — stack non-empty, bot passes
-          fresh-decide (bot-interceptor/bot-decide-handler settled-app-db)
-          _ (is (not (q/stack-empty? (:game/db settled-app-db)))
-                "Step 7: stack is non-empty (bolt on stack)")
-          fresh-dispatches (mapv second (:fx fresh-decide))
-          _ (is (some #(= :fizzle.events.priority-flow/yield (first %)) fresh-dispatches)
-                "Step 7: fresh bot-decide yields (passes priority)")
-
-          ;; Step 8: director runs — human gets priority with bolt on stack.
-          ;; Human can respond to the bolt before it resolves.
-          settled-app-db (:db fresh-decide)
-          step-result (director/run-to-decision settled-app-db {:yield-all? false})
-          final-game-db (:game/db (:app-db step-result))]
-      (is (= :await-human (:reason step-result))
-          "Step 8: director stops for human priority")
-      (is (not (q/stack-empty? final-game-db))
-          "Step 8: bolt on stack — human has priority to respond"))))

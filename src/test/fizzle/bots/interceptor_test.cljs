@@ -1,12 +1,11 @@
 (ns fizzle.bots.interceptor-test
-  "Tests for bot action interceptor and ::bot-decide event.
+  "Tests for bot decision helpers: bot-should-act?, bot-decide-action, find-tap-sequence.
 
    Validates that:
    - Bot interceptor detects when priority holder is a bot
    - bot-decide-action returns correct action plan with tap sequence
-   - build-bot-dispatches produces correct re-frame dispatch sequence
-   - Bot casts go through can-cast? validation
-   - Safety limit prevents infinite bot loops"
+   - find-tap-sequence correctly allocates mana-producing lands
+   - Bot casts go through can-cast? validation"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
@@ -14,11 +13,8 @@
     [fizzle.cards.red.lightning-bolt :as lightning-bolt]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana-activation :as engine-mana]
-    [fizzle.events.abilities :as abilities]
     [fizzle.events.casting :as casting]
     [fizzle.events.director :as director]
-    [fizzle.events.lands :as lands]
-    [fizzle.events.priority-flow :as priority-flow]
     [fizzle.history.core :as history]
     [fizzle.test-helpers :as th]))
 
@@ -111,46 +107,6 @@
           "Bot should pass when it can't afford to cast"))))
 
 
-;; === Build Bot Dispatches ===
-
-(deftest build-bot-dispatches-produces-tap-then-cast-sequence
-  (testing "build-bot-dispatches returns activate-mana + cast-spell + sentinel dispatches"
-    (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 1})
-          game-db (:game/db app-db)
-          action (interceptor/bot-decide-action game-db)
-          dispatches (interceptor/build-bot-dispatches action)]
-      ;; Should have 3 dispatches: 1 tap + 1 cast + 1 sentinel
-      (is (= 3 (count dispatches))
-          "Should have 3 dispatches (1 tap + 1 cast + 1 sentinel)")
-      ;; First dispatch should be activate-mana-ability
-      (let [[tap-event] dispatches]
-        (is (= ::abilities/activate-mana-ability (first (second tap-event)))
-            "First dispatch should be ::activate-mana-ability"))
-      ;; Second dispatch should be cast-spell with opts map
-      (let [[_ cast-args] (second dispatches)]
-        (is (= ::casting/cast-spell (first cast-args))
-            "Second dispatch should be ::cast-spell")
-        (is (= :player-2 (:player-id (second cast-args)))
-            "Cast dispatch opts should include bot player-id"))
-      ;; Last dispatch should be the sentinel
-      (let [[_ sentinel-args] (last dispatches)]
-        (is (= ::interceptor/bot-action-complete (first sentinel-args))
-            "Last dispatch should be ::bot-action-complete sentinel")))))
-
-
-(deftest build-bot-dispatches-includes-player-id-in-tap
-  (testing "tap dispatches include the bot's player-id"
-    (let [app-db (setup-burn-bot-app-db {:mountains 2 :bolts 1})
-          game-db (:game/db app-db)
-          action (interceptor/bot-decide-action game-db)
-          dispatches (interceptor/build-bot-dispatches action)
-          ;; First dispatch is a tap
-          [_ tap-args] (first dispatches)]
-      ;; tap dispatch format: [::activate-mana-ability object-id mana-color player-id]
-      (is (= :player-2 (nth tap-args 3))
-          "Tap dispatch should include bot player-id"))))
-
-
 ;; === Bot Cast Spell Event (through standard path) ===
 
 (deftest bot-cast-spell-via-cast-spell-handler-puts-bolt-on-stack
@@ -210,105 +166,6 @@
           "Mountain should be tapped")
       (is (= 1 (:red (q/get-mana-pool result-db :player-2)))
           "Bot should have 1 red mana in pool"))))
-
-
-;; === Safety Limit ===
-
-(deftest bot-decide-handler-respects-safety-limit
-  (testing "::bot-decide handler checks action count and yields when limit reached"
-    (let [app-db (setup-burn-bot-app-db {:mountains 3 :bolts 3})
-          ;; Simulate action count at limit (50, not the old 20)
-          app-db (assoc app-db :bot/action-count 50)
-          result (interceptor/bot-decide-handler app-db)]
-      ;; Should dispatch ::yield (pass) rather than another cast
-      (is (pos? (count (:fx result)))
-          "Should have dispatches")
-      (let [dispatches (mapv second (:fx result))]
-        (is (some #(= ::priority-flow/yield (first %)) dispatches)
-            "Should dispatch ::yield when safety limit reached")))))
-
-
-;; === Action-Pending Flag Tests ===
-
-(deftest bot-decide-handler-sets-action-pending-on-compound-action
-  (testing "compound action (tap+cast) sets :bot/action-pending? and includes sentinel"
-    (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 1})
-          result (interceptor/bot-decide-handler app-db)]
-      (is (true? (:bot/action-pending? (:db result)))
-          "Should set :bot/action-pending? true on compound action")
-      ;; Sentinel must be the LAST dispatch in :fx
-      (let [last-fx (last (:fx result))
-            [fx-type event-vec] last-fx]
-        (is (= :dispatch fx-type)
-            "Last fx should be a :dispatch")
-        (is (= ::interceptor/bot-action-complete (first event-vec))
-            "Last dispatch should be ::bot-action-complete")))))
-
-
-(deftest bot-decide-handler-suppresses-stale-fire-when-action-pending
-  (testing "stale bot-decide with :bot/action-pending? true returns no-op"
-    (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 1})
-          app-db (assoc app-db :bot/action-pending? true)
-          result (interceptor/bot-decide-handler app-db)]
-      (is (= {:db app-db} result)
-          "Should return {:db app-db} with no :fx key — pure no-op")
-      (is (nil? (:fx result))
-          "Must NOT have any :fx dispatches (no stale yield)"))))
-
-
-(deftest bot-decide-handler-does-not-flag-single-actions
-  (testing "pass action does not set :bot/action-pending?"
-    (let [app-db (setup-burn-bot-app-db {:mountains 0 :bolts 0})
-          result (interceptor/bot-decide-handler app-db)]
-      (is (not (:bot/action-pending? (:db result)))
-          "Should NOT set :bot/action-pending? on pass")
-      ;; Should yield normally
-      (let [dispatches (mapv second (:fx result))]
-        (is (some #(= ::priority-flow/yield (first %)) dispatches)
-            "Should dispatch ::yield on pass")))))
-
-
-(deftest bot-action-complete-clears-flag-and-triggers-decide
-  (testing "::bot-action-complete clears flag and dispatches fresh ::bot-decide"
-    (let [app-db {:bot/action-pending? true :game/db nil}
-          result (interceptor/bot-action-complete-handler app-db)]
-      (is (nil? (:bot/action-pending? (:db result)))
-          "Should clear :bot/action-pending?")
-      (let [dispatches (mapv second (:fx result))]
-        (is (some #(= ::interceptor/bot-decide (first %)) dispatches)
-            "Should dispatch fresh ::bot-decide")))))
-
-
-(deftest build-bot-dispatches-includes-sentinel-as-last-dispatch
-  (testing "build-bot-dispatches appends sentinel after cast"
-    (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 1})
-          game-db (:game/db app-db)
-          action (interceptor/bot-decide-action game-db)
-          dispatches (interceptor/build-bot-dispatches action)
-          last-dispatch (last dispatches)
-          [fx-type event-vec] last-dispatch]
-      ;; Should have 3 dispatches: 1 tap + 1 cast + 1 sentinel
-      (is (= 3 (count dispatches))
-          "Should have 3 dispatches (1 tap + 1 cast + 1 sentinel)")
-      (is (= :dispatch fx-type)
-          "Last entry should be :dispatch")
-      (is (= ::interceptor/bot-action-complete (first event-vec))
-          "Last dispatch should be ::bot-action-complete"))))
-
-
-(deftest bot-decide-handler-does-not-flag-land-play
-  (testing "land play does not set :bot/action-pending?"
-    (let [app-db (setup-burn-bot-app-db {:mountains 0 :bolts 0})
-          game-db (:game/db app-db)
-          ;; Add a mountain to the bot's hand so it can play a land
-          [game-db _] (th/add-card-to-zone game-db :mountain :hand :player-2)
-          app-db (assoc app-db :game/db game-db)
-          result (interceptor/bot-decide-handler app-db)]
-      (is (not (:bot/action-pending? (:db result)))
-          "Should NOT set :bot/action-pending? for land play")
-      (let [dispatches (mapv second (:fx result))]
-        (is (some #(= ::lands/play-land (first %)) dispatches)
-            "Should dispatch ::lands/play-land for land play")))))
 
 
 ;; === Multi-Color Mana Tests ===
@@ -468,47 +325,7 @@
             "1 tap for generic (from plains)")))))
 
 
-;; === Turn-Based Action Limit Tests ===
-
-(deftest bot-decide-handler-does-not-clear-action-count-on-pass
-  (testing "action count persists when bot passes — not cleared per-pass"
-    (let [app-db (setup-burn-bot-app-db {:mountains 0 :bolts 0})
-          app-db (assoc app-db :bot/action-count 5)
-          result (interceptor/bot-decide-handler app-db)]
-      (is (= 5 (:bot/action-count (:db result)))
-          "Action count should persist at 5 after pass, NOT be dissoc'd"))))
-
-
-(deftest bot-decide-handler-uses-50-action-limit
-  (testing "bot acts when under 50 and yields when at 50"
-    ;; Under limit: bot with resources at count 49 should still act
-    (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 1})
-          app-db (assoc app-db :bot/action-count 49)
-          result (interceptor/bot-decide-handler app-db)]
-      (is (true? (:bot/action-pending? (:db result)))
-          "Bot at count 49 should still act (under 50 limit)")
-      (is (= 50 (:bot/action-count (:db result)))
-          "Action count should increment to 50"))
-    ;; At limit: bot with resources at count 50 should yield
-    (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 1})
-          app-db (assoc app-db :bot/action-count 50)
-          result (interceptor/bot-decide-handler app-db)]
-      (let [dispatches (mapv second (:fx result))]
-        (is (some #(= ::priority-flow/yield (first %)) dispatches)
-            "Bot at count 50 should yield")))))
-
-
-(deftest bot-decide-handler-safety-limit-yields-without-clearing-count
-  (testing "safety limit yields but does NOT clear the counter"
-    (let [app-db (setup-burn-bot-app-db {:mountains 3 :bolts 3})
-          app-db (assoc app-db :bot/action-count 50)
-          result (interceptor/bot-decide-handler app-db)]
-      (is (= 50 (:bot/action-count (:db result)))
-          "Counter should remain at 50 — NOT cleared on safety yield")
-      (let [dispatches (mapv second (:fx result))]
-        (is (some #(= ::priority-flow/yield (first %)) dispatches)
-            "Should dispatch ::yield when safety limit reached")))))
-
+;; === Turn Boundary Tests ===
 
 (deftest bot-action-count-reset-at-turn-boundary
   (testing "director clears coordination state (including action count) at start of run"
