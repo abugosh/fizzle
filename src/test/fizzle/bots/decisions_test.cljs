@@ -1,15 +1,15 @@
-(ns fizzle.bots.interceptor-test
+(ns fizzle.bots.decisions-test
   "Tests for bot decision helpers: bot-should-act?, bot-decide-action, find-tap-sequence.
 
    Validates that:
-   - Bot interceptor detects when priority holder is a bot
+   - Bot decisions module detects when priority holder is a bot
    - bot-decide-action returns correct action plan with tap sequence
    - find-tap-sequence correctly allocates mana-producing lands
    - Bot casts go through can-cast? validation"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
-    [fizzle.bots.interceptor :as interceptor]
+    [fizzle.bots.decisions :as decisions]
     [fizzle.cards.red.lightning-bolt :as lightning-bolt]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana-activation :as engine-mana]
@@ -54,7 +54,7 @@
   (testing "bot-should-act? returns true when priority holder is a bot"
     (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 1})
           game-db (:game/db app-db)]
-      (is (true? (interceptor/bot-should-act? game-db))
+      (is (true? (decisions/bot-should-act? game-db))
           "Should detect that priority holder is a bot"))))
 
 
@@ -62,14 +62,14 @@
   (testing "bot-should-act? returns false when priority holder is human"
     (let [db (th/create-test-db {:stops #{:main1}})
           db (th/add-opponent db {:bot-archetype :burn})]
-      (is (false? (interceptor/bot-should-act? db))
+      (is (false? (decisions/bot-should-act? db))
           "Should return false when human holds priority"))))
 
 
 (deftest bot-should-act-returns-false-when-no-bot
   (testing "bot-should-act? returns false when no bot in game"
     (let [db (th/create-test-db {:stops #{:main1}})]
-      (is (false? (interceptor/bot-should-act? db))
+      (is (false? (decisions/bot-should-act? db))
           "Should return false in single player game"))))
 
 
@@ -79,7 +79,7 @@
   (testing "bot-decide-action returns cast action when burn bot has bolt + mountain"
     (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 1})
           game-db (:game/db app-db)
-          result (interceptor/bot-decide-action game-db)]
+          result (decisions/bot-decide-action game-db)]
       (is (= :cast-spell (:action result))
           "Action type should be :cast-spell")
       (is (uuid? (:object-id result))
@@ -92,7 +92,7 @@
   (testing "bot-decide-action returns :pass when no resources"
     (let [app-db (setup-burn-bot-app-db {:mountains 0 :bolts 0})
           game-db (:game/db app-db)
-          result (interceptor/bot-decide-action game-db)]
+          result (decisions/bot-decide-action game-db)]
       (is (= :pass (:action result))
           "Should pass when no resources available"))))
 
@@ -101,7 +101,7 @@
   (testing "bot-decide-action returns :pass when bot has bolt but no mountains"
     (let [app-db (setup-burn-bot-app-db {:mountains 0 :bolts 1})
           game-db (:game/db app-db)
-          action (interceptor/bot-decide-action game-db)]
+          action (decisions/bot-decide-action game-db)]
       (is (= :pass (:action action))
           "Bot should pass when it can't afford to cast"))))
 
@@ -199,7 +199,7 @@
   (testing "finds correct taps for single-color cost"
     (let [app-db (setup-bot-with-lands {:lands [:mountain :mountain] :bolts 0})
           game-db (:game/db app-db)
-          taps (interceptor/find-tap-sequence game-db :player-2 {:red 1})]
+          taps (decisions/find-tap-sequence game-db :player-2 {:red 1})]
       (is (= 1 (count taps))
           "Should return exactly 1 tap for {:red 1}")
       (is (= :red (:mana-color (first taps)))
@@ -210,7 +210,7 @@
   (testing "finds correct taps for multi-color cost"
     (let [app-db (setup-bot-with-lands {:lands [:plains :island] :bolts 0})
           game-db (:game/db app-db)
-          taps (interceptor/find-tap-sequence game-db :player-2 {:white 1 :blue 1})]
+          taps (decisions/find-tap-sequence game-db :player-2 {:white 1 :blue 1})]
       (is (= 2 (count taps))
           "Should return 2 taps for {:white 1 :blue 1}")
       (is (= 1 (count (filter #(= :white (:mana-color %)) taps)))
@@ -223,7 +223,7 @@
   (testing "returns insufficient taps when required color is missing"
     (let [app-db (setup-bot-with-lands {:lands [:mountain :mountain] :bolts 0})
           game-db (:game/db app-db)
-          taps (interceptor/find-tap-sequence game-db :player-2 {:red 1 :blue 1})]
+          taps (decisions/find-tap-sequence game-db :player-2 {:red 1 :blue 1})]
       (is (= 1 (count taps))
           "Should return only 1 tap (red), not 2 — no blue sources available")
       (is (= :red (:mana-color (first taps)))
@@ -234,7 +234,7 @@
   (testing "dual land cannot be tapped for two colors simultaneously"
     (let [app-db (setup-bot-with-lands {:lands [:underground-river] :bolts 0})
           game-db (:game/db app-db)
-          taps (interceptor/find-tap-sequence game-db :player-2 {:blue 1 :black 1})]
+          taps (decisions/find-tap-sequence game-db :player-2 {:blue 1 :black 1})]
       (is (= 1 (count taps))
           "Single dual land can only produce 1 tap, not 2")
       (is (contains? #{:blue :black} (:mana-color (first taps)))
@@ -245,7 +245,7 @@
   (testing "bot passes when lands produce wrong color for spell cost"
     (let [app-db (setup-bot-with-lands {:lands [:plains :plains] :bolts 1})
           game-db (:game/db app-db)
-          action (interceptor/bot-decide-action game-db)]
+          action (decisions/bot-decide-action game-db)]
       (is (= :pass (:action action))
           "Should pass — Plains can't pay {:red 1} for Lightning Bolt"))))
 
@@ -268,7 +268,7 @@
     (let [app-db (setup-bot-with-lands {:lands [:mountain :mountain] :bolts 1})
           game-db (:game/db app-db)
           ;; find-tap-sequence for a multi-color cost with wrong colors
-          taps (interceptor/find-tap-sequence game-db :player-2 {:white 1 :blue 1})]
+          taps (decisions/find-tap-sequence game-db :player-2 {:white 1 :blue 1})]
       ;; find-tap-sequence correctly returns 0 taps (no white/blue sources)
       (is (zero? (count taps))
           "Should find 0 taps — Mountains produce neither white nor blue"))))
@@ -278,7 +278,7 @@
   (testing "bot correctly identifies taps for multi-color cost via find-tap-sequence"
     (let [app-db (setup-bot-with-lands {:lands [:mountain] :bolts 1})
           game-db (:game/db app-db)
-          action (interceptor/bot-decide-action game-db)]
+          action (decisions/bot-decide-action game-db)]
       (is (= :cast-spell (:action action))
           "Should cast — Mountain produces {:red 1} for bolt")
       (is (= 1 (count (:tap-sequence action)))
@@ -291,7 +291,7 @@
   (testing "generic mana is paid by any remaining untapped mana-producing land"
     (let [app-db (setup-bot-with-lands {:lands [:mountain :mountain :plains] :bolts 0})
           game-db (:game/db app-db)
-          taps (interceptor/find-tap-sequence game-db :player-2 {:red 1 :generic 1})]
+          taps (decisions/find-tap-sequence game-db :player-2 {:red 1 :generic 1})]
       (is (= 2 (count taps))
           "Should return 2 taps: 1 for red, 1 for generic")
       ;; All taps should have distinct object-ids (no double-allocation)
@@ -303,7 +303,7 @@
   (testing "empty mana cost returns empty tap sequence"
     (let [app-db (setup-bot-with-lands {:lands [:mountain] :bolts 0})
           game-db (:game/db app-db)
-          taps (interceptor/find-tap-sequence game-db :player-2 {})]
+          taps (decisions/find-tap-sequence game-db :player-2 {})]
       (is (empty? taps)
           "Empty mana cost should return no taps"))))
 
@@ -312,7 +312,7 @@
   (testing "generic mana uses lands not already allocated to specific colors"
     (let [app-db (setup-bot-with-lands {:lands [:mountain :plains] :bolts 0})
           game-db (:game/db app-db)
-          taps (interceptor/find-tap-sequence game-db :player-2 {:red 1 :generic 1})]
+          taps (decisions/find-tap-sequence game-db :player-2 {:red 1 :generic 1})]
       (is (= 2 (count taps))
           "Should return 2 taps")
       ;; The red tap should be the mountain, and generic should be the plains

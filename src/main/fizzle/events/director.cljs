@@ -20,7 +20,7 @@
    - SBAs run after each engine step"
   (:require
     [datascript.core :as d]
-    [fizzle.bots.interceptor :as bot-interceptor]
+    [fizzle.bots.decisions :as bot-decisions]
     [fizzle.bots.protocol :as bot-protocol]
     [fizzle.db.game-state :as game-state]
     [fizzle.db.queries :as queries]
@@ -104,7 +104,7 @@
           {:action-type :play-land
            :game-db (sba/check-and-execute-sbas (lands/play-land game-db player-id land-id))
            :object-id land-id}
-          (let [action (bot-interceptor/bot-decide-action game-db)]
+          (let [action (bot-decisions/bot-decide-action game-db)]
             (if (not= :cast-spell (:action action))
               {:action-type :pass :game-db game-db}
               (let [tap-seq (:tap-sequence action)

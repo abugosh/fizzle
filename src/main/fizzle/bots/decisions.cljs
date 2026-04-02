@@ -1,14 +1,14 @@
-(ns fizzle.bots.interceptor
-  "Bot decision logic: pure computation helpers called by the director.
+(ns fizzle.bots.decisions
+  "Bot decision computation: pure functions called by the director.
 
-   This module provides:
-   - bot-should-act?: checks if the current priority holder is a bot
-   - bot-decide-action: asks bot protocol for a decision and builds action plan
-   - find-tap-sequence: allocates mana-producing lands to pay a spell cost
+   Exported functions:
+   - bot-should-act?   — true if current priority holder is a bot
+   - bot-decide-action — asks bot protocol for an action plan
+   - find-tap-sequence — allocates mana-producing lands to pay a cost
 
-   The director (events/director.cljs) drives bot turns by calling these
-   functions and dispatching the resulting actions through the standard
-   event pipeline (history, validation, engine)."
+   Architecture: all functions are pure (no side effects, no re-frame).
+   The director (events/director.cljs) calls these inline during its loop
+   and applies the resulting actions through the standard event pipeline."
   (:require
     [fizzle.bots.protocol :as bot]
     [fizzle.db.game-state :as game-state]
