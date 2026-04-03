@@ -10,6 +10,7 @@
    The director (events/director.cljs) calls these inline during its loop
    and applies the resulting actions through the standard event pipeline."
   (:require
+    [fizzle.bots.action-spec :as action-spec]
     [fizzle.bots.protocol :as bot]
     [fizzle.db.game-state :as game-state]
     [fizzle.db.queries :as queries]
@@ -105,28 +106,30 @@
                           (when (= holder-eid (queries/get-player-eid game-db pid))
                             pid))
                         [game-state/human-player-id game-state/opponent-player-id])
-        archetype (when player-id (bot/get-bot-archetype game-db player-id))]
-    (if-not archetype
-      {:action :pass}
-      (let [decision (bot/bot-priority-decision archetype {:db game-db :player-id player-id})]
-        (if (= :pass decision)
-          {:action :pass}
-          (let [object-id (:object-id decision)
-                target (:target decision)
-                card (queries/get-card game-db object-id)
-                mana-cost (or (:card/mana-cost card) {})
-                tap-seq (find-tap-sequence game-db player-id mana-cost)
-                can-pay? (every?
-                           (fn [[color amount]]
-                             (if (= :generic color)
-                               (let [colored-need (reduce + 0 (vals (dissoc mana-cost :generic)))]
-                                 (>= (- (count tap-seq) colored-need) amount))
-                               (<= amount (count (filter #(= color (:mana-color %)) tap-seq)))))
-                           mana-cost)]
-            (if-not can-pay?
-              {:action :pass}
-              {:action :cast-spell
-               :object-id object-id
-               :target target
-               :player-id player-id
-               :tap-sequence tap-seq})))))))
+        archetype (when player-id (bot/get-bot-archetype game-db player-id))
+        action (if-not archetype
+                 {:action :pass}
+                 (let [decision (bot/bot-priority-decision archetype {:db game-db :player-id player-id})]
+                   (if (= :pass decision)
+                     {:action :pass}
+                     (let [object-id (:object-id decision)
+                           target (:target decision)
+                           card (queries/get-card game-db object-id)
+                           mana-cost (or (:card/mana-cost card) {})
+                           tap-seq (find-tap-sequence game-db player-id mana-cost)
+                           can-pay? (every?
+                                      (fn [[color amount]]
+                                        (if (= :generic color)
+                                          (let [colored-need (reduce + 0 (vals (dissoc mana-cost :generic)))]
+                                            (>= (- (count tap-seq) colored-need) amount))
+                                          (<= amount (count (filter #(= color (:mana-color %)) tap-seq)))))
+                                      mana-cost)]
+                       (if-not can-pay?
+                         {:action :pass}
+                         {:action :cast-spell
+                          :object-id object-id
+                          :target target
+                          :player-id player-id
+                          :tap-sequence tap-seq})))))]
+    (action-spec/validate-bot-action! action)
+    action))
