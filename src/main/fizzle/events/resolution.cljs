@@ -8,6 +8,7 @@
     [fizzle.events.cleanup :as cleanup]
     [fizzle.events.selection.combat :as sel-combat]
     [fizzle.events.selection.core :as sel-core]
+    [fizzle.events.selection.spec :as sel-spec]
     [fizzle.events.selection.storm :as sel-storm]
     [re-frame.core :as rf]))
 
@@ -115,7 +116,7 @@
       (if (:pending-selection result)
         (-> db
             (assoc :game/db (:db result))
-            (assoc :game/pending-selection (:pending-selection result)))
+            (sel-spec/set-pending-selection (:pending-selection result)))
         (cleanup/maybe-continue-cleanup
           (assoc db :game/db (:db result)))))))
 
@@ -134,7 +135,7 @@
               (if (:pending-selection result)
                 {:db (-> db
                          (assoc :game/db (:db result))
-                         (assoc :game/pending-selection (:pending-selection result)))}
+                         (sel-spec/set-pending-selection (:pending-selection result)))}
                 {:db (assoc db :game/db (:db result))
                  :fx [[:dispatch [::resolve-all initial-ids]]]}))
             ;; Stack empty or new item on top — done, check cleanup

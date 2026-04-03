@@ -11,6 +11,7 @@
     [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.engine.turn-based :as turn-based]
     [fizzle.events.cleanup :as cleanup]
+    [fizzle.events.selection.spec :as sel-spec]
     [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
 
@@ -138,7 +139,7 @@
               (if (:pending-selection result)
                 (-> db
                     (assoc :game/db (:db result))
-                    (assoc :game/pending-selection (:pending-selection result)))
+                    (sel-spec/set-pending-selection (:pending-selection result)))
                 (assoc db :game/db (:db result))))
             ;; Normal phase advancement
             (assoc db :game/db (advance-phase game-db active-player-id))))))))

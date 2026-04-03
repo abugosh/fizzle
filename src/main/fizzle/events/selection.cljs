@@ -14,13 +14,14 @@
      selection/zone_ops.cljs  — discard (unified), graveyard-return"
   (:require
     [fizzle.events.selection.core :as core]
+    [fizzle.events.selection.spec :as sel-spec]
     [re-frame.core :as rf]))
 
 
 (rf/reg-event-db
   ::set-pending-selection
   (fn [db [_ selection-state]]
-    (assoc db :game/pending-selection selection-state)))
+    (sel-spec/set-pending-selection db selection-state)))
 
 
 (rf/reg-event-fx

@@ -17,6 +17,7 @@
     [fizzle.engine.stack :as stack]
     [fizzle.engine.validation :as validation]
     [fizzle.engine.zones :as zones]
+    [fizzle.events.selection.spec :as sel-spec]
     [fizzle.history.descriptions :as descriptions]))
 
 
@@ -365,7 +366,7 @@
             next-sel (cond-> next-sel on-complete (assoc :selection/on-complete on-complete))]
         (-> app-db
             (assoc :game/db (:db remaining-result))
-            (assoc :game/pending-selection next-sel)))
+            (sel-spec/set-pending-selection next-sel)))
       ;; No more interactive effects: cleanup source and finish.
       (let [db-final (cleanup-selection-source (:db remaining-result) selection)
             updated (-> app-db
@@ -400,7 +401,7 @@
                           on-complete (assoc :selection/on-complete on-complete))]
         (-> app-db
             (assoc :game/db (:db result))
-            (assoc :game/pending-selection chained-sel)))
+            (sel-spec/set-pending-selection chained-sel)))
       ;; nil = conditional chaining, fall through to standard
       (standard-path app-db result selection on-complete))))
 

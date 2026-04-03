@@ -5,7 +5,8 @@
     [datascript.core :as d]
     [fizzle.db.queries :as queries]
     [fizzle.engine.grants :as grants]
-    [fizzle.engine.zones :as zones]))
+    [fizzle.engine.zones :as zones]
+    [fizzle.events.selection.spec :as sel-spec]))
 
 
 (defn- clear-damage-marks
@@ -105,6 +106,6 @@
         (if (:pending-selection result)
           (-> app-db
               (assoc :game/db (:db result))
-              (assoc :game/pending-selection (:pending-selection result)))
+              (sel-spec/set-pending-selection (:pending-selection result)))
           (assoc app-db :game/db (:db result))))
       app-db)))

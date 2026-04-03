@@ -9,6 +9,7 @@
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.selection.core :as sel-core]
     [fizzle.events.selection.costs :as sel-costs]
+    [fizzle.events.selection.spec :as sel-spec]
     [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
@@ -159,7 +160,7 @@
           (cond
             (nil? result) (recur (rest steps))
             (:selection result) (-> app-db
-                                    (assoc :game/pending-selection (:selection result))
+                                    (sel-spec/set-pending-selection (:selection result))
                                     (dissoc :game/selected-card))
             (:db result) (-> app-db
                              (assoc :game/db (:db result))
@@ -260,8 +261,8 @@
            ;; Modal card: spell mode selection through standard selection system.
            ;; Set deferred-entry — entry will be created when selection chain completes.
            (-> app-db
-               (assoc :game/pending-selection
-                      (build-spell-mode-selection player-id object-id valid-spell-modes))
+               (sel-spec/set-pending-selection
+                 (build-spell-mode-selection player-id object-id valid-spell-modes))
                (assoc :history/deferred-entry
                       {:type :cast-spell
                        :object-id object-id

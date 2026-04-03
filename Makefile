@@ -77,4 +77,4 @@ arch:
 	npx likec4 start docs/arch/
 
 validate:
-	@$(MAKE) lint && $(MAKE) fmt-check && $(MAKE) test
+	@$(MAKE) lint && $(MAKE) fmt-check && $(MAKE) lint-pending-selection && $(MAKE) test

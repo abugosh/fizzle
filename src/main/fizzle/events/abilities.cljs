@@ -11,6 +11,7 @@
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.selection.core :as selection-core]
     [fizzle.events.selection.costs :as sel-costs]
+    [fizzle.events.selection.spec :as sel-spec]
     [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
 
@@ -296,7 +297,7 @@
                     ;; Clear selected card after activation (sacrifice may move it to graveyard,
                     ;; and stale selection causes it to appear highlighted there)
                     true (dissoc :game/selected-card)
-                    (:pending-selection result) (assoc :game/pending-selection (:pending-selection result)))]
+                    (:pending-selection result) (sel-spec/set-pending-selection (:pending-selection result)))]
       (if (:pending-selection result)
         ;; Targeting needed — defer history entry until selection chain completes
         (assoc base-db :history/deferred-entry

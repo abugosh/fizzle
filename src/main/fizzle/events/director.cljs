@@ -32,7 +32,8 @@
     [fizzle.events.cleanup :as cleanup]
     [fizzle.events.lands :as lands]
     [fizzle.events.phases :as phases]
-    [fizzle.events.resolution :as resolution]))
+    [fizzle.events.resolution :as resolution]
+    [fizzle.events.selection.spec :as sel-spec]))
 
 
 (def ^:private max-director-steps 300)
@@ -185,7 +186,7 @@
       (and (= atype :cast-spell) (:pending-selection action))
       {:done {:app-db (-> app-db
                           (assoc :game/db (:game-db action))
-                          (assoc :game/pending-selection (:pending-selection action)))
+                          (sel-spec/set-pending-selection (:pending-selection action)))
               :reason :pending-selection}}
 
       (= atype :cast-spell)
@@ -253,7 +254,7 @@
     (if (:pending-selection result)
       {:done {:app-db (-> app-db
                           (assoc :game/db (:db result))
-                          (assoc :game/pending-selection (:pending-selection result)))
+                          (sel-spec/set-pending-selection (:pending-selection result)))
               :reason :pending-selection}}
       (let [resolved-db (sba/check-and-execute-sbas (:db result))
             new-app-db (cleanup/maybe-continue-cleanup (assoc app-db :game/db resolved-db))]
@@ -271,7 +272,7 @@
     (if (:pending-selection advance-result)
       {:done {:app-db (-> app-db
                           (assoc :game/db (:game-db advance-result))
-                          (assoc :game/pending-selection (:pending-selection advance-result)))
+                          (sel-spec/set-pending-selection (:pending-selection advance-result)))
               :reason :pending-selection}}
       (let [advanced-db (:game-db advance-result)
             crossed-turn? (:crossed-turn? advance-result)
