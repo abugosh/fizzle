@@ -6,7 +6,8 @@
 
    All functions are pure: (db, args) -> db or value."
   (:require
-    [datascript.core :as d]))
+    [datascript.core :as d]
+    [fizzle.engine.stack-spec :as stack-spec]))
 
 
 (defn get-next-stack-order
@@ -37,6 +38,7 @@
    Auto-assigns :stack-item/position. Caller MUST NOT set position.
    Returns updated db."
   [db attrs]
+  (stack-spec/validate-stack-item! attrs)
   (d/db-with db [(merge attrs {:stack-item/position (get-next-stack-order db)})]))
 
 
