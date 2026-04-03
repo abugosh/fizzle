@@ -341,11 +341,9 @@
           :opt [:effect/target :effect/condition]))
 
 
-(s/def ::effect (s/multi-spec effect-type-spec :effect/type))
-
-
-;; === minimal-valid-effect helper (used by tests) ===
+;; === minimal-valid-effect helper (used by tests and ::effect generator) ===
 ;; Returns the minimal valid effect map for a given :effect/type keyword.
+;; Defined before ::effect so the generator can reference it.
 
 (def ^:private minimal-effects
   {:add-mana              {:effect/type :add-mana :effect/mana {:black 1}}
@@ -402,6 +400,9 @@
    Used by tests to verify every type has a working defmethod."
   [effect-type]
   (get minimal-effects effect-type))
+
+
+(s/def ::effect (s/multi-spec effect-type-spec :effect/type))
 
 
 (s/def ::effects (s/coll-of ::effect :kind vector?))

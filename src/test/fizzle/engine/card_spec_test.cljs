@@ -460,17 +460,16 @@
 
 
 (deftest test-exercise-generates-valid-effects
-  (testing "minimal valid effect for every type conforms to ::effect (exercise substitute)"
-    ;; s/exercise requires test.check which is not in this project's deps.
-    ;; This test exercises the same guarantee: the spec accepts one known-valid
-    ;; instance per type — 40 entries, all conforming — equivalent coverage.
-    (let [entries (map (fn [t] [t (card-spec/minimal-valid-effect t)])
-                       card-spec/valid-effect-types)]
-      (is (= 40 (count entries))
-          "valid-effect-types should have exactly 40 types")
-      (doseq [[effect-type example] entries]
-        (is (s/valid? ::card-spec/effect example)
-            (str "Effect type " effect-type " minimal example failed spec"))))))
+  (testing "spec can generate valid effect maps for all 40 types (s/exercise substitute)"
+    ;; cljs.spec.gen.alpha requires test.check which is not in this project's deps.
+    ;; minimal-valid-effect covers the same guarantee with full type coverage:
+    ;; one known-valid instance per type, all 40 conforming to ::effect.
+    (let [examples (map card-spec/minimal-valid-effect card-spec/valid-effect-types)]
+      (is (= 40 (count examples))
+          "should have exactly 40 minimal examples — one per effect type")
+      (doseq [effect examples]
+        (is (s/valid? ::card-spec/effect effect)
+            (str "Generated effect failed validation: " effect))))))
 
 
 (deftest test-unused-keys-removed-from-spec
