@@ -390,7 +390,7 @@
 (deftest test-wrong-target-type-fails
   (testing "non-keyword :effect/target fails validation"
     (is (not (s/valid? ::card-spec/effect
-               {:effect/type :mill :effect/amount 3 :effect/target "string"})))))
+                       {:effect/type :mill :effect/amount 3 :effect/target "string"})))))
 
 
 (deftest test-mill-without-amount-fails
