@@ -99,7 +99,7 @@
 
 
 (deftest test-all-existing-cards-valid
-  (testing "all 58 cards from all-cards pass validation"
+  (testing "all cards from all-cards pass validation"
     (doseq [card cards/all-cards]
       (is (= true (card-spec/valid-card? card))
           (str "Card failed validation: " (:card/name card))))))
@@ -385,6 +385,12 @@
 (deftest test-missing-type-fails
   (testing "effect without :effect/type fails"
     (is (not (s/valid? ::card-spec/effect {:effect/amount 3})))))
+
+
+(deftest test-wrong-target-type-fails
+  (testing "non-keyword :effect/target fails validation"
+    (is (not (s/valid? ::card-spec/effect
+               {:effect/type :mill :effect/amount 3 :effect/target "string"})))))
 
 
 (deftest test-mill-without-amount-fails
