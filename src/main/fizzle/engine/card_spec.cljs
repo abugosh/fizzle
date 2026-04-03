@@ -74,7 +74,7 @@
                  :x-flag boolean?))))
 
 
-;; === Effect Spec ===
+;; === Effect Field Specs ===
 
 (s/def :effect/type valid-effect-types)
 (s/def :effect/mana ::mana-cost)
@@ -85,9 +85,6 @@
 (s/def :effect/graveyard-ref keyword?)
 (s/def :effect/selection keyword?)
 (s/def :effect/criteria map?)
-(s/def :effect/destination keyword?)
-(s/def :effect/counter-type keyword?)
-(s/def :effect/x keyword?)
 (s/def :effect/select-count int?)
 (s/def :effect/selected-zone keyword?)
 (s/def :effect/remainder-zone keyword?)
@@ -99,6 +96,18 @@
 (s/def :restriction/type valid-restriction-types)
 
 
+;; 9 previously-missing field specs
+(s/def :effect/token map?)
+(s/def :effect/counters map?)
+(s/def :effect/permanent-type keyword?)
+(s/def :effect/target-zone keyword?)
+(s/def :effect/source-zone keyword?)
+(s/def :effect/shuffle? boolean?)
+(s/def :effect/pile-choice map?)
+(s/def :effect/may-shuffle? boolean?)
+(s/def :effect/shuffle-remainder? boolean?)
+
+
 (s/def :effect/condition
   (s/keys :req [:condition/type]
           :opt [:condition/target :condition/counter-type]))
@@ -107,19 +116,292 @@
 (s/def :effect/unless-pay ::mana-cost)
 
 
-(s/def ::effect
+;; === Effect Multi-Spec ===
+;; Dispatches on :effect/type. Each defmethod returns an s/keys spec
+;; listing required and optional keys for that type.
+;; :effect/condition is optional on every type (orthogonal to effect type).
+
+(defmulti effect-type-spec :effect/type)
+
+
+;; --- Group 1: amount+target ---
+
+(defmethod effect-type-spec :mill [_]
+  (s/keys :req [:effect/type :effect/amount]
+          :opt [:effect/target :effect/target-ref :effect/condition]))
+
+
+(defmethod effect-type-spec :draw [_]
+  (s/keys :req [:effect/type :effect/amount]
+          :opt [:effect/target :effect/condition]))
+
+
+(defmethod effect-type-spec :deal-damage [_]
+  (s/keys :req [:effect/type :effect/amount]
+          :opt [:effect/target :effect/target-ref :effect/condition]))
+
+
+(defmethod effect-type-spec :discard [_]
+  (s/keys :req [:effect/type :effect/count :effect/selection]
+          :opt [:effect/condition]))
+
+
+(defmethod effect-type-spec :return-from-graveyard [_]
+  (s/keys :req [:effect/type :effect/count :effect/selection]
+          :opt [:effect/target :effect/condition]))
+
+
+;; --- Group 2: zone-op ---
+
+(defmethod effect-type-spec :exile-self [_]
   (s/keys :req [:effect/type]
-          :opt [:effect/mana :effect/amount :effect/count
-                :effect/target :effect/target-ref :effect/graveyard-ref
-                :effect/selection :effect/criteria
-                :effect/destination :effect/counter-type
-                :effect/condition :effect/x
-                :effect/select-count :effect/selected-zone
-                :effect/remainder-zone :effect/order-remainder?
-                :effect/zone :effect/unless-pay
-                :effect/ability
-                :effect/power :effect/toughness
-                :restriction/type]))
+          :opt [:effect/condition]))
+
+
+(defmethod effect-type-spec :bounce [_]
+  (s/keys :req [:effect/type :effect/target-ref]
+          :opt [:effect/condition]))
+
+
+(defmethod effect-type-spec :bounce-all [_]
+  (s/keys :req [:effect/type :effect/criteria]
+          :opt [:effect/target-ref :effect/condition]))
+
+
+(defmethod effect-type-spec :destroy [_]
+  (s/keys :req [:effect/type :effect/target-ref]
+          :opt [:effect/condition]))
+
+
+(defmethod effect-type-spec :discard-hand [_]
+  (s/keys :req [:effect/type]
+          :opt [:effect/target :effect/condition]))
+
+
+(defmethod effect-type-spec :sacrifice [_]
+  (s/keys :req [:effect/type]
+          :opt [:effect/target :effect/condition]))
+
+
+(defmethod effect-type-spec :exile-zone [_]
+  (s/keys :req [:effect/type :effect/target-ref :effect/zone]
+          :opt [:effect/condition]))
+
+
+(defmethod effect-type-spec :phase-out [_]
+  (s/keys :req [:effect/type :effect/target-ref]
+          :opt [:effect/condition]))
+
+
+(defmethod effect-type-spec :chain-bounce [_]
+  (s/keys :req [:effect/type :effect/target-ref]
+          :opt [:effect/condition]))
+
+
+(defmethod effect-type-spec :untap-lands [_]
+  (s/keys :req [:effect/type :effect/count]
+          :opt [:effect/condition]))
+
+
+(defmethod effect-type-spec :tap-all [_]
+  (s/keys :req [:effect/type :effect/target :effect/permanent-type]
+          :opt [:effect/condition]))
+
+
+(defmethod effect-type-spec :untap-all [_]
+  (s/keys :req [:effect/type :effect/target :effect/permanent-type]
+          :opt [:effect/condition]))
+
+
+(defmethod effect-type-spec :welder-swap [_]
+  (s/keys :req [:effect/type :effect/target-ref :effect/graveyard-ref]
+          :opt [:effect/condition]))
+
+
+;; --- Group 3: mana ---
+
+(defmethod effect-type-spec :add-mana [_]
+  (s/keys :req [:effect/type :effect/mana]
+          :opt [:effect/condition]))
+
+
+;; --- Group 4: library-ops ---
+
+(defmethod effect-type-spec :tutor [_]
+  (s/keys :req [:effect/type :effect/target-zone]
+          :opt [:effect/criteria :effect/shuffle? :effect/source-zone
+                :effect/select-count :effect/pile-choice :effect/condition]))
+
+
+(defmethod effect-type-spec :scry [_]
+  (s/keys :req [:effect/type :effect/amount]
+          :opt [:effect/condition]))
+
+
+(defmethod effect-type-spec :peek-and-select [_]
+  (s/keys :req [:effect/type :effect/count :effect/selected-zone
+                :effect/remainder-zone :effect/select-count]
+          :opt [:effect/order-remainder? :effect/shuffle-remainder? :effect/condition]))
+
+
+(defmethod effect-type-spec :peek-and-reorder [_]
+  (s/keys :req [:effect/type :effect/count]
+          :opt [:effect/target-ref :effect/may-shuffle? :effect/condition]))
+
+
+(defmethod effect-type-spec :peek-random-hand [_]
+  (s/keys :req [:effect/type :effect/target-ref]
+          :opt [:effect/condition]))
+
+
+;; --- Group 5: granting ---
+
+(defmethod effect-type-spec :grant-flashback [_]
+  (s/keys :req [:effect/type :effect/target-ref]
+          :opt [:effect/condition]))
+
+
+(defmethod effect-type-spec :grant-delayed-draw [_]
+  (s/keys :req [:effect/type]
+          :opt [:effect/target :effect/condition]))
+
+
+(defmethod effect-type-spec :grant-mana-ability [_]
+  (s/keys :req [:effect/type :effect/target :effect/ability]
+          :opt [:effect/mana :effect/condition]))
+
+
+(defmethod effect-type-spec :add-restriction [_]
+  (s/keys :req [:effect/type :restriction/type]
+          :opt [:effect/target :effect/condition]))
+
+
+(defmethod effect-type-spec :add-counters [_]
+  (s/keys :req [:effect/type :effect/target :effect/counters]
+          :opt [:effect/condition]))
+
+
+;; --- Group 6: special ---
+
+(defmethod effect-type-spec :counter-spell [_]
+  (s/keys :req [:effect/type :effect/target-ref]
+          :opt [:effect/condition :effect/unless-pay]))
+
+
+(defmethod effect-type-spec :counter-ability [_]
+  (s/keys :req [:effect/type :effect/target-ref]
+          :opt [:effect/condition]))
+
+
+(defmethod effect-type-spec :apply-pt-modifier [_]
+  (s/keys :req [:effect/type :effect/target-ref :effect/power :effect/toughness]
+          :opt [:effect/condition]))
+
+
+(defmethod effect-type-spec :lose-life-equal-to-toughness [_]
+  (s/keys :req [:effect/type :effect/target-ref]
+          :opt [:effect/condition]))
+
+
+(defmethod effect-type-spec :gain-life-equal-to-cmc [_]
+  (s/keys :req [:effect/type :effect/target-ref]
+          :opt [:effect/condition]))
+
+
+(defmethod effect-type-spec :create-token [_]
+  (s/keys :req [:effect/type :effect/token]
+          :opt [:effect/condition]))
+
+
+(defmethod effect-type-spec :change-land-types [_]
+  (s/keys :req [:effect/type]
+          :opt [:effect/target-ref :effect/amount :effect/condition]))
+
+
+(defmethod effect-type-spec :discard-from-revealed-hand [_]
+  (s/keys :req [:effect/type :effect/target :effect/criteria]
+          :opt [:effect/condition]))
+
+
+;; Runtime-only types: never appear in card definitions but must have defmethods
+;; for s/exercise and completeness
+
+(defmethod effect-type-spec :storm-copies [_]
+  (s/keys :req [:effect/type]
+          :opt [:effect/condition]))
+
+
+(defmethod effect-type-spec :lose-life [_]
+  (s/keys :req [:effect/type :effect/amount]
+          :opt [:effect/target :effect/condition]))
+
+
+(defmethod effect-type-spec :gain-life [_]
+  (s/keys :req [:effect/type :effect/amount]
+          :opt [:effect/target :effect/condition]))
+
+
+(s/def ::effect (s/multi-spec effect-type-spec :effect/type))
+
+
+;; === minimal-valid-effect helper (used by tests) ===
+;; Returns the minimal valid effect map for a given :effect/type keyword.
+
+(def ^:private minimal-effects
+  {:add-mana              {:effect/type :add-mana :effect/mana {:black 1}}
+   :mill                  {:effect/type :mill :effect/amount 1}
+   :draw                  {:effect/type :draw :effect/amount 1}
+   :deal-damage           {:effect/type :deal-damage :effect/amount 1 :effect/target :opponent}
+   :discard               {:effect/type :discard :effect/count 1 :effect/selection :player}
+   :return-from-graveyard {:effect/type :return-from-graveyard :effect/count 1 :effect/selection :player}
+   :exile-self            {:effect/type :exile-self}
+   :bounce                {:effect/type :bounce :effect/target-ref :target}
+   :bounce-all            {:effect/type :bounce-all :effect/criteria {:match/types #{:artifact}}}
+   :destroy               {:effect/type :destroy :effect/target-ref :target}
+   :discard-hand          {:effect/type :discard-hand}
+   :sacrifice             {:effect/type :sacrifice}
+   :exile-zone            {:effect/type :exile-zone :effect/target-ref :player :effect/zone :graveyard}
+   :phase-out             {:effect/type :phase-out :effect/target-ref :target}
+   :chain-bounce          {:effect/type :chain-bounce :effect/target-ref :target}
+   :untap-lands           {:effect/type :untap-lands :effect/count 2}
+   :tap-all               {:effect/type :tap-all :effect/target :opponent :effect/permanent-type :creature}
+   :untap-all             {:effect/type :untap-all :effect/target :self :effect/permanent-type :land}
+   :welder-swap           {:effect/type :welder-swap :effect/target-ref :welder-bf :effect/graveyard-ref :welder-gy}
+   :tutor                 {:effect/type :tutor :effect/target-zone :hand}
+   :scry                  {:effect/type :scry :effect/amount 1}
+   :peek-and-select       {:effect/type :peek-and-select :effect/count 4
+                           :effect/select-count 1
+                           :effect/selected-zone :hand
+                           :effect/remainder-zone :bottom-of-library}
+   :peek-and-reorder      {:effect/type :peek-and-reorder :effect/count 3}
+   :peek-random-hand      {:effect/type :peek-random-hand :effect/target-ref :player}
+   :grant-flashback       {:effect/type :grant-flashback :effect/target-ref :target}
+   :grant-delayed-draw    {:effect/type :grant-delayed-draw}
+   :grant-mana-ability    {:effect/type :grant-mana-ability :effect/target :controlled-lands
+                           :effect/ability {:ability/type :mana} :effect/mana {:black 1}}
+   :add-restriction       {:effect/type :add-restriction :restriction/type :cannot-cast-spells}
+   :add-counters          {:effect/type :add-counters :effect/target :self :effect/counters {:+1/+1 1}}
+   :counter-spell         {:effect/type :counter-spell :effect/target-ref :target-spell}
+   :counter-ability       {:effect/type :counter-ability :effect/target-ref :ability}
+   :apply-pt-modifier     {:effect/type :apply-pt-modifier :effect/target-ref :target
+                           :effect/power -2 :effect/toughness -2}
+   :lose-life-equal-to-toughness {:effect/type :lose-life-equal-to-toughness :effect/target-ref :target}
+   :gain-life-equal-to-cmc {:effect/type :gain-life-equal-to-cmc :effect/target-ref :target}
+   :create-token          {:effect/type :create-token
+                           :effect/token {:token/name "Beast" :token/power 4 :token/toughness 4}}
+   :change-land-types     {:effect/type :change-land-types}
+   :discard-from-revealed-hand {:effect/type :discard-from-revealed-hand :effect/target :opponent
+                                :effect/criteria {:match/not-types #{:creature :land}}}
+   :storm-copies          {:effect/type :storm-copies}
+   :lose-life             {:effect/type :lose-life :effect/amount 3}
+   :gain-life             {:effect/type :gain-life :effect/amount 3}})
+
+
+(defn minimal-valid-effect
+  "Return a minimal valid effect map for the given effect type keyword.
+   Used by tests to verify every type has a working defmethod."
+  [effect-type]
+  (get minimal-effects effect-type))
 
 
 (s/def ::effects (s/coll-of ::effect :kind vector?))
