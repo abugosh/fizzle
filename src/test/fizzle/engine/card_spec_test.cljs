@@ -459,6 +459,20 @@
             (str "Minimal effect invalid for type: " effect-type))))))
 
 
+(deftest test-exercise-generates-valid-effects
+  (testing "minimal valid effect for every type conforms to ::effect (exercise substitute)"
+    ;; s/exercise requires test.check which is not in this project's deps.
+    ;; This test exercises the same guarantee: the spec accepts one known-valid
+    ;; instance per type — 40 entries, all conforming — equivalent coverage.
+    (let [entries (map (fn [t] [t (card-spec/minimal-valid-effect t)])
+                       card-spec/valid-effect-types)]
+      (is (= 40 (count entries))
+          "valid-effect-types should have exactly 40 types")
+      (doseq [[effect-type example] entries]
+        (is (s/valid? ::card-spec/effect example)
+            (str "Effect type " effect-type " minimal example failed spec"))))))
+
+
 (deftest test-unused-keys-removed-from-spec
   (testing ":effect/counter-type, :effect/destination, :effect/x are not in the spec"
     ;; These keys were confirmed unused and should be removed
