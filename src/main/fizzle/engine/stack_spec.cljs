@@ -190,6 +190,16 @@
                 :stack-item/description]))
 
 
+;; :phase-entered — turn-based action trigger fired when a new phase is entered
+;; (e.g., draw-step and untap-step triggers fire when :draw/:untap phase is entered)
+(defmethod stack-item-type-spec :phase-entered [_]
+  (s/keys :req [:stack-item/type
+                :stack-item/controller]
+          :opt [:stack-item/source
+                :stack-item/effects
+                :stack-item/description]))
+
+
 ;; :test — test-only sentinel type (used in turn_test to verify stack non-empty)
 (defmethod stack-item-type-spec :test [_]
   (s/keys :req [:stack-item/type
