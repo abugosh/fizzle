@@ -1,4 +1,4 @@
-.PHONY: repl dev test clean help lint fmt-check fmt validate build-css lint-test-paths release arch
+.PHONY: repl dev test clean help lint fmt-check fmt validate build-css lint-test-paths lint-pending-selection release arch
 
 # Detect Java - try common locations
 JAVA_HOME ?= $(shell \
@@ -63,6 +63,15 @@ lint-test-paths:
 		|| echo "  No production path bypasses found."
 	@echo "Review matches above — happy-path tests should use th/ helpers instead."
 	@echo "Edge case tests calling internals directly are acceptable."
+
+lint-pending-selection:
+	@echo "Checking for direct assoc :game/pending-selection outside spec.cljs..."
+	@! grep -rn '(assoc[[:space:]][^i].*:game/pending-selection\|(assoc :game/pending-selection' src/main/ --include="*.cljs" \
+		| grep -v 'selection/spec.cljs' \
+		| grep -v 'assoc-in' \
+		| grep -q . \
+		&& echo "  No direct pending-selection assocs found outside spec.cljs." \
+		|| (grep -rn '(assoc[[:space:]][^i].*:game/pending-selection\|(assoc :game/pending-selection' src/main/ --include="*.cljs" | grep -v 'selection/spec.cljs' | grep -v 'assoc-in'; exit 1)
 
 arch:
 	npx likec4 start docs/arch/
