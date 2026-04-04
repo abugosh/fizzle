@@ -464,7 +464,7 @@
                      :selection/valid-targets [:player-2 :player-1]
                      :selection/allocation {:player-2 2 :player-1 0}
                      :selection/source-object-id source-id
-                     :selection/controller-id :player-1
+                     :selection/player-id :player-1
                      :selection/stack-item-eid (:db/id storm-si)
                      :selection/selected #{}
                      :selection/validation :always}

@@ -200,7 +200,6 @@
                 :selection/allocation]
           :opt [:selection/pattern
                 :selection/source-object-id
-                :selection/controller-id
                 :selection/stack-item-eid]))
 
 

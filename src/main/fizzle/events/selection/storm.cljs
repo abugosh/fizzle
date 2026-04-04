@@ -50,7 +50,7 @@
            :selection/allocation (assoc (zipmap valid-targets (repeat 0))
                                         (first valid-targets) copy-count)
            :selection/source-object-id source-id
-           :selection/controller-id player-id
+           :selection/player-id player-id
            :selection/stack-item-eid (:db/id storm-stack-item)
            :selection/selected #{}
            :selection/validation :always
@@ -65,7 +65,7 @@
   [game-db selection]
   (let [allocation (:selection/allocation selection)
         source-id (:selection/source-object-id selection)
-        controller (:selection/controller-id selection)
+        controller (:selection/player-id selection)
         si-eid (:selection/stack-item-eid selection)
         copy-count (:selection/copy-count selection)
         total (apply + (vals allocation))]

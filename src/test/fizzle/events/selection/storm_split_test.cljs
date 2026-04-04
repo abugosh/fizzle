@@ -145,7 +145,7 @@
       (is (= :finalized (:selection/lifecycle selection)))
       (is (= 3 (:selection/copy-count selection)))
       (is (= source-id (:selection/source-object-id selection)))
-      (is (= :player-1 (:selection/controller-id selection)))
+      (is (= :player-1 (:selection/player-id selection)))
       (is (= (:db/id storm-si) (:selection/stack-item-eid selection)))
       ;; valid-targets uses player-ids
       (is (= 2 (count (:selection/valid-targets selection)))
@@ -298,7 +298,7 @@
                      :selection/valid-targets [:player-2 :player-1]
                      :selection/allocation {:player-2 2 :player-1 1}
                      :selection/source-object-id source-id
-                     :selection/controller-id :player-1
+                     :selection/player-id :player-1
                      :selection/stack-item-eid (:db/id storm-si)
                      :selection/selected #{}
                      :selection/validation :always}
@@ -329,7 +329,7 @@
                      :selection/valid-targets [:player-2 :player-1]
                      :selection/allocation {:player-2 2 :player-1 1}
                      :selection/source-object-id source-id
-                     :selection/controller-id :player-1
+                     :selection/player-id :player-1
                      :selection/stack-item-eid (:db/id storm-si)
                      :selection/selected #{}
                      :selection/validation :always}
@@ -365,7 +365,7 @@
                      :selection/valid-targets [:player-2 :player-1]
                      :selection/allocation {:player-2 3 :player-1 0}
                      :selection/source-object-id source-id
-                     :selection/controller-id :player-1
+                     :selection/player-id :player-1
                      :selection/stack-item-eid (:db/id storm-si)
                      :selection/selected #{}
                      :selection/validation :always}
@@ -395,7 +395,7 @@
                      :selection/valid-targets [:player-2 :player-1]
                      :selection/allocation {:player-2 1 :player-1 0}
                      :selection/source-object-id source-id
-                     :selection/controller-id :player-1
+                     :selection/player-id :player-1
                      :selection/stack-item-eid (:db/id storm-si)
                      :selection/selected #{}
                      :selection/validation :always}
