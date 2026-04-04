@@ -159,6 +159,7 @@
                                           [])]
                        (set (map :object/id zone-cards))))]
     (cond-> {:selection/type sel-type
+             :selection/lifecycle :standard
              :selection/pattern :zone-pick
              :selection/zone source-zone
              :selection/card-source (:card-source config)

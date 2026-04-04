@@ -8,10 +8,12 @@
    type (no hierarchy reuse — per Phase 1 pattern in engine/card-spec.cljs).
 
    Validation is dev-only via goog.DEBUG (dead-code eliminated in release).
-   set-pending-selection logs a console.error on invalid; it does NOT throw."
+   set-pending-selection uses validate-at-chokepoint! — throws when
+   *throw-on-spec-failure* is bound true (tests), console.error otherwise."
   (:require
     [cljs.spec.alpha :as s]
-    [fizzle.engine.spec-common]))
+    [fizzle.engine.spec-common]
+    [fizzle.engine.spec-util :as spec-util]))
 
 
 ;; =====================================================
@@ -1013,15 +1015,12 @@
 
 (defn set-pending-selection
   "Validated setter for :game/pending-selection.
-   In dev (goog.DEBUG): validates selection via spec, logs console.error on failure.
+   In dev (goog.DEBUG): validates selection via validate-at-chokepoint!.
+   Throws when *throw-on-spec-failure* is true (tests), console.error otherwise.
    In prod: no validation (dead-code eliminated by Closure compiler).
-   Always returns updated app-db. Does NOT throw.
 
    Pure function: (app-db, selection) -> app-db."
   [app-db selection]
-  (when ^boolean goog.DEBUG
-    (when-not (s/valid? ::selection selection)
-      (js/console.error
-        "set-pending-selection: invalid selection map:"
-        (s/explain-str ::selection selection))))
+  (spec-util/validate-at-chokepoint!
+    ::selection selection "set-pending-selection")
   (assoc app-db :game/pending-selection selection))
