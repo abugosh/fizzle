@@ -69,6 +69,9 @@
                 :object/damage-marked]))
 
 
+;; Note: zones.cljs (move-to-zone) has no chokepoint here because it only moves
+;; existing entities — it never creates new objects. Object creation happens solely
+;; in restorer.cljs:object-tx-for-zone, which calls validate-object-tx! below.
 (defn validate-object-tx!
   "Validate an object transaction map at restorer creation boundary.
    In dev (goog.DEBUG): logs console.error if invalid.

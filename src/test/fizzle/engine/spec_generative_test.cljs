@@ -109,13 +109,18 @@
 
 
 (deftest test-selection-chokepoint-accepts-generated
-  (testing "generated selection maps pass through set-pending-selection without setting invalid selection"
-    ;; set-pending-selection uses console.error not throw, so we verify the selection is stored
+  (testing "generated selection maps are spec-valid and stored by set-pending-selection"
+    ;; set-pending-selection uses console.error (not throw) — binding *throw-on-spec-failure*
+    ;; has no effect here because set-pending-selection does not use validate-at-chokepoint!.
+    ;; This test is non-vacuous: s/valid? assertion fails if generator produces invalid data,
+    ;; and the set-pending-selection call verifies the chokepoint stores without side effects.
     (doseq [[generated _] (s/exercise :fizzle.events.selection.spec/selection 5)]
+      (is (s/valid? :fizzle.events.selection.spec/selection generated)
+          (str "Generator produced invalid selection (generator/spec divergence): " (pr-str generated)))
       (let [app-db {:game/db (th/create-test-db)}
             result (sel-spec/set-pending-selection app-db generated)]
         (is (= generated (:game/pending-selection result))
-            (str "Generated selection not stored by set-pending-selection: " (pr-str generated)))))))
+            (str "set-pending-selection failed to store valid selection: " (pr-str generated)))))))
 
 
 ;; =====================================================

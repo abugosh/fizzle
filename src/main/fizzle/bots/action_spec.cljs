@@ -25,6 +25,10 @@
 (s/def ::action keyword?)
 (s/def ::object-id :game/object-id)
 (s/def ::player-id :game/player-id)
+
+
+;; ::target is keyword-only: bot/resolve-action resolves targets to player-id keywords
+;; (e.g. :player-1, :player-2) via get-other-player-id. No int entity IDs reach this path.
 (s/def ::target keyword?)
 (s/def ::mana-color keyword?)
 

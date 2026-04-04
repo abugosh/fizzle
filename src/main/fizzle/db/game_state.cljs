@@ -13,6 +13,8 @@
   (:require
     [datascript.core :as d]
     [fizzle.db.queries :as q]
+    [fizzle.engine.spec-common]
+    [fizzle.engine.spec-util :as spec-util]
     [fizzle.engine.turn-based :as turn-based]))
 
 
@@ -48,6 +50,8 @@
    Note: :player/mana-pool is replaced wholesale by override (not deep-merged).
    If overriding mana-pool, provide all color keys."
   [player-id overrides]
+  (let [mana-pool (get overrides :player/mana-pool empty-mana-pool)]
+    (spec-util/validate-at-chokepoint! :game/mana-pool mana-pool "create-player-tx"))
   [(merge {:player/id             player-id
            :player/life           20
            :player/mana-pool      empty-mana-pool
