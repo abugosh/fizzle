@@ -14,6 +14,7 @@
    :object-id is the game object's UUID (object/id), NOT a Datascript EID."
   (:require
     [cljs.spec.alpha :as s]
+    [fizzle.engine.spec-common]
     [fizzle.engine.spec-util :as spec-util]))
 
 
@@ -22,9 +23,9 @@
 ;; =====================================================
 
 (s/def ::action keyword?)
-(s/def ::object-id uuid?)
-(s/def ::player-id (s/or :keyword keyword? :int int?))
-(s/def ::target (s/or :keyword keyword? :int int?))
+(s/def ::object-id :game/object-id)
+(s/def ::player-id :game/player-id)
+(s/def ::target keyword?)
 (s/def ::mana-color keyword?)
 
 

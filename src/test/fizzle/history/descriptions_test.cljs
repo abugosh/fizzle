@@ -125,10 +125,9 @@
           [db card-eid] (add-card db test-instant)
           [db obj-id] (add-object db card-eid :hand)
           ;; Put spell on stack (simulating what cast-spell does)
-          player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] db)
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
           db-after (stack/create-stack-item db {:stack-item/type :spell
-                                                :stack-item/controller player-eid
+                                                :stack-item/controller :player-1
                                                 :stack-item/source obj-id
                                                 :stack-item/object-ref obj-eid
                                                 :stack-item/effects [{:effect/type :add-mana}]
@@ -201,10 +200,9 @@
                                       :card/types #{:instant}
                                       :card/effects [{:effect/type :peek}]})
           [db obj-id] (add-object db card-eid :hand)
-          player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] db)
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
           db-after (stack/create-stack-item db {:stack-item/type :spell
-                                                :stack-item/controller player-eid
+                                                :stack-item/controller :player-1
                                                 :stack-item/source obj-id
                                                 :stack-item/object-ref obj-eid
                                                 :stack-item/effects [{:effect/type :peek}]
@@ -224,10 +222,9 @@
                                       :card/types #{:instant}
                                       :card/effects [{:effect/type :peek}]})
           [db obj-id] (add-object db card-eid :hand)
-          player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] db)
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
           db-after (stack/create-stack-item db {:stack-item/type :spell
-                                                :stack-item/controller player-eid
+                                                :stack-item/controller :player-1
                                                 :stack-item/source obj-id
                                                 :stack-item/object-ref obj-eid
                                                 :stack-item/effects [{:effect/type :peek}]
@@ -366,10 +363,9 @@
     (let [db (make-db)
           [db card-eid] (add-card db test-instant)
           [db obj-id] (add-object db card-eid :hand)
-          player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] db)
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
           db-after (stack/create-stack-item db {:stack-item/type :spell
-                                                :stack-item/controller player-eid
+                                                :stack-item/controller :player-1
                                                 :stack-item/source obj-id
                                                 :stack-item/object-ref obj-eid
                                                 :stack-item/effects [{:effect/type :add-mana}]
@@ -389,10 +385,9 @@
     (let [db (make-db)
           [db card-eid] (add-card db test-instant)
           [db obj-id] (add-object db card-eid :stack)
-          player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] db)
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
           pre-db (stack/create-stack-item db {:stack-item/type :spell
-                                              :stack-item/controller player-eid
+                                              :stack-item/controller :player-1
                                               :stack-item/source obj-id
                                               :stack-item/object-ref obj-eid
                                               :stack-item/effects [{:effect/type :add-mana}]
@@ -411,10 +406,9 @@
                                       :card/types #{:instant}
                                       :card/effects [{:effect/type :mill}]})
           [db obj-id] (add-object db card-eid :stack)
-          player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] db)
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
           pre-db (stack/create-stack-item db {:stack-item/type :storm-copy
-                                              :stack-item/controller player-eid
+                                              :stack-item/controller :player-1
                                               :stack-item/source obj-id
                                               :stack-item/object-ref obj-eid
                                               :stack-item/is-copy true
@@ -430,9 +424,8 @@
     (let [db (make-db)
           [db card-eid] (add-card db test-multi-ability-land)
           [db obj-id] (add-object db card-eid :battlefield)
-          player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] db)
           pre-db (stack/create-stack-item db {:stack-item/type :activated-ability
-                                              :stack-item/controller player-eid
+                                              :stack-item/controller :player-1
                                               :stack-item/source obj-id
                                               :stack-item/effects [{:effect/type :draw}]
                                               :stack-item/description "Target player draws 3, discards 3"})]
@@ -444,9 +437,8 @@
 (deftest test-resolve-storm-item-uses-description
   (testing "resolve-top with :storm type uses stack-item description"
     (let [db (make-db)
-          player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] db)
           pre-db (stack/create-stack-item db {:stack-item/type :storm
-                                              :stack-item/controller player-eid
+                                              :stack-item/controller :player-1
                                               :stack-item/effects [{:effect/type :storm-copies
                                                                     :effect/count 5}]
                                               :stack-item/description "Storm — create 5 copies"})]
@@ -463,9 +455,8 @@
                                       :card/cmc 0
                                       :card/types #{:land}})
           [db obj-id] (add-object db card-eid :battlefield)
-          player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] db)
           pre-db (stack/create-stack-item db {:stack-item/type :etb
-                                              :stack-item/controller player-eid
+                                              :stack-item/controller :player-1
                                               :stack-item/source obj-id
                                               :stack-item/effects [{:effect/type :return-from-graveyard}]})]
       (is (= "Resolve Mystic Sanctuary trigger"
@@ -481,9 +472,8 @@
                                       :card/cmc 0
                                       :card/types #{:land}})
           [db obj-id] (add-object db card-eid :battlefield)
-          player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] db)
           pre-db (stack/create-stack-item db {:stack-item/type :permanent-tapped
-                                              :stack-item/controller player-eid
+                                              :stack-item/controller :player-1
                                               :stack-item/source obj-id
                                               :stack-item/effects [{:effect/type :deal-damage}]})]
       (is (= "Resolve City of Brass trigger"
@@ -754,10 +744,9 @@
     (let [db (make-db)
           [db card-eid] (add-card db test-instant)
           [db obj-id] (add-object db card-eid :hand)
-          player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] db)
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
           db-after (stack/create-stack-item db {:stack-item/type :spell
-                                                :stack-item/controller player-eid
+                                                :stack-item/controller :player-1
                                                 :stack-item/source obj-id
                                                 :stack-item/object-ref obj-eid
                                                 :stack-item/effects [{:effect/type :add-mana}]
@@ -783,10 +772,9 @@
     (let [db (make-db)
           [db card-eid] (add-card db test-instant)
           [db obj-id] (add-object db card-eid :stack)
-          player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] db)
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
           pre-db (stack/create-stack-item db {:stack-item/type :spell
-                                              :stack-item/controller player-eid
+                                              :stack-item/controller :player-1
                                               :stack-item/source obj-id
                                               :stack-item/object-ref obj-eid
                                               :stack-item/effects [{:effect/type :add-mana}]

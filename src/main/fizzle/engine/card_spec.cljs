@@ -7,7 +7,8 @@
    All specs describe existing card shapes — they do NOT prescribe
    new requirements. Every existing card definition must pass unchanged."
   (:require
-    [cljs.spec.alpha :as s]))
+    [cljs.spec.alpha :as s]
+    [fizzle.engine.spec-common]))
 
 
 ;; === Enums ===

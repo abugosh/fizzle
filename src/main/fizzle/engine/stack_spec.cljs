@@ -16,6 +16,7 @@
    Spells have both; triggers may have only source; combat markers have neither."
   (:require
     [cljs.spec.alpha :as s]
+    [fizzle.engine.spec-common]
     [fizzle.engine.spec-util :as spec-util]))
 
 
@@ -24,8 +25,8 @@
 ;; =====================================================
 
 (s/def :stack-item/type keyword?)
-(s/def :stack-item/controller (s/or :keyword keyword? :int int?))
-(s/def :stack-item/source uuid?)
+(s/def :stack-item/controller :game/player-id)
+(s/def :stack-item/source :game/object-id)
 (s/def :stack-item/object-ref int?)
 (s/def :stack-item/effects coll?)
 (s/def :stack-item/targets (s/nilable map?))

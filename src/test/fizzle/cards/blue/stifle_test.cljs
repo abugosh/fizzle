@@ -22,7 +22,6 @@
    Returns [db stack-item-eid]."
   [db player-id ability-type]
   (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
         stack-item-id (random-uuid)
         ;; Get current highest position on stack to place this item above
         existing-positions (d/q '[:find [?p ...]
@@ -34,7 +33,7 @@
         stack-item {:stack-item/id stack-item-id
                     :stack-item/type :activated-ability
                     :stack-item/ability-type ability-type
-                    :stack-item/controller player-eid
+                    :stack-item/controller player-id
                     :stack-item/position next-position
                     :stack-item/effects []}]
     (d/transact! conn [stack-item])
@@ -49,7 +48,6 @@
    Returns [db stack-item-eid]."
   [db player-id]
   (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
         stack-item-id (random-uuid)
         ;; Get current highest position on stack to place this item above
         existing-positions (d/q '[:find [?p ...]
@@ -60,7 +58,7 @@
                         (inc (apply max existing-positions)))
         stack-item {:stack-item/id stack-item-id
                     :stack-item/type :triggered-ability
-                    :stack-item/controller player-eid
+                    :stack-item/controller player-id
                     :stack-item/position next-position
                     :stack-item/effects []}]
     (d/transact! conn [stack-item])

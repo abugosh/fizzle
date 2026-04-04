@@ -10,7 +10,8 @@
    Validation is dev-only via goog.DEBUG (dead-code eliminated in release).
    set-pending-selection logs a console.error on invalid; it does NOT throw."
   (:require
-    [cljs.spec.alpha :as s]))
+    [cljs.spec.alpha :as s]
+    [fizzle.engine.spec-common]))
 
 
 ;; =====================================================
@@ -20,7 +21,7 @@
 (s/def :selection/type keyword?)
 (s/def :selection/lifecycle #{:standard :finalized :chaining})
 (s/def :selection/validation #{:exact :at-most :at-least-one :exact-or-zero :always})
-(s/def :selection/player-id keyword?)
+(s/def :selection/player-id :game/player-id)
 
 
 ;; :selection/selected is type-dependent (set, vec, map, integer, nil).

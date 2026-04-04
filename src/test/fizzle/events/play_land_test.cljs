@@ -198,10 +198,9 @@
 (defn- add-stack-item
   "Add a dummy stack-item to the game state so the stack is non-empty."
   [db player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)]
+  (let [conn (d/conn-from-db db)]
     (d/transact! conn [{:stack-item/type :spell
-                        :stack-item/controller player-eid
+                        :stack-item/controller player-id
                         :stack-item/position (stack/get-next-stack-order db)}])
     @conn))
 
