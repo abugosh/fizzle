@@ -241,6 +241,7 @@
    (build-order-bottom-selection remainder-ids player-id spell-id nil))
   ([remainder-ids player-id spell-id remaining-effects]
    {:selection/type :order-bottom
+    :selection/lifecycle :finalized
     :selection/candidates (set remainder-ids)
     :selection/ordered []
     :selection/player-id player-id
@@ -264,6 +265,7 @@
    (build-order-top-selection remainder-ids player-id spell-id nil))
   ([remainder-ids player-id spell-id remaining-effects]
    {:selection/type :order-top
+    :selection/lifecycle :finalized
     :selection/pattern :reorder
     :selection/candidates (set remainder-ids)
     :selection/ordered []

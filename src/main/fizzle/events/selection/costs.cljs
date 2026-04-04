@@ -432,6 +432,7 @@
     (when (seq targeting-reqs)
       (let [first-req (first targeting-reqs)]
         {:selection/type :cast-time-targeting
+         :selection/lifecycle :finalized
          :selection/player-id player-id
          :selection/object-id object-id
          :selection/mode mode
@@ -483,6 +484,7 @@
         (when (seq targeting-reqs)
           (let [first-req (first targeting-reqs)]
             {:selection/type :cast-time-targeting
+             :selection/lifecycle :finalized
              :selection/player-id player-id
              :selection/object-id object-id
              :selection/mode mode

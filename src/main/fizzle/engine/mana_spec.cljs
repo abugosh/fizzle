@@ -21,8 +21,10 @@
 
 ;; pay-mana receives mana costs that may include :x (for X spells like Stroke of Genius).
 ;; resolve-x-cost strips :x before paying, but we validate the raw cost arg here.
+;; :x values can be nat-int (count of X) or boolean (flag from card definitions).
 (s/def ::mana-pay-arg
-  (s/map-of (s/or :color :game/mana-color :x #{:x}) nat-int?))
+  (s/map-of (s/or :color :game/mana-color :x #{:x})
+            (s/or :amount nat-int? :flag boolean?)))
 
 
 (defn validate-mana-add-arg!
