@@ -15,6 +15,8 @@
     [clojure.test.check.generators :as tgen]
     [fizzle.bots.action-spec :as action-spec]
     [fizzle.engine.card-spec :as card-spec]
+    [fizzle.engine.mana-spec]
+    [fizzle.engine.object-spec]
     [fizzle.engine.spec-common]
     [fizzle.engine.stack-spec :as stack-spec]
     [fizzle.events.selection.spec :as sel-spec]))
@@ -1206,3 +1208,54 @@
     #(tgen/one-of [(gen-bot-action-pass)
                    (gen-bot-action-cast-spell)
                    (gen-bot-action-play-land)])))
+
+
+;; =====================================================
+;; Boundary spec generators (mana + object creation)
+;; =====================================================
+
+(defn gen-mana-add-arg
+  "Generator for add-mana argument: partial mana map with pool color keys only."
+  []
+  gen-mana-map)
+
+
+(defn gen-mana-pay-arg
+  "Generator for pay-mana cost argument: partial mana map, may include :x."
+  []
+  (tgen/fmap
+    (fn [pairs] (into {} pairs))
+    (tgen/vector
+      (tgen/tuple
+        (tgen/one-of [gen-mana-color (tgen/return :x)])
+        (tgen/choose 0 5))
+      0 4)))
+
+
+(defn gen-object-tx
+  "Generator for object transaction maps produced by restorer/object-tx-for-zone."
+  []
+  (tgen/fmap
+    (fn [[base maybe-creature]]
+      (merge base maybe-creature))
+    (tgen/tuple
+      (tgen/hash-map
+        :object/id         gen-uuid
+        :object/card       (tgen/choose 1 1000)
+        :object/zone       (tgen/elements [:hand :library :graveyard :exile :battlefield])
+        :object/owner      (tgen/choose 1 100)
+        :object/controller (tgen/choose 1 100)
+        :object/tapped     tgen/boolean
+        :object/position   (tgen/choose 0 100))
+      (tgen/one-of
+        [(tgen/return {})
+         (tgen/hash-map
+           :object/power          (tgen/choose 0 20)
+           :object/toughness      (tgen/choose 0 20)
+           :object/summoning-sick tgen/boolean
+           :object/damage-marked  (tgen/choose 0 10))]))))
+
+
+;; Note: boundary specs (mana-add-arg, mana-pay-arg, object-tx) are plain s/keys specs,
+;; not multi-specs. Use gen-mana-add-arg, gen-mana-pay-arg, gen-object-tx directly
+;; in property tests rather than registering s/with-gen on them.

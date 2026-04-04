@@ -5,7 +5,8 @@
    Caller must check can-pay? before calling pay-mana."
   (:require
     [datascript.core :as d]
-    [fizzle.db.queries :as q]))
+    [fizzle.db.queries :as q]
+    [fizzle.engine.mana-spec :as mana-spec]))
 
 
 (defn resolve-x-cost
@@ -31,6 +32,7 @@
    mana-to-add is a map like {:black 3} or {:black 2 :blue 1}.
    Empty map {} is a no-op."
   [db player-id mana-to-add]
+  (mana-spec/validate-mana-add-arg! mana-to-add "add-mana")
   (if (empty? mana-to-add)
     db
     (let [player-eid (q/get-player-eid db player-id)
@@ -87,6 +89,7 @@
   ([db player-id cost]
    (pay-mana db player-id cost nil))
   ([db player-id cost x-value]
+   (mana-spec/validate-mana-pay-arg! cost "pay-mana")
    (let [resolved-cost (resolve-x-cost cost x-value)]
      (if (empty? resolved-cost)
        db

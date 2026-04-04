@@ -16,6 +16,7 @@
     [fizzle.db.schema :refer [schema]]
     [fizzle.db.storage :as storage]
     [fizzle.engine.cards :as cards]
+    [fizzle.engine.object-spec :as object-spec]
     [fizzle.engine.trigger-db :as trigger-db]))
 
 
@@ -97,18 +98,21 @@
 
                         (seq (:object/grants obj-map))
                         (assoc :object/grants (:object/grants obj-map)))]
-    (if (= zone :battlefield)
-      (let [types     (card-types-set db card-eid)]
-        (if (creature? types)
-          (let [power     (card-base-stat db card-eid :card/power)
-                toughness (card-base-stat db card-eid :card/toughness)]
-            (cond-> with-optional
-              (some? power)     (assoc :object/power power)
-              (some? toughness) (assoc :object/toughness toughness)
-              true              (assoc :object/summoning-sick false
-                                       :object/damage-marked 0)))
-          with-optional))
-      with-optional)))
+    (let [result
+          (if (= zone :battlefield)
+            (let [types     (card-types-set db card-eid)]
+              (if (creature? types)
+                (let [power     (card-base-stat db card-eid :card/power)
+                      toughness (card-base-stat db card-eid :card/toughness)]
+                  (cond-> with-optional
+                    (some? power)     (assoc :object/power power)
+                    (some? toughness) (assoc :object/toughness toughness)
+                    true              (assoc :object/summoning-sick false
+                                             :object/damage-marked 0)))
+                with-optional))
+            with-optional)]
+      (object-spec/validate-object-tx! result)
+      result)))
 
 
 (defn- transact-zone!
