@@ -100,7 +100,7 @@
           ;; Build spell-mode selection using the production builder
           ;; Vision Charm mode 2 (change-land-types) — no targeting, no generic cost
           vision-charm-mode-2 {:mode/label "Change land types until end of turn"
-                                :mode/effects [{:effect/type :change-land-types}]}
+                               :mode/effects [{:effect/type :change-land-types}]}
           pending-sel (casting/build-spell-mode-selection :player-1 spell-id [vision-charm-mode-2])
           app-db (sel-spec/set-pending-selection {:game/db game-db} pending-sel)
           ;; Toggle mode 2, then confirm (simulating auto-confirm dispatch)
@@ -229,7 +229,7 @@
     (let [game-db (create-base-db {:blue 1})
           [game-db spell-id] (th/add-card-to-zone game-db :vision-charm :hand :player-1)
           vision-charm-mode-2 {:mode/label "Change land types until end of turn"
-                                :mode/effects [{:effect/type :change-land-types}]}
+                               :mode/effects [{:effect/type :change-land-types}]}
           ;; Start with mode-2 already selected
           pending-sel (assoc (casting/build-spell-mode-selection :player-1 spell-id [vision-charm-mode-2])
                              :selection/selected #{vision-charm-mode-2})
