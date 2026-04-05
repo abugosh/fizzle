@@ -147,7 +147,7 @@
                    :selection/select-count 1
                    :selection/valid-targets #{:player-1 :player-2}
                    :selection/spell-id (random-uuid)
-                   :selection/target-effect {:effect/type :drain
+                   :selection/target-effect {:effect/type :lose-life
                                              :effect/amount 2
                                              :effect/target :any-player}
                    :selection/remaining-effects []
@@ -170,7 +170,7 @@
                    :selection/select-count 1
                    :selection/valid-targets #{:player-1 :player-2}
                    :selection/spell-id (random-uuid)
-                   :selection/target-effect {:effect/type :drain
+                   :selection/target-effect {:effect/type :lose-life
                                              :effect/amount 2
                                              :effect/target :any-player}
                    :selection/remaining-effects []
@@ -193,7 +193,7 @@
                    :selection/select-count 1
                    :selection/valid-targets #{:player-1 :player-2}
                    :selection/spell-id (random-uuid)
-                   :selection/target-effect {:effect/type :drain
+                   :selection/target-effect {:effect/type :lose-life
                                              :effect/amount 2
                                              :effect/target :any-player}
                    :selection/remaining-effects []

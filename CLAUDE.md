@@ -120,7 +120,7 @@ Cards define effects as EDN data structures that the engine interprets:
  :effect/condition {:condition/type :threshold}}
 ```
 
-Effect types include: `:add-mana`, `:draw`, `:discard`, `:mill`, `:tutor`, `:return-from-graveyard`, `:exile-self`, `:sacrifice`, `:drain`, `:each-player`
+Effect types include: `:add-mana`, `:draw`, `:discard`, `:mill`, `:tutor`, `:return-from-graveyard`, `:exile-self`, `:sacrifice`, `:lose-life`, `:each-player`
 
 ### Fork/Replay System
 
