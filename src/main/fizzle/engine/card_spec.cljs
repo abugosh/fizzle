@@ -142,6 +142,11 @@
           :opt [:effect/target :effect/target-ref :effect/condition]))
 
 
+(defmethod effect-type-spec :lose-life [_]
+  (s/keys :req [:effect/type :effect/amount]
+          :opt [:effect/target :effect/condition]))
+
+
 (defmethod effect-type-spec :discard [_]
   (s/keys :req [:effect/type :effect/count :effect/selection]
           :opt [:effect/condition]))
@@ -330,11 +335,6 @@
 (defmethod effect-type-spec :storm-copies [_]
   (s/keys :req [:effect/type]
           :opt [:effect/condition]))
-
-
-(defmethod effect-type-spec :lose-life [_]
-  (s/keys :req [:effect/type :effect/amount]
-          :opt [:effect/target :effect/condition]))
 
 
 (defmethod effect-type-spec :gain-life [_]

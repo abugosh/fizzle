@@ -8,8 +8,8 @@
 
 
 (defmethod effects/execute-effect-impl :lose-life
-  [db player-id effect _object-id]
-  (let [amount (get effect :effect/amount 0)
+  [db player-id effect object-id]
+  (let [amount (effects/resolve-dynamic-value db player-id (get effect :effect/amount 0) object-id)
         explicit-target (:effect/target effect)
         target (cond
                  (nil? explicit-target) player-id

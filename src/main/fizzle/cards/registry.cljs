@@ -19,6 +19,7 @@
     [fizzle.cards.black.dark-ritual :as dark-ritual]
     [fizzle.cards.black.duress :as duress]
     [fizzle.cards.black.ill-gotten-gains :as ill-gotten-gains]
+    [fizzle.cards.black.infernal-contract :as infernal-contract]
     [fizzle.cards.black.necrologia :as necrologia]
     [fizzle.cards.black.rain-of-filth :as rain-of-filth]
     [fizzle.cards.black.vendetta :as vendetta]
@@ -148,7 +149,8 @@
        diabolic-vision/card
        hurkyls-recall/card
        vendetta/card
-       vision-charm/card]
+       vision-charm/card
+       infernal-contract/card]
       ;; Cycle cards
       basic-lands/cards
       pain-lands/cards

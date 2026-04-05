@@ -84,6 +84,12 @@
     0))
 
 
+(defmethod resolve-dynamic-impl :half-life-rounded-up
+  [db player-id _dynamic _object-id]
+  (let [life (q/get-life-total db player-id)]
+    (js/Math.ceil (/ life 2))))
+
+
 (defn resolve-dynamic-value
   "Resolve a potentially dynamic value to an integer.
    Static integers pass through. Maps with :dynamic/type are computed from game state."
