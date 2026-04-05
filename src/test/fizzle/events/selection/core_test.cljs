@@ -353,27 +353,6 @@
 ;; (ADR-019: toggle-selection-impl returns {:app-db ... :auto-confirm? bool})
 ;; =====================================================
 
-(deftest test-toggle-impl-returns-data-map-not-app-db
-  (testing "toggle-selection-impl returns a map with :app-db and :auto-confirm? keys"
-    (let [db (th/create-test-db)
-          sel {:selection/type :test-impl-validation
-               :selection/lifecycle :finalized
-               :selection/player-id :player-1
-               :selection/selected #{}
-               :selection/candidates #{:a :b}
-               :selection/select-count 1
-               :selection/auto-confirm? true
-               :selection/validation :exact}
-          app-db {:game/db db :game/pending-selection sel}
-          result (selection-core/toggle-selection-impl app-db :a)]
-      (is (map? result)
-          "toggle-selection-impl must return a map")
-      (is (contains? result :app-db)
-          "Result must have :app-db key")
-      (is (contains? result :auto-confirm?)
-          "Result must have :auto-confirm? key"))))
-
-
 (deftest test-toggle-impl-auto-confirm-true-on-single-select
   (testing "toggle with select-count 1 and auto-confirm? true signals auto-confirm"
     (let [db (th/create-test-db)

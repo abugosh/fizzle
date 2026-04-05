@@ -527,17 +527,77 @@
 
 
 ;; =====================================================
-;; Chain Reduction Tests
+;; Chain Defmethod Behavior Tests
 ;; =====================================================
+;; Replaces the count meta-test with behavioral tests: each production
+;; build-chain-selection defmethod must return nil OR a map with :selection/type.
+;; nil = conditional chain (no chain needed), map = next selection in chain.
 
-(deftest test-chain-defmethod-count-reduced
-  (testing "build-chain-selection defmethod count reduced by at least 50%"
-    (let [all-methods (methods core/build-chain-selection)
-          ;; Exclude :default and test-only registrations
-          test-keys #{:default :test-chaining :test-chaining-nil :test-chaining-for-deferred}
-          production-methods (remove (fn [[k _]] (test-keys k)) all-methods)
-          count-methods (count production-methods)]
-      ;; Original: 8 production defmethods. Target: <= 8 (reduced from 8, +1 for combat blockers, +1 for ability-targeting, +1 for sacrifice-permanent-cost, +1 for land-type-source)
-      (is (<= count-methods 8)
-          (str "Expected <= 8 production chain defmethods but found " count-methods
-               ". Methods: " (map first production-methods))))))
+(deftest test-chain-land-type-source-returns-target-selection
+  (testing ":land-type-source chain always returns a :land-type-target selection"
+    ;; :land-type-source → :land-type-target is an unconditional chain (never nil)
+    ;; Player chose :swamp as source; chain builds a target selector for destination type
+    (let [db (th/create-test-db)
+          selection {:selection/type :land-type-source
+                     :selection/lifecycle :chaining
+                     :selection/player-id :player-1
+                     :selection/spell-id (random-uuid)
+                     :selection/selected [:swamp]
+                     :selection/remaining-effects []}
+          result (core/build-chain-selection db selection)]
+      (is (map? result)
+          ":land-type-source chain must always return a map")
+      (is (= :land-type-target (:selection/type result))
+          "Chain selection type must be :land-type-target")
+      (is (vector? (:selection/options result))
+          "Options must be a vector of remaining land types")
+      (is (not (contains? (set (:selection/options result)) :swamp))
+          "Source type must not appear in the target options"))))
+
+
+(deftest test-chain-pre-cast-cost-to-targeting-returns-nil-for-non-targeted-card
+  (testing ":pre-cast-cost-to-targeting returns nil when card has no targeting"
+    ;; dark-ritual has no targeting requirements — pre-cast-cost-to-targeting
+    ;; returns nil (no chain needed), which falls through to standard path
+    (let [db (th/create-test-db)
+          [db spell-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          selection {:selection/type :discard-specific-cost
+                     :selection/lifecycle :chaining
+                     :selection/player-id :player-1
+                     :selection/spell-id spell-id
+                     :selection/mode {:mode/id :primary
+                                      :mode/mana-cost {:black 1}
+                                      :mode/effects [{:effect/type :add-mana
+                                                      :effect/mana {:black 3}}]}}
+          result (core/build-chain-selection db selection)]
+      (is (nil? result)
+          ":pre-cast-cost-to-targeting must return nil when spell has no targeting requirements"))))
+
+
+(deftest test-chain-chain-bounce-returns-nil-when-nothing-selected
+  (testing ":chain-bounce returns nil when selection has no selected items"
+    ;; :chain-bounce only chains when (seq selected) — empty selection = no chain
+    (let [db (th/create-test-db)
+          selection {:selection/type :chain-bounce
+                     :selection/lifecycle :chaining
+                     :selection/player-id :player-1
+                     :selection/spell-id (random-uuid)
+                     :selection/selected #{}}
+          result (core/build-chain-selection db selection)]
+      (is (nil? result)
+          ":chain-bounce must return nil when no items selected"))))
+
+
+(deftest test-chain-builder-declared-chain-returns-nil-without-chain-builder
+  (testing ":builder-declared-chain returns nil when no :selection/chain-builder fn"
+    ;; :builder-declared-chain is a generic hook. When no chain-builder fn is stored
+    ;; on the selection (e.g., for :tutor which derives from :builder-declared-chain),
+    ;; it returns nil — the lifecycle falls through to standard path.
+    (let [db (th/create-test-db)
+          selection {:selection/type :tutor
+                     :selection/lifecycle :chaining
+                     :selection/player-id :player-1
+                     :selection/spell-id (random-uuid)}
+          result (core/build-chain-selection db selection)]
+      (is (nil? result)
+          ":builder-declared-chain must return nil when no chain-builder fn is present"))))

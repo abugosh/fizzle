@@ -5,10 +5,18 @@
    1. Invalid :selection/lifecycle value — case expression throws
    2. standard-path with interactive remaining-effects — chained interactive effect
       causes a NEW pending-selection to be built rather than clearing it
-   3. toggle-selection-impl with no :game/pending-selection — nil safety"
+   3. toggle-selection-impl with no :game/pending-selection — nil safety
+   4. Scry executor unit test — top-pile stays on top, bottom-pile goes to bottom
+   5. Modal card (REB) with 0 valid modes — cast-spell-handler does NOT crash
+   6. Zone-pick builder with nil effect/count — returns selection without crashing
+   7. Mana allocation confirm with generic-remaining > 0 — spell still casts"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
+    [fizzle.db.queries :as q]
+    [fizzle.engine.mana :as mana]
+    [fizzle.events.casting :as casting]
     [fizzle.events.selection.core :as core]
+    [fizzle.events.selection.costs :as costs]
     [fizzle.test-helpers :as th]))
 
 
@@ -159,3 +167,168 @@
           "auto-confirm? must be false when pending-selection is nil")
       (is (= app-db (:app-db result))
           "app-db must be unchanged when pending-selection is nil"))))
+
+
+;; =====================================================
+;; 4. Scry executor unit test
+;; =====================================================
+;; Calls execute-confirmed-selection with a :scry selection directly.
+;; Verifies top-pile cards stay on top and bottom-pile cards go to bottom.
+
+(deftest test-scry-executor-top-pile-stays-on-top
+  (testing "scry executor: top-pile cards remain at top of library"
+    (let [db (th/create-test-db)
+          ;; Add 3 cards to library so we can verify ordering after scry
+          [db lib-ids] (th/add-cards-to-library
+                         db [:dark-ritual :cabal-ritual :brain-freeze] :player-1)
+          [top-id mid-id bot-id] lib-ids
+          ;; Add a spell to stack so move-to-zone has a real object to move
+          [db spell-id] (th/add-card-to-zone db :opt :stack :player-1)
+          ;; Build scry selection: scry 3 — put top-id and mid-id on top,
+          ;; bot-id on bottom
+          selection {:selection/type :scry
+                     :selection/pattern :reorder
+                     :selection/lifecycle :finalized
+                     :selection/player-id :player-1
+                     :selection/cards [top-id mid-id bot-id]
+                     :selection/top-pile [top-id mid-id]
+                     :selection/bottom-pile [bot-id]
+                     :selection/spell-id spell-id
+                     :selection/remaining-effects []
+                     :selection/validation :always
+                     :selection/auto-confirm? false}
+          result (core/execute-confirmed-selection db selection)
+          result-db (:db result)]
+
+      (is (map? result) "execute-confirmed-selection must return a map")
+      (is (contains? result :db) "Result must have :db key")
+
+      ;; The library should have top-id and mid-id at the top positions
+      ;; and bot-id at the bottom position
+      (let [top-2 (q/get-top-n-library result-db :player-1 2)
+            all-3 (q/get-top-n-library result-db :player-1 3)]
+        (is (= [top-id mid-id] top-2)
+            "top-pile cards must be at the top of the library in declared order")
+        (is (= bot-id (last all-3))
+            "bottom-pile card must be at the bottom of the library")))))
+
+
+(deftest test-scry-executor-bottom-pile-goes-to-bottom
+  (testing "scry executor: bottom-pile cards go to the bottom of the library"
+    (let [db (th/create-test-db)
+          [db lib-ids] (th/add-cards-to-library
+                         db [:dark-ritual :cabal-ritual :brain-freeze] :player-1)
+          [a-id b-id c-id] lib-ids
+          [db spell-id] (th/add-card-to-zone db :opt :stack :player-1)
+          ;; Put all cards on bottom — player scryed 3, chose to put all on bottom
+          selection {:selection/type :scry
+                     :selection/pattern :reorder
+                     :selection/lifecycle :finalized
+                     :selection/player-id :player-1
+                     :selection/cards [a-id b-id c-id]
+                     :selection/top-pile []
+                     :selection/bottom-pile [a-id b-id c-id]
+                     :selection/spell-id spell-id
+                     :selection/remaining-effects []
+                     :selection/validation :always
+                     :selection/auto-confirm? false}
+          result (core/execute-confirmed-selection db selection)
+          result-db (:db result)
+          all-3 (q/get-top-n-library result-db :player-1 3)]
+
+      ;; When all are in bottom-pile, they should appear in declared order at bottom.
+      ;; In reorder-library-for-scry: top-pile first, then unassigned, then bottom-pile.
+      ;; With top-pile=[] and unassigned=[] all 3 should be in the bottom-pile order.
+      (is (= [a-id b-id c-id] all-3)
+          "All-bottom scry: cards should be in bottom-pile declared order"))))
+
+
+;; =====================================================
+;; 5. Modal card with 0 valid modes
+;; =====================================================
+;; Red Elemental Blast requires a blue target. Without any blue permanents/spells,
+;; get-valid-spell-modes returns an empty seq, and can-cast? returns false
+;; (has-valid-targets? fails for the card). cast-spell-handler returns app-db unchanged.
+
+(deftest test-modal-card-no-valid-modes-does-not-crash
+  (testing "cast-spell-handler does not crash when modal card has 0 valid modes"
+    (let [db (th/create-test-db)
+          ;; Red Elemental Blast requires a blue target — there are none in the default db
+          [db reb-id] (th/add-card-to-zone db :red-elemental-blast :hand :player-1)
+          ;; Give player red mana so cost is payable
+          db (mana/add-mana db :player-1 {:red 1})
+          app-db {:game/db db :game/selected-card reb-id}
+          result (casting/cast-spell-handler app-db)]
+
+      ;; No crash — returns app-db unchanged (can-cast? is false due to no valid targets)
+      (is (map? result)
+          "cast-spell-handler must return a map (not throw) for 0-valid-mode card")
+
+      ;; Spell stays in hand — cast was rejected
+      (is (= :hand (th/get-object-zone (:game/db result) reb-id))
+          "REB must stay in hand when there are no valid targets for any mode"))))
+
+
+;; =====================================================
+;; 6. Zone-pick builder with nil effect/count
+;; =====================================================
+;; build-selection-for-effect :discard (derives :zone-pick) with nil :effect/count.
+;; The builder uses (or (:effect/count effect) (:effect/select-count effect)) —
+;; if both are nil, :selection/select-count is nil. Builder should not crash.
+
+(deftest test-zone-pick-builder-nil-effect-count-does-not-crash
+  (testing "zone-pick builder for :discard with nil :effect/count does not crash"
+    (let [db (th/create-test-db)
+          [db card-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          _ card-id  ; suppress unused warning
+          effect {:effect/type :discard}  ; no :effect/count
+          result (core/build-selection-for-effect db :player-1 (random-uuid) effect [])]
+
+      (is (map? result)
+          "build-selection-for-effect must return a map for :discard with no count")
+      (is (= :discard (:selection/type result))
+          "Selection type must be :discard")
+      ;; :selection/select-count will be nil — that is acceptable (builder doesn't crash)
+      (is (contains? result :selection/select-count)
+          "Result must contain :selection/select-count key (even if nil)"))))
+
+
+;; =====================================================
+;; 7. Mana allocation confirm with generic-remaining > 0
+;; =====================================================
+;; build-mana-allocation-selection is only produced when generic > 0.
+;; Confirming such a selection via confirm-selection-impl (lifecycle :finalized,
+;; validation :always) calls confirm-spell-mana-allocation regardless of
+;; generic-remaining. The spell is cast with the partial allocation.
+
+(deftest test-mana-allocation-confirm-with-generic-remaining-casts-spell
+  (testing "mana-allocation confirm with generic-remaining > 0 still casts the spell"
+    (let [db (th/create-test-db)
+          ;; Add dark-ritual to hand (any card works — the mode defines the cost)
+          db (mana/add-mana db :player-1 {:black 3})
+          [db spell-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          ;; Build a mode with a generic component so build-mana-allocation-selection
+          ;; returns a non-nil selection (it only returns one when generic > 0).
+          ;; We use {:colorless 2 :black 1} as the mode cost — generic=2.
+          mode {:mode/id :primary
+                :mode/mana-cost {:colorless 2 :black 1}
+                :mode/effects [{:effect/type :add-mana :effect/mana {:black 3}}]
+                :mode/on-resolve :graveyard}
+          selection (costs/build-mana-allocation-selection
+                      db :player-1 spell-id mode {:colorless 2 :black 1})
+          _ (assert selection "build-mana-allocation-selection must return non-nil for generic > 0")
+          ;; Override to simulate partially-filled allocation: generic-remaining still 2
+          selection (assoc selection
+                           :selection/generic-remaining 2
+                           :selection/allocation {})
+          app-db {:game/db db :game/pending-selection selection}
+          result (core/confirm-selection-impl app-db)]
+
+      ;; :always validation passes — confirm-selection-impl should not reject
+      (is (map? result)
+          "confirm-selection-impl must return a map (not crash) with generic-remaining > 0")
+
+      ;; The executor (confirm-spell-mana-allocation) calls cast-spell-mode-with-allocation
+      ;; without rechecking generic-remaining. Spell is moved from hand to stack.
+      (is (= :stack (th/get-object-zone (:game/db result) spell-id))
+          "Spell should be on stack after mana-allocation confirm (partial allocation allowed)"))))
