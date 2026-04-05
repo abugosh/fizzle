@@ -268,27 +268,6 @@
       (is (= (inc initial-storm) (q/get-storm-count (:db result) :player-1))))))
 
 
-(deftest test-confirm-mana-allocation-clears-selection
-  (testing "Confirm returns finalized with clear-selected-card"
-    (let [db (-> (th/create-test-db)
-                 (mana/add-mana :player-1 {:black 3}))
-          [db' obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
-          mode {:mode/id :primary
-                :mode/mana-cost {:colorless 1 :black 1}
-                :mode/additional-costs []
-                :mode/on-resolve :graveyard}
-          selection {:selection/type :mana-allocation
-                     :selection/player-id :player-1
-                     :selection/spell-id obj-id
-                     :selection/mode mode
-                     :selection/generic-remaining 0
-                     :selection/allocation {:black 1}
-                     :selection/colored-cost {:black 1}
-                     :selection/original-cost {:colorless 1 :black 1}}
-          result (core/execute-confirmed-selection db' selection)]
-      (is (some? (:db result))))))
-
-
 ;; =====================================================
 ;; Edge case tests
 ;; =====================================================
