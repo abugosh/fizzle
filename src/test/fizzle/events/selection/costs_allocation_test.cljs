@@ -208,14 +208,10 @@
                 :mode/mana-cost {:colorless 2 :blue 1}
                 :mode/additional-costs []
                 :mode/on-resolve :graveyard}
-          selection {:selection/type :mana-allocation
-                     :selection/player-id :player-1
-                     :selection/spell-id obj-id
-                     :selection/mode mode
-                     :selection/generic-remaining 0
-                     :selection/allocation {:black 2}
-                     :selection/colored-cost {:blue 1}
-                     :selection/original-cost {:colorless 2 :blue 1}}
+          selection (-> (costs/build-mana-allocation-selection
+                          db' :player-1 obj-id mode {:colorless 2 :blue 1})
+                        (assoc :selection/generic-remaining 0
+                               :selection/allocation {:black 2}))
           result (core/execute-confirmed-selection db' selection)
           pool (q/get-mana-pool (:db result) :player-1)]
       (is (some? (:db result)))
@@ -233,14 +229,10 @@
                 :mode/mana-cost {:colorless 1 :black 1}
                 :mode/additional-costs []
                 :mode/on-resolve :graveyard}
-          selection {:selection/type :mana-allocation
-                     :selection/player-id :player-1
-                     :selection/spell-id obj-id
-                     :selection/mode mode
-                     :selection/generic-remaining 0
-                     :selection/allocation {:black 1}
-                     :selection/colored-cost {:black 1}
-                     :selection/original-cost {:colorless 1 :black 1}}
+          selection (-> (costs/build-mana-allocation-selection
+                          db' :player-1 obj-id mode {:colorless 1 :black 1})
+                        (assoc :selection/generic-remaining 0
+                               :selection/allocation {:black 1}))
           result (core/execute-confirmed-selection db' selection)
           obj (q/get-object (:db result) obj-id)]
       (is (= :stack (:object/zone obj))))))
@@ -256,14 +248,10 @@
                 :mode/mana-cost {:colorless 1 :black 1}
                 :mode/additional-costs []
                 :mode/on-resolve :graveyard}
-          selection {:selection/type :mana-allocation
-                     :selection/player-id :player-1
-                     :selection/spell-id obj-id
-                     :selection/mode mode
-                     :selection/generic-remaining 0
-                     :selection/allocation {:black 1}
-                     :selection/colored-cost {:black 1}
-                     :selection/original-cost {:colorless 1 :black 1}}
+          selection (-> (costs/build-mana-allocation-selection
+                          db' :player-1 obj-id mode {:colorless 1 :black 1})
+                        (assoc :selection/generic-remaining 0
+                               :selection/allocation {:black 1}))
           result (core/execute-confirmed-selection db' selection)]
       (is (= (inc initial-storm) (q/get-storm-count (:db result) :player-1))))))
 

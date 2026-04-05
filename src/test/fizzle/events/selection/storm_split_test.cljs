@@ -293,15 +293,8 @@
                                                                         :effect/count 3}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
                                   (q/get-all-stack-items db-with-storm)))
-          selection {:selection/type :storm-split
-                     :selection/copy-count 3
-                     :selection/valid-targets [:player-2 :player-1]
-                     :selection/allocation {:player-2 2 :player-1 1}
-                     :selection/source-object-id source-id
-                     :selection/player-id :player-1
-                     :selection/stack-item-eid (:db/id storm-si)
-                     :selection/selected #{}
-                     :selection/validation :always}
+          selection (-> (storm/build-storm-split-selection db-with-storm :player-1 storm-si)
+                        (assoc :selection/allocation {:player-2 2 :player-1 1}))
           result (core/execute-confirmed-selection db-with-storm selection)
           db-after (:db result)]
       (is (some? db-after))
@@ -324,15 +317,8 @@
                                                                         :effect/count 3}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
                                   (q/get-all-stack-items db-with-storm)))
-          selection {:selection/type :storm-split
-                     :selection/copy-count 3
-                     :selection/valid-targets [:player-2 :player-1]
-                     :selection/allocation {:player-2 2 :player-1 1}
-                     :selection/source-object-id source-id
-                     :selection/player-id :player-1
-                     :selection/stack-item-eid (:db/id storm-si)
-                     :selection/selected #{}
-                     :selection/validation :always}
+          selection (-> (storm/build-storm-split-selection db-with-storm :player-1 storm-si)
+                        (assoc :selection/allocation {:player-2 2 :player-1 1}))
           result (core/execute-confirmed-selection db-with-storm selection)
           db-after (:db result)
           all-items (q/get-all-stack-items db-after)
@@ -360,15 +346,8 @@
                                                                         :effect/count 3}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
                                   (q/get-all-stack-items db-with-storm)))
-          selection {:selection/type :storm-split
-                     :selection/copy-count 3
-                     :selection/valid-targets [:player-2 :player-1]
-                     :selection/allocation {:player-2 3 :player-1 0}
-                     :selection/source-object-id source-id
-                     :selection/player-id :player-1
-                     :selection/stack-item-eid (:db/id storm-si)
-                     :selection/selected #{}
-                     :selection/validation :always}
+          ;; Builder default puts all 3 copies on :player-2 (opponent first), matching test scenario
+          selection (storm/build-storm-split-selection db-with-storm :player-1 storm-si)
           result (core/execute-confirmed-selection db-with-storm selection)
           db-after (:db result)
           storm-items (filter #(= :storm (:stack-item/type %))
@@ -390,15 +369,9 @@
                                                                         :effect/count 3}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
                                   (q/get-all-stack-items db-with-storm)))
-          selection {:selection/type :storm-split
-                     :selection/copy-count 3
-                     :selection/valid-targets [:player-2 :player-1]
-                     :selection/allocation {:player-2 1 :player-1 0}
-                     :selection/source-object-id source-id
-                     :selection/player-id :player-1
-                     :selection/stack-item-eid (:db/id storm-si)
-                     :selection/selected #{}
-                     :selection/validation :always}
+          ;; Force a partial allocation (total=1 != copy-count=3) to test rejection
+          selection (-> (storm/build-storm-split-selection db-with-storm :player-1 storm-si)
+                        (assoc :selection/allocation {:player-2 1 :player-1 0}))
           result (core/execute-confirmed-selection db-with-storm selection)
           db-after (:db result)
           stack-objects (q/get-objects-in-zone db-after :player-1 :stack)
