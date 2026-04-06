@@ -671,8 +671,6 @@
           app-db {:game/db db :game/selected-card dr-id}
           result (casting/cast-spell-handler app-db)
           sel (:game/pending-selection result)]
-      (is (some? sel)
-          "Should have pending selection (mana allocation needed)")
       (is (= :mana-allocation (:selection/type sel))
           "Selection type should be :mana-allocation")))
 

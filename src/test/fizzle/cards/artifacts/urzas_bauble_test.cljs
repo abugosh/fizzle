@@ -136,9 +136,10 @@
           ;; Resolve the ability
           (let [db-resolved (:db (resolution/resolve-one-item db-after-confirm))]
             ;; Check that delayed-draw grant was created for player-1
-            (let [player-grants (grants/get-player-grants db-resolved :player-1)]
-              (is (some #(= :delayed-effect (:grant/type %)) player-grants)
-                  "Player-1 should have a delayed-effect grant after resolution"))))))))
+            (let [player-grants (grants/get-player-grants db-resolved :player-1)
+                  draw-grants (filter #(= :delayed-effect (:grant/type %)) player-grants)]
+              (is (= 1 (count draw-grants))
+                  "Player-1 should have exactly 1 delayed-effect grant after resolution"))))))))
 
 
 ;; === C. Cannot-Cast Guards ===
@@ -196,9 +197,10 @@
       (is (= :graveyard (:object/zone (q/get-object db-resolved bauble-id)))
           "Urza's Bauble should be in graveyard after sacrifice")
       ;; Delayed draw should be granted
-      (let [player-grants (grants/get-player-grants db-resolved :player-1)]
-        (is (some #(= :delayed-effect (:grant/type %)) player-grants)
-            "Player-1 should have delayed-draw grant")))))
+      (let [player-grants (grants/get-player-grants db-resolved :player-1)
+            draw-grants (filter #(= :delayed-effect (:grant/type %)) player-grants)]
+        (is (= 1 (count draw-grants))
+            "Player-1 should have exactly 1 delayed-draw grant")))))
 
 
 (deftest urzas-bauble-has-valid-targets-test
@@ -329,6 +331,7 @@
           confirm-result (ability-events/confirm-ability-target (:db result) selection-with-target)
           db-resolved (:db (resolution/resolve-one-item (:db confirm-result)))]
       ;; Delayed draw should still be granted even though hand was empty
-      (let [player-grants (grants/get-player-grants db-resolved :player-1)]
-        (is (some #(= :delayed-effect (:grant/type %)) player-grants)
-            "Player-1 should have delayed-draw grant even when target's hand was empty")))))
+      (let [player-grants (grants/get-player-grants db-resolved :player-1)
+            draw-grants (filter #(= :delayed-effect (:grant/type %)) player-grants)]
+        (is (= 1 (count draw-grants))
+            "Player-1 should have exactly 1 delayed-draw grant even when target's hand was empty")))))

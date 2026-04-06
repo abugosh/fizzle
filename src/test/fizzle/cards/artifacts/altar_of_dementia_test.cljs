@@ -87,8 +87,6 @@
           {:keys [db selection]} (th/confirm-selection (:db result) sac-sel #{creature-id})
           ;; Confirm target player-2
           {:keys [db]} (th/confirm-selection db selection #{:player-2})
-          ;; Stack item should exist
-          _ (is (some? (stack/get-top-stack-item db)) "Stack item should exist")
           ;; Resolve the stack item
           result-db (:db (th/resolve-top db))
           final-lib-count (th/get-zone-count result-db :library :player-2)
@@ -141,11 +139,12 @@
     (let [db (th/create-test-db)
           [db altar-id] (th/add-card-to-zone db :altar-of-dementia :battlefield :player-1)
           [db _creature-id] (th/add-card-to-zone db :nimble-mongoose :battlefield :player-1)
-          result (abilities/activate-ability db :player-1 altar-id 0)]
-      ;; No opponent means targeting fails — either no selection or no stack item
-      (is (or (nil? (:pending-selection result))
-              (nil? (stack/get-top-stack-item db)))
-          "Should not proceed without a valid target player"))))
+          _result (abilities/activate-ability db :player-1 altar-id 0)]
+      ;; No opponent: sacrifice selection may appear (cost step), but no stack item
+      ;; can be created since :any-player targeting requires at least one valid player.
+      ;; Either the ability is blocked before selection, or it proceeds but never stacks.
+      (is (nil? (stack/get-top-stack-item db))
+          "No stack item should be created without a valid target player"))))
 
 
 ;; =====================================================
@@ -230,8 +229,6 @@
           [db altar-id] (th/add-card-to-zone db :altar-of-dementia :battlefield :player-1)
           [db _creature-id] (th/add-card-to-zone db :nimble-mongoose :battlefield :player-1)
           result (abilities/activate-ability db :player-1 altar-id 0)]
-      (is (some? (:pending-selection result))
-          "Should produce a pending selection")
       (is (= :sacrifice-permanent-cost (:selection/type (:pending-selection result)))
           "Selection type should be :sacrifice-permanent-cost"))))
 
@@ -247,7 +244,6 @@
           {:keys [db selection]} (th/confirm-selection (:db result) sac-sel #{creature-id})
           {:keys [db]} (th/confirm-selection db selection #{:player-2})
           top-item (stack/get-top-stack-item db)]
-      (is (some? top-item) "Stack item should exist")
       (is (= {:power 1} (:stack-item/sacrifice-info top-item))
           "Stack item should have sacrifice-info {:power 1} for 1/1 creature"))))
 

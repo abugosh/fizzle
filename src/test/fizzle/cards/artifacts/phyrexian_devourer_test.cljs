@@ -89,8 +89,8 @@
         (is (= [{:effect/type :sacrifice :effect/target :self}]
                (:state/effects st))
             "State trigger effect should sacrifice :self")
-        (is (string? (:state/description st))
-            "State trigger should have a description")))))
+        (is (= "Sacrifice Phyrexian Devourer (power >= 7)" (:state/description st))
+            "State trigger description should match oracle")))))
 
 
 ;; === B. Cast-Resolve Happy Path ===

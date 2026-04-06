@@ -9,6 +9,20 @@
     [fizzle.test-helpers :as th]))
 
 
+;; === B. Cast-Resolve Happy Path ===
+
+(deftest lotus-petal-cast-and-resolve-to-battlefield-test
+  (testing "Lotus Petal enters battlefield when cast from hand"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :lotus-petal :hand :player-1)
+          db (th/cast-and-resolve db :player-1 obj-id)]
+      (is (= :battlefield (th/get-object-zone db obj-id))
+          "Lotus Petal should be on battlefield after cast and resolve")
+      (is (= {:white 0 :blue 0 :black 0 :red 0 :green 0 :colorless 0}
+             (q/get-mana-pool db :player-1))
+          "Mana pool should be empty (Lotus Petal costs 0)"))))
+
+
 ;; === C. Cannot-Cast Guards ===
 
 (deftest lotus-petal-cannot-cast-from-graveyard-test
@@ -106,6 +120,9 @@
           "Lotus Petal should have CMC 0")
       (is (= {} (:card/mana-cost card))
           "Lotus Petal should have no mana cost")
+      (is (= "{T}, Sacrifice Lotus Petal: Add one mana of any color."
+             (:card/text card))
+          "Oracle text should match exactly")
       ;; Types - verify exact set, not just contains
       (is (= #{:artifact} (:card/types card))
           "Lotus Petal should be exactly an artifact (no other types)")

@@ -5,6 +5,7 @@
    [Color] spells you cast cost {1} less to cast."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
+    [clojure.string]
     [fizzle.cards.artifacts.medallions :as medallions]
     [fizzle.db.queries :as q]
     [fizzle.engine.card-spec :as card-spec]
@@ -42,9 +43,10 @@
       (is (= {:colorless 2} (:card/mana-cost card)))
       (is (= #{} (:card/colors card)))
       (is (= #{:artifact} (:card/types card)))
-      (is (string? (:card/text card)))
-      (is (.includes (:card/text card) "cost {1} less to cast")
-          "Oracle text should mention cost reduction"))
+      (let [color-name (clojure.string/capitalize (name color))
+            expected-text (str color-name " spells you cast cost {1} less to cast.")]
+        (is (= expected-text (:card/text card))
+            (str card-name " oracle text should match exactly"))))
 
     (testing (str card-name " has correct static ability")
       (let [abilities (:card/static-abilities card)]

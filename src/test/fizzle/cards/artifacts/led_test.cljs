@@ -10,6 +10,20 @@
     [fizzle.test-helpers :as th]))
 
 
+;; === B. Cast-Resolve Happy Path ===
+
+(deftest led-cast-and-resolve-to-battlefield-test
+  (testing "LED enters battlefield when cast from hand"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :lions-eye-diamond :hand :player-1)
+          db (th/cast-and-resolve db :player-1 obj-id)]
+      (is (= :battlefield (th/get-object-zone db obj-id))
+          "LED should be on battlefield after cast and resolve")
+      (is (= {:white 0 :blue 0 :black 0 :red 0 :green 0 :colorless 0}
+             (q/get-mana-pool db :player-1))
+          "Mana pool should be empty (LED costs 0)"))))
+
+
 ;; === C. Cannot-Cast Guards ===
 
 (deftest led-cannot-cast-from-graveyard-test
@@ -132,6 +146,9 @@
           "LED should have CMC 0")
       (is (= {} (:card/mana-cost card))
           "LED should have no mana cost")
+      (is (= "{T}, Sacrifice Lion's Eye Diamond, Discard your hand: Add three mana of any one color. Activate only as an instant."
+             (:card/text card))
+          "Oracle text should match exactly")
       ;; Types - verify exact set, not just contains
       (is (= #{:artifact} (:card/types card))
           "LED should be exactly an artifact (no other types)")
@@ -153,13 +170,9 @@
   (testing "LED that is already tapped cannot activate mana ability"
     (let [db (th/create-test-db)
           [db' led-id] (th/add-card-to-zone db :lions-eye-diamond :battlefield :player-1)
-          ;; Manually tap the LED
-          obj-eid (d/q '[:find ?e . :in $ ?oid
-                         :where [?e :object/id ?oid]]
-                       db' led-id)
-          conn (d/conn-from-db db')
-          _ (d/transact! conn [[:db/add obj-eid :object/tapped true]])
-          db-tapped @conn
+          ;; Manually tap the LED using d/db-with (immutable, consistent with rest of tests)
+          obj-eid (q/get-object-eid db' led-id)
+          db-tapped (d/db-with db' [[:db/add obj-eid :object/tapped true]])
           _ (is (true? (:object/tapped (q/get-object db-tapped led-id)))
                 "Precondition: LED is tapped")
           initial-pool (q/get-mana-pool db-tapped :player-1)
