@@ -268,13 +268,10 @@
                   (th/add-card-to-zone :island :battlefield :player-1)
                   first)
           ;; Need to re-add mana for second cast
-          db2-with-mana (let [conn (d/conn-from-db db2)
-                              player-eid (q/get-player-eid db2 :player-1)]
-                          (d/transact! conn
-                                       [[:db/add player-eid :player/mana-pool
-                                         {:white 0 :blue 1 :black 0 :red 0 :green 0 :colorless 1}]])
-                          @conn)
-          db-cast-2 (rules/cast-spell db2-with-mana :player-1 ak2-id)
+          player-eid (q/get-player-eid db2 :player-1)
+          db2 (d/db-with db2 [[:db/add player-eid :player/mana-pool
+                               {:white 0 :blue 1 :black 0 :red 0 :green 0 :colorless 1}]])
+          db-cast-2 (rules/cast-spell db2 :player-1 ak2-id)
           result-2 (resolution/resolve-one-item db-cast-2)
           ;; After first AK resolved, hand had 1 card. Second AK was added to hand (+1 = 2).
           ;; Then casting AK2 removes it from hand (hand = 1). Second AK draws 2 (1 AK in gy + 1).

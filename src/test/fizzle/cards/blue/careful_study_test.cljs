@@ -95,29 +95,28 @@
 ;; === Draw Effect Tests ===
 
 (deftest test-careful-study-draws-two-cards
-  (testing "Casting Careful Study draws 2 cards to hand"
+  (testing "Casting Careful Study draws 2 cards to hand before discard selection"
     (let [db (th/create-test-db {:mana {:blue 1}})
           ;; Add cards to library for drawing
-          [db' _lib-ids] (th/add-cards-to-library db
-                                                  [:dark-ritual :cabal-ritual :brain-freeze]
-                                                  :player-1)
+          [db _lib-ids] (th/add-cards-to-library db
+                                                 [:dark-ritual :cabal-ritual :brain-freeze]
+                                                 :player-1)
           ;; Add Careful Study to hand
-          [db'' cs-id] (th/add-card-to-zone db' :careful-study :hand :player-1)
-          initial-hand-count (th/get-hand-count db'' :player-1)
-          _ (is (= 1 initial-hand-count) "Precondition: hand has 1 card (Careful Study)")
-          ;; Cast Careful Study
-          db-after-cast (rules/cast-spell db'' :player-1 cs-id)
-          _ (is (= :stack (th/get-object-zone db-after-cast cs-id))
+          [db cs-id] (th/add-card-to-zone db :careful-study :hand :player-1)
+          _ (is (= 1 (th/get-hand-count db :player-1)) "Precondition: hand has 1 card (Careful Study)")
+          ;; Cast and resolve through production path — pauses at discard selection
+          db-cast (rules/cast-spell db :player-1 cs-id)
+          _ (is (= :stack (th/get-object-zone db-cast cs-id))
                 "Careful Study should be on stack after casting")
-          ;; Resolve spell (draws 2 cards)
-          ;; Note: This will execute both draw and discard effects
-          ;; For this test, we just check that draw happened
-          db-after-resolve (rules/resolve-spell db-after-cast :player-1 cs-id)]
-      ;; After resolution, spell is in graveyard and cards were drawn
-      ;; (discard effect is pending selection, so doesn't auto-discard yet)
-      ;; For now without selection system, cards stay in hand
-      (is (= 2 (th/get-hand-count db-after-resolve :player-1))
-          "Hand should have 2 cards after drawing (discard is pending selection)"))))
+          {:keys [db selection]} (th/resolve-top db-cast)]
+      ;; Draw should have happened: 2 cards drawn, CS was cast from hand
+      (is (= 2 (th/get-hand-count db :player-1))
+          "Should have 2 cards in hand after draw (before discard)")
+      ;; Discard selection should be pending
+      (is (= :discard (:selection/type selection))
+          "Selection type should be :discard")
+      (is (= 2 (:selection/select-count selection))
+          "Should require discarding 2 cards"))))
 
 
 ;; === Selection State Tests ===
@@ -184,15 +183,13 @@
   (testing "resolve-spell-with-selection resolves normally for spells without selection"
     (let [db (th/create-test-db {:mana {:blue 1}})
           ;; Add Dark Ritual to hand
-          [db' dr-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
-          ;; Add mana to cast
-          conn (d/conn-from-db db')
-          player-eid (q/get-player-eid db' :player-1)
-          _ (d/transact! conn [[:db/add player-eid :player/mana-pool
-                                {:white 0 :blue 0 :black 1 :red 0 :green 0 :colorless 0}]])
-          db'' @conn
+          [db dr-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          ;; Set black mana for Dark Ritual via immutable d/db-with
+          player-eid (q/get-player-eid db :player-1)
+          db (d/db-with db [[:db/add player-eid :player/mana-pool
+                             {:white 0 :blue 0 :black 1 :red 0 :green 0 :colorless 0}]])
           ;; Cast Dark Ritual
-          db-after-cast (rules/cast-spell db'' :player-1 dr-id)
+          db-after-cast (rules/cast-spell db :player-1 dr-id)
           ;; Resolve with selection system
           result (resolution/resolve-one-item db-after-cast)]
       ;; Should NOT have pending selection
@@ -232,9 +229,11 @@
       ;; (started with 3, CS moved to stack, draw 0 from empty library)
       (is (= 2 (th/get-hand-count (:db result) :player-1))
           "After drawing from empty library, hand should have 2 cards")
-      ;; Should still have pending selection for discard
-      (is (some? (:pending-selection result))
-          "Should have pending selection even with empty library draw"))))
+      ;; Should still have pending discard selection
+      (is (= :discard (get-in result [:pending-selection :selection/type]))
+          "Selection type should be :discard even with empty library draw")
+      (is (= 2 (get-in result [:pending-selection :selection/select-count]))
+          "Should require discarding 2 cards"))))
 
 
 (deftest test-careful-study-one-card-library
@@ -265,9 +264,11 @@
       ;; Library should now be empty
       (is (= 0 (count (q/get-objects-in-zone (:db result) :player-1 :library)))
           "Library should be empty after drawing the only card")
-      ;; Should have pending selection for discard
-      (is (some? (:pending-selection result))
-          "Should have pending selection to discard 2 cards"))))
+      ;; Should have pending discard selection
+      (is (= :discard (get-in result [:pending-selection :selection/type]))
+          "Selection type should be :discard")
+      (is (= 2 (get-in result [:pending-selection :selection/select-count]))
+          "Should require discarding 2 cards"))))
 
 
 (deftest test-careful-study-discard-via-production-handler

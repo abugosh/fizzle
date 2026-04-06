@@ -85,8 +85,6 @@
           [db' obj-id] (th/add-card-to-zone db :brain-freeze :hand :player-1)
           db-with-mana (mana/add-mana db' :player-1 {:blue 1 :colorless 1})
           result (sel-targeting/cast-spell-with-targeting db-with-mana :player-1 obj-id)]
-      (is (some? (:pending-target-selection result))
-          "Should return pending target selection")
       (let [sel (:pending-target-selection result)]
         (is (= :cast-time-targeting (:selection/type sel))
             "Selection type should be :cast-time-targeting")
@@ -150,21 +148,18 @@
 
 (deftest brain-freeze-creates-storm-trigger-test
   (testing "Brain Freeze creates storm trigger with correct copy count"
-    (let [db (th/create-test-db)
+    (let [db (th/create-test-db {:mana {:black 1}})
           ;; Cast 2 Dark Rituals first to build storm count
-          [db' dr1-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
-          db-m1 (mana/add-mana db' :player-1 {:black 1})
-          db-cast1 (rules/cast-spell db-m1 :player-1 dr1-id)
-          db-res1 (rules/resolve-spell db-cast1 :player-1 dr1-id)
-          [db-r1 dr2-id] (th/add-card-to-zone db-res1 :dark-ritual :hand :player-1)
-          db-cast2 (rules/cast-spell db-r1 :player-1 dr2-id)
-          db-res2 (rules/resolve-spell db-cast2 :player-1 dr2-id)
-          _ (is (= 2 (q/get-storm-count db-res2 :player-1))
+          [db dr1-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          db (th/cast-and-resolve db :player-1 dr1-id)
+          [db dr2-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          db (th/cast-and-resolve db :player-1 dr2-id)
+          _ (is (= 2 (q/get-storm-count db :player-1))
                 "Precondition: storm count is 2 after 2 rituals")
           ;; Cast Brain Freeze as 3rd spell (bypass targeting for storm count test)
-          [db-r2 bf-id] (th/add-card-to-zone db-res2 :brain-freeze :hand :player-1)
-          db-bf-mana (mana/add-mana db-r2 :player-1 {:blue 1 :colorless 1})
-          db-bf-cast (rules/cast-spell db-bf-mana :player-1 bf-id)
+          [db bf-id] (th/add-card-to-zone db :brain-freeze :hand :player-1)
+          db (mana/add-mana db :player-1 {:blue 1 :colorless 1})
+          db-bf-cast (rules/cast-spell db :player-1 bf-id)
           ;; Storm count should now be 3
           _ (is (= 3 (q/get-storm-count db-bf-cast :player-1))
                 "Storm count should be 3 after casting Brain Freeze")
@@ -182,22 +177,19 @@
 
 (deftest brain-freeze-storm-copies-mill-test
   (testing "Full storm pipeline: cast with storm count 2 -> trigger -> 2 copies -> mill 9 total"
-    (let [db (-> (th/create-test-db)
+    (let [db (-> (th/create-test-db {:mana {:black 1}})
                  (th/add-opponent))
           ;; Add 15 cards to opponent library for milling
-          [db' _] (th/add-cards-to-library db (vec (repeat 15 :dark-ritual)) :player-2)
-          ;; Cast 2 Dark Rituals first
-          [db1 dr1-id] (th/add-card-to-zone db' :dark-ritual :hand :player-1)
-          db1m (mana/add-mana db1 :player-1 {:black 1})
-          db1c (rules/cast-spell db1m :player-1 dr1-id)
-          db1r (rules/resolve-spell db1c :player-1 dr1-id)
-          [db2 dr2-id] (th/add-card-to-zone db1r :dark-ritual :hand :player-1)
-          db2c (rules/cast-spell db2 :player-1 dr2-id)
-          db2r (rules/resolve-spell db2c :player-1 dr2-id)
+          [db _] (th/add-cards-to-library db (vec (repeat 15 :dark-ritual)) :player-2)
+          ;; Cast 2 Dark Rituals first to build storm count
+          [db dr1-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          db (th/cast-and-resolve db :player-1 dr1-id)
+          [db dr2-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          db (th/cast-and-resolve db :player-1 dr2-id)
           ;; Cast Brain Freeze targeting opponent (storm count becomes 3)
-          [db3 bf-id] (th/add-card-to-zone db2r :brain-freeze :hand :player-1)
-          db3m (mana/add-mana db3 :player-1 {:blue 1 :colorless 1})
-          db3c (cast-brain-freeze-with-target db3m :player-1 bf-id :player-2)
+          [db bf-id] (th/add-card-to-zone db :brain-freeze :hand :player-1)
+          db (mana/add-mana db :player-1 {:blue 1 :colorless 1})
+          db3c (cast-brain-freeze-with-target db :player-1 bf-id :player-2)
           ;; Resolve storm stack-item via storm-split selection
           storm-result (th/resolve-top db3c)
           storm-sel (:selection storm-result)
@@ -232,19 +224,17 @@
 
 (deftest brain-freeze-storm-copies-inherit-target-test
   (testing "Storm copies targeting self all mill self"
-    (let [db (-> (th/create-test-db)
+    (let [db (-> (th/create-test-db {:mana {:black 1}})
                  (th/add-opponent))
           ;; Add 15 cards to player's library for self-milling
-          [db' _] (th/add-cards-to-library db (vec (repeat 15 :dark-ritual)) :player-1)
+          [db _] (th/add-cards-to-library db (vec (repeat 15 :dark-ritual)) :player-1)
           ;; Cast Dark Ritual first to build storm count
-          [db1 dr-id] (th/add-card-to-zone db' :dark-ritual :hand :player-1)
-          db1m (mana/add-mana db1 :player-1 {:black 1})
-          db1c (rules/cast-spell db1m :player-1 dr-id)
-          db1r (rules/resolve-spell db1c :player-1 dr-id)
+          [db dr-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          db (th/cast-and-resolve db :player-1 dr-id)
           ;; Cast Brain Freeze targeting self (storm count becomes 2)
-          [db2 bf-id] (th/add-card-to-zone db1r :brain-freeze :hand :player-1)
-          db2m (mana/add-mana db2 :player-1 {:blue 1 :colorless 1})
-          db2c (cast-brain-freeze-with-target db2m :player-1 bf-id :player-1)
+          [db bf-id] (th/add-card-to-zone db :brain-freeze :hand :player-1)
+          db (mana/add-mana db :player-1 {:blue 1 :colorless 1})
+          db2c (cast-brain-freeze-with-target db :player-1 bf-id :player-1)
           ;; Resolve storm stack-item via storm-split selection
           storm-result (th/resolve-top db2c)
           storm-sel (:selection storm-result)

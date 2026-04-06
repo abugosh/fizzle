@@ -294,8 +294,6 @@
           db-cast (cast-chain-of-vapor db cov-id petal-id)
           result (resolution/resolve-one-item db-cast)]
       ;; Should have a pending selection for chain choice
-      (is (some? (:pending-selection result))
-          "Should have pending chain-bounce selection")
       (is (= :chain-bounce (:selection/type (:pending-selection result)))
           "Selection type should be :chain-bounce")
       (is (= :player-2 (:selection/player-id (:pending-selection result)))
@@ -337,9 +335,9 @@
           result (resolution/resolve-one-item db-cast)]
       ;; Chain-bounce should have pending-selection but with auto-confirm
       ;; (no lands = empty valid-targets)
-      (is (some? (:pending-selection result))
-          "Should have pending selection (chain-bounce)")
       (let [sel (:pending-selection result)]
+        (is (= :chain-bounce (:selection/type sel))
+            "Selection type should be :chain-bounce")
         (is (empty? (:selection/valid-targets sel))
             "Valid targets should be empty (no lands)")
         (is (true? (:selection/auto-confirm? sel))
@@ -366,8 +364,6 @@
       (is (= :graveyard (:object/zone (q/get-object (:db chain-result) land-id)))
           "Sacrificed land should be in graveyard")
       ;; Should now have a target selection for the copy
-      (is (some? (:selection chain-result))
-          "Should have pending target selection for the copy")
       (is (= :chain-bounce-target (:selection/type (:selection chain-result)))
           "Selection type should be :chain-bounce-target"))))
 
@@ -430,7 +426,8 @@
           db-cast (cast-chain-of-vapor db cov-id petal-id)
           result (th/resolve-top db-cast)]
       ;; Chain-bounce selection should be pending
-      (is (some? (:selection result)))
+      (is (= :chain-bounce (:selection/type (:selection result)))
+          "Initial resolution should produce chain-bounce selection")
       (let [;; Sacrifice the land to create a copy
             sac-result (th/confirm-selection (:db result) (:selection result) #{land-id})]
         ;; Should now have chain-bounce-target selection for the copy
@@ -440,7 +437,7 @@
               ;; Now resolve the copy (it's on the stack)
               copy-result (th/resolve-top (:db target-result))]
           ;; Copy should trigger chain-bounce selection (same card effects)
-          (is (some? (:selection copy-result))
+          (is (= :chain-bounce (:selection/type (:selection copy-result)))
               "Copy should create chain-bounce selection when it resolves")
           (let [;; Decline the chain for the copy (select nothing)
                 decline-result (th/confirm-selection (:db copy-result) (:selection copy-result)
