@@ -13,7 +13,6 @@
    - Destroy effect moves target to graveyard"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
-    [datascript.core :as d]
     [fizzle.cards.white.ray-of-revelation :as ray]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
@@ -223,6 +222,7 @@
           db (mana/add-mana db :player-1 {:green 1})
           modes (rules/get-casting-modes db :player-1 obj-id)
           flashback-mode (first modes)
+          ;; rules/cast-spell-mode required — flashback uses alternate-cost mode, not card/modes
           db-cast (rules/cast-spell-mode db :player-1 obj-id flashback-mode)]
       (is (= 1 (q/get-storm-count db-cast :player-1))
           "Storm should increment for flashback cast"))))
@@ -237,17 +237,10 @@
           [db enchant-id] (th/add-card-to-zone db :chill :battlefield :player-1)
           [db obj-id] (th/add-card-to-zone db :ray-of-revelation :graveyard :player-1)
           db (mana/add-mana db :player-1 {:green 1})
-          modes (rules/get-casting-modes db :player-1 obj-id)
-          flashback-mode (first modes)
-          ;; Cast the spell
-          db-cast (rules/cast-spell-mode db :player-1 obj-id flashback-mode)
-          ;; Store the target on the stack-item (matching real cast-time targeting flow)
-          spell-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db-cast obj-id)
-          si (d/q '[:find ?e . :in $ ?obj :where [?e :stack-item/object-ref ?obj]] db-cast spell-eid)
-          db-cast (d/db-with db-cast [[:db/add si :stack-item/targets {:target-enchantment enchant-id}]
-                                      [:db/add spell-eid :object/targets {:target-enchantment enchant-id}]])
-          ;; Resolve the spell
-          db-resolved (rules/resolve-spell db-cast :player-1 obj-id)]
+          ;; cast-with-target detects flashback mode (only mode from graveyard) and assigns target
+          db-cast (th/cast-with-target db :player-1 obj-id enchant-id)
+          ;; Resolve via production path
+          db-resolved (:db (th/resolve-top db-cast))]
       (is (= :exile (:object/zone (q/get-object db-resolved obj-id)))
           "Flashback spell should go to exile after resolution"))))
 
@@ -262,6 +255,7 @@
           db (mana/add-mana db :player-1 {:green 1})
           modes (rules/get-casting-modes db :player-1 obj-id)
           flashback-mode (first modes)
+          ;; rules/cast-spell-mode required — testing countered flashback zone (spell must stay on stack)
           db-cast (rules/cast-spell-mode db :player-1 obj-id flashback-mode)
           ;; Counter = move off stack without resolving
           db-countered (rules/move-spell-off-stack db-cast :player-1 obj-id)]
@@ -278,6 +272,7 @@
           db (mana/add-mana db :player-1 {:colorless 1 :white 1})
           modes (rules/get-casting-modes db :player-1 obj-id)
           primary-mode (first (filter #(= :primary (:mode/id %)) modes))
+          ;; rules/cast-spell-mode required — testing countered spell zone (spell must stay on stack)
           db-cast (rules/cast-spell-mode db :player-1 obj-id primary-mode)
           db-countered (rules/move-spell-off-stack db-cast :player-1 obj-id)]
       (is (= :graveyard (:object/zone (q/get-object db-countered obj-id)))

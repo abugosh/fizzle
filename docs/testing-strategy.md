@@ -146,8 +146,8 @@ Every spell should increment storm count when cast. This catches regressions in 
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           db-mana (mana/add-mana db' :player-1 {:black 1})
-          db-cast (rules/cast-spell db-mana :player-1 obj-id)]
-      (is (= 1 (q/get-storm-count db-cast :player-1))))))
+          db-resolved (th/cast-and-resolve db-mana :player-1 obj-id)]
+      (is (= 1 (q/get-storm-count db-resolved :player-1))))))
 ```
 
 ## Conditional Test Categories (E–I)
@@ -321,8 +321,8 @@ Copy this skeleton when creating a new card test file. Fill in the sections that
     (let [db (th/create-test-db)
           [db obj-id] (th/add-card-to-zone db :{card-id} :hand :player-1)
           db (mana/add-mana db :player-1 {{mana-cost}})
-          db-cast (rules/cast-spell db :player-1 obj-id)]
-      (is (= 1 (q/get-storm-count db-cast :player-1))
+          db (th/cast-and-resolve db :player-1 obj-id)]
+      (is (= 1 (q/get-storm-count db :player-1))
           "Storm count should be 1 after casting"))))
 
 
@@ -409,14 +409,13 @@ Keep tests separate when they have meaningfully different setup, assertions, or 
 
 **After (correct):**
 ```clojure
-;; Test through real event dispatch
-(let [db-cast (rules/cast-spell db-mana :player-1 obj-id)
-      db-resolved (rules/resolve-spell db-cast :player-1 obj-id)]
+;; Test through real event dispatch using production-path helpers
+(let [db (th/cast-and-resolve db-mana :player-1 obj-id)]
   ;; Assert on actual resolved state
   ...)
 ```
 
-See: `src/test/fizzle/cards/blue/careful_study_test.cljs` — the rewritten version tests through `rules/cast-spell` and `game/resolve-one-item`.
+See: `src/test/fizzle/cards/blue/careful_study_test.cljs` — the rewritten version tests through `th/resolve-top` + `th/confirm-selection` for interactive spells.
 
 ### 2. Copy-pasted test variants
 
@@ -447,7 +446,7 @@ See: `src/test/fizzle/cards/lotus_petal_test.cljs` and `src/test/fizzle/cards/le
 
 ### 4. Mocking re-frame dispatch
 
-Card tests should use real function calls (`rules/cast-spell`, `rules/resolve-spell`, etc.), not mock `rf/dispatch`. The point is integration testing — verifying the full pipeline works.
+Card tests should use production-path helpers (`th/cast-and-resolve`, `th/cast-with-target`, `th/resolve-top`, `th/confirm-selection`), not mock `rf/dispatch`. The point is integration testing — verifying the full pipeline works.
 
 ### 5. Test-only methods on production code
 

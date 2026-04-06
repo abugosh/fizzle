@@ -87,6 +87,7 @@
           [db land-id] (th/add-card-to-zone db :island :battlefield :player-1)
           db (th/tap-permanent db land-id)
           ;; Cast
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 cf-id)
           ;; Resolve spell — creature enters battlefield, ETB trigger goes on stack
           {:keys [db]} (th/resolve-top db-cast)]
@@ -113,6 +114,7 @@
           [db cf-id] (th/add-card-to-zone db :cloud-of-faeries :hand :player-1)
           ;; Untapped land only
           [db _untapped] (th/add-card-to-zone db :island :battlefield :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 cf-id)
           ;; Resolve spell — creature enters, ETB trigger on stack
           {:keys [db]} (th/resolve-top db-cast)
@@ -164,6 +166,7 @@
     (let [db (th/create-test-db {:mana {:colorless 1 :blue 1}})
           [db cf-id] (th/add-card-to-zone db :cloud-of-faeries :hand :player-1)]
       (is (= 0 (q/get-storm-count db :player-1)) "Storm count should start at 0")
+      ;; Interactive spell — rules/cast-spell required (selection on resolve)
       (let [db-cast (rules/cast-spell db :player-1 cf-id)]
         (is (= 1 (q/get-storm-count db-cast :player-1))
             "Storm count should be 1 after casting")))))
@@ -182,6 +185,7 @@
           [db untapped] (th/add-card-to-zone db :island :battlefield :player-1)
           db (th/tap-permanent db tapped-1)
           db (th/tap-permanent db tapped-2)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 _cf-id)
           ;; Resolve spell, then ETB trigger
           {:keys [db]} (th/resolve-top db-cast)
@@ -198,6 +202,7 @@
           [db cf-id] (th/add-card-to-zone db :cloud-of-faeries :hand :player-1)
           [db land] (th/add-card-to-zone db :island :battlefield :player-1)
           db (th/tap-permanent db land)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 cf-id)
           ;; Resolve spell, then ETB trigger
           {:keys [db]} (th/resolve-top db-cast)
@@ -217,6 +222,7 @@
           [db opp-land] (th/add-card-to-zone db :island :battlefield :player-2)
           db (th/tap-permanent db my-land)
           db (th/tap-permanent db opp-land)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 cf-id)
           ;; Resolve spell, then ETB trigger
           {:keys [db]} (th/resolve-top db-cast)
