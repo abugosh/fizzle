@@ -240,6 +240,132 @@ See: `src/test/fizzle/cards/lands/gemstone_mine_test.cljs` — tests mana abilit
 
 These are minimums. Complex cards (e.g., Ill-Gotten Gains with multi-player selection) will naturally have more.
 
+## Template Skeleton
+
+Copy this skeleton when creating a new card test file. Fill in the sections that apply to your card; delete the comments for categories that are not applicable.
+
+```clojure
+(ns fizzle.cards.{color}.{card-name}-test
+  "Tests for {Card Name} — {brief oracle summary}.
+
+   This file tests:
+   - Card definition (exact fields)
+   - Cast-resolve happy path
+   - Cannot-cast guards
+   - Storm count
+   - (add conditional categories as applicable)"
+  (:require
+    [cljs.test :refer-macros [deftest testing is]]
+    [fizzle.cards.{color}.{card-name} :as {card-name}]
+    [fizzle.db.queries :as q]
+    [fizzle.engine.mana :as mana]
+    [fizzle.engine.rules :as rules]
+    [fizzle.test-helpers :as th]))
+
+
+;; === A. Card Definition ===
+;; Verify EVERY field with exact values. No some?/string?/number? — those are tautological.
+
+(deftest {card-name}-card-definition-test
+  (testing "{Card Name} card data is correct"
+    (let [card {card-name}/card]
+      (is (= :{card-id} (:card/id card)))
+      (is (= "{Card Name}" (:card/name card)))
+      (is (= {cmc} (:card/cmc card)))
+      (is (= {mana-cost-map} (:card/mana-cost card)))
+      (is (= #{:{type}} (:card/types card)))
+      (is (= #{:{color}} (:card/colors card)))
+      ;; For spells: verify each effect's type and key parameters
+      ;; (let [effect (first (:card/effects card))]
+      ;;   (is (= :{effect-type} (:effect/type effect)))
+      ;;   (is (= {amount} (:effect/amount effect))))
+      )))
+
+
+;; === B. Cast-Resolve Happy Path ===
+;; Use th/cast-and-resolve for non-interactive spells.
+;; Use th/cast-with-target for targeted spells.
+;; Use th/cast-mode-with-target for modal+targeted spells.
+
+(deftest {card-name}-cast-resolve-test
+  (testing "{Card Name} resolves correctly"
+    (let [db (th/create-test-db {:mana {{mana-cost}}})
+          [db obj-id] (th/add-card-to-zone db :{card-id} :hand :player-1)
+          db (th/cast-and-resolve db :player-1 obj-id)]
+      ;; Assert the primary effect occurred (exact values only)
+      (is (= {expected-value} (q/... db :player-1))
+          "{description of what should be true}"))))
+
+
+;; === C. Cannot-Cast Guards ===
+
+(deftest {card-name}-cannot-cast-without-mana-test
+  (testing "Cannot cast {Card Name} without mana"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :{card-id} :hand :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))))))
+
+(deftest {card-name}-cannot-cast-from-graveyard-test
+  (testing "Cannot cast {Card Name} from graveyard"
+    (let [db (th/create-test-db {:mana {{mana-cost}}})
+          [db obj-id] (th/add-card-to-zone db :{card-id} :graveyard :player-1)]
+      (is (false? (rules/can-cast? db :player-1 obj-id))))))
+
+
+;; === D. Storm Count ===
+;; NOTE: Mana abilities (lands, artifacts with mana abilities) do NOT use the stack
+;; and do NOT increment storm count. Skip this category for those cards.
+
+(deftest {card-name}-increments-storm-test
+  (testing "Casting {Card Name} increments storm count"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :{card-id} :hand :player-1)
+          db (mana/add-mana db :player-1 {{mana-cost}})
+          db-cast (rules/cast-spell db :player-1 obj-id)]
+      (is (= 1 (q/get-storm-count db-cast :player-1))
+          "Storm count should be 1 after casting"))))
+
+
+;; === E. Selection/Modal Tests (when applicable) ===
+;; (deftest {card-name}-selection-test ...)
+
+
+;; === F. Targeting Tests (when applicable) ===
+;; (deftest {card-name}-targeting-test ...)
+
+
+;; === G. Edge Cases ===
+;; Every card needs at least 2. Common patterns:
+;; - Empty zones (discard with empty hand, mill with empty library)
+;; - Boundary conditions (exactly lethal, exactly enough mana)
+;; - Zone restrictions (ability cannot fire from wrong zone)
+
+(deftest {card-name}-edge-case-1-test
+  (testing "{specific edge case description}"
+    (let [db (th/create-test-db)
+          ...]
+      (is (= ... ...)))))
+
+
+;; === H. Flashback Tests (when applicable) ===
+;; (deftest {card-name}-flashback-test ...)
+
+
+;; === I. Trigger/Ability Tests (when applicable) ===
+;; (deftest {card-name}-ability-test ...)
+```
+
+**Which helper to use in Category B:**
+
+| Card type | Helper | Example |
+|-----------|--------|---------|
+| Simple spell (Dark Ritual, Brain Freeze) | `th/cast-and-resolve` | `(th/cast-and-resolve db :player-1 obj-id)` |
+| Targeted spell (Counterspell, Bolt) | `th/cast-with-target` | `(th/cast-with-target db :player-1 cs-id target-id)` |
+| Modal + targeted (BEB, REB, Vision Charm) | `th/cast-mode-with-target` | `(th/cast-mode-with-target db :player-1 beb-id mode target-id)` |
+| Interactive (Careful Study, Duress) | `rules/cast-spell` + `th/resolve-top` + `th/confirm-selection` | See Category E pattern |
+| Permanent (Lotus Petal, LED) | `th/cast-and-resolve` | enters battlefield, then test ability separately |
+| Land ability | `engine-mana/activate-mana-ability` | activate, assert mana + zone change |
+
 ## Parameterization Patterns
 
 ### When to use `doseq`

@@ -193,6 +193,18 @@ Every card must have a dedicated test file (`src/test/fizzle/cards/<card>_test.c
 | Land with ability | 8 |
 | Flashback/Storm spell | 12 |
 
+**Gold-standard reference tests (copy these when writing a new card test):**
+
+| Card type | Reference file | What it demonstrates |
+|-----------|---------------|----------------------|
+| Simple spell | `cards/black/cabal_ritual_test.cljs` | Threshold conditional, `doseq`-free boundary tests |
+| Targeted spell | `cards/red/lightning_bolt_test.cljs` | `th/cast-with-target`, SBA integration, both-player targeting |
+| Modal spell | `cards/blue/vision_charm_test.cljs` | `th/cast-mode-with-target`, 3 modes, modal+targeting pipeline |
+| Land with ability | `cards/lands/city_of_brass_test.cljs` | Trigger testing, parameterized mana colors |
+| Flashback spell | `cards/black/crippling_fatigue_test.cljs` | Targeting + flashback + SBA, exile-after-flashback |
+| Selection spell | `cards/black/duress_test.cljs` | Hand reveal, discard criteria, `th/confirm-selection` |
+| Artifact with mana ability | `cards/artifacts/lions_eye_diamond_test.cljs` | Tap/sacrifice/discard cost, storm note for mana abilities |
+
 **Top anti-patterns:**
 1. Reimplementing production handlers in tests — use `th/cast-and-resolve`, `th/cast-with-target`, `th/resolve-top`, `th/confirm-selection` instead of manual selection construction or direct effect execution
 2. Copy-pasted test variants that differ only by parameter (use `doseq`)
