@@ -55,6 +55,21 @@
           "Effect should reference :target-artifact-or-enchantment"))))
 
 
+;; === B. Cast-Resolve Happy Path ===
+
+;; Oracle: Seal of Cleansing is a permanent — it enters the battlefield on resolve.
+(deftest seal-of-cleansing-enters-battlefield-on-resolve-test
+  (testing "Casting and resolving Seal of Cleansing puts it on the battlefield"
+    (let [db (th/create-test-db {:mana {:colorless 1 :white 1}})
+          [db obj-id] (th/add-card-to-zone db :seal-of-cleansing :hand :player-1)
+          db (th/cast-and-resolve db :player-1 obj-id)
+          obj (q/get-object db obj-id)]
+      (is (= :battlefield (:object/zone obj))
+          "Seal of Cleansing should be on battlefield after resolving")
+      (is (false? (:object/tapped obj))
+          "Seal should enter untapped"))))
+
+
 ;; === C. Cannot-Cast Guards ===
 
 (deftest seal-of-cleansing-cannot-cast-without-mana-test
@@ -206,10 +221,8 @@
       ;; Should have pending selection for target
       (is (= :ability-targeting (:selection/type sel))
           "Selection type should be :ability-targeting")
-      ;; Confirm target selection
-      (let [selection-with-target (assoc sel :selection/selected #{target-id})
-            final-result (ability-events/confirm-ability-target (:db result) selection-with-target)
-            db-after-confirm (:db final-result)]
+      ;; Confirm target selection via production path
+      (let [{db-after-confirm :db} (th/confirm-selection (:db result) sel #{target-id})]
         ;; Seal should be sacrificed (cost paid)
         (is (= :graveyard (:object/zone (q/get-object db-after-confirm seal-id)))
             "Seal should be in graveyard after sacrifice")

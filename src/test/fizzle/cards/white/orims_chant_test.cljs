@@ -43,7 +43,10 @@
       (is (= #{:instant} (:card/types card))
           "Card should be an instant")
       (is (= {:white 1} (:card/kicker card))
-          "Kicker cost should be {W}")))
+          "Kicker cost should be {W}")
+      (is (= "Kicker {W}. Target player can't cast spells this turn. If this spell was kicked, creatures can't attack this turn."
+             (:card/text card))
+          "Card text should match oracle")))
 
   (testing "card uses correct targeting format"
     (let [targeting (:card/targeting orims-chant/card)]
@@ -80,6 +83,30 @@
       (is (= #{:cannot-cast-spells :cannot-attack}
              (set (map :restriction/type effects)))
           "Should include both restriction types"))))
+
+
+;; === B. Cast-Resolve Happy Path ===
+
+;; Oracle: "Target player can't cast spells this turn."
+(deftest orims-chant-cast-resolve-applies-restriction-test
+  (testing "Casting and resolving Orim's Chant adds cannot-cast-spells to targeted player"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db obj-id] (th/add-card-to-zone db :orims-chant :hand :player-1)
+          db (mana/add-mana db :player-1 {:white 1})
+          db-cast (th/cast-with-target db :player-1 obj-id :player-2)
+          _ (is (= :stack (:object/zone (q/get-object db-cast obj-id)))
+                "Precondition: Orim's Chant on stack")
+          result (resolution/resolve-one-item db-cast)
+          db-resolved (:db result)]
+      (is (= :graveyard (:object/zone (q/get-object db-resolved obj-id)))
+          "Orim's Chant should be in graveyard after resolution")
+      (let [p2-grants (grants/get-player-grants db-resolved :player-2)]
+        (is (= 1 (count p2-grants))
+            "Player-2 should have one restriction grant")
+        (is (= :cannot-cast-spells
+               (get-in (first p2-grants) [:grant/data :restriction/type]))
+            "Player-2 should have :cannot-cast-spells restriction")))))
 
 
 ;; === C. Cannot-Cast Guards ===
@@ -123,9 +150,7 @@
 (deftest orims-chant-casting-modes-test
   (testing "get-casting-modes returns primary and kicked with correct costs and effects"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [orims-chant/card])
-          db (th/add-opponent @conn)
+          db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :orims-chant :hand :player-1)
           modes (rules/get-casting-modes db :player-1 obj-id)
           primary (first (filter #(= :primary (:mode/id %)) modes))
@@ -146,9 +171,7 @@
   ;; Bug caught: Targeting system can't find player targets
   (testing "has-valid-targets? returns true when opponent exists"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [orims-chant/card])
-          db (th/add-opponent @conn)]
+          db (th/add-opponent db)]
       (is (targeting/has-valid-targets? db :player-1 orims-chant/card)
           "Should have valid targets (can target self or opponent)"))))
 
@@ -157,9 +180,7 @@
   ;; Bug caught: Target options format wrong (vector vs set)
   (testing "find-valid-targets returns both players with :any-player"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [orims-chant/card])
-          db (th/add-opponent @conn)
+          db (th/add-opponent db)
           req (first (:card/targeting orims-chant/card))
           targets (targeting/find-valid-targets db :player-1 req)]
       (is (= 2 (count targets))
@@ -173,10 +194,7 @@
 (deftest goldfish-mode-targets-test
   ;; Bug caught: Can't cast in goldfish mode (no opponent)
   (testing "has-valid-targets? returns true even without opponent (can target self)"
-    (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [orims-chant/card])
-          db @conn]
+    (let [db (th/create-test-db)]
       ;; Even without opponent, can target self
       (is (targeting/has-valid-targets? db :player-1 orims-chant/card)
           "Should have valid targets (can target self even in goldfish)"))))
@@ -215,19 +233,13 @@
   ;; Bug caught: restriction exists but not enforced by can-cast?
   (testing "Player with cannot-cast-spells restriction cannot cast spells"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [orims-chant/card])
-          db (th/add-opponent @conn)
-          ;; Add Orim's Chant to hand
-          [db _chant-id] (th/add-card-to-zone db :orims-chant :hand :player-1)
+          db (th/add-opponent db)
           ;; Add a spell to player-2's hand
           [db spell-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           ;; Give player-2 mana to cast Dark Ritual
-          conn (d/conn-from-db db)
           p2-eid (q/get-player-eid db :player-2)
-          _ (d/transact! conn [[:db/add p2-eid :player/mana-pool
-                                {:white 0 :blue 0 :black 1 :red 0 :green 0 :colorless 0}]])
-          db @conn
+          db (d/db-with db [[:db/add p2-eid :player/mana-pool
+                             {:white 0 :blue 0 :black 1 :red 0 :green 0 :colorless 0}]])
           ;; Verify player-2 CAN cast before restriction
           _ (is (rules/can-cast? db :player-2 spell-id)
                 "Precondition: player-2 can cast Dark Ritual before restriction")

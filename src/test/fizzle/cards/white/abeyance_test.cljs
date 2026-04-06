@@ -43,7 +43,10 @@
       (is (= #{:white} (:card/colors card))
           "Card should be white")
       (is (= #{:instant} (:card/types card))
-          "Card should be an instant")))
+          "Card should be an instant")
+      (is (= "Until end of turn, target player can't cast instant or sorcery spells, and that player can't activate abilities that aren't mana abilities.\nDraw a card."
+             (:card/text card))
+          "Card text should match oracle")))
 
   (testing "card has correct targeting"
     (let [targeting (:card/targeting abeyance/card)]
@@ -126,9 +129,7 @@
 (deftest abeyance-cannot-cast-without-mana-test
   (testing "Cannot cast Abeyance without sufficient mana"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [abeyance/card])
-          db (th/add-opponent @conn)
+          db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :abeyance :hand :player-1)]
       (is (false? (rules/can-cast? db :player-1 obj-id))
           "Should not be able to cast without mana"))))
@@ -137,9 +138,7 @@
 (deftest abeyance-cannot-cast-wrong-zone-test
   (testing "Cannot cast Abeyance from graveyard (no flashback)"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [abeyance/card])
-          db (th/add-opponent @conn)
+          db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :abeyance :graveyard :player-1)
           db-with-mana (mana/add-mana db :player-1 {:colorless 1 :white 1})]
       (is (false? (rules/can-cast? db-with-mana :player-1 obj-id))
@@ -360,8 +359,6 @@
 (deftest abeyance-has-valid-targets-test
   (testing "has-valid-targets? returns true when opponent exists"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [abeyance/card])
-          db (th/add-opponent @conn)]
+          db (th/add-opponent db)]
       (is (targeting/has-valid-targets? db :player-1 abeyance/card)
           "Should have valid targets (can target self or opponent)"))))

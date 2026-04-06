@@ -197,11 +197,9 @@
           ;; Cast 2 Dark Rituals to build storm count
           [db dr1-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           db-m1 (mana/add-mana db :player-1 {:black 1})
-          db1 (rules/cast-spell db-m1 :player-1 dr1-id)
-          db1r (rules/resolve-spell db1 :player-1 dr1-id)
+          db1r (th/cast-and-resolve db-m1 :player-1 dr1-id)
           [db2 dr2-id] (th/add-card-to-zone db1r :dark-ritual :hand :player-1)
-          db2c (rules/cast-spell db2 :player-1 dr2-id)
-          db2r (rules/resolve-spell db2c :player-1 dr2-id)
+          db2r (th/cast-and-resolve db2 :player-1 dr2-id)
           _ (is (= 2 (q/get-storm-count db2r :player-1))
                 "Precondition: storm count is 2 after 2 rituals")
           ;; Add mana for Hunting Pack and cast it (storm count becomes 3)
@@ -244,8 +242,7 @@
           ;; Build storm count = 1
           [db dr-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           db-m1 (mana/add-mana db :player-1 {:black 1})
-          db1 (rules/cast-spell db-m1 :player-1 dr-id)
-          db1r (rules/resolve-spell db1 :player-1 dr-id)
+          db1r (th/cast-and-resolve db-m1 :player-1 dr-id)
           ;; Cast Hunting Pack (storm count becomes 2)
           [db2 hp-id] (th/add-card-to-zone db1r :hunting-pack :hand :player-1)
           db2m (mana/add-mana db2 :player-1 {:colorless 5 :green 2})

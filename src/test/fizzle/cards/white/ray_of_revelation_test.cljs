@@ -28,6 +28,10 @@
 ;; Oracle: "Destroy target enchantment.\nFlashback {G}"
 (deftest ray-of-revelation-card-definition-test
   (testing "Ray of Revelation type, cost, and color"
+    (is (= :ray-of-revelation (:card/id ray/card))
+        "Card ID should be :ray-of-revelation")
+    (is (= "Ray of Revelation" (:card/name ray/card))
+        "Card name should match oracle")
     (is (= {:colorless 1 :white 1} (:card/mana-cost ray/card))
         "Ray of Revelation should cost {1}{W}")
     (is (= #{:instant} (:card/types ray/card))
@@ -35,7 +39,9 @@
     (is (= 2 (:card/cmc ray/card))
         "Ray of Revelation should have CMC 2")
     (is (= #{:white} (:card/colors ray/card))
-        "Ray of Revelation should be white"))
+        "Ray of Revelation should be white")
+    (is (= "Destroy target enchantment.\nFlashback {G}" (:card/text ray/card))
+        "Card text should match oracle"))
 
   (testing "Ray of Revelation has flashback alternate cost"
     (let [flashback (first (:card/alternate-costs ray/card))]
@@ -151,6 +157,21 @@
           [db _enchant-id] (th/add-card-to-zone db :chill :battlefield :player-2)]
       (is (targeting/has-valid-targets? db :player-1 ray/card)
           "Should be able to target opponent's enchantment"))))
+
+
+;; === D. Storm Count ===
+
+;; Oracle: Casting from hand increments storm count
+(deftest ray-cast-increments-storm-count-test
+  (testing "Casting Ray of Revelation increments storm count"
+    (let [db (th/create-test-db)
+          [db enchant-id] (th/add-card-to-zone db :chill :battlefield :player-1)
+          [db obj-id] (th/add-card-to-zone db :ray-of-revelation :hand :player-1)
+          db (mana/add-mana db :player-1 {:colorless 1 :white 1})
+          storm-before (q/get-storm-count db :player-1)
+          db-cast (th/cast-with-target db :player-1 obj-id enchant-id)]
+      (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
+          "Storm count should increment by 1 on cast"))))
 
 
 ;; === Flashback Tests ===

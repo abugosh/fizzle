@@ -28,7 +28,7 @@
       (is (= 1 (:card/power card)))
       (is (= 1 (:card/toughness card)))
       (is (= #{:shroud} (:card/keywords card)))
-      (is (string? (:card/text card)))
+      (is (= "Shroud\nThreshold — Nimble Mongoose gets +2/+2." (:card/text card)))
       ;; Static abilities
       (is (= 1 (count (:card/static-abilities card))))
       (let [sa (first (:card/static-abilities card))]
