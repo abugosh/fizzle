@@ -139,11 +139,10 @@
     (let [db (th/create-test-db)
           [db obj-id] (th/add-card-to-zone db :deep-analysis :graveyard :player-1)
           db (mana/add-mana db :player-1 {:colorless 1 :blue 1})
-          modes (rules/get-casting-modes db :player-1 obj-id)
-          flashback-mode (first modes)
-          db-cast (rules/cast-spell-mode db :player-1 obj-id flashback-mode)
-          db-resolved (rules/resolve-spell db-cast :player-1 obj-id)]
-      (is (= :exile (:object/zone (q/get-object db-resolved obj-id)))
+          [db _lib-ids] (th/add-cards-to-library db [:dark-ritual :dark-ritual :dark-ritual] :player-1)
+          db-cast (th/cast-with-target db :player-1 obj-id :player-1)
+          {:keys [db]} (th/resolve-top db-cast)]
+      (is (= :exile (:object/zone (q/get-object db obj-id)))
           "Flashback spell should go to exile after resolution"))))
 
 
@@ -368,8 +367,6 @@
                            :where [?e :object/id ?oid]]
                          db-cast obj-id)
             stack-item (stack/get-stack-item-by-object-ref db-cast obj-eid)]
-        (is (some? stack-item)
-            "Stack-item should exist for the spell")
         (is (= {:player :player-1} (:stack-item/targets stack-item))
             "Stack-item should have stored target {:player :player-1}"))
       ;; Object should NOT have targets

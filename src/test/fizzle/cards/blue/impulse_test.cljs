@@ -98,8 +98,6 @@
       (is (= :hand (th/get-object-zone db selected-card))
           "Selected card should be moved to hand")
       ;; Should chain to order-bottom for remaining 3
-      (is (some? selection)
-          "Should chain to a pending selection")
       (is (= :order-bottom (:selection/type selection))
           "Chained selection should be :order-bottom")
       (is (= 3 (count (:selection/candidates selection)))

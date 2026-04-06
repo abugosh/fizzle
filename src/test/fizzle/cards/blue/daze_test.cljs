@@ -37,7 +37,10 @@
       (is (= #{:blue} (:card/colors card))
           "Card should be blue")
       (is (= #{:instant} (:card/types card))
-          "Card should be an instant")))
+          "Card should be an instant")
+      (is (= "You may return an Island you control to its owner's hand rather than pay this spell's mana cost.\nCounter target spell unless its controller pays {1}."
+             (:card/text card))
+          "Oracle text should match")))
 
   (testing "card has correct targeting"
     (let [targeting (:card/targeting daze/card)]
@@ -234,8 +237,8 @@
       (is (= :hand (:object/zone (q/get-object db island-id)))
           "Island should be returned to hand")
       ;; Should chain to targeting selection
-      (is (some? selection)
-          "Should chain to targeting selection"))))
+      (is (= :cast-time-targeting (:selection/type selection))
+          "Should chain to cast-time-targeting selection"))))
 
 
 ;; === G. Edge Cases ===

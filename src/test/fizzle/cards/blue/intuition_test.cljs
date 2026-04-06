@@ -7,40 +7,44 @@
    Then shuffle.
 
    This tests:
-   - Intuition card exists in all-cards
    - Correct mana cost and attributes
    - Effect structure with :effect/select-count 3 and :effect/pile-choice
    - Integration with multi-select tutor and pile choice systems"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
+    [fizzle.cards.blue.intuition :as intuition]
     [fizzle.db.queries :as q]
-    [fizzle.engine.cards :as cards]
     [fizzle.engine.rules :as rules]
     [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
 
 
-;; === Tests ===
+;; === A. Card Definition Tests ===
 
-(deftest test-intuition-mana-cost
-  ;; Bug caught: Wrong mana cost prevents casting
-  (testing "Intuition has correct mana cost 2U"
-    (let [intuition-card (some #(when (= :intuition (:card/id %)) %)
-                               cards/all-cards)]
-      (is (= {:colorless 2 :blue 1} (:card/mana-cost intuition-card))
+(deftest intuition-card-definition-test
+  (testing "Intuition identity and core fields"
+    (let [card intuition/card]
+      (is (= :intuition (:card/id card))
+          "Card ID should be :intuition")
+      (is (= "Intuition" (:card/name card))
+          "Card name should match oracle")
+      (is (= 3 (:card/cmc card))
+          "CMC should be 3")
+      (is (= {:colorless 2 :blue 1} (:card/mana-cost card))
           "Mana cost must be {2}{U}")
-      (is (= 3 (:card/cmc intuition-card))
-          "CMC must be 3")
-      (is (= #{:blue} (:card/colors intuition-card))
-          "Colors must be #{:blue}"))))
+      (is (= #{:blue} (:card/colors card))
+          "Colors must be #{:blue}")
+      (is (= #{:instant} (:card/types card))
+          "Card should be an instant")
+      (is (= "Search your library for three cards and reveal them. Target opponent chooses one. Put that card into your hand and the rest into your graveyard. Then shuffle."
+             (:card/text card))
+          "Card text should match oracle"))))
 
 
-(deftest test-intuition-effect-structure
-  ;; Bug caught: Missing parameters cause tutor/pile-choice to fail
+(deftest intuition-effect-structure-test
   (testing "Intuition effect has required tutor parameters"
-    (let [intuition-card (some #(when (= :intuition (:card/id %)) %)
-                               cards/all-cards)
-          effect (first (:card/effects intuition-card))]
+    ;; Bug caught: Missing parameters cause tutor/pile-choice to fail
+    (let [effect (first (:card/effects intuition/card))]
       (is (= :tutor (:effect/type effect))
           "Effect type must be :tutor")
       (is (= 3 (:effect/select-count effect))

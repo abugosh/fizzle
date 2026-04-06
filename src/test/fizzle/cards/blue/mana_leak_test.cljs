@@ -94,9 +94,6 @@
           db-cast (cast-mana-leak-targeting db ml-id ritual-id)
           ;; Resolve Mana Leak -> should get unless-pay selection
           resolve-result (th/resolve-top db-cast)]
-      ;; Should get a pending selection for unless-pay
-      (is (some? (:selection resolve-result))
-          "Should create unless-pay selection")
       (let [selection (:selection resolve-result)
             _ (is (= :unless-pay (:selection/type selection))
                   "Selection type should be :unless-pay")

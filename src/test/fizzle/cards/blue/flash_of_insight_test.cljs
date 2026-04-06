@@ -270,8 +270,8 @@
           result (resolution/resolve-one-item db-with-x)
           sel (:pending-selection result)]
       ;; Should peek at only 1 card (all that's available)
-      (is (some? sel)
-          "Should have pending selection")
+      (is (= :peek-and-select (:selection/type sel))
+          "Should have peek-and-select selection")
       (is (<= (count (:selection/candidates sel)) 1)
           "Should have at most 1 candidate (library only has 1 card)"))))
 
