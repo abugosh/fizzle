@@ -235,8 +235,7 @@
           ctx {:game-db db :player-id :player-1 :object-id obj-id :mode mode :target nil}
           result (casting/evaluate-pre-cast-step :pay-x-life ctx)]
       (is (map? result) "Pipeline should return a result for pay-x-life")
-      (is (= :pay-x-life (:selection/type (:selection result))) "Result should contain a pay-x-life selection")
-      (is (= :pay-x-life (:selection/type (:selection result)))))))
+      (is (= :pay-x-life (:selection/type (:selection result))) "Result should contain a pay-x-life selection"))))
 
 
 (deftest necrologia-castable-only-during-end-step-test

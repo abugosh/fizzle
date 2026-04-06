@@ -67,8 +67,8 @@
           db (mana/add-mana db :player-1 {:black 2})
           _ (is (= 0 (q/get-storm-count db :player-1))
                 "Storm count should start at 0")
-          db-cast (rules/cast-spell db :player-1 obj-id)]
-      (is (= 1 (q/get-storm-count db-cast :player-1))
+          db-resolved (th/cast-and-resolve db :player-1 obj-id)]
+      (is (= 1 (q/get-storm-count db-resolved :player-1))
           "Storm count should be 1 after casting Cabal Ritual"))))
 
 
@@ -80,8 +80,7 @@
           [db' obj-id] (th/add-card-to-zone db :cabal-ritual :hand :player-1)
           ;; Add 2B to pay for {1}{B} cost
           db-with-mana (mana/add-mana db' :player-1 {:black 2})
-          db-cast (rules/cast-spell db-with-mana :player-1 obj-id)
-          db-resolved (rules/resolve-spell db-cast :player-1 obj-id)
+          db-resolved (th/cast-and-resolve db-with-mana :player-1 obj-id)
           pool (q/get-mana-pool db-resolved :player-1)]
       ;; Paid 2B, gained 3B = 3B in pool
       (is (= 3 (:black pool))
@@ -97,8 +96,7 @@
           [db-with-gy _] (th/add-cards-to-graveyard db (vec (repeat 7 :dark-ritual)) :player-1)
           [db' obj-id] (th/add-card-to-zone db-with-gy :cabal-ritual :hand :player-1)
           db-with-mana (mana/add-mana db' :player-1 {:black 2})
-          db-cast (rules/cast-spell db-with-mana :player-1 obj-id)
-          db-resolved (rules/resolve-spell db-cast :player-1 obj-id)
+          db-resolved (th/cast-and-resolve db-with-mana :player-1 obj-id)
           pool (q/get-mana-pool db-resolved :player-1)]
       ;; Paid 2B, gained 5B (threshold) = 5B in pool
       (is (= 5 (:black pool))
@@ -114,8 +112,7 @@
           _ (is (= 7 gy-count) "Precondition: exactly 7 cards in graveyard")
           [db' obj-id] (th/add-card-to-zone db-with-gy :cabal-ritual :hand :player-1)
           db-with-mana (mana/add-mana db' :player-1 {:black 2})
-          db-cast (rules/cast-spell db-with-mana :player-1 obj-id)
-          db-resolved (rules/resolve-spell db-cast :player-1 obj-id)
+          db-resolved (th/cast-and-resolve db-with-mana :player-1 obj-id)
           pool (q/get-mana-pool db-resolved :player-1)]
       (is (= 5 (:black pool))
           "Threshold should fire at exactly 7 cards (>= 7)"))))
@@ -130,8 +127,7 @@
           _ (is (= 6 gy-count) "Precondition: exactly 6 cards in graveyard")
           [db' obj-id] (th/add-card-to-zone db-with-gy :cabal-ritual :hand :player-1)
           db-with-mana (mana/add-mana db' :player-1 {:black 2})
-          db-cast (rules/cast-spell db-with-mana :player-1 obj-id)
-          db-resolved (rules/resolve-spell db-cast :player-1 obj-id)
+          db-resolved (th/cast-and-resolve db-with-mana :player-1 obj-id)
           pool (q/get-mana-pool db-resolved :player-1)]
       (is (= 3 (:black pool))
           "Should have 3B without threshold (only 6 graveyard cards, need 7)"))))

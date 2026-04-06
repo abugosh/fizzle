@@ -83,9 +83,9 @@
       ;; Opponent's 3 hand cards should be in graveyard
       (is (= 3 (th/get-zone-count resolved-db :graveyard :player-2))
           "Opponent's discarded hand cards should be in graveyard")
-      ;; Should have pending selection
-      (is (some? (:pending-selection result))
-          "Should pause for player's graveyard return selection"))))
+      ;; Should have pending graveyard-return selection
+      (is (= :graveyard-return (:selection/type (:pending-selection result)))
+          "Should pause with :graveyard-return selection for player's choice"))))
 
 
 (deftest ill-gotten-gains-selection-state-structure-test
@@ -130,6 +130,22 @@
         (is (= :opponent (:effect/target remaining-effect)))
         (is (= :random (:effect/selection remaining-effect)))))))
 
+
+;; === D. Storm Count ===
+
+(deftest ill-gotten-gains-increments-storm-count-test
+  (testing "Casting Ill-Gotten Gains increments storm count by 1"
+    (let [db (-> (th/create-test-db)
+                 (th/add-opponent))
+          [db' obj-id] (th/add-card-to-zone db :ill-gotten-gains :hand :player-1)
+          db-m (mana/add-mana db' :player-1 {:black 4})
+          storm-before (q/get-storm-count db-m :player-1)
+          db-cast (rules/cast-spell db-m :player-1 obj-id)]
+      (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
+          "Storm count should increment by 1 on cast"))))
+
+
+;; === C. Cannot-Cast Guards ===
 
 (deftest ill-gotten-gains-cannot-cast-without-mana-test
   (testing "IGG cannot be cast without {2}{B}{B}"
@@ -206,15 +222,13 @@
       ;; IGG should be exiled (exile-self effect)
       (is (= :exile (:object/zone (q/get-object (:db result) igg-id)))
           "IGG should be exiled")
-      ;; Check if there's a pending selection
-      ;; If graveyard is empty after discards, selection might still exist with 0 candidates
-      ;; or spell might resolve fully
-      (if-let [sel (:pending-selection result)]
-        ;; If selection exists, it should have 0 candidates (nothing to return)
+      ;; :return-from-graveyard with :player selection always fires a selection,
+      ;; even with 0 candidates — the executor returns {:db :needs-selection}
+      (let [sel (:pending-selection result)]
+        (is (some? sel)
+            "Selection should always fire, even with empty graveyard")
         (is (= 0 (count (:selection/candidate-ids sel)))
-            "Selection should have 0 candidates with empty graveyard")
-        ;; If no selection (empty GY shortcut), spell resolved fully
-        (is (true? true) "Spell resolved fully with empty graveyard (no selection needed)")))))
+            "Selection should have 0 candidates with empty graveyard")))))
 
 
 (deftest ill-gotten-gains-opponent-empty-graveyard-test
@@ -242,7 +256,9 @@
       (is (= 0 (th/get-zone-count (:db result) :graveyard :player-2))
           "Opponent graveyard should remain empty after discard of empty hand")
       ;; Remaining effects should include opponent's random return
-      (when-let [sel (:pending-selection result)]
+      (let [sel (:pending-selection result)]
+        (is (some? sel)
+            "Selection must exist even when opponent graveyard is empty")
         (is (= 1 (count (:selection/remaining-effects sel)))
             "Should have opponent's random return in remaining effects")
         (let [remaining (first (:selection/remaining-effects sel))]

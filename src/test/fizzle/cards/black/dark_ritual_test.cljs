@@ -33,8 +33,7 @@
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           db-with-mana (mana/add-mana db' :player-1 {:black 1})
-          db-cast (rules/cast-spell db-with-mana :player-1 obj-id)
-          db-resolved (rules/resolve-spell db-cast :player-1 obj-id)
+          db-resolved (th/cast-and-resolve db-with-mana :player-1 obj-id)
           pool (q/get-mana-pool db-resolved :player-1)]
       ;; Paid 1B to cast, gained 3B from effect = 3B in pool
       (is (= 3 (:black pool))
@@ -55,6 +54,15 @@
           "Should not be able to cast without mana"))))
 
 
+(deftest dark-ritual-cannot-cast-from-graveyard-test
+  (testing "Dark Ritual cannot be cast from graveyard (no flashback)"
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
+          db-with-mana (mana/add-mana db' :player-1 {:black 1})]
+      (is (false? (rules/can-cast? db-with-mana :player-1 obj-id))
+          "Should not be able to cast from graveyard"))))
+
+
 (deftest dark-ritual-increments-storm-count-test
   (testing "casting two Dark Rituals increments storm count to 2"
     (let [db (th/create-test-db)
@@ -63,11 +71,9 @@
           ;; Add 1B to cast first ritual
           db-with-mana (mana/add-mana db'' :player-1 {:black 1})
           ;; Cast and resolve first ritual (produces BBB)
-          db-cast-1 (rules/cast-spell db-with-mana :player-1 first-id)
-          db-resolved-1 (rules/resolve-spell db-cast-1 :player-1 first-id)
+          db-resolved-1 (th/cast-and-resolve db-with-mana :player-1 first-id)
           ;; Cast and resolve second ritual (costs 1B from the 3B pool)
-          db-cast-2 (rules/cast-spell db-resolved-1 :player-1 second-id)
-          db-resolved-2 (rules/resolve-spell db-cast-2 :player-1 second-id)
+          db-resolved-2 (th/cast-and-resolve db-resolved-1 :player-1 second-id)
           pool (q/get-mana-pool db-resolved-2 :player-1)]
       ;; Storm count should be 2
       (is (= 2 (q/get-storm-count db-resolved-2 :player-1))
