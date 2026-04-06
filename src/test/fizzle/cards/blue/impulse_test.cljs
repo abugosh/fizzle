@@ -61,6 +61,7 @@
                                                  :careful-study :mental-note]
                                                 :player-1)
           [db imp-id] (th/add-card-to-zone db :impulse :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 imp-id)
           _ (is (= :stack (th/get-object-zone db-cast imp-id))
                 "Should be on stack after casting")
@@ -87,6 +88,7 @@
                                                  :careful-study :mental-note]
                                                 :player-1)
           [db imp-id] (th/add-card-to-zone db :impulse :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 imp-id)
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)
@@ -113,6 +115,7 @@
                                                  :careful-study :mental-note]
                                                 :player-1)
           [db imp-id] (th/add-card-to-zone db :impulse :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 imp-id)
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)
@@ -171,6 +174,7 @@
                                                  [:dark-ritual :cabal-ritual :brain-freeze :careful-study]
                                                  :player-1)
           storm-before (q/get-storm-count db :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 imp-id)]
       (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
           "Storm count should increment by 1"))))
@@ -186,6 +190,7 @@
                                                 [:dark-ritual :cabal-ritual :brain-freeze :careful-study]
                                                 :player-1)
           [db imp-id] (th/add-card-to-zone db :impulse :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 imp-id)
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)
@@ -209,6 +214,7 @@
                                                  [:dark-ritual :cabal-ritual :brain-freeze :careful-study]
                                                  :player-1)
           [db imp-id] (th/add-card-to-zone db :impulse :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 imp-id)
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)
@@ -230,6 +236,7 @@
     (let [db (th/create-test-db {:mana {:blue 1 :colorless 1}})
           [db lib-ids] (th/add-cards-to-library db [:dark-ritual :cabal-ritual] :player-1)
           [db imp-id] (th/add-card-to-zone db :impulse :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 imp-id)
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
@@ -253,6 +260,7 @@
     (let [db (th/create-test-db {:mana {:blue 1 :colorless 1}})
           [db lib-ids] (th/add-cards-to-library db [:dark-ritual] :player-1)
           [db imp-id] (th/add-card-to-zone db :impulse :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 imp-id)
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
@@ -271,6 +279,7 @@
   (testing "Empty library: no selection created"
     (let [db (th/create-test-db {:mana {:blue 1 :colorless 1}})
           [db imp-id] (th/add-card-to-zone db :impulse :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 imp-id)
           result (resolution/resolve-one-item db-cast)]
       (is (nil? (:pending-selection result))

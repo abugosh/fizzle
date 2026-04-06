@@ -59,6 +59,7 @@
                                                 [:dark-ritual :cabal-ritual :brain-freeze]
                                                 :player-1)
           [db soh-id] (th/add-card-to-zone db :sleight-of-hand :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 soh-id)
           _ (is (= :stack (th/get-object-zone db-cast soh-id))
                 "Should be on stack after casting")
@@ -82,6 +83,7 @@
                                                 [:dark-ritual :cabal-ritual :brain-freeze]
                                                 :player-1)
           [db soh-id] (th/add-card-to-zone db :sleight-of-hand :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 soh-id)
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)
@@ -125,6 +127,7 @@
           [db soh-id] (th/add-card-to-zone db :sleight-of-hand :hand :player-1)
           [db _lib-ids] (th/add-cards-to-library db [:dark-ritual :cabal-ritual] :player-1)
           storm-before (q/get-storm-count db :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 soh-id)]
       (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
           "Storm count should increment by 1"))))
@@ -139,6 +142,7 @@
           [db lib-ids] (th/add-cards-to-library db [:dark-ritual :cabal-ritual :brain-freeze]
                                                 :player-1)
           [db soh-id] (th/add-card-to-zone db :sleight-of-hand :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 soh-id)
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)
@@ -159,6 +163,7 @@
           [db lib-ids] (th/add-cards-to-library db [:dark-ritual :cabal-ritual :brain-freeze]
                                                 :player-1)
           [db soh-id] (th/add-card-to-zone db :sleight-of-hand :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 soh-id)
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)
@@ -181,6 +186,7 @@
     (let [db (th/create-test-db {:mana {:blue 1}})
           [db lib-ids] (th/add-cards-to-library db [:dark-ritual] :player-1)
           [db soh-id] (th/add-card-to-zone db :sleight-of-hand :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 soh-id)
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
@@ -202,6 +208,7 @@
     (let [db (th/create-test-db {:mana {:blue 1}})
           ;; No library cards
           [db soh-id] (th/add-card-to-zone db :sleight-of-hand :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 soh-id)
           result (resolution/resolve-one-item db-cast)]
       ;; With empty library, peek has 0 cards — spell resolves without selection

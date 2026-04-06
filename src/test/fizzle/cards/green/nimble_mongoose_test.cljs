@@ -99,8 +99,8 @@
     (let [db (th/create-test-db {:mana {:green 1}})
           [db obj-id] (th/add-card-to-zone db :nimble-mongoose :hand :player-1)
           _ (is (= 0 (q/get-storm-count db :player-1)))
-          db-cast (rules/cast-spell db :player-1 obj-id)]
-      (is (= 1 (q/get-storm-count db-cast :player-1))
+          db-resolved (th/cast-and-resolve db :player-1 obj-id)]
+      (is (= 1 (q/get-storm-count db-resolved :player-1))
           "Storm count should be 1"))))
 
 

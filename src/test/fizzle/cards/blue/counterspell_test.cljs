@@ -76,9 +76,10 @@
   (testing "Counterspell counters a spell and sends it to graveyard"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Put Dark Ritual on opponent's hand and cast it
+          ;; Put Dark Ritual on stack — rules/cast-spell required, spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Verify ritual is on stack
           _ (is (= :stack (:object/zone (q/get-object db ritual-id)))
@@ -105,9 +106,10 @@
   (testing "Counterspell counters any type of spell (not card-specific)"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Put Opt on opponent's hand and cast it
+          ;; Put Opt on stack — rules/cast-spell required, spell must stay on stack as target
           [db opt-id] (th/add-card-to-zone db :opt :hand :player-2)
           db (mana/add-mana db :player-2 {:blue 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 opt-id)
           ;; Add Counterspell
           [db cs-id] (th/add-card-to-zone db :counterspell :hand :player-1)
@@ -124,9 +126,10 @@
   (testing "Cannot cast Counterspell without blue mana"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Put a spell on stack for targeting
+          ;; Put a spell on stack for targeting — rules/cast-spell required, spell must stay on stack
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Add Counterspell but no mana
           [db cs-id] (th/add-card-to-zone db :counterspell :hand :player-1)]
@@ -152,9 +155,10 @@
           db (th/add-opponent db)
           [db cs-id] (th/add-card-to-zone db :counterspell :graveyard :player-1)
           db (mana/add-mana db :player-1 {:blue 2})
-          ;; Put a spell on stack for potential targeting
+          ;; Put a spell on stack for potential targeting — rules/cast-spell required, spell must stay on stack
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)]
       (is (false? (rules/can-cast? db :player-1 cs-id))
           "Should not be castable from graveyard"))))
@@ -166,9 +170,10 @@
   (testing "Casting Counterspell increments storm count"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Put a spell on stack
+          ;; Put a spell on stack — rules/cast-spell required, spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Cast Counterspell
           [db cs-id] (th/add-card-to-zone db :counterspell :hand :player-1)
@@ -185,13 +190,15 @@
   (testing "Targets both instants and sorceries on the stack"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Put an instant on the stack
+          ;; Put instant and sorcery on stack — rules/cast-spell required, spells must stay on stack as targets
           [db opt-id] (th/add-card-to-zone db :opt :hand :player-2)
           db (mana/add-mana db :player-2 {:blue 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 opt-id)
           ;; Put a sorcery on the stack (use Duress as a sorcery)
           [db duress-id] (th/add-card-to-zone db :duress :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 duress-id)
           target-req (first (:card/targeting counterspell/card))
           targets (targeting/find-valid-targets db :player-1 target-req)]
@@ -223,9 +230,10 @@
   (testing "Counterspell fizzles when target spell resolves before it"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Put Dark Ritual on stack
+          ;; Put Dark Ritual on stack — rules/cast-spell required, spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Cast Counterspell targeting ritual
           [db cs-id] (th/add-card-to-zone db :counterspell :hand :player-1)

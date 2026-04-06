@@ -76,6 +76,7 @@
           _ (is (rules/can-cast? db :player-1 obj-id)
                 "Precondition: can cast with {5}{G}{G}")
           ;; For storm spells, we need to resolve the storm trigger too
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 obj-id)
           ;; First resolve the storm trigger (creates copies — 0 here since first spell)
           storm-items (filter #(= :storm (:stack-item/type %))
@@ -99,6 +100,7 @@
   (testing "Created Beast token has 4/4 stats"
     (let [db (th/create-test-db {:mana {:colorless 5 :green 2}})
           [db obj-id] (th/add-card-to-zone db :hunting-pack :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 obj-id)
           db-after-storm (:db (th/resolve-top db-cast))
           db-resolved (:db (th/resolve-top db-after-storm))
@@ -152,6 +154,7 @@
     (let [db (th/create-test-db {:mana {:colorless 5 :green 2}})
           [db obj-id] (th/add-card-to-zone db :hunting-pack :hand :player-1)
           storm-before (q/get-storm-count db :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 obj-id)]
       (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
           "Storm count should increment by 1"))))
@@ -165,6 +168,7 @@
           [db obj-id] (th/add-card-to-zone db :hunting-pack :hand :player-1)
           _ (is (= 0 (q/get-storm-count db :player-1))
                 "Precondition: storm count is 0 before cast")
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 obj-id)
           ;; Storm count after cast = 1, so storm trigger copies = 0
           _ (is (= 1 (q/get-storm-count db-cast :player-1))
@@ -205,6 +209,7 @@
           ;; Add mana for Hunting Pack and cast it (storm count becomes 3)
           [db3 hp-id] (th/add-card-to-zone db2r :hunting-pack :hand :player-1)
           db3m (mana/add-mana db3 :player-1 {:colorless 5 :green 2})
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db3c (rules/cast-spell db3m :player-1 hp-id)
           _ (is (= 3 (q/get-storm-count db3c :player-1))
                 "Storm count should be 3 after casting Hunting Pack")
@@ -246,6 +251,7 @@
           ;; Cast Hunting Pack (storm count becomes 2)
           [db2 hp-id] (th/add-card-to-zone db1r :hunting-pack :hand :player-1)
           db2m (mana/add-mana db2 :player-1 {:colorless 5 :green 2})
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db2c (rules/cast-spell db2m :player-1 hp-id)
           ;; Resolve storm trigger (creates 1 copy)
           db-after-storm (:db (th/resolve-top db2c))
@@ -267,6 +273,7 @@
   (testing "Beast token created by Hunting Pack has :object/is-token true"
     (let [db (th/create-test-db {:mana {:colorless 5 :green 2}})
           [db obj-id] (th/add-card-to-zone db :hunting-pack :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 obj-id)
           db-after-storm (:db (th/resolve-top db-cast))
           db-resolved (:db (th/resolve-top db-after-storm))
@@ -283,6 +290,7 @@
   (testing "Hunting Pack (original) goes to graveyard after resolution"
     (let [db (th/create-test-db {:mana {:colorless 5 :green 2}})
           [db obj-id] (th/add-card-to-zone db :hunting-pack :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 obj-id)
           db-after-storm (:db (th/resolve-top db-cast))
           db-resolved (:db (th/resolve-top db-after-storm))]

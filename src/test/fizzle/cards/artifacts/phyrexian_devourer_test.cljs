@@ -186,8 +186,8 @@
     (let [db (th/create-test-db {:mana {:colorless 6}})
           [db devourer-id] (th/add-card-to-zone db :phyrexian-devourer :hand :player-1)
           storm-before (q/get-storm-count db :player-1)
-          db-cast (rules/cast-spell db :player-1 devourer-id)]
-      (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
+          db-resolved (th/cast-and-resolve db :player-1 devourer-id)]
+      (is (= (inc storm-before) (q/get-storm-count db-resolved :player-1))
           "Storm count should increment by 1"))))
 
 

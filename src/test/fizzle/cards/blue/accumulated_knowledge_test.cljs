@@ -67,6 +67,7 @@
           [db ak-id] (th/add-card-to-zone db :accumulated-knowledge :hand :player-1)
           initial-hand (th/get-hand-count db :player-1)
           _ (is (= 1 initial-hand) "Precondition: hand has 1 card (AK)")
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 ak-id)
           _ (is (= :stack (th/get-object-zone db-cast ak-id))
                 "AK should be on stack after casting")
@@ -111,6 +112,7 @@
           [db _lib-ids] (th/add-cards-to-library db [:dark-ritual :cabal-ritual] :player-1)
           [db ak-id] (th/add-card-to-zone db :accumulated-knowledge :hand :player-1)
           storm-before (q/get-storm-count db :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 ak-id)]
       (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
           "Storm count should increment by 1"))))
@@ -130,6 +132,7 @@
           ;; Put 1 AK in graveyard
           [db _gy-ids] (th/add-cards-to-graveyard db [:accumulated-knowledge] :player-1)
           [db ak-id] (th/add-card-to-zone db :accumulated-knowledge :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 ak-id)
           result (resolution/resolve-one-item db-cast)]
       ;; Should draw 2 cards (1 AK in graveyard + 1)
@@ -150,6 +153,7 @@
                                                   [:accumulated-knowledge :accumulated-knowledge]
                                                   :player-1)
           [db ak-id] (th/add-card-to-zone db :accumulated-knowledge :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 ak-id)
           result (resolution/resolve-one-item db-cast)]
       ;; Should draw 3 cards (2 AK in graveyard + 1)
@@ -169,6 +173,7 @@
           ;; Put 1 AK in opponent's graveyard
           [db _gy-ids] (th/add-cards-to-graveyard db [:accumulated-knowledge] :player-2)
           [db ak-id] (th/add-card-to-zone db :accumulated-knowledge :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 ak-id)
           result (resolution/resolve-one-item db-cast)]
       ;; Should draw 2 cards (1 AK in opponent's graveyard + 1)
@@ -189,6 +194,7 @@
           [db _gy1] (th/add-cards-to-graveyard db [:accumulated-knowledge] :player-1)
           [db _gy2] (th/add-cards-to-graveyard db [:accumulated-knowledge] :player-2)
           [db ak-id] (th/add-card-to-zone db :accumulated-knowledge :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 ak-id)
           result (resolution/resolve-one-item db-cast)]
       ;; Should draw 3 cards (1 in own gy + 1 in opp gy + 1 base)
@@ -210,6 +216,7 @@
           [db ak-id] (th/add-card-to-zone db :accumulated-knowledge :hand :player-1)
           _ (is (= :hand (th/get-object-zone db ak-id))
                 "Precondition: AK is in hand")
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 ak-id)
           _ (is (= :stack (th/get-object-zone db-cast ak-id))
                 "Precondition: AK is on stack")
@@ -230,6 +237,7 @@
                                                   [:accumulated-knowledge :accumulated-knowledge]
                                                   :player-1)
           [db ak-id] (th/add-card-to-zone db :accumulated-knowledge :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 ak-id)
           result (resolution/resolve-one-item db-cast)]
       ;; Should draw the 1 available card
@@ -252,6 +260,7 @@
                                                  :player-1)
           ;; Cast first AK
           [db ak1-id] (th/add-card-to-zone db :accumulated-knowledge :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast-1 (rules/cast-spell db :player-1 ak1-id)
           result-1 (resolution/resolve-one-item db-cast-1)
           ;; First AK: 0 in graveyard + 1 = draw 1
@@ -271,6 +280,7 @@
           player-eid (q/get-player-eid db2 :player-1)
           db2 (d/db-with db2 [[:db/add player-eid :player/mana-pool
                                {:white 0 :blue 1 :black 0 :red 0 :green 0 :colorless 1}]])
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast-2 (rules/cast-spell db2 :player-1 ak2-id)
           result-2 (resolution/resolve-one-item db-cast-2)
           ;; After first AK resolved, hand had 1 card. Second AK was added to hand (+1 = 2).

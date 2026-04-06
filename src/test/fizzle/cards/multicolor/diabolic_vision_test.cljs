@@ -49,6 +49,7 @@
                                                  :careful-study :mental-note :island]
                                                 :player-1)
           [db dv-id] (th/add-card-to-zone db :diabolic-vision :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 dv-id)
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
@@ -100,6 +101,7 @@
                                           :player-1)
           [db dv-id] (th/add-card-to-zone db :diabolic-vision :hand :player-1)
           _ (is (= 0 (q/get-storm-count db :player-1)))
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 dv-id)]
       (is (= 1 (q/get-storm-count db-cast :player-1))))))
 
@@ -114,6 +116,7 @@
                                                  :careful-study :mental-note :island]
                                                 :player-1)
           [db dv-id] (th/add-card-to-zone db :diabolic-vision :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 dv-id)
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)
@@ -138,6 +141,7 @@
                                                  :careful-study :mental-note :island]
                                                 :player-1)
           [db dv-id] (th/add-card-to-zone db :diabolic-vision :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 dv-id)
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)
@@ -171,6 +175,7 @@
                                            :careful-study :mental-note]
                                           :player-1)
           [db dv-id] (th/add-card-to-zone db :diabolic-vision :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 dv-id)
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)
@@ -188,6 +193,7 @@
                                                 [:dark-ritual :cabal-ritual :brain-freeze]
                                                 :player-1)
           [db dv-id] (th/add-card-to-zone db :diabolic-vision :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 dv-id)
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
@@ -203,6 +209,7 @@
     (let [db (th/create-test-db {:mana {:blue 1 :black 1}})
           [db lib-ids] (th/add-cards-to-library db [:dark-ritual] :player-1)
           [db dv-id] (th/add-card-to-zone db :diabolic-vision :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 dv-id)
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
@@ -218,6 +225,7 @@
   (testing "Empty library: no selection created"
     (let [db (th/create-test-db {:mana {:blue 1 :black 1}})
           [db dv-id] (th/add-card-to-zone db :diabolic-vision :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 dv-id)
           result (resolution/resolve-one-item db-cast)]
       (is (nil? (:pending-selection result))))))

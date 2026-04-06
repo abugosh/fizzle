@@ -83,6 +83,7 @@
           ;; Tap the land
           db (th/tap-permanent db land-id)
           ;; Cast Frantic Search
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 fs-id)
           ;; Resolve → pauses at discard selection
           {:keys [db selection]} (th/resolve-top db-cast)]
@@ -153,6 +154,7 @@
           [db _] (th/add-cards-to-library db [:dark-ritual :cabal-ritual] :player-1)
           [db fs-id] (th/add-card-to-zone db :frantic-search :hand :player-1)]
       (is (= 0 (q/get-storm-count db :player-1)) "Storm count should start at 0")
+      ;; Interactive spell — rules/cast-spell required (selection on resolve)
       (let [db-cast (rules/cast-spell db :player-1 fs-id)]
         (is (= 1 (q/get-storm-count db-cast :player-1))
             "Storm count should be 1 after casting")))))
@@ -176,6 +178,7 @@
           db (th/tap-permanent db tapped-land-1)
           db (th/tap-permanent db tapped-land-2)
           ;; Cast and resolve through discard
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 fs-id)
           {db1 :db discard-sel :selection} (th/resolve-top db-cast)
           hand-cards (q/get-hand db1 :player-1)
@@ -201,6 +204,7 @@
           [db fs-id] (th/add-card-to-zone db :frantic-search :hand :player-1)
           [db land-id] (th/add-card-to-zone db :island :battlefield :player-1)
           db (th/tap-permanent db land-id)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 fs-id)
           {:keys [db selection]} (th/resolve-top db-cast)
           hand-cards (q/get-hand db :player-1)
@@ -228,6 +232,7 @@
           [db fs-id] (th/add-card-to-zone db :frantic-search :hand :player-1)
           ;; Add an UNTAPPED land (no tapped lands)
           [db untapped-land] (th/add-card-to-zone db :island :battlefield :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 fs-id)
           {:keys [db selection]} (th/resolve-top db-cast)
           hand-cards (q/get-hand db :player-1)
@@ -253,6 +258,7 @@
           [db land-2] (th/add-card-to-zone db :island :battlefield :player-1)
           db (th/tap-permanent db land-1)
           db (th/tap-permanent db land-2)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 fs-id)
           {:keys [db selection]} (th/resolve-top db-cast)
           hand-cards (q/get-hand db :player-1)
@@ -279,6 +285,7 @@
           [db opp-land] (th/add-card-to-zone db :island :battlefield :player-2)
           db (th/tap-permanent db my-land)
           db (th/tap-permanent db opp-land)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 fs-id)
           {db1 :db discard-sel :selection} (th/resolve-top db-cast)
           hand-cards (q/get-hand db1 :player-1)
@@ -298,6 +305,7 @@
           [db fs-id] (th/add-card-to-zone db :frantic-search :hand :player-1)
           [db land-id] (th/add-card-to-zone db :island :battlefield :player-1)
           db (th/tap-permanent db land-id)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 fs-id)
           {:keys [db selection]} (th/resolve-top db-cast)
           hand-cards (q/get-hand db :player-1)

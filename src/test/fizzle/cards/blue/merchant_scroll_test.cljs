@@ -65,6 +65,7 @@
           [db obj-id] (th/add-card-to-zone db :merchant-scroll :hand :player-1)
           _ (is (= 0 (q/get-storm-count db :player-1))
                 "Storm count should start at 0")
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 obj-id)]
       (is (= 1 (q/get-storm-count db-cast :player-1))
           "Storm count should be 1 after casting Merchant Scroll"))))
@@ -191,6 +192,7 @@
           ;; Add Merchant Scroll to hand
           [db'' ms-id] (th/add-card-to-zone db' :merchant-scroll :hand :player-1)
           ;; Cast Merchant Scroll
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
           _ (is (= :stack (th/get-object-zone db-after-cast ms-id))
                 "Merchant Scroll should be on stack")
@@ -216,6 +218,7 @@
                                                  :player-1)
           [db ms-id] (th/add-card-to-zone db :merchant-scroll :hand :player-1)
           ;; Cast and resolve to get selection
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 ms-id)
           {:keys [db selection]} (th/resolve-top db-cast)
           hand-before (th/get-hand-count db :player-1)
@@ -237,6 +240,7 @@
                                                       :player-1)
           [db ms-id] (th/add-card-to-zone db :merchant-scroll :hand :player-1)
           ;; Cast and resolve to get selection
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 ms-id)
           {:keys [db selection]} (th/resolve-top db-cast)
           hand-before (th/get-hand-count db :player-1)
@@ -263,6 +267,7 @@
                                                             :player-1)
           [db ms-id] (th/add-card-to-zone db :merchant-scroll :hand :player-1)
           ;; Cast and resolve to get selection
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 ms-id)
           {:keys [db selection]} (th/resolve-top db-cast)
           ;; Confirm selecting Brain Freeze via production path
@@ -328,6 +333,7 @@
           ;; Add Merchant Scroll to hand
           [db'' ms-id] (th/add-card-to-zone db' :merchant-scroll :hand :player-1)
           ;; Cast
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
           ;; Resolve (triggers selection)
           result (resolution/resolve-one-item db-after-cast)
@@ -346,6 +352,7 @@
           ;; Dark Ritual is a black instant - should not match
           [db' [_dr-id]] (th/add-cards-to-library db [:dark-ritual] :player-1)
           [db'' ms-id] (th/add-card-to-zone db' :merchant-scroll :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
           result (resolution/resolve-one-item db-after-cast)
           candidates (get-in result [:pending-selection :selection/candidates])]
@@ -359,6 +366,7 @@
           ;; Careful Study is blue sorcery - should not match
           [db' [_cs-id]] (th/add-cards-to-library db [:careful-study] :player-1)
           [db'' ms-id] (th/add-card-to-zone db' :merchant-scroll :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
           result (resolution/resolve-one-item db-after-cast)
           candidates (get-in result [:pending-selection :selection/candidates])]
@@ -372,6 +380,7 @@
           ;; Brain Freeze is valid target but player can decline
           [db' [_bf-id]] (th/add-cards-to-library db [:brain-freeze] :player-1)
           [db'' ms-id] (th/add-card-to-zone db' :merchant-scroll :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
           result (resolution/resolve-one-item db-after-cast)]
       ;; Must have fail-to-find option (anti-pattern: NO auto-select)
@@ -390,6 +399,7 @@
     (let [db (th/create-test-db {:mana {:blue 2}})
           ;; No cards in library
           [db' ms-id] (th/add-card-to-zone db :merchant-scroll :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-after-cast (rules/cast-spell db' :player-1 ms-id)
           result (resolution/resolve-one-item db-after-cast)]
       ;; No candidates
@@ -406,6 +416,7 @@
           ;; Library has cards but no blue instants
           [db' _] (th/add-cards-to-library db [:dark-ritual :careful-study :island] :player-1)
           [db'' ms-id] (th/add-card-to-zone db' :merchant-scroll :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-after-cast (rules/cast-spell db'' :player-1 ms-id)
           result (resolution/resolve-one-item db-after-cast)]
       (is (empty? (get-in result [:pending-selection :selection/candidates]))

@@ -90,6 +90,7 @@
           [db obj-id] (th/add-card-to-zone db :intuition :hand :player-1)
           _ (is (= 0 (q/get-storm-count db :player-1))
                 "Storm count should start at 0")
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 obj-id)]
       (is (= 1 (q/get-storm-count db-cast :player-1))
           "Storm count should be 1 after casting Intuition"))))
@@ -105,6 +106,7 @@
                                                   :player-1)
           [db int-id] (th/add-card-to-zone db :intuition :hand :player-1)
           ;; Cast and resolve through production path
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 int-id)
           {:keys [selection]} (th/resolve-top db-cast)]
       ;; Verify tutor selection was created
@@ -126,6 +128,7 @@
           ;; Add Intuition to hand
           [db'' int-id] (th/add-card-to-zone db' :intuition :hand :player-1)
           ;; Cast Intuition (already has 3 blue mana from create-test-db)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db'' :player-1 int-id)
           _ (is (= :stack (:object/zone (q/get-object db-cast int-id)))
                 "Precondition: Intuition on stack")

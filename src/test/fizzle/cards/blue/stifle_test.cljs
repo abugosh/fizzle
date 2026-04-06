@@ -204,6 +204,7 @@
     (let [db (th/create-test-db {:mana {:blue 1}})
           [db stifle-id] (th/add-card-to-zone db :stifle :hand :player-1)
           storm-before (q/get-storm-count db :player-1)
+          ;; Interactive spell — rules/cast-spell required (Stifle requires cast-time targeting)
           db-cast (rules/cast-spell db :player-1 stifle-id)]
       (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
           "Storm count should increment by 1"))))
@@ -266,7 +267,7 @@
   (testing "Stifle cannot counter spells (only abilities)"
     (let [db (th/create-test-db {:mana {:blue 2}})
           [db bolt-id] (th/add-card-to-zone db :lightning-bolt :hand :player-1)
-          ;; Cast Lightning Bolt (it's a spell, not an ability)
+          ;; rules/cast-spell required — spell must remain on stack as test subject for counter-ability
           db-cast (rules/cast-spell db :player-1 bolt-id)
           bolt-obj-eid (q/get-object-eid db-cast bolt-id)
           bolt-stack-item (stack/get-stack-item-by-object-ref db-cast bolt-obj-eid)

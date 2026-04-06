@@ -159,6 +159,8 @@
           ;; Cast Brain Freeze as 3rd spell (bypass targeting for storm count test)
           [db bf-id] (th/add-card-to-zone db :brain-freeze :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1 :colorless 1})
+          ;; Interactive spell — rules/cast-spell required (Brain Freeze requires cast-time targeting;
+          ;; also need spell on stack to check storm trigger is created before resolution)
           db-bf-cast (rules/cast-spell db :player-1 bf-id)
           ;; Storm count should now be 3
           _ (is (= 3 (q/get-storm-count db-bf-cast :player-1))
@@ -304,8 +306,8 @@
           copy (first (filter :object/is-copy stack-objects))
           copy-id (:object/id copy)]
       (is (true? (:object/is-copy copy)) "Copy should have :object/is-copy true")
-      ;; Resolve the copy - use rules/resolve-spell (copy lifecycle test, not targeting test)
-      (let [db-resolved (rules/resolve-spell db-with-copy :player-1 copy-id)]
+      ;; Resolve the copy via production path (copy is on top of stack)
+      (let [db-resolved (:db (resolution/resolve-one-item db-with-copy))]
         (is (nil? (q/get-object db-resolved copy-id))
             "Copy should be completely removed from db (cease to exist)")
         ;; Verify it's NOT in graveyard

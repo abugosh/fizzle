@@ -126,7 +126,7 @@
       (let [db (th/create-test-db {:mana {:colorless 2}})
             [db obj-id] (th/add-card-to-zone db card-id :hand :player-1)
             _ (is (= 0 (q/get-storm-count db :player-1)))
-            db (rules/cast-spell db :player-1 obj-id)]
+            db (th/cast-and-resolve db :player-1 obj-id)]
         (is (= 1 (q/get-storm-count db :player-1))
             "Storm count should be 1 after casting medallion")))))
 

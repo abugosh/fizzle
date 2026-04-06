@@ -105,6 +105,7 @@
           ;; Put a blue spell on stack
           [db opt-id] (th/add-card-to-zone db :opt :hand :player-2)
           db (mana/add-mana db :player-2 {:blue 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 opt-id)
           ;; Add Pyroblast
           [db pyro-id] (th/add-card-to-zone db :pyroblast :hand :player-1)
@@ -146,6 +147,7 @@
           db (th/add-opponent db)
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           [db pyro-id] (th/add-card-to-zone db :pyroblast :hand :player-1)]
       (is (false? (rules/can-cast? db :player-1 pyro-id))
@@ -170,6 +172,7 @@
           db (mana/add-mana db :player-1 {:red 1})
           [db opt-id] (th/add-card-to-zone db :opt :hand :player-2)
           db (mana/add-mana db :player-2 {:blue 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 opt-id)]
       (is (false? (rules/can-cast? db :player-1 pyro-id))
           "Should not be castable from graveyard"))))
@@ -183,6 +186,7 @@
           db (th/add-opponent db)
           [db opt-id] (th/add-card-to-zone db :opt :hand :player-2)
           db (mana/add-mana db :player-2 {:blue 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 opt-id)
           [db pyro-id] (th/add-card-to-zone db :pyroblast :hand :player-1)
           db (mana/add-mana db :player-1 {:red 1})
@@ -202,10 +206,12 @@
           ;; Put a blue spell on stack
           [db opt-id] (th/add-card-to-zone db :opt :hand :player-2)
           db (mana/add-mana db :player-2 {:blue 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 opt-id)
           ;; Put a black spell on stack
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Check counter mode targeting
           counter-mode (first (:card/modes pyroblast/card))
@@ -245,6 +251,7 @@
           ;; Put a black spell (Dark Ritual) on stack
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Cast Pyroblast targeting the non-blue spell
           [db pyro-id] (th/add-card-to-zone db :pyroblast :hand :player-1)
@@ -289,6 +296,7 @@
           ;; Only non-blue spell on stack
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           [db pyro-id] (th/add-card-to-zone db :pyroblast :hand :player-1)
           db (mana/add-mana db :player-1 {:red 1})]

@@ -140,7 +140,7 @@
           [db obj-id] (th/add-card-to-zone db :sphere-of-resistance :hand :player-1)
           _ (is (= 0 (q/get-storm-count db :player-1))
                 "Storm count should start at 0")
-          db (rules/cast-spell db :player-1 obj-id)]
+          db (th/cast-and-resolve db :player-1 obj-id)]
       (is (= 1 (q/get-storm-count db :player-1))
           "Storm count should be 1 after casting Sphere"))))
 
@@ -267,6 +267,7 @@
     (let [db (th/create-test-db {:mana {:black 2}})
           [db _] (th/add-card-to-zone db :sphere-of-resistance :battlefield :player-1)
           [db obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          ;; rules/cast-spell required — test verifies mana state on stack before resolution
           db-cast (rules/cast-spell db :player-1 obj-id)]
       (is (= :stack (th/get-object-zone db-cast obj-id))
           "Dark Ritual should be on stack")
@@ -334,7 +335,7 @@
     (let [db (th/create-test-db {:mana {:colorless 2 :black 1}})
           [db sphere-id] (th/add-card-to-zone db :sphere-of-resistance :hand :player-1)
           [db dr-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
-          ;; Cast Sphere first — it goes to stack
+          ;; Cast Sphere first — rules/cast-spell required, Sphere must stay on stack to test no-effect
           db (rules/cast-spell db :player-1 sphere-id)
           _ (is (= :stack (th/get-object-zone db sphere-id))
                 "Sphere should be on stack")

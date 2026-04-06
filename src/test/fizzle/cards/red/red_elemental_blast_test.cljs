@@ -116,6 +116,7 @@
           ;; Put a blue spell (Opt) on opponent's stack
           [db opt-id] (th/add-card-to-zone db :opt :hand :player-2)
           db (mana/add-mana db :player-2 {:blue 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 opt-id)
           ;; Add REB to player's hand with R mana
           [db reb-id] (th/add-card-to-zone db :red-elemental-blast :hand :player-1)
@@ -162,6 +163,7 @@
           ;; Put a blue spell on stack for targeting
           [db opt-id] (th/add-card-to-zone db :opt :hand :player-2)
           db (mana/add-mana db :player-2 {:blue 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 opt-id)
           ;; Add REB but no mana
           [db reb-id] (th/add-card-to-zone db :red-elemental-blast :hand :player-1)]
@@ -176,6 +178,7 @@
           ;; Put a non-blue spell on stack (Dark Ritual is black)
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Add REB with mana
           [db reb-id] (th/add-card-to-zone db :red-elemental-blast :hand :player-1)
@@ -193,6 +196,7 @@
           ;; Put a blue spell on stack
           [db opt-id] (th/add-card-to-zone db :opt :hand :player-2)
           db (mana/add-mana db :player-2 {:blue 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 opt-id)]
       (is (false? (rules/can-cast? db :player-1 reb-id))
           "Should not be castable from graveyard"))))
@@ -207,6 +211,7 @@
           ;; Put a blue spell on stack
           [db opt-id] (th/add-card-to-zone db :opt :hand :player-2)
           db (mana/add-mana db :player-2 {:blue 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 opt-id)
           ;; Cast REB
           [db reb-id] (th/add-card-to-zone db :red-elemental-blast :hand :player-1)
@@ -227,10 +232,12 @@
           ;; Put a blue spell on stack
           [db opt-id] (th/add-card-to-zone db :opt :hand :player-2)
           db (mana/add-mana db :player-2 {:blue 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 opt-id)
           ;; Put a black spell on stack
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Check counter mode targeting
           counter-mode (first (:card/modes reb/card))
@@ -267,6 +274,7 @@
           ;; Put a black spell on stack only
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Check counter mode targeting
           counter-mode (first (:card/modes reb/card))
@@ -298,6 +306,7 @@
           ;; Put a blue spell on stack
           [db opt-id] (th/add-card-to-zone db :opt :hand :player-2)
           db (mana/add-mana db :player-2 {:blue 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 opt-id)
           ;; Add REB with mana
           [db reb-id] (th/add-card-to-zone db :red-elemental-blast :hand :player-1)
@@ -313,6 +322,7 @@
           ;; Put a blue spell on stack
           [db opt-id] (th/add-card-to-zone db :opt :hand :player-2)
           db (mana/add-mana db :player-2 {:blue 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 opt-id)
           ;; Cast REB targeting Opt
           [db reb-id] (th/add-card-to-zone db :red-elemental-blast :hand :player-1)

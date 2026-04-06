@@ -65,7 +65,7 @@
                 "Precondition: caster has 3 cards in hand (IGG + 2)")
           _ (is (= 3 (th/get-zone-count db-with-mana :hand :player-2))
                 "Precondition: opponent has 3 cards in hand")
-          ;; Cast and resolve with selection
+          ;; Interactive spell — rules/cast-spell required (IGG pauses for graveyard-return selection)
           db-cast (rules/cast-spell db-with-mana :player-1 igg-id)
           result (resolution/resolve-one-item db-cast)
           resolved-db (:db result)]
@@ -100,6 +100,7 @@
           [db3 gy2-id] (th/add-card-to-zone db2 :cabal-ritual :graveyard :player-1)
           ;; Add mana and cast
           db-m (mana/add-mana db3 :player-1 {:black 4})
+          ;; Interactive spell — rules/cast-spell required (IGG pauses for graveyard-return selection)
           db-cast (rules/cast-spell db-m :player-1 igg-id)
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
@@ -140,6 +141,7 @@
           [db' obj-id] (th/add-card-to-zone db :ill-gotten-gains :hand :player-1)
           db-m (mana/add-mana db' :player-1 {:black 4})
           storm-before (q/get-storm-count db-m :player-1)
+          ;; Interactive spell — rules/cast-spell required (IGG pauses for graveyard-return selection on resolve)
           db-cast (rules/cast-spell db-m :player-1 obj-id)]
       (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
           "Storm count should increment by 1 on cast"))))
@@ -182,7 +184,7 @@
           [db3 gy3-id] (th/add-card-to-zone db2 :brain-freeze :graveyard :player-1)
           ;; Add mana
           db-m (mana/add-mana db3 :player-1 {:black 4})
-          ;; Cast and resolve
+          ;; Interactive spell — rules/cast-spell required (IGG pauses for graveyard-return selection)
           db-cast (rules/cast-spell db-m :player-1 igg-id)
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
@@ -216,7 +218,7 @@
                 "Precondition: graveyard is empty")
           ;; Add mana
           db-m (mana/add-mana db' :player-1 {:black 4})
-          ;; Cast and resolve
+          ;; Interactive spell — rules/cast-spell required (IGG pauses for graveyard-return selection)
           db-cast (rules/cast-spell db-m :player-1 igg-id)
           result (resolution/resolve-one-item db-cast)]
       ;; IGG should be exiled (exile-self effect)
@@ -244,6 +246,7 @@
           ;; Add IGG to caster's hand (only card)
           [db' igg-id] (th/add-card-to-zone db :ill-gotten-gains :hand :player-1)
           db-m (mana/add-mana db' :player-1 {:black 4})
+          ;; Interactive spell — rules/cast-spell required (IGG pauses for graveyard-return selection)
           db-cast (rules/cast-spell db-m :player-1 igg-id)
           result (resolution/resolve-one-item db-cast)]
       ;; IGG should be exiled

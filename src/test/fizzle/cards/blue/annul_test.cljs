@@ -77,8 +77,9 @@
   (testing "Annul counters an artifact spell on the stack"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Put Lotus Petal on stack (artifact)
+          ;; Put Lotus Petal on stack (artifact) — rules/cast-spell required, spell must stay on stack
           [db petal-id] (th/add-card-to-zone db :lotus-petal :hand :player-2)
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 petal-id)
           ;; Verify Lotus Petal is on stack
           _ (is (= :stack (:object/zone (q/get-object db petal-id)))
@@ -101,9 +102,10 @@
   (testing "Annul counters an enchantment spell on the stack"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Put Seal of Cleansing on stack (enchantment)
+          ;; Put Seal of Cleansing on stack (enchantment) — rules/cast-spell required, spell must stay on stack
           [db seal-id] (th/add-card-to-zone db :seal-of-cleansing :hand :player-2)
           db (mana/add-mana db :player-2 {:white 2})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 seal-id)
           ;; Add Annul
           [db annul-id] (th/add-card-to-zone db :annul :hand :player-1)
@@ -120,8 +122,9 @@
   (testing "Cannot cast Annul without blue mana"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Put artifact on stack
+          ;; Put artifact on stack — rules/cast-spell required, spell must stay on stack as target context
           [db petal-id] (th/add-card-to-zone db :lotus-petal :hand :player-2)
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 petal-id)
           ;; Add Annul but no mana
           [db annul-id] (th/add-card-to-zone db :annul :hand :player-1)]
@@ -133,9 +136,10 @@
   (testing "Cannot target an instant spell with Annul"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Put an instant (Dark Ritual) on stack
+          ;; Put an instant (Dark Ritual) on stack — rules/cast-spell required, spell must stay on stack
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           target-req (first (:card/targeting annul/card))
           targets (targeting/find-valid-targets db :player-1 target-req)]
@@ -147,9 +151,10 @@
   (testing "Cannot target a sorcery spell with Annul"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Put a sorcery (Duress) on stack
+          ;; Put a sorcery (Duress) on stack — rules/cast-spell required, spell must stay on stack
           [db duress-id] (th/add-card-to-zone db :duress :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 duress-id)
           target-req (first (:card/targeting annul/card))
           targets (targeting/find-valid-targets db :player-1 target-req)]
@@ -163,8 +168,9 @@
   (testing "Casting Annul increments storm count"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Put artifact on stack
+          ;; Put artifact on stack — rules/cast-spell required, spell must stay on stack as target
           [db petal-id] (th/add-card-to-zone db :lotus-petal :hand :player-2)
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 petal-id)
           ;; Cast Annul
           [db annul-id] (th/add-card-to-zone db :annul :hand :player-1)
@@ -181,12 +187,14 @@
   (testing "Annul only targets artifact and enchantment spells"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Put artifact on stack
+          ;; Put artifact and instant on stack — rules/cast-spell required, spells must stay on stack
           [db petal-id] (th/add-card-to-zone db :lotus-petal :hand :player-2)
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 petal-id)
           ;; Put instant on stack
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           target-req (first (:card/targeting annul/card))
           targets (targeting/find-valid-targets db :player-1 target-req)]
@@ -201,8 +209,9 @@
   (testing "Annul fizzles when target spell resolves before it"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Put artifact on stack
+          ;; Put artifact on stack — rules/cast-spell required, spell must stay on stack as target
           [db petal-id] (th/add-card-to-zone db :lotus-petal :hand :player-2)
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 petal-id)
           ;; Cast Annul targeting petal
           [db annul-id] (th/add-card-to-zone db :annul :hand :player-1)
@@ -228,6 +237,7 @@
           ;; Put an instant on stack
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Add Annul with mana
           [db annul-id] (th/add-card-to-zone db :annul :hand :player-1)

@@ -89,7 +89,7 @@
     (let [db (th/create-test-db {:mana {:colorless 2}})
           [db obj-id] (th/add-card-to-zone db :helm-of-awakening :hand :player-1)
           _ (is (= 0 (q/get-storm-count db :player-1)))
-          db (rules/cast-spell db :player-1 obj-id)]
+          db (th/cast-and-resolve db :player-1 obj-id)]
       (is (= 1 (q/get-storm-count db :player-1))))))
 
 
@@ -258,6 +258,7 @@
     (let [db (th/create-test-db {:mana {:colorless 2 :black 1}})
           [db helm-id] (th/add-card-to-zone db :helm-of-awakening :hand :player-1)
           [db dr-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          ;; rules/cast-spell required — Helm must stay on stack to test it has no effect while being cast
           db (rules/cast-spell db :player-1 helm-id)
           _ (is (= :stack (th/get-object-zone db helm-id)))
           db (mana/add-mana db :player-1 {:black 1})]

@@ -97,9 +97,7 @@
           [db obj-id] (th/add-card-to-zone db :tormods-crypt :hand :player-1)
           _ (is (true? (rules/can-cast? db :player-1 obj-id))
                 "Should be castable with 0 mana")
-          db-cast (rules/cast-spell db :player-1 obj-id)
-          result (resolution/resolve-one-item db-cast)
-          db-resolved (:db result)]
+          db-resolved (th/cast-and-resolve db :player-1 obj-id)]
       (is (= :battlefield (:object/zone (q/get-object db-resolved obj-id)))
           "Tormod's Crypt should be on battlefield after resolution"))))
 
@@ -185,8 +183,8 @@
           db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :tormods-crypt :hand :player-1)
           storm-before (q/get-storm-count db :player-1)
-          db-cast (rules/cast-spell db :player-1 obj-id)]
-      (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
+          db-resolved (th/cast-and-resolve db :player-1 obj-id)]
+      (is (= (inc storm-before) (q/get-storm-count db-resolved :player-1))
           "Storm count should increment by 1"))))
 
 

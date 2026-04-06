@@ -84,9 +84,10 @@
   (testing "Mana Leak counters spell when controller declines to pay"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Opponent casts Dark Ritual
+          ;; Opponent casts Dark Ritual — rules/cast-spell required, spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Cast Mana Leak targeting ritual
           [db ml-id] (th/add-card-to-zone db :mana-leak :hand :player-1)
@@ -110,9 +111,10 @@
   (testing "Spell survives when controller pays {3}"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Opponent casts Dark Ritual with extra mana to pay
+          ;; Opponent casts Dark Ritual — rules/cast-spell required, spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1 :colorless 3})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Cast Mana Leak
           [db ml-id] (th/add-card-to-zone db :mana-leak :hand :player-1)
@@ -138,9 +140,10 @@
   (testing "Cannot cast Mana Leak without sufficient mana"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Put a spell on stack
+          ;; Put a spell on stack — rules/cast-spell required, spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Mana Leak in hand with no mana
           [db ml-id] (th/add-card-to-zone db :mana-leak :hand :player-1)]
@@ -166,9 +169,10 @@
           db (th/add-opponent db)
           [db ml-id] (th/add-card-to-zone db :mana-leak :graveyard :player-1)
           db (mana/add-mana db :player-1 {:blue 1 :colorless 1})
-          ;; Put a spell on stack
+          ;; Put a spell on stack — rules/cast-spell required, spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)]
       (is (false? (rules/can-cast? db :player-1 ml-id))
           "Should not be castable from graveyard"))))
@@ -180,9 +184,10 @@
   (testing "Casting Mana Leak increments storm count"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Put a spell on stack
+          ;; Put a spell on stack — rules/cast-spell required, spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Cast Mana Leak
           [db ml-id] (th/add-card-to-zone db :mana-leak :hand :player-1)
@@ -199,11 +204,14 @@
   (testing "Targets both instants and sorceries on the stack"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
+          ;; rules/cast-spell required — spells must stay on stack as targets
           [db opt-id] (th/add-card-to-zone db :opt :hand :player-2)
           db (mana/add-mana db :player-2 {:blue 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 opt-id)
           [db duress-id] (th/add-card-to-zone db :duress :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 duress-id)
           target-req (first (:card/targeting mana-leak/card))
           targets (targeting/find-valid-targets db :player-1 target-req)]
@@ -217,8 +225,10 @@
   (testing "Selection includes :pay when controller has enough mana"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
+          ;; rules/cast-spell required — spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1 :colorless 3})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           [db ml-id] (th/add-card-to-zone db :mana-leak :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1 :colorless 1})
@@ -233,8 +243,10 @@
   (testing "Selection always offers both :pay and :decline (can-pay checked reactively)"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
+          ;; rules/cast-spell required — spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Opponent has 0 remaining mana after casting ritual
           [db ml-id] (th/add-card-to-zone db :mana-leak :hand :player-1)
@@ -252,8 +264,10 @@
   (testing "Mana Leak fizzles when target spell resolves before it"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
+          ;; rules/cast-spell required — spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           [db ml-id] (th/add-card-to-zone db :mana-leak :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1 :colorless 1})
@@ -271,8 +285,10 @@
   (testing "Controller with less than {3} available cannot pay"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
+          ;; rules/cast-spell required — spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1 :colorless 2})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           [db ml-id] (th/add-card-to-zone db :mana-leak :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1 :colorless 1})

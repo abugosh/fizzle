@@ -100,7 +100,7 @@
           [db obj-id] (th/add-card-to-zone db :chill :hand :player-1)
           _ (is (= 0 (q/get-storm-count db :player-1))
                 "Storm count should start at 0")
-          db (rules/cast-spell db :player-1 obj-id)]
+          db (th/cast-and-resolve db :player-1 obj-id)]
       (is (= 1 (q/get-storm-count db :player-1))
           "Storm count should be 1 after casting Chill"))))
 
@@ -205,6 +205,7 @@
     (let [db (th/create-test-db {:mana {:red 1 :colorless 2}})
           [db _] (th/add-card-to-zone db :chill :battlefield :player-1)
           [db obj-id] (th/add-card-to-zone db :lightning-bolt :hand :player-1)
+          ;; rules/cast-spell required — test verifies mana state on stack before resolution
           db-cast (rules/cast-spell db :player-1 obj-id)]
       (is (= :stack (th/get-object-zone db-cast obj-id))
           "Lightning Bolt should be on stack")

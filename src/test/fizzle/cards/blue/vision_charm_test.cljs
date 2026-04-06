@@ -260,6 +260,7 @@
           obj-eid (q/get-object-eid db vc-id)
           db (d/db-with db [[:db/add obj-eid :object/chosen-mode mode-2]])
           ;; Pay the mana and put on stack
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-on-stack (rules/cast-spell db :player-1 vc-id)
           ;; Resolve — should return a selection
           result (th/resolve-top db-on-stack)]
@@ -279,6 +280,7 @@
           obj-eid (q/get-object-eid db vc-id)
           db (d/db-with db [[:db/add obj-eid :object/chosen-mode mode-2]])
           ;; Cast the spell (puts it on stack with chosen mode)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-on-stack (rules/cast-spell db :player-1 vc-id)
           ;; Resolve → should return source land type selection
           {:keys [db selection]} (th/resolve-top db-on-stack)
@@ -313,6 +315,7 @@
           mode-2 (get (:card/modes vision-charm/card) 1)
           obj-eid (q/get-object-eid db vc-id)
           db (d/db-with db [[:db/add obj-eid :object/chosen-mode mode-2]])
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-on-stack (rules/cast-spell db :player-1 vc-id)
           {:keys [db selection]} (th/resolve-top db-on-stack)
           {:keys [db selection]} (th/confirm-selection db selection #{:island})

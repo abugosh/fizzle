@@ -69,6 +69,7 @@
           [db sb-id] (th/add-card-to-zone db :recoup :sideboard :player-1)
           [db wish-id] (th/add-card-to-zone db :burning-wish :hand :player-1)
           ;; Cast Burning Wish
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 wish-id)
           ;; Resolve — exile-self executes, then tutor pauses for selection
           {:keys [db selection]} (th/resolve-top db-cast)
@@ -118,6 +119,7 @@
           [db _] (th/add-card-to-zone db :recoup :sideboard :player-1)
           [db wish-id] (th/add-card-to-zone db :burning-wish :hand :player-1)
           storm-before (q/get-storm-count db :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 wish-id)
           storm-after (q/get-storm-count db-cast :player-1)]
       (is (= (inc storm-before) storm-after)
@@ -133,6 +135,7 @@
   (testing "Fail-to-find when sideboard is empty"
     (let [db (th/create-test-db {:mana {:colorless 1 :red 1}})
           [db wish-id] (th/add-card-to-zone db :burning-wish :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 wish-id)
           {:keys [db selection]} (th/resolve-top db-cast)
           _ (is (empty? (:selection/candidates selection))
@@ -150,6 +153,7 @@
           [db _] (th/add-card-to-zone db :brain-freeze :sideboard :player-1)
           [db _] (th/add-card-to-zone db :dark-ritual :sideboard :player-1)
           [db wish-id] (th/add-card-to-zone db :burning-wish :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 wish-id)
           {:keys [selection]} (th/resolve-top db-cast)]
       (is (empty? (:selection/candidates selection))
@@ -162,6 +166,7 @@
     (let [db (th/create-test-db {:mana {:colorless 1 :red 1}})
           [db sb-id] (th/add-card-to-zone db :recoup :sideboard :player-1)
           [db wish-id] (th/add-card-to-zone db :burning-wish :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 wish-id)
           {:keys [db selection]} (th/resolve-top db-cast)
           _ (is (= 1 (count (:selection/candidates selection)))
@@ -186,6 +191,7 @@
           [db _] (th/add-card-to-zone db :brain-freeze :sideboard :player-1)
           [db _] (th/add-card-to-zone db :island :sideboard :player-1)
           [db wish-id] (th/add-card-to-zone db :burning-wish :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 wish-id)
           {:keys [selection]} (th/resolve-top db-cast)]
       (is (= 1 (count (:selection/candidates selection)))
@@ -200,6 +206,7 @@
     (let [db (th/create-test-db {:mana {:colorless 1 :red 1}})
           [db _] (th/add-card-to-zone db :recoup :sideboard :player-1)
           [db wish-id] (th/add-card-to-zone db :burning-wish :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 wish-id)
           {:keys [db]} (th/resolve-top db-cast)]
       (is (= :exile (th/get-object-zone db wish-id))
@@ -212,6 +219,7 @@
     (let [db (th/create-test-db {:mana {:colorless 1 :red 1}})
           [db _] (th/add-cards-to-library db [:careful-study] :player-1)
           [db wish-id] (th/add-card-to-zone db :burning-wish :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 wish-id)
           {:keys [selection]} (th/resolve-top db-cast)]
       (is (empty? (:selection/candidates selection))
@@ -227,6 +235,7 @@
           [db wish-id] (th/add-card-to-zone db :burning-wish :hand :player-1)
           lib-before (q/get-objects-in-zone db :player-1 :library)
           positions-before (into {} (map (fn [o] [(:object/id o) (:object/position o)]) lib-before))
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 wish-id)
           {:keys [db selection]} (th/resolve-top db-cast)
           {:keys [db]} (th/confirm-selection db selection #{sb-id})

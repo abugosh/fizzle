@@ -212,7 +212,7 @@
           flashback-mode (first (filter #(= :granted-flashback (:mode/id %)) modes))]
       ;; Mode should exist and have :exile on-resolve
       (is (= :exile (:mode/on-resolve flashback-mode)) "Mode should have :exile on-resolve")
-      ;; Cast with the flashback mode
+      ;; Cast with the flashback mode — rules/cast-spell-mode required (flashback alternate-cost mode)
       (let [db-fb-cast (rules/cast-spell-mode db-recoup-resolved :player-1 sorcery-id flashback-mode)
             ;; Verify cast mode stored on object
             sorcery-obj (q/get-object db-fb-cast sorcery-id)

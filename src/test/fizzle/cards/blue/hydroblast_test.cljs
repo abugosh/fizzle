@@ -90,6 +90,7 @@
           db (th/add-opponent db)
           [db bolt-id] (th/add-card-to-zone db :lightning-bolt :hand :player-2)
           db (mana/add-mana db :player-2 {:red 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 bolt-id)
           [db hydro-id] (th/add-card-to-zone db :hydroblast :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})
@@ -126,6 +127,7 @@
           db (th/add-opponent db)
           [db bolt-id] (th/add-card-to-zone db :lightning-bolt :hand :player-2)
           db (mana/add-mana db :player-2 {:red 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 bolt-id)
           [db hydro-id] (th/add-card-to-zone db :hydroblast :hand :player-1)]
       (is (false? (rules/can-cast? db :player-1 hydro-id))
@@ -150,6 +152,7 @@
           db (mana/add-mana db :player-1 {:blue 1})
           [db bolt-id] (th/add-card-to-zone db :lightning-bolt :hand :player-2)
           db (mana/add-mana db :player-2 {:red 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 bolt-id)]
       (is (false? (rules/can-cast? db :player-1 hydro-id))
           "Should not be castable from graveyard"))))
@@ -163,6 +166,7 @@
           db (th/add-opponent db)
           [db bolt-id] (th/add-card-to-zone db :lightning-bolt :hand :player-2)
           db (mana/add-mana db :player-2 {:red 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 bolt-id)
           [db hydro-id] (th/add-card-to-zone db :hydroblast :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})
@@ -181,9 +185,11 @@
           db (th/add-opponent db)
           [db bolt-id] (th/add-card-to-zone db :lightning-bolt :hand :player-2)
           db (mana/add-mana db :player-2 {:red 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 bolt-id)
           [db opt-id] (th/add-card-to-zone db :opt :hand :player-2)
           db (mana/add-mana db :player-2 {:blue 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 opt-id)
           counter-mode (first (:card/modes hydroblast/card))
           target-req (first (:mode/targeting counter-mode))
@@ -201,6 +207,7 @@
           ;; Put a blue spell on stack
           [db opt-id] (th/add-card-to-zone db :opt :hand :player-2)
           db (mana/add-mana db :player-2 {:blue 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 opt-id)
           [db hydro-id] (th/add-card-to-zone db :hydroblast :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})
@@ -235,6 +242,7 @@
           db (th/add-opponent db)
           [db opt-id] (th/add-card-to-zone db :opt :hand :player-2)
           db (mana/add-mana db :player-2 {:blue 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 opt-id)
           [db hydro-id] (th/add-card-to-zone db :hydroblast :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})]

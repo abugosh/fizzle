@@ -101,9 +101,7 @@
           [db obj-id] (th/add-card-to-zone db :urzas-bauble :hand :player-1)
           _ (is (true? (rules/can-cast? db :player-1 obj-id))
                 "Should be castable with 0 mana")
-          db-cast (rules/cast-spell db :player-1 obj-id)
-          result (resolution/resolve-one-item db-cast)
-          db-resolved (:db result)]
+          db-resolved (th/cast-and-resolve db :player-1 obj-id)]
       (is (= :battlefield (:object/zone (q/get-object db-resolved obj-id)))
           "Urza's Bauble should be on battlefield after resolution"))))
 
@@ -174,8 +172,8 @@
           db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :urzas-bauble :hand :player-1)
           storm-before (q/get-storm-count db :player-1)
-          db-cast (rules/cast-spell db :player-1 obj-id)]
-      (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
+          db-resolved (th/cast-and-resolve db :player-1 obj-id)]
+      (is (= (inc storm-before) (q/get-storm-count db-resolved :player-1))
           "Storm count should increment by 1"))))
 
 
@@ -301,17 +299,15 @@
 ;; Edge case: Stale peek-result is cleared between resolutions
 (deftest urzas-bauble-peek-result-cleared-between-resolutions-test
   (testing "peek-result from previous resolution does not leak into next"
-    (let [db (th/create-test-db)
+    (let [db (th/create-test-db {:mana {:black 1}})
           db (th/add-opponent db)
           ;; Set up a fake peek-result as if a previous resolve set it
           game-eid (d/q '[:find ?g . :where [?g :game/id _]] db)
           db (d/db-with db [[:db/add game-eid :game/peek-result "Stale Card"]])
-          ;; Add a Dark Ritual to hand and cast it
+          ;; Add a Dark Ritual to hand and cast it, then resolve — should clear stale peek-result
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
-          db (rules/cast-spell db :player-1 ritual-id)
-          ;; Resolve Dark Ritual — should clear the stale peek-result
-          result (resolution/resolve-one-item db)]
-      (is (nil? (:game/peek-result (q/get-game-state (:db result))))
+          db (th/cast-and-resolve db :player-1 ritual-id)]
+      (is (nil? (:game/peek-result (q/get-game-state db)))
           "peek-result should be cleared after resolving a non-peek spell"))))
 
 

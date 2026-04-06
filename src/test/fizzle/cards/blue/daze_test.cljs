@@ -89,9 +89,10 @@
   (testing "Daze counters spell when controller declines payment (normal cast)"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Opponent casts Dark Ritual
+          ;; Opponent casts Dark Ritual — rules/cast-spell required, spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Cast Daze normally
           [db daze-id] (th/add-card-to-zone db :daze :hand :player-1)
@@ -110,8 +111,10 @@
   (testing "Spell survives when controller pays {1}"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
+          ;; rules/cast-spell required — spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1 :colorless 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           [db daze-id] (th/add-card-to-zone db :daze :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1 :colorless 1})
@@ -130,8 +133,10 @@
   (testing "Cannot cast Daze without mana and without an Island"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
+          ;; rules/cast-spell required — spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           [db daze-id] (th/add-card-to-zone db :daze :hand :player-1)]
       (is (false? (rules/can-cast? db :player-1 daze-id))
@@ -154,8 +159,10 @@
   (testing "Casting Daze increments storm count"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
+          ;; rules/cast-spell required — spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           [db daze-id] (th/add-card-to-zone db :daze :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1 :colorless 1})
@@ -171,9 +178,10 @@
   (testing "Daze has primary and alternate casting modes when Island on battlefield"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          ;; Put a spell on stack
+          ;; Put a spell on stack — rules/cast-spell required, spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Daze in hand with Island on battlefield
           [db daze-id] (th/add-card-to-zone db :daze :hand :player-1)
@@ -192,8 +200,10 @@
   (testing "Alternate mode is castable with Island on battlefield (no mana needed)"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
+          ;; rules/cast-spell required — spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Daze in hand, Island on battlefield, NO mana in pool
           [db daze-id] (th/add-card-to-zone db :daze :hand :player-1)
@@ -206,8 +216,10 @@
   (testing "Alternate mode is not castable without an Island"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
+          ;; rules/cast-spell required — spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Daze in hand, no Island, no mana
           [db daze-id] (th/add-card-to-zone db :daze :hand :player-1)]
@@ -219,8 +231,10 @@
   (testing "Casting with alternate cost returns the Island to hand"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
+          ;; rules/cast-spell required — spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Daze in hand, Island on battlefield
           [db daze-id] (th/add-card-to-zone db :daze :hand :player-1)
@@ -247,8 +261,10 @@
   (testing "Non-Island lands don't satisfy the return-land cost"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
+          ;; rules/cast-spell required — spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Daze in hand, Mountain on battlefield (not an Island)
           [db daze-id] (th/add-card-to-zone db :daze :hand :player-1)
@@ -266,8 +282,10 @@
   (testing "Daze fizzles when target resolves before it"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
+          ;; rules/cast-spell required — spell must stay on stack as target
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           [db daze-id] (th/add-card-to-zone db :daze :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1 :colorless 1})

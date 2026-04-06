@@ -80,6 +80,7 @@
           [db obj-id] (th/add-card-to-zone db :opt :hand :player-1)
           _ (is (= 0 (q/get-storm-count db :player-1))
                 "Storm count should start at 0")
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 obj-id)]
       (is (= 1 (q/get-storm-count db-cast :player-1))
           "Storm count should be 1 after casting Opt"))))
@@ -99,6 +100,7 @@
           [db'' opt-id] (th/add-card-to-zone db' :opt :hand :player-1)
           _ (is (= 1 (th/get-hand-count db'' :player-1)) "Precondition: hand has 1 card (Opt)")
           ;; Cast Opt
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-after-cast (rules/cast-spell db'' :player-1 opt-id)
           _ (is (= :stack (th/get-object-zone db-after-cast opt-id))
                 "Opt should be on stack after casting")
@@ -123,6 +125,7 @@
           ;; Add Opt to hand
           [db'' opt-id] (th/add-card-to-zone db' :opt :hand :player-1)
           ;; Cast and resolve Opt
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-after-cast (rules/cast-spell db'' :player-1 opt-id)
           result (resolution/resolve-one-item db-after-cast)
           remaining-effects (get-in result [:pending-selection :selection/remaining-effects])]
@@ -149,6 +152,7 @@
           initial-hand (th/get-hand-count db :player-1)
           _ (is (= 1 initial-hand) "Precondition: hand has 1 card (Opt)")
           ;; Cast Opt
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 opt-id)
           ;; Resolve spell - creates scry selection
           {:keys [db selection]} (th/resolve-top db-cast)
@@ -176,6 +180,7 @@
           library-count (count (q/get-objects-in-zone db' :player-1 :library))
           _ (is (= 0 library-count) "Precondition: library is empty")
           ;; Cast Opt
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-after-cast (rules/cast-spell db' :player-1 opt-id)
           ;; Resolve spell - scry with empty library
           result (resolution/resolve-one-item db-after-cast)]

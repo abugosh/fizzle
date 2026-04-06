@@ -116,6 +116,7 @@
           [db obj-id] (th/add-card-to-zone db :flash-of-insight :hand :player-1)
           _ (is (= 0 (q/get-storm-count db :player-1))
                 "Storm count should start at 0")
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 obj-id)]
       (is (= 1 (q/get-storm-count db-cast :player-1))
           "Storm count should be 1 after casting Flash of Insight"))))
@@ -139,6 +140,7 @@
           initial-hand (th/get-hand-count db-with-mana :player-1)
           _ (is (= 1 initial-hand) "Precondition: hand has 1 card (FoI)")
           ;; Cast Flash of Insight (cast-spell doesn't resolve X; set it manually)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db-with-mana :player-1 foi-id)
           _ (is (= :stack (th/get-object-zone db-cast foi-id))
                 "FoI should be on stack after casting")
@@ -209,7 +211,7 @@
       ;; Mode should have exile on-resolve (exiled after flashback resolution)
       (is (= :exile (:mode/on-resolve flashback-mode))
           "Flashback mode should exile on resolve")
-      ;; Cast with flashback mode and verify spell goes to stack
+      ;; Cast with flashback mode — rules/cast-spell-mode required (flashback alternate-cost mode)
       (let [db-cast (rules/cast-spell-mode db-with-mana :player-1 foi-id flashback-mode)
             foi-obj (q/get-object db-cast foi-id)]
         (is (= :stack (:object/zone foi-obj))
@@ -236,6 +238,7 @@
                                                                      [:dark-ritual :cabal-ritual :brain-freeze]
                                                                      :player-1)
           [db foi-id] (th/add-card-to-zone db :flash-of-insight :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 foi-id)
           foi-eid (d/q '[:find ?e . :in $ ?oid
                          :where [?e :object/id ?oid]]
@@ -261,6 +264,7 @@
           ;; Only 1 card in library
           [db [_lib-id]] (th/add-cards-to-library db [:dark-ritual] :player-1)
           [db foi-id] (th/add-card-to-zone db :flash-of-insight :hand :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 foi-id)
           ;; Set X=3
           foi-eid (d/q '[:find ?e . :in $ ?oid

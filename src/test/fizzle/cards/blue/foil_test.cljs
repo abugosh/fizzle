@@ -93,6 +93,7 @@
           db (th/add-opponent db)
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           [db foil-id] (th/add-card-to-zone db :foil :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 2 :colorless 2})
@@ -117,6 +118,7 @@
           db (th/add-opponent db)
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           [db foil-id] (th/add-card-to-zone db :foil :hand :player-1)]
       (is (false? (rules/can-cast? db :player-1 foil-id))
@@ -141,6 +143,7 @@
           db (mana/add-mana db :player-1 {:blue 2 :colorless 2})
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)]
       (is (false? (rules/can-cast? db :player-1 foil-id))
           "Should not be castable from graveyard"))))
@@ -154,6 +157,7 @@
           db (th/add-opponent db)
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           [db foil-id] (th/add-card-to-zone db :foil :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 2 :colorless 2})
@@ -171,6 +175,7 @@
           db (th/add-opponent db)
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Foil in hand + Island card + another card in hand
           [db foil-id] (th/add-card-to-zone db :foil :hand :player-1)
@@ -190,6 +195,7 @@
           db (th/add-opponent db)
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Foil + Island + another card in hand, NO mana
           [db foil-id] (th/add-card-to-zone db :foil :hand :player-1)
@@ -205,6 +211,7 @@
           db (th/add-opponent db)
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Foil + 2 non-Island cards in hand, NO mana
           [db foil-id] (th/add-card-to-zone db :foil :hand :player-1)
@@ -220,6 +227,7 @@
           db (th/add-opponent db)
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Foil + only one Island, no other cards, NO mana
           [db foil-id] (th/add-card-to-zone db :foil :hand :player-1)
@@ -234,6 +242,7 @@
           db (th/add-opponent db)
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Foil + Island + Dark Ritual in hand
           [db foil-id] (th/add-card-to-zone db :foil :hand :player-1)
@@ -263,6 +272,7 @@
           db (th/add-opponent db)
           [db opt-id] (th/add-card-to-zone db :opt :hand :player-2)
           db (mana/add-mana db :player-2 {:blue 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 opt-id)
           target-req (first (:card/targeting foil/card))
           targets (targeting/find-valid-targets db :player-1 target-req)]
@@ -278,6 +288,7 @@
           db (th/add-opponent db)
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Foil + two Lotus Petals in hand (no Island)
           [db foil-id] (th/add-card-to-zone db :foil :hand :player-1)
@@ -300,6 +311,7 @@
           db (th/add-opponent db)
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           ;; Foil + Island + Lotus Petal in hand
           [db foil-id] (th/add-card-to-zone db :foil :hand :player-1)
@@ -321,6 +333,7 @@
           db (th/add-opponent db)
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-2)
           db (mana/add-mana db :player-2 {:black 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 ritual-id)
           [db foil-id] (th/add-card-to-zone db :foil :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 2 :colorless 2})

@@ -87,6 +87,7 @@
           [db obj-id] (th/add-card-to-zone db :careful-study :hand :player-1)
           _ (is (= 0 (q/get-storm-count db :player-1))
                 "Storm count should start at 0")
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 obj-id)]
       (is (= 1 (q/get-storm-count db-cast :player-1))
           "Storm count should be 1 after casting Careful Study"))))
@@ -105,6 +106,7 @@
           [db cs-id] (th/add-card-to-zone db :careful-study :hand :player-1)
           _ (is (= 1 (th/get-hand-count db :player-1)) "Precondition: hand has 1 card (Careful Study)")
           ;; Cast and resolve through production path — pauses at discard selection
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 cs-id)
           _ (is (= :stack (th/get-object-zone db-cast cs-id))
                 "Careful Study should be on stack after casting")
@@ -133,6 +135,7 @@
           ;; Add library cards for draw
           [db _lib-ids] (th/add-cards-to-library db [:brain-freeze :island] :player-1)
           ;; Cast and resolve through production path
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 cs-id)
           {:keys [db selection]} (th/resolve-top db-cast)]
       ;; Draw should have happened, discard selection should be pending
@@ -160,6 +163,7 @@
           [db'' cs-id] (th/add-card-to-zone db' :careful-study :hand :player-1)
           _ (is (= 1 (th/get-hand-count db'' :player-1)) "Precondition: 1 card in hand")
           ;; Cast Careful Study
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-after-cast (rules/cast-spell db'' :player-1 cs-id)
           _ (is (= :stack (th/get-object-zone db-after-cast cs-id))
                 "Precondition: Careful Study on stack")
@@ -189,6 +193,7 @@
           db (d/db-with db [[:db/add player-eid :player/mana-pool
                              {:white 0 :blue 0 :black 1 :red 0 :green 0 :colorless 0}]])
           ;; Cast Dark Ritual
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-after-cast (rules/cast-spell db :player-1 dr-id)
           ;; Resolve with selection system
           result (resolution/resolve-one-item db-after-cast)]
@@ -220,6 +225,7 @@
           hand-before (th/get-hand-count db''' :player-1)
           _ (is (= 3 hand-before) "Precondition: hand should have 3 cards")
           ;; Cast Careful Study
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-after-cast (rules/cast-spell db''' :player-1 cs-id)
           _ (is (= :stack (th/get-object-zone db-after-cast cs-id))
                 "Careful Study should be on stack")
@@ -252,6 +258,7 @@
           hand-before (th/get-hand-count db''' :player-1)
           _ (is (= 2 hand-before) "Precondition: hand should have 2 cards")
           ;; Cast Careful Study
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-after-cast (rules/cast-spell db''' :player-1 cs-id)
           _ (is (= :stack (th/get-object-zone db-after-cast cs-id))
                 "Careful Study should be on stack")
@@ -283,6 +290,7 @@
           [db cs-id] (th/add-card-to-zone db :careful-study :hand :player-1)
           _ (is (= 1 (th/get-hand-count db :player-1)) "Precondition: 1 card in hand")
           ;; Cast Careful Study
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 cs-id)
           _ (is (= :stack (th/get-object-zone db-cast cs-id))
                 "Precondition: CS on stack")

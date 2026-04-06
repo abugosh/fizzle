@@ -127,6 +127,7 @@
           db (mana/add-mana db :player-1 {:colorless 1 :blue 1})
           modes (rules/get-casting-modes db :player-1 obj-id)
           flashback-mode (first modes)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell-mode db :player-1 obj-id flashback-mode)]
       (is (= 1 (q/get-storm-count db-cast :player-1))
           "Storm should increment for flashback cast"))))
@@ -155,6 +156,7 @@
           db (mana/add-mana db :player-1 {:colorless 1 :blue 1})
           modes (rules/get-casting-modes db :player-1 obj-id)
           flashback-mode (first modes)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell-mode db :player-1 obj-id flashback-mode)
           ;; Counter = move off stack without resolving
           db-countered (rules/move-spell-off-stack db-cast :player-1 obj-id)]
@@ -169,6 +171,7 @@
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
           modes (rules/get-casting-modes db :player-1 obj-id)
           primary-mode (first modes)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell-mode db :player-1 obj-id primary-mode)
           db-countered (rules/move-spell-off-stack db-cast :player-1 obj-id)]
       (is (= :graveyard (:object/zone (q/get-object db-countered obj-id)))
@@ -190,6 +193,7 @@
     (let [db (th/create-test-db {:mana {:black 1}})
           [db obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           ;; Cast using old API (no mode tracking)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 obj-id)
           ;; Counter the spell
           db-countered (rules/move-spell-off-stack db-cast :player-1 obj-id)]
@@ -204,6 +208,7 @@
     (let [db (th/create-test-db)
           [db obj-id] (th/add-card-to-zone db :deep-analysis :hand :player-1)
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 obj-id)
           result (resolution/resolve-one-item db-cast)]
       (is (= :player-target (:selection/type (:pending-selection result)))
@@ -217,6 +222,7 @@
     (let [db (th/create-test-db)
           [db obj-id] (th/add-card-to-zone db :deep-analysis :hand :player-1)
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 obj-id)
           result (resolution/resolve-one-item db-cast)
           selection (:pending-selection result)]
@@ -249,6 +255,7 @@
     (let [db (th/create-test-db)
           [db obj-id] (th/add-card-to-zone db :deep-analysis :hand :player-1)
           db (mana/add-mana db :player-1 {:colorless 3 :blue 1})
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 obj-id)
           result (resolution/resolve-one-item db-cast)
           selection (:pending-selection result)
@@ -275,6 +282,7 @@
                 "Should be castable from graveyard with flashback cost")
           ;; Cast using cast-spell (should pick flashback mode)
           initial-life (q/get-life-total db :player-1)
+          ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 obj-id)
           after-life (q/get-life-total db-cast :player-1)]
       ;; Verify spell is on stack

@@ -116,6 +116,7 @@
           ;; Put a red spell (Lightning Bolt) on opponent's stack
           [db bolt-id] (th/add-card-to-zone db :lightning-bolt :hand :player-2)
           db (mana/add-mana db :player-2 {:red 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 bolt-id)
           ;; Add BEB to player's hand with U mana
           [db beb-id] (th/add-card-to-zone db :blue-elemental-blast :hand :player-1)
@@ -163,6 +164,7 @@
           ;; Put a red spell on stack
           [db bolt-id] (th/add-card-to-zone db :lightning-bolt :hand :player-2)
           db (mana/add-mana db :player-2 {:red 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 bolt-id)
           ;; Add BEB but no mana
           [db beb-id] (th/add-card-to-zone db :blue-elemental-blast :hand :player-1)]
@@ -177,6 +179,7 @@
           ;; Put a blue spell on stack (not red)
           [db opt-id] (th/add-card-to-zone db :opt :hand :player-2)
           db (mana/add-mana db :player-2 {:blue 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 opt-id)
           ;; Add BEB with mana
           [db beb-id] (th/add-card-to-zone db :blue-elemental-blast :hand :player-1)
@@ -194,6 +197,7 @@
           ;; Put a red spell on stack
           [db bolt-id] (th/add-card-to-zone db :lightning-bolt :hand :player-2)
           db (mana/add-mana db :player-2 {:red 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 bolt-id)]
       (is (false? (rules/can-cast? db :player-1 beb-id))
           "Should not be castable from graveyard"))))
@@ -208,6 +212,7 @@
           ;; Put a red spell on stack
           [db bolt-id] (th/add-card-to-zone db :lightning-bolt :hand :player-2)
           db (mana/add-mana db :player-2 {:red 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 bolt-id)
           ;; Cast BEB
           [db beb-id] (th/add-card-to-zone db :blue-elemental-blast :hand :player-1)
@@ -228,10 +233,12 @@
           ;; Put a red spell on stack
           [db bolt-id] (th/add-card-to-zone db :lightning-bolt :hand :player-2)
           db (mana/add-mana db :player-2 {:red 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 bolt-id)
           ;; Put a blue spell on stack
           [db opt-id] (th/add-card-to-zone db :opt :hand :player-2)
           db (mana/add-mana db :player-2 {:blue 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 opt-id)
           ;; Check counter mode targeting
           counter-mode (first (:card/modes beb/card))
@@ -280,6 +287,7 @@
           db (th/add-opponent db)
           [db bolt-id] (th/add-card-to-zone db :lightning-bolt :hand :player-2)
           db (mana/add-mana db :player-2 {:red 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 bolt-id)
           [db beb-id] (th/add-card-to-zone db :blue-elemental-blast :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})]
@@ -293,6 +301,7 @@
           db (th/add-opponent db)
           [db bolt-id] (th/add-card-to-zone db :lightning-bolt :hand :player-2)
           db (mana/add-mana db :player-2 {:red 1})
+          ;; rules/cast-spell required — spell must stay on stack as target
           db (rules/cast-spell db :player-2 bolt-id)
           [db beb-id] (th/add-card-to-zone db :blue-elemental-blast :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1})
