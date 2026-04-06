@@ -99,8 +99,7 @@
           third-card-id (nth lib-ids 2)
           bottom-card-id (nth lib-ids 3)
           [db mn-id] (th/add-card-to-zone db :mental-note :hand :player-1)
-          db-after-cast (rules/cast-spell db :player-1 mn-id)
-          db-after-resolve (rules/resolve-spell db-after-cast :player-1 mn-id)]
+          db-after-resolve (th/cast-and-resolve db :player-1 mn-id)]
       ;; Top 2 cards should be milled to graveyard
       (is (= :graveyard (th/get-object-zone db-after-resolve top-card-id))
           "Top card should be milled to graveyard")
@@ -120,20 +119,16 @@
   (testing "Mental Note mills 2, then draws 1 when cast and resolved"
     (let [db (th/create-test-db {:mana {:blue 1}})
           ;; Add cards to library
-          [db' _lib-ids] (th/add-cards-to-library db
-                                                  [:dark-ritual :cabal-ritual :brain-freeze :island :swamp]
-                                                  :player-1)
+          [db _lib-ids] (th/add-cards-to-library db
+                                                 [:dark-ritual :cabal-ritual :brain-freeze :island :swamp]
+                                                 :player-1)
           ;; Add Mental Note to hand
-          [db'' mn-id] (th/add-card-to-zone db' :mental-note :hand :player-1)
-          _ (is (= 5 (th/get-zone-count db'' :library :player-1)) "Precondition: 5 cards in library")
-          _ (is (= 1 (th/get-hand-count db'' :player-1)) "Precondition: 1 card in hand (Mental Note)")
-          _ (is (= 0 (th/get-zone-count db'' :graveyard :player-1)) "Precondition: graveyard empty")
-          ;; Cast Mental Note
-          db-after-cast (rules/cast-spell db'' :player-1 mn-id)
-          _ (is (= :stack (th/get-object-zone db-after-cast mn-id))
-                "Mental Note should be on stack after casting")
-          ;; Resolve spell
-          db-after-resolve (rules/resolve-spell db-after-cast :player-1 mn-id)]
+          [db mn-id] (th/add-card-to-zone db :mental-note :hand :player-1)
+          _ (is (= 5 (th/get-zone-count db :library :player-1)) "Precondition: 5 cards in library")
+          _ (is (= 1 (th/get-hand-count db :player-1)) "Precondition: 1 card in hand (Mental Note)")
+          _ (is (= 0 (th/get-zone-count db :graveyard :player-1)) "Precondition: graveyard empty")
+          ;; Cast and resolve Mental Note
+          db-after-resolve (th/cast-and-resolve db :player-1 mn-id)]
       ;; Mental Note goes to graveyard after resolution
       (is (= :graveyard (th/get-object-zone db-after-resolve mn-id))
           "Mental Note should be in graveyard after resolution")
@@ -154,15 +149,14 @@
   (testing "Mental Note with only 1 card in library mills what's available, draws what remains"
     (let [db (th/create-test-db {:mana {:blue 1}})
           ;; Only 2 cards in library (will mill both, then fail to draw)
-          [db' _lib-ids] (th/add-cards-to-library db
-                                                  [:dark-ritual :cabal-ritual]
-                                                  :player-1)
+          [db _lib-ids] (th/add-cards-to-library db
+                                                 [:dark-ritual :cabal-ritual]
+                                                 :player-1)
           ;; Add Mental Note to hand
-          [db'' mn-id] (th/add-card-to-zone db' :mental-note :hand :player-1)
-          _ (is (= 2 (th/get-zone-count db'' :library :player-1)) "Precondition: 2 cards in library")
+          [db mn-id] (th/add-card-to-zone db :mental-note :hand :player-1)
+          _ (is (= 2 (th/get-zone-count db :library :player-1)) "Precondition: 2 cards in library")
           ;; Cast and resolve
-          db-after-cast (rules/cast-spell db'' :player-1 mn-id)
-          db-after-resolve (rules/resolve-spell db-after-cast :player-1 mn-id)]
+          db-after-resolve (th/cast-and-resolve db :player-1 mn-id)]
       ;; Both cards milled
       (is (= 0 (th/get-zone-count db-after-resolve :library :player-1))
           "Library should be empty after milling 2")
@@ -179,12 +173,11 @@
   (testing "Mental Note adds 3 cards to graveyard (2 milled + itself)"
     ;; This is important for Iggy Pop: Mental Note helps reach threshold
     (let [db (th/create-test-db {:mana {:blue 1}})
-          [db' _lib-ids] (th/add-cards-to-library db
-                                                  [:dark-ritual :cabal-ritual :brain-freeze :island]
-                                                  :player-1)
-          [db'' mn-id] (th/add-card-to-zone db' :mental-note :hand :player-1)
-          _ (is (= 0 (th/get-zone-count db'' :graveyard :player-1)) "Precondition: graveyard empty")
-          db-after-cast (rules/cast-spell db'' :player-1 mn-id)
-          db-after-resolve (rules/resolve-spell db-after-cast :player-1 mn-id)]
+          [db _lib-ids] (th/add-cards-to-library db
+                                                 [:dark-ritual :cabal-ritual :brain-freeze :island]
+                                                 :player-1)
+          [db mn-id] (th/add-card-to-zone db :mental-note :hand :player-1)
+          _ (is (= 0 (th/get-zone-count db :graveyard :player-1)) "Precondition: graveyard empty")
+          db-after-resolve (th/cast-and-resolve db :player-1 mn-id)]
       (is (= 3 (th/get-zone-count db-after-resolve :graveyard :player-1))
           "Mental Note should contribute 3 cards to threshold count"))))

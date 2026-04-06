@@ -139,8 +139,6 @@
           ;; The delayed-draw effect is granted AFTER selection completes via :remaining-effects
           ;; For now, check that remaining-effects contains grant-delayed-draw
           remaining (:selection/remaining-effects sel)]
-      (is (some? remaining)
-          "Should have remaining effects after peek-and-reorder")
       (is (= 1 (count remaining))
           "Should have 1 remaining effect")
       (let [grant-effect (first remaining)]
@@ -297,7 +295,7 @@
       ;; 4. Call turn-based/fire-delayed-effects
       ;; 5. Verify hand increased by 1
       ;; For now, just verify the selection has remaining effects
-      (is (some? sel) "Should have pending selection")
+      (is (= :peek-and-reorder (:selection/type sel)) "Should have pending peek-and-reorder selection")
       (is (= 1 (count (:selection/remaining-effects sel)))
           "Should have 1 remaining effect (grant-delayed-draw)")
       (let [grant-effect (first (:selection/remaining-effects sel))]

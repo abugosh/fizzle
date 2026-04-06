@@ -21,51 +21,49 @@
   "Create a fake activated ability stack-item for testing.
    Returns [db stack-item-eid]."
   [db player-id ability-type]
-  (let [conn (d/conn-from-db db)
-        stack-item-id (random-uuid)
-        ;; Get current highest position on stack to place this item above
+  (let [stack-item-id (random-uuid)
         existing-positions (d/q '[:find [?p ...]
                                   :where [?e :stack-item/position ?p]]
-                                @conn)
+                                db)
         next-position (if (empty? existing-positions)
                         0
                         (inc (apply max existing-positions)))
-        stack-item {:stack-item/id stack-item-id
+        stack-item {:db/id -1
+                    :stack-item/id stack-item-id
                     :stack-item/type :activated-ability
                     :stack-item/ability-type ability-type
                     :stack-item/controller player-id
                     :stack-item/position next-position
-                    :stack-item/effects []}]
-    (d/transact! conn [stack-item])
-    (let [eid (d/q '[:find ?e . :in $ ?sid
-                     :where [?e :stack-item/id ?sid]]
-                   @conn stack-item-id)]
-      [@conn eid])))
+                    :stack-item/effects []}
+        db' (d/db-with db [stack-item])
+        eid (d/q '[:find ?e . :in $ ?sid
+                   :where [?e :stack-item/id ?sid]]
+                 db' stack-item-id)]
+    [db' eid]))
 
 
 (defn create-fake-triggered-ability-stack-item
   "Create a fake triggered ability stack-item for testing.
    Returns [db stack-item-eid]."
   [db player-id]
-  (let [conn (d/conn-from-db db)
-        stack-item-id (random-uuid)
-        ;; Get current highest position on stack to place this item above
+  (let [stack-item-id (random-uuid)
         existing-positions (d/q '[:find [?p ...]
                                   :where [?e :stack-item/position ?p]]
-                                @conn)
+                                db)
         next-position (if (empty? existing-positions)
                         0
                         (inc (apply max existing-positions)))
-        stack-item {:stack-item/id stack-item-id
+        stack-item {:db/id -1
+                    :stack-item/id stack-item-id
                     :stack-item/type :triggered-ability
                     :stack-item/controller player-id
                     :stack-item/position next-position
-                    :stack-item/effects []}]
-    (d/transact! conn [stack-item])
-    (let [eid (d/q '[:find ?e . :in $ ?sid
-                     :where [?e :stack-item/id ?sid]]
-                   @conn stack-item-id)]
-      [@conn eid])))
+                    :stack-item/effects []}
+        db' (d/db-with db [stack-item])
+        eid (d/q '[:find ?e . :in $ ?sid
+                   :where [?e :stack-item/id ?sid]]
+                 db' stack-item-id)]
+    [db' eid]))
 
 
 ;; === A. Card Definition Tests ===
@@ -154,8 +152,6 @@
           [db ability-eid] (create-fake-activated-ability-stack-item db :player-1 :other)
           _ (is (= :activated-ability (:stack-item/type (d/pull db '[*] ability-eid)))
                 "Precondition: activated ability on stack")
-          _ (is (some? (d/pull db '[*] ability-eid))
-                "Precondition: ability is on stack")
           ;; Execute counter-ability effect
           db-after (effects/execute-effect db :player-1
                                            {:effect/type :counter-ability
@@ -172,8 +168,6 @@
           [db ability-eid] (create-fake-triggered-ability-stack-item db :player-1)
           _ (is (= :triggered-ability (:stack-item/type (d/pull db '[*] ability-eid)))
                 "Precondition: triggered ability on stack")
-          _ (is (some? (d/pull db '[*] ability-eid))
-                "Precondition: ability is on stack")
           ;; Execute counter-ability effect
           db-after (effects/execute-effect db :player-1
                                            {:effect/type :counter-ability
@@ -226,8 +220,6 @@
           [db stifle-id] (th/add-card-to-zone db :stifle :hand :player-1)
           result (sel-targeting/cast-spell-with-targeting db :player-1 stifle-id)
           sel (:pending-target-selection result)]
-      (is (some? sel)
-          "Should create a targeting selection")
       (is (= :ability-cast-targeting (:selection/type sel))
           "Selection type should be :ability-cast-targeting for ability targets")
       (is (= [ability-eid] (:selection/valid-targets sel))

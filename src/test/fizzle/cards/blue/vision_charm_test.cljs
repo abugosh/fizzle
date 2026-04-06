@@ -263,8 +263,8 @@
           db-on-stack (rules/cast-spell db :player-1 vc-id)
           ;; Resolve — should return a selection
           result (th/resolve-top db-on-stack)]
-      (is (some? (:selection result))
-          "Mode 2 resolve should return a pending selection"))))
+      (is (= :land-type-source (:selection/type (:selection result)))
+          "Mode 2 resolve should return a :land-type-source pending selection"))))
 
 
 (deftest vision-charm-mode2-full-flow-island-to-mountain-test
