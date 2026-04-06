@@ -364,8 +364,6 @@
           ;; Confirm first target through the SELECTION SYSTEM (not confirm-ability-target)
           chain-result (th/confirm-selection (:db result1) pending1 #{petal-id})]
       ;; The selection system should chain to the second target selection
-      (is (some? (:selection chain-result))
-          "Selection system should chain to second target (graveyard artifact)")
       (is (= :ability-targeting (:selection/type (:selection chain-result)))
           "Chained selection should be :ability-targeting type")
       (is (contains? (set (:selection/valid-targets (:selection chain-result))) led-id)

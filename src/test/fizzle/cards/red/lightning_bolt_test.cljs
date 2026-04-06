@@ -122,9 +122,7 @@
 (deftest cannot-cast-without-red-mana-test
   (testing "cannot cast Lightning Bolt without red mana"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [lightning-bolt/card])
-          db (th/add-opponent @conn)
+          db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :lightning-bolt :hand :player-1)]
       (is (false? (rules/can-cast? db :player-1 obj-id))
           "Should not be able to cast without red mana"))))
@@ -133,9 +131,7 @@
 (deftest cannot-cast-from-graveyard-test
   (testing "cannot cast Lightning Bolt from graveyard"
     (let [db (th/create-test-db {:mana {:red 1}})
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [lightning-bolt/card])
-          db (th/add-opponent @conn)
+          db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :lightning-bolt :graveyard :player-1)]
       (is (false? (rules/can-cast? db :player-1 obj-id))
           "Should not be able to cast from graveyard"))))
@@ -144,9 +140,7 @@
 (deftest cannot-cast-from-battlefield-test
   (testing "cannot cast Lightning Bolt from battlefield"
     (let [db (th/create-test-db {:mana {:red 1}})
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [lightning-bolt/card])
-          db (th/add-opponent @conn)
+          db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :lightning-bolt :battlefield :player-1)]
       (is (false? (rules/can-cast? db :player-1 obj-id))
           "Should not be able to cast from battlefield"))))
@@ -171,10 +165,7 @@
 
 (deftest no-valid-targets-without-opponent-test
   (testing "has valid targets even without opponent (can target self)"
-    (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [lightning-bolt/card])
-          db @conn]
+    (let [db (th/create-test-db)]
       (is (targeting/has-valid-targets? db :player-1 lightning-bolt/card)
           "Should have valid targets (can target self even in goldfish)"))))
 
@@ -182,9 +173,7 @@
 (deftest find-valid-targets-returns-both-players-test
   (testing "find-valid-targets returns both players with :any-player"
     (let [db (th/create-test-db)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [lightning-bolt/card])
-          db (th/add-opponent @conn)
+          db (th/add-opponent db)
           req (first (:card/targeting lightning-bolt/card))
           targets (targeting/find-valid-targets db :player-1 req)]
       (is (= 2 (count targets))
@@ -200,10 +189,8 @@
 (defn- set-player-life
   "Set a player's life total directly."
   [db player-id life]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)]
-    (d/transact! conn [[:db/add player-eid :player/life life]])
-    @conn))
+  (let [player-eid (q/get-player-eid db player-id)]
+    (d/db-with db [[:db/add player-eid :player/life life]])))
 
 
 (deftest bolt-kills-at-exactly-3-life-test
@@ -268,8 +255,6 @@
                            :where [?e :object/id ?oid]]
                          db-after obj-id)
             stack-item (stack/get-stack-item-by-object-ref db-after obj-eid)]
-        (is (some? stack-item)
-            "Stack-item should exist for the spell")
         (is (= {:target :player-2} (:stack-item/targets stack-item))
             "Stack-item should have targets with :target key mapped to :player-2"))
       ;; Object should NOT have targets

@@ -15,7 +15,6 @@
    - Flashback Recoup (casting Recoup from graveyard)"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
-    [datascript.core :as d]
     [fizzle.cards.red.recoup :as recoup]
     [fizzle.db.queries :as q]
     [fizzle.engine.grants :as grants]
@@ -23,19 +22,7 @@
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.zones :as zones]
     [fizzle.events.resolution :as resolution]
-    [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
-
-
-;; === Test Helpers ===
-
-(defn set-mana-pool
-  "Set a player's mana pool to specific values."
-  [db player-id mana-pool]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)]
-    (d/transact! conn [[:db/add player-eid :player/mana-pool mana-pool]])
-    @conn))
 
 
 ;; === Card Definition Tests ===
@@ -106,16 +93,12 @@
 
 (deftest recoup-increments-storm-count-test
   (testing "Casting Recoup increments storm count"
-    (let [db (-> (th/create-test-db) th/add-opponent)
+    (let [db (-> (th/create-test-db {:mana {:colorless 1 :red 1}}) th/add-opponent)
           [db recoup-id] (th/add-card-to-zone db :recoup :hand :player-1)
           [db [sorcery-id]] (th/add-cards-to-graveyard db [:careful-study] :player-1)
-          db (set-mana-pool db :player-1 {:colorless 1 :red 1})
           _ (is (= 0 (q/get-storm-count db :player-1))
                 "Storm count should start at 0")
-          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
-          selection (assoc (:pending-target-selection result)
-                           :selection/selected #{sorcery-id})
-          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)]
+          db-cast (th/cast-with-target db :player-1 recoup-id sorcery-id)]
       (is (= 1 (q/get-storm-count db-cast :player-1))
           "Storm count should be 1 after casting Recoup"))))
 
@@ -124,9 +107,8 @@
 
 (deftest test-recoup-requires-valid-target
   (testing "Recoup cannot be cast without sorcery in graveyard"
-    (let [db (-> (th/create-test-db) th/add-opponent)
-          [db recoup-id] (th/add-card-to-zone db :recoup :hand :player-1)
-          db (set-mana-pool db :player-1 {:colorless 1 :red 1})]
+    (let [db (-> (th/create-test-db {:mana {:colorless 1 :red 1}}) th/add-opponent)
+          [db recoup-id] (th/add-card-to-zone db :recoup :hand :player-1)]
       ;; No sorceries in graveyard
       (is (false? (targeting/has-valid-targets? db :player-1 recoup/card))
           "Should not have valid targets with empty graveyard")
@@ -136,11 +118,10 @@
 
 (deftest test-recoup-finds-valid-sorcery-target
   (testing "Recoup can target sorcery in graveyard"
-    (let [db (-> (th/create-test-db) th/add-opponent)
+    (let [db (-> (th/create-test-db {:mana {:colorless 1 :red 1}}) th/add-opponent)
           [db _recoup-id] (th/add-card-to-zone db :recoup :hand :player-1)
           ;; Add a sorcery to graveyard (careful-study is a sorcery)
-          [db [sorcery-id]] (th/add-cards-to-graveyard db [:careful-study] :player-1)
-          db (set-mana-pool db :player-1 {:colorless 1 :red 1})]
+          [db [sorcery-id]] (th/add-cards-to-graveyard db [:careful-study] :player-1)]
       (is (targeting/has-valid-targets? db :player-1 recoup/card)
           "Should have valid target with sorcery in graveyard")
       (let [req (first (targeting/get-targeting-requirements recoup/card))
@@ -151,22 +132,20 @@
 
 (deftest test-recoup-does-not-target-instants
   (testing "Recoup cannot target instants in graveyard"
-    (let [db (-> (th/create-test-db) th/add-opponent)
+    (let [db (-> (th/create-test-db {:mana {:colorless 1 :red 1}}) th/add-opponent)
           [db _recoup-id] (th/add-card-to-zone db :recoup :hand :player-1)
           ;; Add an instant to graveyard (dark-ritual is instant)
-          [db _] (th/add-cards-to-graveyard db [:dark-ritual] :player-1)
-          db (set-mana-pool db :player-1 {:colorless 1 :red 1})]
+          [db _] (th/add-cards-to-graveyard db [:dark-ritual] :player-1)]
       (is (false? (targeting/has-valid-targets? db :player-1 recoup/card))
           "Should not have valid target with only instant in graveyard"))))
 
 
 (deftest test-recoup-does-not-target-opponent-graveyard
   (testing "Recoup only targets own graveyard"
-    (let [db (-> (th/create-test-db) th/add-opponent)
+    (let [db (-> (th/create-test-db {:mana {:colorless 1 :red 1}}) th/add-opponent)
           [db _recoup-id] (th/add-card-to-zone db :recoup :hand :player-1)
           ;; Add sorcery to opponent's graveyard
-          [db _] (th/add-cards-to-graveyard db [:careful-study] :player-2)
-          db (set-mana-pool db :player-1 {:colorless 1 :red 1})]
+          [db _] (th/add-cards-to-graveyard db [:careful-study] :player-2)]
       (is (false? (targeting/has-valid-targets? db :player-1 recoup/card))
           "Should not target sorcery in opponent's graveyard"))))
 
@@ -175,18 +154,12 @@
 
 (deftest test-recoup-grants-flashback-on-resolution
   (testing "After Recoup resolves, target has granted flashback"
-    (let [db (-> (th/create-test-db) th/add-opponent)
+    (let [db (-> (th/create-test-db {:mana {:colorless 1 :red 1}}) th/add-opponent)
           [db recoup-id] (th/add-card-to-zone db :recoup :hand :player-1)
           [db [sorcery-id]] (th/add-cards-to-graveyard db [:careful-study] :player-1)
-          db (set-mana-pool db :player-1 {:colorless 1 :red 1})
-          ;; Cast Recoup with targeting
-          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
-          selection (assoc (:pending-target-selection result)
-                           :selection/selected #{sorcery-id})
-          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
+          db-cast (th/cast-with-target db :player-1 recoup-id sorcery-id)
           ;; Resolve Recoup via production path
-          resolve-result (resolution/resolve-one-item db-cast)
-          db-resolved (:db resolve-result)
+          db-resolved (:db (resolution/resolve-one-item db-cast))
           ;; Check grants on target
           flashback-grants (grants/get-grants-by-type db-resolved sorcery-id :alternate-cost)]
       (is (= 1 (count flashback-grants))
@@ -197,19 +170,12 @@
 
 (deftest test-granted-flashback-uses-original-mana-cost
   (testing "Granted flashback cost equals target's mana cost"
-    (let [db (-> (th/create-test-db) th/add-opponent)
+    (let [db (-> (th/create-test-db {:mana {:colorless 1 :red 1}}) th/add-opponent)
           [db recoup-id] (th/add-card-to-zone db :recoup :hand :player-1)
           ;; Add careful-study (costs {U})
           [db [sorcery-id]] (th/add-cards-to-graveyard db [:careful-study] :player-1)
-          db (set-mana-pool db :player-1 {:colorless 1 :red 1})
-          ;; Cast and resolve Recoup
-          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
-          selection (assoc (:pending-target-selection result)
-                           :selection/selected #{sorcery-id})
-          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
-          ;; Resolve via production path
-          resolve-result (resolution/resolve-one-item db-cast)
-          db-resolved (:db resolve-result)
+          db-cast (th/cast-with-target db :player-1 recoup-id sorcery-id)
+          db-resolved (:db (resolution/resolve-one-item db-cast))
           ;; Get the granted flashback
           flashback-grants (grants/get-grants-by-type db-resolved sorcery-id :alternate-cost)
           granted-cost (get-in (first flashback-grants) [:grant/data :alternate/mana-cost])]
@@ -220,39 +186,24 @@
 
 (deftest test-granted-flashback-exiles-on-resolve
   (testing "Card cast via granted flashback exiles after resolution"
-    (let [db (-> (th/create-test-db) th/add-opponent)
+    (let [db (-> (th/create-test-db {:mana {:colorless 1 :red 1}}) th/add-opponent)
           [db recoup-id] (th/add-card-to-zone db :recoup :hand :player-1)
           [db [sorcery-id]] (th/add-cards-to-graveyard db [:careful-study] :player-1)
-          db (set-mana-pool db :player-1 {:colorless 1 :red 1})
-          ;; Cast and resolve Recoup
-          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
-          selection (assoc (:pending-target-selection result)
-                           :selection/selected #{sorcery-id})
-          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
-          ;; Resolve via production path
-          resolve-result (resolution/resolve-one-item db-cast)
-          db-resolved (:db resolve-result)]
-      ;; Check grant has exile on resolve
-      (let [flashback-grants (grants/get-grants-by-type db-resolved sorcery-id :alternate-cost)
-            on-resolve (get-in (first flashback-grants) [:grant/data :alternate/on-resolve])]
-        (is (= :exile on-resolve)
-            "Granted flashback should exile on resolve")))))
+          db-cast (th/cast-with-target db :player-1 recoup-id sorcery-id)
+          db-resolved (:db (resolution/resolve-one-item db-cast))
+          flashback-grants (grants/get-grants-by-type db-resolved sorcery-id :alternate-cost)
+          on-resolve (get-in (first flashback-grants) [:grant/data :alternate/on-resolve])]
+      (is (= :exile on-resolve)
+          "Granted flashback should exile on resolve"))))
 
 
 (deftest test-granted-flashback-full-flow-exile
   (testing "Full flow: Cast via granted flashback stores :exile on-resolve in cast mode"
-    (let [db (-> (th/create-test-db) th/add-opponent)
+    (let [db (-> (th/create-test-db {:mana {:colorless 1 :red 1 :blue 1}}) th/add-opponent)
           [db recoup-id] (th/add-card-to-zone db :recoup :hand :player-1)
           [db [sorcery-id]] (th/add-cards-to-graveyard db [:careful-study] :player-1)
-          db (set-mana-pool db :player-1 {:colorless 1 :red 1 :blue 1})
-          ;; Cast and resolve Recoup
-          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
-          selection (assoc (:pending-target-selection result)
-                           :selection/selected #{sorcery-id})
-          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
-          ;; Resolve via production path
-          resolve-result (resolution/resolve-one-item db-cast)
-          db-recoup-resolved (:db resolve-result)
+          db-cast (th/cast-with-target db :player-1 recoup-id sorcery-id)
+          db-recoup-resolved (:db (resolution/resolve-one-item db-cast))
           ;; Verify sorcery has granted flashback
           _ (is (= 1 (count (grants/get-grants-by-type db-recoup-resolved sorcery-id :alternate-cost)))
                 "Sorcery should have flashback grant")
@@ -273,46 +224,32 @@
 
 (deftest test-recoup-fizzles-if-target-removed
   (testing "Recoup fizzles if target is removed before resolution"
-    (let [db (-> (th/create-test-db) th/add-opponent)
+    (let [db (-> (th/create-test-db {:mana {:colorless 1 :red 1}}) th/add-opponent)
           [db recoup-id] (th/add-card-to-zone db :recoup :hand :player-1)
           [db [sorcery-id]] (th/add-cards-to-graveyard db [:careful-study] :player-1)
-          db (set-mana-pool db :player-1 {:colorless 1 :red 1})
-          ;; Cast Recoup with targeting
-          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
-          selection (assoc (:pending-target-selection result)
-                           :selection/selected #{sorcery-id})
-          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
+          db-cast (th/cast-with-target db :player-1 recoup-id sorcery-id)
           ;; Remove the target before resolution (simulate Tormod's Crypt)
           db-target-exiled (zones/move-to-zone db-cast sorcery-id :exile)
-          ;; Try to resolve Recoup (target no longer legal)
-          resolve-result (resolution/resolve-one-item db-target-exiled)
-          db-resolved (:db resolve-result)]
+          db-resolved (:db (resolution/resolve-one-item db-target-exiled))]
       ;; Recoup should be in graveyard (fizzled, not flashback cast)
       (is (= :graveyard (th/get-object-zone db-resolved recoup-id))
           "Recoup should go to graveyard after fizzling")
       ;; Target should have no grants (Recoup effect didn't happen)
-      (let [target-grants (q/get-grants db-resolved sorcery-id)]
-        (is (empty? target-grants)
-            "Target should have no grants (Recoup fizzled)")))))
+      (is (empty? (q/get-grants db-resolved sorcery-id))
+          "Target should have no grants (Recoup fizzled)"))))
 
 
 (deftest test-recoup-still-resolves-if-other-sorceries-exist
   (testing "Fizzle is per-target, not based on other cards existing"
     ;; If target is removed, Recoup fizzles even if other valid sorceries exist
-    (let [db (-> (th/create-test-db) th/add-opponent)
+    (let [db (-> (th/create-test-db {:mana {:colorless 1 :red 1}}) th/add-opponent)
           [db recoup-id] (th/add-card-to-zone db :recoup :hand :player-1)
           [db [sorcery1-id sorcery2-id]] (th/add-cards-to-graveyard db [:careful-study :merchant-scroll] :player-1)
-          db (set-mana-pool db :player-1 {:colorless 1 :red 1})
           ;; Target sorcery1
-          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
-          selection (assoc (:pending-target-selection result)
-                           :selection/selected #{sorcery1-id})
-          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
+          db-cast (th/cast-with-target db :player-1 recoup-id sorcery1-id)
           ;; Remove sorcery1 (even though sorcery2 still exists)
           db-target-exiled (zones/move-to-zone db-cast sorcery1-id :exile)
-          ;; Resolve - should fizzle
-          resolve-result (resolution/resolve-one-item db-target-exiled)
-          db-resolved (:db resolve-result)]
+          db-resolved (:db (resolution/resolve-one-item db-target-exiled))]
       ;; Recoup fizzles (target invalid)
       (is (= :graveyard (th/get-object-zone db-resolved recoup-id))
           "Recoup should fizzle when its specific target is removed")
@@ -325,45 +262,27 @@
 
 (deftest test-granted-flashback-expires-at-cleanup
   (testing "Granted flashback is removed at cleanup phase"
-    (let [db (-> (th/create-test-db) th/add-opponent)
+    (let [db (-> (th/create-test-db {:mana {:colorless 1 :red 1}}) th/add-opponent)
           [db recoup-id] (th/add-card-to-zone db :recoup :hand :player-1)
           [db [sorcery-id]] (th/add-cards-to-graveyard db [:careful-study] :player-1)
-          db (set-mana-pool db :player-1 {:colorless 1 :red 1})
-          ;; Cast and resolve Recoup
-          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
-          selection (assoc (:pending-target-selection result)
-                           :selection/selected #{sorcery-id})
-          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
-          ;; Resolve via production path
-          resolve-result (resolution/resolve-one-item db-cast)
-          db-resolved (:db resolve-result)
+          db-cast (th/cast-with-target db :player-1 recoup-id sorcery-id)
+          db-resolved (:db (resolution/resolve-one-item db-cast))
           ;; Verify grant exists
           _ (is (= 1 (count (q/get-grants db-resolved sorcery-id)))
                 "Grant should exist before cleanup")
-          ;; Run grant expiration (at turn 1, cleanup phase)
           db-expired (grants/expire-grants db-resolved 1 :cleanup)]
-      ;; Grant should be removed
       (is (empty? (q/get-grants db-expired sorcery-id))
           "Grant should be removed at cleanup phase"))))
 
 
 (deftest test-granted-flashback-does-not-expire-before-cleanup
   (testing "Granted flashback remains active during main phase"
-    (let [db (-> (th/create-test-db) th/add-opponent)
+    (let [db (-> (th/create-test-db {:mana {:colorless 1 :red 1}}) th/add-opponent)
           [db recoup-id] (th/add-card-to-zone db :recoup :hand :player-1)
           [db [sorcery-id]] (th/add-cards-to-graveyard db [:careful-study] :player-1)
-          db (set-mana-pool db :player-1 {:colorless 1 :red 1})
-          ;; Cast and resolve Recoup
-          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
-          selection (assoc (:pending-target-selection result)
-                           :selection/selected #{sorcery-id})
-          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
-          ;; Resolve via production path
-          resolve-result (resolution/resolve-one-item db-cast)
-          db-resolved (:db resolve-result)
-          ;; Try to expire at main1 phase (before cleanup)
+          db-cast (th/cast-with-target db :player-1 recoup-id sorcery-id)
+          db-resolved (:db (resolution/resolve-one-item db-cast))
           db-not-expired (grants/expire-grants db-resolved 1 :main1)]
-      ;; Grant should still exist
       (is (= 1 (count (q/get-grants db-not-expired sorcery-id)))
           "Grant should NOT be removed during main phase"))))
 
@@ -372,11 +291,10 @@
 
 (deftest test-flashback-recoup-castable-from-graveyard
   (testing "Recoup can be cast from graveyard via flashback"
-    (let [db (-> (th/create-test-db) th/add-opponent)
+    (let [db (-> (th/create-test-db {:mana {:colorless 3 :red 1}}) th/add-opponent)
           [db recoup-id] (th/add-card-to-zone db :recoup :graveyard :player-1)
           ;; Add a sorcery target (required for Recoup)
-          [db _sorcery-id] (th/add-cards-to-graveyard db [:careful-study] :player-1)
-          db (set-mana-pool db :player-1 {:colorless 3 :red 1})]
+          [db _sorcery-id] (th/add-cards-to-graveyard db [:careful-study] :player-1)]
       (is (rules/can-cast? db :player-1 recoup-id)
           "Recoup should be castable from graveyard with {3}{R}")
       (let [modes (rules/get-casting-modes db :player-1 recoup-id)
@@ -387,40 +305,25 @@
 
 (deftest test-flashback-recoup-exiles-after-resolution
   (testing "Recoup cast via flashback exiles after resolution"
-    (let [db (-> (th/create-test-db) th/add-opponent)
+    (let [db (-> (th/create-test-db {:mana {:colorless 3 :red 1}}) th/add-opponent)
           [db recoup-id] (th/add-card-to-zone db :recoup :graveyard :player-1)
           [db [sorcery-id]] (th/add-cards-to-graveyard db [:careful-study] :player-1)
-          db (set-mana-pool db :player-1 {:colorless 3 :red 1})
-          ;; Cast Recoup via flashback
-          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
-          selection (assoc (:pending-target-selection result)
-                           :selection/selected #{sorcery-id})
-          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
+          db-cast (th/cast-with-target db :player-1 recoup-id sorcery-id)
           ;; Verify it's on stack with flashback mode
           _ (is (= :flashback (:mode/id (:object/cast-mode (q/get-object db-cast recoup-id))))
                 "Cast mode should be flashback")
-          ;; Resolve via production path
-          resolve-result (resolution/resolve-one-item db-cast)
-          db-resolved (:db resolve-result)]
+          db-resolved (:db (resolution/resolve-one-item db-cast))]
       (is (= :exile (th/get-object-zone db-resolved recoup-id))
           "Flashback Recoup should exile after resolution"))))
 
 
 (deftest test-flashback-recoup-can-target-sorceries
   (testing "Flashback Recoup can still target sorceries in graveyard"
-    (let [db (-> (th/create-test-db) th/add-opponent)
+    (let [db (-> (th/create-test-db {:mana {:colorless 3 :red 1}}) th/add-opponent)
           [db recoup-id] (th/add-card-to-zone db :recoup :graveyard :player-1)
           [db [sorcery-id]] (th/add-cards-to-graveyard db [:careful-study] :player-1)
-          db (set-mana-pool db :player-1 {:colorless 3 :red 1})
-          ;; Cast and resolve flashback Recoup
-          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
-          selection (assoc (:pending-target-selection result)
-                           :selection/selected #{sorcery-id})
-          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
-          ;; Resolve via production path
-          resolve-result (resolution/resolve-one-item db-cast)
-          db-resolved (:db resolve-result)
-          ;; Check target got flashback
+          db-cast (th/cast-with-target db :player-1 recoup-id sorcery-id)
+          db-resolved (:db (resolution/resolve-one-item db-cast))
           flashback-grants (grants/get-grants-by-type db-resolved sorcery-id :alternate-cost)]
       (is (= 1 (count flashback-grants))
           "Target should have flashback grant from flashback Recoup"))))
@@ -430,30 +333,19 @@
 
 (deftest test-full-flow-cast-recoup-grant-flashback-use-it
   (testing "Complete flow: cast Recoup, grant flashback, cast target via flashback"
-    (let [db (-> (th/create-test-db) th/add-opponent)
+    (let [db (-> (th/create-test-db {:mana {:colorless 1 :red 1 :blue 1}}) th/add-opponent)
           [db recoup-id] (th/add-card-to-zone db :recoup :hand :player-1)
-          ;; Add careful-study (costs {U}) to graveyard
           [db [sorcery-id]] (th/add-cards-to-graveyard db [:careful-study] :player-1)
-          ;; Give player mana for Recoup ({1}{R}) and later for Careful Study ({U})
-          db (set-mana-pool db :player-1 {:colorless 1 :red 1 :blue 1})
-          ;; Step 1: Cast Recoup targeting Careful Study
-          result (sel-targeting/cast-spell-with-targeting db :player-1 recoup-id)
-          selection (assoc (:pending-target-selection result)
-                           :selection/selected #{sorcery-id})
-          db-cast (sel-targeting/confirm-cast-time-target (:db result) selection)
-          ;; Step 2: Resolve Recoup via production path
-          resolve-result (resolution/resolve-one-item db-cast)
-          db-resolved (:db resolve-result)
+          db-cast (th/cast-with-target db :player-1 recoup-id sorcery-id)
+          db-resolved (:db (resolution/resolve-one-item db-cast))
           ;; Verify Recoup in graveyard, Careful Study has flashback
           _ (is (= :graveyard (th/get-object-zone db-resolved recoup-id))
                 "Recoup should be in graveyard after resolution")
           _ (is (= 1 (count (q/get-grants db-resolved sorcery-id)))
                 "Careful Study should have flashback grant")
-          ;; Step 3: Verify Careful Study can be cast from graveyard
           _ (is (= :graveyard (th/get-object-zone db-resolved sorcery-id))
                 "Careful Study should still be in graveyard")
           modes (rules/get-casting-modes db-resolved :player-1 sorcery-id)]
-      ;; Should have granted flashback mode available
       (is (= 1 (count modes))
           "Careful Study should have exactly 1 casting mode from graveyard")
       (is (some #(= :granted-flashback (:mode/id %)) modes)
@@ -465,18 +357,13 @@
 (deftest test-flashback-from-exile-blocked
   ;; Bug caught: Allowing flashback from wrong zone (exile instead of graveyard)
   (testing "Flashback only works from graveyard, not exile"
-    (let [db (-> (th/create-test-db) th/add-opponent)
+    (let [db (-> (th/create-test-db {:mana {:colorless 3 :red 1}}) th/add-opponent)
           ;; Add Recoup directly to EXILE (not graveyard)
           [db recoup-id] (th/add-card-to-zone db :recoup :exile :player-1)
           ;; Add a sorcery target in graveyard (required for Recoup)
           [db _sorcery-id] (th/add-cards-to-graveyard db [:careful-study] :player-1)
-          ;; Add mana to pay flashback cost {3}{R}
-          db (set-mana-pool db :player-1 {:colorless 3 :red 1})
-          ;; Get casting modes - should be empty since card is in exile
           modes (rules/get-casting-modes db :player-1 recoup-id)]
-      ;; Flashback should NOT be available from exile
       (is (empty? modes)
           "No casting modes should be available from exile")
-      ;; Verify can-cast? also returns false
       (is (false? (rules/can-cast? db :player-1 recoup-id))
           "Flashback should not work from exile zone"))))

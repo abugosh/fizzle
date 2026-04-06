@@ -156,7 +156,6 @@
           app-db (casting/cast-spell-handler {:game/db db :game/selected-card fling-id})
           sac-sel (:game/pending-selection app-db)
           {selection :selection} (th/confirm-selection (:game/db app-db) sac-sel #{creature-id})]
-      (is (some? selection) "Should chain to targeting selection")
       (is (= :cast-time-targeting (:selection/type selection))
           "Should chain to cast-time-targeting"))))
 
@@ -358,5 +357,11 @@
       (is (= 0 opp-life) "Opponent should be at 0 life")
       (is (= :life-zero (:game/loss-condition game-state))
           "SBA should set :life-zero after lethal damage")
-      (is (some? (:game/winner game-state))
-          "SBA should set winner after lethal damage"))))
+      (let [winner-ref (:game/winner game-state)
+            winner-pid (when winner-ref
+                         (d/q '[:find ?pid .
+                                :in $ ?eid
+                                :where [?eid :player/id ?pid]]
+                              result-db (:db/id winner-ref)))]
+        (is (= :player-1 winner-pid)
+            "SBA should set player-1 as winner after lethal damage")))))
