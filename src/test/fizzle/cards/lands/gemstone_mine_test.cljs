@@ -13,6 +13,15 @@
     [fizzle.test-helpers :as th]))
 
 
+;; === File-specific helpers ===
+
+(defn set-counters
+  "Set object counters via d/db-with (immutable, no conn needed)."
+  [db obj-id counters]
+  (let [obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)]
+    (d/db-with db [[:db/add obj-eid :object/counters counters]])))
+
+
 ;; === Card definition tests ===
 
 (deftest gemstone-mine-card-definition-test
@@ -23,7 +32,9 @@
       (is (= 0 (:card/cmc card)))
       (is (= {} (:card/mana-cost card)))
       (is (= #{} (:card/colors card)))
-      (is (= #{:land} (:card/types card)))))
+      (is (= #{:land} (:card/types card)))
+      (is (= "Gemstone Mine enters the battlefield with three mining counters on it. {T}, Remove a mining counter from Gemstone Mine: Add one mana of any color. If there are no mining counters on Gemstone Mine, sacrifice it."
+             (:card/text card)))))
 
   (testing "ETB effects add 3 mining counters"
     (let [etb-effects (:card/etb-effects gemstone-mine/card)]
@@ -70,11 +81,7 @@
       (let [db (th/create-test-db)
             [db' obj-id] (th/add-card-to-zone db :gemstone-mine :battlefield :player-1)
             ;; Manually add mining counters (add-card-to-zone doesn't run ETB)
-            conn (d/conn-from-db db')
-            obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]]
-                         db' obj-id)
-            _ (d/transact! conn [[:db/add obj-eid :object/counters {:mining 3}]])
-            db-with-counters @conn
+            db-with-counters (set-counters db' obj-id {:mining 3})
             initial-pool (q/get-mana-pool db-with-counters :player-1)
             _ (is (= 0 (get initial-pool color))
                   (str "Precondition: " (name color) " mana is 0"))
@@ -93,11 +100,8 @@
   (testing "Activation with 3 counters leaves 2"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :gemstone-mine :battlefield :player-1)
-          conn (d/conn-from-db db')
-          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]]
-                       db' obj-id)
-          _ (d/transact! conn [[:db/add obj-eid :object/counters {:mining 3}]])
-          db'' (engine-mana/activate-mana-ability @conn :player-1 obj-id :black)]
+          db'' (engine-mana/activate-mana-ability (set-counters db' obj-id {:mining 3})
+                                                  :player-1 obj-id :black)]
       (is (= {:mining 2} (:object/counters (q/get-object db'' obj-id)))
           "Should have 2 mining counters after activation")
       (is (= :battlefield (th/get-object-zone db'' obj-id))
@@ -106,11 +110,8 @@
   (testing "Activation with 2 counters leaves 1"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :gemstone-mine :battlefield :player-1)
-          conn (d/conn-from-db db')
-          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]]
-                       db' obj-id)
-          _ (d/transact! conn [[:db/add obj-eid :object/counters {:mining 2}]])
-          db'' (engine-mana/activate-mana-ability @conn :player-1 obj-id :blue)]
+          db'' (engine-mana/activate-mana-ability (set-counters db' obj-id {:mining 2})
+                                                  :player-1 obj-id :blue)]
       (is (= {:mining 1} (:object/counters (q/get-object db'' obj-id)))
           "Should have 1 mining counter after activation")
       (is (= :battlefield (th/get-object-zone db'' obj-id))
@@ -119,11 +120,8 @@
   (testing "Activation with 1 counter sacrifices"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :gemstone-mine :battlefield :player-1)
-          conn (d/conn-from-db db')
-          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]]
-                       db' obj-id)
-          _ (d/transact! conn [[:db/add obj-eid :object/counters {:mining 1}]])
-          db'' (engine-mana/activate-mana-ability @conn :player-1 obj-id :green)]
+          db'' (engine-mana/activate-mana-ability (set-counters db' obj-id {:mining 1})
+                                                  :player-1 obj-id :green)]
       (is (= :graveyard (th/get-object-zone db'' obj-id))
           "Should be in graveyard after last counter removed")
       (is (= 1 (:green (q/get-mana-pool db'' :player-1)))
@@ -134,11 +132,8 @@
   (testing "Gemstone Mine with 2+ counters remains on battlefield after activation"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :gemstone-mine :battlefield :player-1)
-          conn (d/conn-from-db db')
-          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]]
-                       db' obj-id)
-          _ (d/transact! conn [[:db/add obj-eid :object/counters {:mining 2}]])
-          db'' (engine-mana/activate-mana-ability @conn :player-1 obj-id :black)]
+          db'' (engine-mana/activate-mana-ability (set-counters db' obj-id {:mining 2})
+                                                  :player-1 obj-id :black)]
       (is (= :battlefield (th/get-object-zone db'' obj-id))
           "Should remain on battlefield with counters remaining")
       (is (= {:mining 1} (:object/counters (q/get-object db'' obj-id)))
@@ -149,12 +144,9 @@
   (testing "Mana IS produced even on the sacrifice tap (last counter)"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :gemstone-mine :battlefield :player-1)
-          conn (d/conn-from-db db')
-          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]]
-                       db' obj-id)
           ;; Start with 1 counter (final activation)
-          _ (d/transact! conn [[:db/add obj-eid :object/counters {:mining 1}]])
-          db-tap (engine-mana/activate-mana-ability @conn :player-1 obj-id :red)]
+          db-tap (engine-mana/activate-mana-ability (set-counters db' obj-id {:mining 1})
+                                                    :player-1 obj-id :red)]
       (is (= 1 (:red (q/get-mana-pool db-tap :player-1)))
           "Red mana should be produced before sacrifice")
       (is (= :graveyard (th/get-object-zone db-tap obj-id))
@@ -197,12 +189,9 @@
   (testing "Gemstone Mine already tapped cannot activate mana ability"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :gemstone-mine :battlefield :player-1)
-          conn (d/conn-from-db db')
-          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]]
-                       db' obj-id)
-          _ (d/transact! conn [[:db/add obj-eid :object/counters {:mining 3}]])
           ;; First tap succeeds
-          db-tap1 (engine-mana/activate-mana-ability @conn :player-1 obj-id :black)
+          db-tap1 (engine-mana/activate-mana-ability (set-counters db' obj-id {:mining 3})
+                                                     :player-1 obj-id :black)
           _ (is (= 1 (:black (q/get-mana-pool db-tap1 :player-1)))
                 "Precondition: first tap adds mana")
           ;; Second tap (still tapped) should fail
@@ -232,12 +221,9 @@
   (testing "Gemstone Mine does NOT deal damage when tapped (unlike City of Brass)"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :gemstone-mine :battlefield :player-1)
-          conn (d/conn-from-db db')
-          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]]
-                       db' obj-id)
-          _ (d/transact! conn [[:db/add obj-eid :object/counters {:mining 3}]])
-          initial-life (q/get-life-total @conn :player-1)
+          db-with-counters (set-counters db' obj-id {:mining 3})
+          initial-life (q/get-life-total db-with-counters :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
-          db'' (engine-mana/activate-mana-ability @conn :player-1 obj-id :green)]
+          db'' (engine-mana/activate-mana-ability db-with-counters :player-1 obj-id :green)]
       (is (= 20 (q/get-life-total db'' :player-1))
           "Player should NOT lose life when tapping Gemstone Mine"))))

@@ -174,6 +174,24 @@
           "Selected card should move to battlefield"))))
 
 
+;; === Cannot-activate guard tests ===
+
+(deftest fetch-land-cannot-activate-from-graveyard-test
+  (testing "Fetch land in graveyard cannot activate ability"
+    (let [db (th/create-test-db)
+          [db fetch-id] (th/add-card-to-zone db :flooded-strand :graveyard :player-1)
+          _ (is (= :graveyard (th/get-object-zone db fetch-id))
+                "Precondition: fetch land is in graveyard")
+          initial-life (q/get-life-total db :player-1)
+          result (ability-events/activate-ability db :player-1 fetch-id 0)]
+      (is (= :graveyard (th/get-object-zone (:db result) fetch-id))
+          "Fetch land should remain in graveyard")
+      (is (= initial-life (q/get-life-total (:db result) :player-1))
+          "No life paid (ability did not activate)")
+      (is (true? (q/stack-empty? (:db result)))
+          "Stack should be empty (ability did not activate"))))
+
+
 ;; === Fail-to-find tests ===
 
 (deftest fetch-land-fail-to-find-test

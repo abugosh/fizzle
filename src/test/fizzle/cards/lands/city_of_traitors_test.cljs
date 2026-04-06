@@ -6,6 +6,7 @@
    - When you play another land, sacrifice City of Traitors
 
    Key behaviors being tested:
+   - Card definition (all fields exact)
    - Mana production: produces 2 colorless mana
    - Trigger registration on ETB
    - Trigger does NOT fire when CoT itself enters (exclude-self)
@@ -15,6 +16,7 @@
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
+    [fizzle.cards.lands.city-of-traitors :as city-of-traitors]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.engine.trigger-db :as trigger-db]
@@ -22,6 +24,44 @@
     [fizzle.events.lands :as lands]
     [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
+
+
+;; === Card definition tests ===
+
+(deftest test-cot-card-definition
+  (testing "City of Traitors has correct card fields"
+    (let [card city-of-traitors/card]
+      (is (= :city-of-traitors (:card/id card)))
+      (is (= "City of Traitors" (:card/name card)))
+      (is (= 0 (:card/cmc card)))
+      (is (= {} (:card/mana-cost card)))
+      (is (= #{} (:card/colors card)))
+      (is (= #{:land} (:card/types card)))
+      (is (= "When you play another land, sacrifice City of Traitors. {T}: Add {C}{C}."
+             (:card/text card)))))
+
+  (testing "City of Traitors has correct trigger structure"
+    (let [triggers (:card/triggers city-of-traitors/card)]
+      (is (= 1 (count triggers))
+          "Should have exactly one trigger")
+      (let [trigger (first triggers)]
+        (is (= :land-entered (:trigger/type trigger)))
+        (is (true? (get-in trigger [:trigger/filter :exclude-self]))
+            "Trigger should exclude self (not fire on own entry)")
+        (is (= :self-controller (get-in trigger [:trigger/filter :event/controller]))
+            "Trigger should only fire for controller's lands")
+        (is (= 1 (count (:trigger/effects trigger)))
+            "Trigger should have one effect")
+        (is (= :sacrifice (:effect/type (first (:trigger/effects trigger))))))))
+
+  (testing "City of Traitors has correct mana ability structure"
+    (let [abilities (:card/abilities city-of-traitors/card)]
+      (is (= 1 (count abilities))
+          "Should have exactly one ability")
+      (let [ability (first abilities)]
+        (is (= :mana (:ability/type ability)))
+        (is (true? (get-in ability [:ability/cost :tap])))
+        (is (= {:colorless 2} (:ability/produces ability)))))))
 
 
 ;; === Mana production tests ===

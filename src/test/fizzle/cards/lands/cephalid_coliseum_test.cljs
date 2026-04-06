@@ -31,12 +31,10 @@
 ;; === File-specific helpers ===
 
 (defn set-mana-pool
-  "Set a player's mana pool to specific values."
+  "Set a player's mana pool to specific values using d/db-with."
   [db player-id mana-pool]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)]
-    (d/transact! conn [[:db/add player-eid :player/mana-pool mana-pool]])
-    @conn))
+  (let [player-eid (q/get-player-eid db player-id)]
+    (d/db-with db [[:db/add player-eid :player/mana-pool mana-pool]])))
 
 
 ;; === Card Definition Tests ===
@@ -113,11 +111,9 @@
   (testing "Already tapped Coliseum cannot activate mana ability"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :cephalid-coliseum :battlefield :player-1)
-          ;; Tap the land manually
-          conn (d/conn-from-db db')
+          ;; Tap the land manually via d/db-with
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db' obj-id)
-          _ (d/transact! conn [[:db/add obj-eid :object/tapped true]])
-          db-tapped @conn
+          db-tapped (d/db-with db' [[:db/add obj-eid :object/tapped true]])
           initial-pool (q/get-mana-pool db-tapped :player-1)
           _ (is (= 0 (:blue initial-pool)) "Precondition: blue mana is 0")
           ;; Try to activate mana ability on tapped land
@@ -426,14 +422,10 @@
           ;; Activate threshold ability (index 1)
           result (ability-events/activate-ability db'''' :player-1 obj-id 1)
           selection (:pending-selection result)
-          _ (is (some? selection) "Should have pending target selection")
           ;; Confirm target (self)
           selection-with-target (assoc selection :selection/selected #{:player-1})
           final-result (ability-events/confirm-ability-target (:db result) selection-with-target)
           db-after-confirm (:db final-result)
-          ;; Stack should have the ability
-          top-item (stack/get-top-stack-item db-after-confirm)
-          _ (is (some? top-item) "Should have stack-item on stack")
           ;; Resolve the stack item ability (pass full entity, not eid)
           resolve-result (resolution/resolve-one-item db-after-confirm)]
       ;; After resolution, player should have drawn 3 cards

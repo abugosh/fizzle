@@ -51,9 +51,14 @@
     (let [card basic-lands/island]
       (is (= :island (:card/id card)))
       (is (= "Island" (:card/name card)))
+      (is (= 0 (:card/cmc card)))
+      (is (= {} (:card/mana-cost card)))
+      (is (= #{} (:card/colors card)))
       (is (= #{:land} (:card/types card)))
       (is (= #{:island} (:card/subtypes card)))
       (is (= #{:basic} (:card/supertypes card)))
+      (is (= "{T}: Add {U}." (:card/text card)))
+      (is (= 1 (count (:card/abilities card))))
       (is (= {:blue 1} (:ability/produces (first (:card/abilities card))))))))
 
 
@@ -62,9 +67,14 @@
     (let [card basic-lands/swamp]
       (is (= :swamp (:card/id card)))
       (is (= "Swamp" (:card/name card)))
+      (is (= 0 (:card/cmc card)))
+      (is (= {} (:card/mana-cost card)))
+      (is (= #{} (:card/colors card)))
       (is (= #{:land} (:card/types card)))
       (is (= #{:swamp} (:card/subtypes card)))
       (is (= #{:basic} (:card/supertypes card)))
+      (is (= "{T}: Add {B}." (:card/text card)))
+      (is (= 1 (count (:card/abilities card))))
       (is (= {:black 1} (:ability/produces (first (:card/abilities card))))))))
 
 
