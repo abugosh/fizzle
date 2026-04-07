@@ -4,7 +4,16 @@
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.db.queries :as q]
+    [fizzle.events.selection.core :as sel-core]
     [fizzle.test-helpers :as th]))
+
+
+;; Register a no-op executor for confirm-selection validation tests.
+;; Tests that verify validation pass/throw need a real :selection/type
+;; so execute-confirmed-selection can dispatch.
+(defmethod sel-core/execute-confirmed-selection :test-helpers-noop
+  [game-db _selection]
+  {:db game-db})
 
 
 (deftest create-test-db-returns-valid-db-test
@@ -216,3 +225,78 @@
           db (:game/db app-db)]
       (is (= 2 (:blue (q/get-mana-pool db :player-1))))
       (is (= 15 (q/get-life-total db :player-1))))))
+
+
+;; =====================================================
+;; confirm-selection validation tests
+;; =====================================================
+
+(deftest confirm-selection-throws-on-wrong-count-test
+  (testing "confirm-selection throws when selected count doesn't match :selection/select-count"
+    (let [db (th/create-test-db)
+          sel {:selection/validation :exact
+               :selection/select-count 1
+               :selection/candidates #{:a :b :c}}]
+      ;; Pass 2 items when :exact 1 expected
+      (is (thrown-with-msg? js/Error #"confirm-selection: validation failed"
+            (th/confirm-selection db sel #{:a :b}))
+          "Should throw when count(selected) != select-count"))))
+
+
+(deftest confirm-selection-throws-on-items-not-in-candidates-test
+  (testing "confirm-selection throws when selected items are not in :selection/candidates"
+    (let [db (th/create-test-db)
+          sel {:selection/validation :exact
+               :selection/select-count 1
+               :selection/candidates #{:a :b}}]
+      ;; :x not in candidates
+      (is (thrown-with-msg? js/Error #"confirm-selection: validation failed"
+            (th/confirm-selection db sel #{:x}))
+          "Should throw when items not in candidates"))))
+
+
+(deftest confirm-selection-throws-on-nil-validation-type-test
+  (testing "confirm-selection throws when :selection/validation is nil (builder bug)"
+    (let [db (th/create-test-db)
+          sel {:selection/candidates #{:a :b}}]
+      ;; Missing :selection/validation — nil defaults to reject
+      (is (thrown-with-msg? js/Error #"confirm-selection: validation failed"
+            (th/confirm-selection db sel #{:a}))
+          "Should throw when :selection/validation is nil"))))
+
+
+(deftest confirm-selection-does-not-throw-validation-on-valid-exact-selection-test
+  (testing "confirm-selection does not throw validation error for valid :exact selection"
+    (let [db (th/create-test-db)
+          sel {:selection/validation :exact
+               :selection/select-count 1
+               :selection/candidates #{:a :b}
+               :selection/lifecycle :finalized}
+          threw-validation? (try
+                              (th/confirm-selection db sel #{:a})
+                              false
+                              (catch ExceptionInfo e
+                                (boolean (re-find #"confirm-selection: validation failed"
+                                                  (ex-message e))))
+                              (catch :default _
+                                ;; Other errors (e.g. missing multimethod) are not our concern here
+                                false))]
+      (is (false? threw-validation?)
+          "Should not throw validation error for valid :exact selection"))))
+
+
+(deftest confirm-selection-does-not-throw-validation-on-always-validation-test
+  (testing "confirm-selection does not throw validation error for :always validation type"
+    (let [db (th/create-test-db)
+          sel {:selection/validation :always
+               :selection/lifecycle :finalized}
+          threw-validation? (try
+                              (th/confirm-selection db sel #{:a :b :c})
+                              false
+                              (catch ExceptionInfo e
+                                (boolean (re-find #"confirm-selection: validation failed"
+                                                  (ex-message e))))
+                              (catch :default _
+                                false))]
+      (is (false? threw-validation?)
+          "Should not throw validation error for :always validation"))))

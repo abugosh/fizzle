@@ -18,6 +18,7 @@
     [fizzle.engine.effects-registry]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
+    [fizzle.engine.validation :as validation]
     [fizzle.events.casting :as casting]
     [fizzle.events.lands :as lands]
     [fizzle.events.resolution :as resolution]
@@ -336,11 +337,22 @@
   "Confirms a pending selection with the given selected items.
    Routes through confirm-selection-impl which handles lifecycle routing
    (standard, finalized, chaining) based on builder-declared metadata.
-   Returns {:db db} or {:db db :selection sel} if chaining."
+   Returns {:db db} or {:db db :selection sel} if chaining.
+
+   Throws ex-info when the selection fails validation — catches incorrect
+   selected-items (wrong count, items not in candidates, nil validation type)
+   before they silently pass through."
   [db selection selected-items]
-  (let [sel (assoc selection :selection/selected selected-items)
-        app-db {:game/db db :game/pending-selection sel}
-        result (sel-core/confirm-selection-impl app-db)]
-    (if-let [next-sel (:game/pending-selection result)]
-      {:db (:game/db result) :selection next-sel}
-      {:db (:game/db result)})))
+  (let [sel (assoc selection :selection/selected selected-items)]
+    (when-not (validation/validate-selection sel)
+      (throw (ex-info "confirm-selection: validation failed"
+                      {:selected selected-items
+                       :validation (:selection/validation selection)
+                       :select-count (:selection/select-count selection)
+                       :candidates (or (:selection/candidates selection)
+                                       (:selection/candidate-ids selection))})))
+    (let [app-db {:game/db db :game/pending-selection sel}
+          result (sel-core/confirm-selection-impl app-db)]
+      (if-let [next-sel (:game/pending-selection result)]
+        {:db (:game/db result) :selection next-sel}
+        {:db (:game/db result)}))))
