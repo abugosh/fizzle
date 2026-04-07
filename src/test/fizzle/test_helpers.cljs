@@ -289,6 +289,12 @@
   [db player-id obj-id target-id]
   (assert (rules/can-cast? db player-id obj-id)
           (str "can-cast? returned false for " obj-id))
+  ;; Fail fast for modal spells before target validation — clearer error than "not in valid targets"
+  (let [obj (q/get-object db obj-id)
+        card (:object/card obj)]
+    (when (:card/modes card)
+      (throw (ex-info "cast-with-target: spell requires mode selection, use cast-mode-with-target"
+                      {:object-id obj-id}))))
   ;; Validate target before entering pipeline — clearer error message than pipeline failure
   (let [obj (q/get-object db obj-id)
         card (:object/card obj)

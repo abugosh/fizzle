@@ -274,9 +274,9 @@
                :selection/select-count 1
                :selection/candidates #{:a :b}
                :selection/lifecycle :finalized}]
-      ;; :a is in candidates and count matches — should return result map, not throw
-      (is (map? (th/confirm-selection db sel #{:a}))
-          "Should return result map for valid selection"))))
+      ;; :a is in candidates and count matches — verify {:db ...} shape returned (no throw)
+      (is (some? (:db (th/confirm-selection db sel #{:a})))
+          "Should return map with :db key for valid selection"))))
 
 
 (deftest confirm-selection-passes-always-validation-test
@@ -285,9 +285,9 @@
           sel {:selection/type :test-helpers-noop
                :selection/validation :always
                :selection/lifecycle :finalized}]
-      ;; :always validation never fails
-      (is (map? (th/confirm-selection db sel #{:a :b :c}))
-          "Should return result map for :always validation"))))
+      ;; :always validation never fails — verify {:db ...} shape returned (no throw)
+      (is (some? (:db (th/confirm-selection db sel #{:a :b :c})))
+          "Should return map with :db key for :always validation"))))
 
 
 ;; =====================================================
@@ -342,6 +342,18 @@
       (is (thrown-with-msg? js/Error #"not in valid targets"
             (th/cast-with-target db :player-1 bolt-id :not-a-real-player))
           "Should throw when target is not in valid targets"))))
+
+
+(deftest cast-with-target-throws-on-modal-spell-test
+  (testing "cast-with-target throws with 'mode selection' message when given a modal spell"
+    (let [db (th/create-test-db {:mana {:blue 1}})
+          ;; Vision Charm is modal (3 modes: mill, land-type change, phase-out artifact)
+          ;; Mode 2 has no targeting so can-cast? returns true without any targets set up
+          [db charm-id] (th/add-card-to-zone db :vision-charm :hand :player-1)]
+      ;; Modal spells must use cast-mode-with-target, not cast-with-target
+      (is (thrown-with-msg? js/Error #"mode selection"
+            (th/cast-with-target db :player-1 charm-id :player-1))
+          "Should throw 'mode selection' for modal spell"))))
 
 
 ;; =====================================================
@@ -453,6 +465,6 @@
     (let [db (th/create-test-db {:mana {:black 1}})
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           result-db (th/cast-and-resolve db :player-1 ritual-id)]
-      ;; Dark Ritual has no targeting/costs — should work without throwing
-      (is (map? result-db)
-          "Should return db (map) without throwing"))))
+      ;; Dark Ritual adds 3 black mana — verify the mana pool changed
+      (is (= 3 (:black (q/get-mana-pool result-db :player-1)))
+          "Dark Ritual should add 3 black mana to mana pool"))))
