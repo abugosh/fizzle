@@ -252,20 +252,43 @@
 
 
 (defn cast-with-target
-  "Casts a targeted spell, selecting the given target through production
-   targeting flow. Asserts can-cast? and target is valid.
+  "Casts a targeted spell through the full pre-cast pipeline via cast-spell-handler.
+   Asserts can-cast? and that the target is valid before calling the pipeline.
+   Throws fail-fast if the spell has pre-cast cost selections (use cast-and-resolve +
+   manual confirm-selection for those) or requires mode selection (use cast-mode-with-target).
    Returns db with spell on stack and target assigned."
   [db player-id obj-id target-id]
   (assert (rules/can-cast? db player-id obj-id)
           (str "can-cast? returned false for " obj-id))
-  (let [result (sel-targeting/cast-spell-with-targeting db player-id obj-id)
-        selection (:pending-target-selection result)]
-    (assert selection "Expected targeting selection but got none")
-    (assert (some #{target-id} (:selection/valid-targets selection))
-            (str target-id " not in valid targets: " (:selection/valid-targets selection)))
-    (sel-targeting/confirm-cast-time-target
-      (:db result)
-      (assoc selection :selection/selected #{target-id}))))
+  ;; Validate target before entering pipeline — clearer error message than pipeline failure
+  (let [obj (q/get-object db obj-id)
+        card (:object/card obj)
+        first-req (first (targeting/get-targeting-requirements card))
+        valid-targets (when first-req (targeting/find-valid-targets db player-id first-req))]
+    (assert (some #{target-id} valid-targets)
+            (str target-id " not in valid targets: " valid-targets)))
+  ;; Route through cast-spell-handler with full pre-cast pipeline
+  (let [result (casting/cast-spell-handler {:game/db db}
+                                           {:player-id player-id
+                                            :object-id obj-id
+                                            :target target-id})]
+    (cond
+      (:game/pending-mode-selection result)
+      (throw (ex-info "cast-with-target: spell requires mode selection, use cast-mode-with-target"
+                      {:object-id obj-id}))
+
+      (and (:game/pending-selection result)
+           (= :spell-mode (:selection/type (:game/pending-selection result))))
+      (throw (ex-info "cast-with-target: spell requires mode selection, use cast-mode-with-target"
+                      {:object-id obj-id}))
+
+      (:game/pending-selection result)
+      (throw (ex-info "cast-with-target: spell has pre-cast costs requiring selection"
+                      {:object-id obj-id
+                       :selection-type (:selection/type (:game/pending-selection result))}))
+
+      :else
+      (:game/db result))))
 
 
 (defn- spell-mode-has-valid-targets?

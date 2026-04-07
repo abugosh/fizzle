@@ -265,38 +265,79 @@
           "Should throw when :selection/validation is nil"))))
 
 
-(deftest confirm-selection-does-not-throw-validation-on-valid-exact-selection-test
-  (testing "confirm-selection does not throw validation error for valid :exact selection"
+(deftest confirm-selection-passes-valid-exact-selection-test
+  (testing "confirm-selection works for valid :exact selection with correct count and candidates"
     (let [db (th/create-test-db)
-          sel {:selection/validation :exact
+          sel {:selection/type :test-helpers-noop
+               :selection/validation :exact
                :selection/select-count 1
                :selection/candidates #{:a :b}
-               :selection/lifecycle :finalized}
-          threw-validation? (try
-                              (th/confirm-selection db sel #{:a})
-                              false
-                              (catch ExceptionInfo e
-                                (boolean (re-find #"confirm-selection: validation failed"
-                                                  (ex-message e))))
-                              (catch :default _
-                                ;; Other errors (e.g. missing multimethod) are not our concern here
-                                false))]
-      (is (false? threw-validation?)
-          "Should not throw validation error for valid :exact selection"))))
+               :selection/lifecycle :finalized}]
+      ;; :a is in candidates and count matches — should return result map, not throw
+      (is (map? (th/confirm-selection db sel #{:a}))
+          "Should return result map for valid selection"))))
 
 
-(deftest confirm-selection-does-not-throw-validation-on-always-validation-test
-  (testing "confirm-selection does not throw validation error for :always validation type"
+(deftest confirm-selection-passes-always-validation-test
+  (testing "confirm-selection works for :always validation type (no candidate/count check)"
     (let [db (th/create-test-db)
-          sel {:selection/validation :always
-               :selection/lifecycle :finalized}
-          threw-validation? (try
-                              (th/confirm-selection db sel #{:a :b :c})
-                              false
-                              (catch ExceptionInfo e
-                                (boolean (re-find #"confirm-selection: validation failed"
-                                                  (ex-message e))))
-                              (catch :default _
-                                false))]
-      (is (false? threw-validation?)
-          "Should not throw validation error for :always validation"))))
+          sel {:selection/type :test-helpers-noop
+               :selection/validation :always
+               :selection/lifecycle :finalized}]
+      ;; :always validation never fails
+      (is (map? (th/confirm-selection db sel #{:a :b :c}))
+          "Should return result map for :always validation"))))
+
+
+;; =====================================================
+;; cast-with-target routing tests
+;; =====================================================
+
+(deftest cast-with-target-routes-through-pipeline-test
+  (testing "cast-with-target puts targeted spell on stack with target assigned"
+    (let [db (th/create-test-db {:mana {:red 1}})
+          db (th/add-opponent db)
+          [db bolt-id] (th/add-card-to-zone db :lightning-bolt :hand :player-1)
+          ;; Cast via cast-with-target — should route through cast-spell-handler pipeline
+          db-cast (th/cast-with-target db :player-1 bolt-id :player-2)
+          top-item (q/get-top-stack-item db-cast)]
+      (is (some? top-item)
+          "Spell should be on stack after cast-with-target")
+      (is (= :player-2 (get (:stack-item/targets top-item) :target))
+          "Target :player-2 should be stored on stack-item"))))
+
+
+(deftest cast-with-target-throws-on-can-cast-false-test
+  (testing "cast-with-target throws assertion when can-cast? returns false"
+    (let [db (th/create-test-db {:mana {:red 0}})
+          db (th/add-opponent db)
+          [db bolt-id] (th/add-card-to-zone db :lightning-bolt :hand :player-1)]
+      ;; No mana — can-cast? false → should throw
+      (is (thrown-with-msg? js/Error #"can-cast\? returned false"
+            (th/cast-with-target db :player-1 bolt-id :player-2))
+          "Should throw when can-cast? is false"))))
+
+
+(deftest cast-with-target-throws-on-pre-cast-cost-selection-test
+  (testing "cast-with-target throws when spell has pre-cast cost requiring selection (e.g. Fling sacrifice)"
+    (let [db (th/create-test-db {:mana {:red 1 :colorless 1}})
+          db (th/add-opponent db)
+          [db _creature-id] (th/add-card-to-zone db :nimble-mongoose :battlefield :player-1)
+          [db fling-id] (th/add-card-to-zone db :fling :hand :player-1)]
+      ;; Fling has a mandatory sacrifice-permanent pre-cast cost
+      ;; cast-spell-handler will return a pending-selection for sacrifice BEFORE targeting
+      ;; cast-with-target should throw fail-fast on detecting this
+      (is (thrown-with-msg? js/Error #"pre-cast costs"
+            (th/cast-with-target db :player-1 fling-id :player-2))
+          "Should throw fail-fast when spell has pre-cast cost selection"))))
+
+
+(deftest cast-with-target-throws-on-invalid-target-test
+  (testing "cast-with-target throws when given target is not a valid target"
+    (let [db (th/create-test-db {:mana {:red 1}})
+          db (th/add-opponent db)
+          [db bolt-id] (th/add-card-to-zone db :lightning-bolt :hand :player-1)]
+      ;; :not-a-real-player is not a valid target for Lightning Bolt
+      (is (thrown-with-msg? js/Error #"not in valid targets"
+            (th/cast-with-target db :player-1 bolt-id :not-a-real-player))
+          "Should throw when target is not in valid targets"))))
