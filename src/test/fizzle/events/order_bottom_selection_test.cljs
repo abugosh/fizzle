@@ -289,7 +289,7 @@
         (let [max-existing (apply max (map #(get-object-position db' %) existing-ids))]
           (doseq [ordered-id [card-a card-b card-c]]
             (is (> (get-object-position db' ordered-id) max-existing)
-                (str "Ordered card should be below existing library cards"))))))))
+                "Ordered card should be below existing library cards")))))))
 
 
 (deftest test-execute-with-empty-library

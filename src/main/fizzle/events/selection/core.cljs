@@ -379,12 +379,18 @@
 
 
 (defn- finalized-path
-  "Finalized lifecycle: no remaining-effects, clear selection, optionally clear
-   selected-card. clear-selected-card? comes from the selection map when lifecycle
-   is declared, or from executor return for legacy path."
-  [app-db result on-complete clear-selected-card?]
-  (let [updated (cond-> app-db
-                  true (assoc :game/db (:db result))
+  "Finalized lifecycle: clear selection, optionally clear selected-card.
+   When the selection carries :selection/remaining-effects it originated from
+   spell resolution (e.g. :order-bottom chained from :peek-and-select), so the
+   spell must be cleaned up off the stack. Pre-cast finalized selections
+   (targeting, mana-allocation, spell-mode) never carry remaining-effects."
+  [app-db result selection on-complete clear-selected-card?]
+  (let [resolution-phase? (contains? selection :selection/remaining-effects)
+        db-final (if resolution-phase?
+                   (cleanup-selection-source (:db result) selection)
+                   (:db result))
+        updated (cond-> app-db
+                  true (assoc :game/db db-final)
                   true (dissoc :game/pending-selection)
                   clear-selected-card? (dissoc :game/selected-card))]
     (if on-complete
@@ -433,7 +439,7 @@
             lifecycle (or (:selection/lifecycle selection) :standard)
             routed (case lifecycle
                      :chaining (chaining-path app-db result selection on-complete)
-                     :finalized (finalized-path app-db result on-complete
+                     :finalized (finalized-path app-db result selection on-complete
                                                 (:selection/clear-selected-card? selection))
                      :standard (standard-path app-db result selection on-complete))]
         ;; Process deferred entry as the terminal step when the selection chain

@@ -221,6 +221,92 @@
             "Stored cast mode should have :exile on-resolve")))))
 
 
+;; === Regression: fizzle-m8j8 — Flashback resolution with order-bottom chain ===
+
+(deftest flash-of-insight-flashback-full-resolution-test
+  (testing "Flashback cast → resolve → peek-and-select → order-bottom → spell exiled"
+    (let [db (th/create-test-db)
+          ;; Add 4 cards to library (X=3 → peek 3, select 1, remainder 2 → order-bottom chain)
+          [db [lib1 _lib2 _lib3 _lib4]] (th/add-cards-to-library db
+                                                                 [:dark-ritual :cabal-ritual
+                                                                  :brain-freeze :careful-study]
+                                                                 :player-1)
+          ;; Add Flash of Insight to graveyard for flashback
+          [db foi-id] (th/add-card-to-zone db :flash-of-insight :graveyard :player-1)
+          ;; Add 3 blue cards to graveyard for exile cost (X=3)
+          [db _] (th/add-card-to-zone db :opt :graveyard :player-1)
+          [db _] (th/add-card-to-zone db :mental-note :graveyard :player-1)
+          [db _] (th/add-card-to-zone db :merchant-scroll :graveyard :player-1)
+          ;; Add flashback mana: {1}{U}
+          db (mana/add-mana db :player-1 {:colorless 1 :blue 1})
+          ;; Cast via flashback mode
+          modes (rules/get-casting-modes db :player-1 foi-id)
+          flashback-mode (first (filter #(= :flashback (:mode/id %)) modes))
+          _ (is (some? flashback-mode) "Flashback mode should be available")
+          db-cast (rules/cast-spell-mode db :player-1 foi-id flashback-mode)
+          _ (is (= :stack (th/get-object-zone db-cast foi-id))
+                "FoI should be on stack after flashback cast")
+          ;; Set X=3
+          foi-eid (d/q '[:find ?e . :in $ ?oid
+                         :where [?e :object/id ?oid]]
+                       db-cast foi-id)
+          db-with-x (d/db-with db-cast [[:db/add foi-eid :object/x-value 3]])
+          ;; Resolve → peek-and-select selection
+          {:keys [db selection]} (th/resolve-top db-with-x)
+          _ (is (= :peek-and-select (:selection/type selection))
+                "Should get peek-and-select selection")
+          _ (is (= 3 (count (:selection/candidates selection)))
+                "Should peek 3 cards")
+          ;; Select 1 card for hand → should chain to order-bottom (2 remainder)
+          {:keys [db selection]} (th/confirm-selection db selection #{lib1})]
+      ;; Must chain to order-bottom selection
+      (is (some? selection)
+          "Should chain to order-bottom selection (2 remainder cards)")
+      (is (= :order-bottom (:selection/type selection))
+          "Chained selection should be :order-bottom")
+      (is (= 2 (count (:selection/candidates selection)))
+          "Order-bottom should have 2 remainder cards")
+      ;; Confirm order-bottom (order doesn't matter for this test)
+      (let [ordered (vec (:selection/candidates selection))
+            {:keys [db]} (th/confirm-selection db selection ordered)]
+        ;; Spell must be off the stack
+        (is (not= :stack (th/get-object-zone db foi-id))
+            "Flash of Insight must be off the stack after full resolution")
+        ;; Flashback spells exile on resolve
+        (is (= :exile (th/get-object-zone db foi-id))
+            "Flash of Insight should be exiled after flashback resolution")
+        ;; Selected card should be in hand
+        (is (= :hand (th/get-object-zone db lib1))
+            "Selected card should be in hand")))))
+
+
+(deftest flash-of-insight-normal-cast-full-resolution-with-order-test
+  (testing "Normal cast with X=3 → peek → select 1 → order 2 remainder on bottom"
+    (let [db (th/create-test-db {:mana {:colorless 4 :blue 1}})
+          [db [lib1 _lib2 _lib3 _lib4]] (th/add-cards-to-library db
+                                                                 [:dark-ritual :cabal-ritual
+                                                                  :brain-freeze :careful-study]
+                                                                 :player-1)
+          [db foi-id] (th/add-card-to-zone db :flash-of-insight :hand :player-1)
+          db-cast (rules/cast-spell db :player-1 foi-id)
+          foi-eid (d/q '[:find ?e . :in $ ?oid
+                         :where [?e :object/id ?oid]]
+                       db-cast foi-id)
+          db-with-x (d/db-with db-cast [[:db/add foi-eid :object/x-value 3]])
+          {:keys [db selection]} (th/resolve-top db-with-x)
+          _ (is (= :peek-and-select (:selection/type selection)))
+          {:keys [db selection]} (th/confirm-selection db selection #{lib1})]
+      (is (= :order-bottom (:selection/type selection))
+          "Should chain to order-bottom")
+      (let [ordered (vec (:selection/candidates selection))
+            {:keys [db]} (th/confirm-selection db selection ordered)]
+        ;; Normal cast goes to graveyard (not exile)
+        (is (= :graveyard (th/get-object-zone db foi-id))
+            "Flash of Insight should be in graveyard after normal resolution")
+        (is (= :hand (th/get-object-zone db lib1))
+            "Selected card should be in hand")))))
+
+
 ;; === G. Edge Cases ===
 
 (deftest flash-of-insight-castable-with-minimum-mana-test
