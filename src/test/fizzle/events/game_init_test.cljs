@@ -154,7 +154,7 @@
           game-db (:game/db app-db)
           library (q/get-objects-in-zone game-db :player-1 :library)
           creatures (filter #(contains? (set (:card/types (:object/card %))) :creature)
-                           library)]
+                            library)]
       (is (pos? (count creatures))
           "Should have creature objects in library")
       (doseq [creature creatures]
@@ -172,7 +172,7 @@
           game-db (:game/db app-db)
           hand (q/get-objects-in-zone game-db :player-1 :hand)
           creatures (filter #(contains? (set (:card/types (:object/card %))) :creature)
-                           hand)]
+                            hand)]
       ;; With 12 creatures in 60 cards, drawing 7 should usually get at least 1
       ;; but this isn't guaranteed — only assert if we drew any
       (when (pos? (count creatures))
@@ -203,9 +203,7 @@
           game-db (:game/db app-db)
           ;; Burn bot uses Mountains (lands) and Lightning Bolts (instants)
           ;; but check opponent library for any creatures
-          opp-library (q/get-objects-in-zone game-db :player-2 :library)
-          opp-creatures (filter #(contains? (set (:card/types (:object/card %))) :creature)
-                                opp-library)]
+          opp-library (q/get-objects-in-zone game-db :player-2 :library)]
       ;; Burn bot has no creatures — verify non-creatures don't have P/T
       (doseq [obj opp-library]
         (when-not (contains? (set (:card/types (:object/card obj))) :creature)
