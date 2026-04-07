@@ -94,14 +94,18 @@
                   (conj [:db/retract obj-eid :object/attacking (:object/attacking obj)])
                   (some? (:object/blocking obj))
                   (conj [:db/retract obj-eid :object/blocking (:object/blocking obj)]))))
-            ;; Add combat-only creature fields when entering battlefield
-            ;; P/T already present on creature objects (set at creation time)
+            ;; Add creature fields when entering battlefield
+            ;; P/T set from card definition (idempotent — safe if already present)
+            ;; Summoning-sick and damage-marked are battlefield-only combat attrs
             creature-enter-txs
             (when (= new-zone :battlefield)
-              (let [card (d/pull db [{:object/card [:card/types]}] obj-eid)
-                    card-types (set (:card/types (:object/card card)))]
+              (let [card (d/pull db [{:object/card [:card/types :card/power :card/toughness]}] obj-eid)
+                    card-data (:object/card card)
+                    card-types (set (:card/types card-data))]
                 (when (contains? card-types :creature)
-                  [[:db/add obj-eid :object/summoning-sick true]
+                  [[:db/add obj-eid :object/power (:card/power card-data)]
+                   [:db/add obj-eid :object/toughness (:card/toughness card-data)]
+                   [:db/add obj-eid :object/summoning-sick true]
                    [:db/add obj-eid :object/damage-marked 0]])))
             ;; Reset tapped state when entering or leaving battlefield
             ;; Leaving: card loses memory of being tapped

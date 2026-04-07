@@ -290,6 +290,36 @@
       (is (= 0 (:object/damage-marked obj)) "Damage should be 0"))))
 
 
+(deftest test-creature-entering-bf-sets-pt-from-card-definition
+  (testing "Creature entering battlefield gets P/T even if object was created without them
+            (production path: objects start without P/T, zone transition must set it)"
+    (let [db (th/create-test-db)
+          ;; Create a creature object WITHOUT :object/power/:object/toughness
+          ;; This simulates the production object creation path where P/T is not pre-set
+          conn (d/conn-from-db db)
+          player-eid (q/get-player-eid db :player-1)
+          card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] db :nimble-mongoose)
+          obj-id (random-uuid)
+          _ (d/transact! conn [{:object/id obj-id
+                                :object/card card-eid
+                                :object/zone :hand
+                                :object/owner player-eid
+                                :object/controller player-eid
+                                :object/tapped false}])
+          db @conn
+          ;; Verify: no P/T on the object yet
+          obj-before (q/get-object db obj-id)
+          _ (is (nil? (:object/power obj-before)) "Object should NOT have P/T before battlefield")
+          ;; Move to battlefield via production zone transition
+          db (zones/move-to-zone db obj-id :battlefield)
+          obj (q/get-object db obj-id)]
+      ;; P/T must be set from card definition by the zone transition
+      (is (= 1 (:object/power obj)) "Zone transition must set power from card definition")
+      (is (= 1 (:object/toughness obj)) "Zone transition must set toughness from card definition")
+      (is (true? (:object/summoning-sick obj)) "Should be summoning sick")
+      (is (= 0 (:object/damage-marked obj)) "Damage should be 0"))))
+
+
 (deftest test-land-entering-bf-no-creature-fields
   (testing "Land entering battlefield does not get creature fields"
     (let [db (th/create-test-db)
