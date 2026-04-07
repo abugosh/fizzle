@@ -3,20 +3,55 @@
 
    These tests verify that build-object-tx produces structurally correct
    Datascript tx maps for game objects, and that the canary shapes match
-   what init.cljs produces."
+   what init.cljs, restorer.cljs, tokens.cljs, and test_helpers.cljs produce."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
+    [clojure.set :as cset]
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.cards :as cards]
+    [fizzle.engine.effects :as effects]
+    [fizzle.engine.effects.tokens]
     [fizzle.engine.objects :as objects]
-    [fizzle.events.init :as init]))
+    [fizzle.engine.zones :as zones]
+    [fizzle.events.init :as init]
+    [fizzle.sharing.decoder :as decoder]
+    [fizzle.sharing.encoder :as encoder]
+    [fizzle.sharing.extractor :as extractor]
+    [fizzle.sharing.restorer :as restorer]
+    [fizzle.test-helpers :as th]))
+
+
+;; Mock localStorage for restorer tests (restorer reads stops from localStorage)
+(def ^:private mock-storage (atom {}))
+
+
+(set! js/localStorage
+      #js {:getItem    (fn [key] (get @mock-storage key nil))
+           :setItem    (fn [key value] (swap! mock-storage assoc key value) nil)
+           :removeItem (fn [key] (swap! mock-storage dissoc key) nil)
+           :clear      (fn [] (reset! mock-storage {}) nil)
+           :length     0
+           :key        (fn [_] nil)})
 
 
 (defn- get-card-eid
   [db card-id]
   (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] db card-id))
+
+
+(defn- pull-stored-keys
+  "Pull all keys stored for an object in db, stripping :db/id."
+  [db obj-id]
+  (let [obj-eid (d/q '[:find ?e . :in $ ?id :where [?e :object/id ?id]] db obj-id)]
+    (disj (set (keys (d/pull db '[*] obj-eid))) :db/id)))
+
+
+(defn- make-snapshot
+  "Extract + encode + decode a live DB into a portable snapshot."
+  [db]
+  (-> db extractor/extract encoder/encode-snapshot decoder/decode-snapshot))
 
 
 ;; === Unit tests for build-object-tx ===
@@ -276,3 +311,172 @@
           stored-keys (set (keys (d/pull game-db '[*] obj-eid)))
           relevant-stored-keys (disj stored-keys :db/id)]
       (is (= build-keys relevant-stored-keys)))))
+
+
+;; === Canary: restorer.cljs shape parity ===
+
+(deftest canary-restorer-non-creature-hand-shape-matches-build-object-tx
+  (testing "restorer.cljs hand object key set matches build-object-tx for non-creature"
+    (let [;; Create a db with a dark-ritual in hand, take snapshot, restore
+          db (th/create-test-db)
+          [db _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          db (th/add-opponent db)
+          snapshot (make-snapshot db)
+          restored-db (-> snapshot restorer/restore-game-state :game/db)
+          ;; Find the dark-ritual object in hand
+          hand (q/get-hand restored-db :player-1)
+          dr-obj (some (fn [o]
+                         (when (= :dark-ritual (get-in o [:object/card :card/id])) o))
+                       hand)
+          _ (assert dr-obj "dark-ritual should be in restored hand")
+          restored-keys (pull-stored-keys restored-db (:object/id dr-obj))
+          ;; Expected: same as build-object-tx for non-creature in hand
+          conn (d/create-conn schema)
+          _ (d/transact! conn cards/all-cards)
+          base-db @conn
+          card-eid (get-card-eid base-db :dark-ritual)
+          card-data (d/pull base-db [:card/types :card/power :card/toughness] card-eid)
+          build-keys (set (keys (objects/build-object-tx card-eid card-data :hand 99 0)))]
+      (is (= build-keys restored-keys)
+          (str "restorer hand keys should match build-object-tx. "
+               "Extra in restorer: " (cset/difference restored-keys build-keys)
+               " Missing from restorer: " (cset/difference build-keys restored-keys))))))
+
+
+(deftest canary-restorer-creature-battlefield-shape-is-superset
+  (testing "restorer.cljs battlefield creature key set is superset of build-object-tx"
+    (let [;; Create a db with a xantid-swarm on battlefield, take snapshot, restore
+          db (th/create-test-db)
+          [db _] (th/add-card-to-zone db :xantid-swarm :battlefield :player-1)
+          db (th/add-opponent db)
+          snapshot (make-snapshot db)
+          restored-db (-> snapshot restorer/restore-game-state :game/db)
+          bf (q/get-objects-in-zone restored-db :player-1 :battlefield)
+          xantid-obj (some (fn [o]
+                             (when (= :xantid-swarm (get-in o [:object/card :card/id])) o))
+                           bf)
+          _ (assert xantid-obj "xantid-swarm should be on restored battlefield")
+          restored-keys (pull-stored-keys restored-db (:object/id xantid-obj))
+          ;; build-object-tx keys (no summoning-sick/damage-marked)
+          conn (d/create-conn schema)
+          _ (d/transact! conn cards/all-cards)
+          base-db @conn
+          card-eid (get-card-eid base-db :xantid-swarm)
+          card-data (d/pull base-db [:card/types :card/power :card/toughness] card-eid)
+          build-keys (set (keys (objects/build-object-tx card-eid card-data :battlefield 99 0)))]
+      ;; Restorer battlefield creatures must have summoning-sick and damage-marked on top of base
+      (is (cset/subset? build-keys restored-keys)
+          "Restored battlefield creature should have all build-object-tx keys plus more")
+      (is (contains? restored-keys :object/summoning-sick)
+          "Restored battlefield creature should have :object/summoning-sick")
+      (is (contains? restored-keys :object/damage-marked)
+          "Restored battlefield creature should have :object/damage-marked"))))
+
+
+;; === Canary: tokens.cljs shape parity ===
+
+(deftest canary-token-shape-is-superset-of-build-object-tx
+  (testing "token-created object key set is superset of build-object-tx (has is-token/summoning-sick/damage-marked)"
+    (let [beast-token-effect {:effect/type :create-token
+                              :effect/token {:token/name "Beast"
+                                             :token/power 4
+                                             :token/toughness 4
+                                             :token/types #{:creature}
+                                             :token/subtypes #{:beast}
+                                             :token/colors #{:green}}}
+          db (th/create-test-db)
+          db (effects/execute-effect db :player-1 beast-token-effect)
+          bf (q/get-objects-in-zone db :player-1 :battlefield)
+          token-obj (first (filter :object/is-token bf))
+          _ (assert token-obj "beast token should be on battlefield")
+          token-obj-id (:object/id token-obj)
+          token-keys (pull-stored-keys db token-obj-id)
+          ;; Expected: superset of build-object-tx for a creature
+          ;; Token's card entity uses :card/types, :card/power, :card/toughness
+          token-card-eid (d/q '[:find ?e . :in $ ?oid
+                                :where [?o :object/id ?oid]
+                                [?o :object/card ?e]]
+                              db token-obj-id)
+          card-data (d/pull db [:card/types :card/power :card/toughness] token-card-eid)
+          build-keys (set (keys (objects/build-object-tx token-card-eid card-data :battlefield 99 0)))]
+      (is (cset/subset? build-keys token-keys)
+          "Token should have all build-object-tx keys")
+      (is (contains? token-keys :object/is-token)
+          "Token should have :object/is-token")
+      (is (contains? token-keys :object/summoning-sick)
+          "Token should have :object/summoning-sick")
+      (is (contains? token-keys :object/damage-marked)
+          "Token should have :object/damage-marked"))))
+
+
+;; === Canary: test_helpers.cljs shape parity ===
+
+(deftest canary-test-helper-non-creature-hand-shape-matches-build-object-tx
+  (testing "add-card-to-zone hand object key set matches build-object-tx for non-creature"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          helper-keys (pull-stored-keys db obj-id)
+          ;; Expected: same as build-object-tx for non-creature in hand
+          conn (d/create-conn schema)
+          _ (d/transact! conn cards/all-cards)
+          base-db @conn
+          card-eid (get-card-eid base-db :dark-ritual)
+          card-data (d/pull base-db [:card/types :card/power :card/toughness] card-eid)
+          build-keys (set (keys (objects/build-object-tx card-eid card-data :hand 99 0)))]
+      (is (= build-keys helper-keys)
+          (str "test-helper hand keys should match build-object-tx. "
+               "Extra in helper: " (cset/difference helper-keys build-keys)
+               " Missing from helper: " (cset/difference build-keys helper-keys))))))
+
+
+(deftest canary-test-helper-creature-battlefield-shape-is-superset
+  (testing "add-card-to-zone battlefield creature key set is superset of build-object-tx"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :xantid-swarm :battlefield :player-1)
+          helper-keys (pull-stored-keys db obj-id)
+          ;; Expected: superset with summoning-sick + damage-marked
+          conn (d/create-conn schema)
+          _ (d/transact! conn cards/all-cards)
+          base-db @conn
+          card-eid (get-card-eid base-db :xantid-swarm)
+          card-data (d/pull base-db [:card/types :card/power :card/toughness] card-eid)
+          build-keys (set (keys (objects/build-object-tx card-eid card-data :battlefield 99 0)))]
+      (is (cset/subset? build-keys helper-keys)
+          "Helper battlefield creature should have all build-object-tx keys")
+      (is (contains? helper-keys :object/summoning-sick)
+          "Helper battlefield creature should have :object/summoning-sick")
+      (is (contains? helper-keys :object/damage-marked)
+          "Helper battlefield creature should have :object/damage-marked"))))
+
+
+;; === Canary: move-to-zone adds exactly the expected battlefield fields ===
+
+(deftest canary-move-to-zone-adds-summoning-sick-and-damage-marked
+  (testing "move-to-zone entering battlefield adds :object/summoning-sick and :object/damage-marked to creature"
+    (let [;; Start with creature in hand (no bf fields)
+          db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :xantid-swarm :hand :player-1)
+          hand-keys (pull-stored-keys db obj-id)
+          ;; Move to battlefield
+          db-bf (zones/move-to-zone db obj-id :battlefield)
+          bf-keys (pull-stored-keys db-bf obj-id)
+          ;; Keys added by move-to-zone
+          added-keys (cset/difference bf-keys hand-keys)]
+      (is (= #{:object/summoning-sick :object/damage-marked} added-keys)
+          (str "move-to-zone should add exactly summoning-sick + damage-marked. "
+               "Got: " added-keys)))))
+
+
+(deftest canary-move-to-zone-removes-summoning-sick-and-damage-marked-on-exit
+  (testing "move-to-zone leaving battlefield removes :object/summoning-sick and :object/damage-marked"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :xantid-swarm :battlefield :player-1)
+          bf-keys (pull-stored-keys db obj-id)
+          ;; Move out of battlefield to graveyard
+          db-gy (zones/move-to-zone db obj-id :graveyard)
+          gy-keys (pull-stored-keys db-gy obj-id)
+          removed-keys (cset/difference bf-keys gy-keys)]
+      (is (contains? removed-keys :object/summoning-sick)
+          "Leaving battlefield should remove :object/summoning-sick")
+      (is (contains? removed-keys :object/damage-marked)
+          "Leaving battlefield should remove :object/damage-marked"))))
