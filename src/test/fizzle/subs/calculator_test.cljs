@@ -4,6 +4,7 @@
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
+    [fizzle.engine.objects :as objects]
     [fizzle.engine.probability :as probability]
     [fizzle.subs.calculator :as subs]
     [re-frame.core :as rf]
@@ -54,14 +55,9 @@
     (d/transact! conn [{:card/id card-id
                         :card/name (name card-id)
                         :card/cmc 1}])
-    (let [card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] @conn card-id)]
-      (d/transact! conn [{:object/id (random-uuid)
-                          :object/zone :library
-                          :object/card card-eid
-                          :object/owner player-eid
-                          :object/controller player-eid
-                          :object/tapped false
-                          :object/position 0}]))
+    (let [card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] @conn card-id)
+          card-data (d/pull @conn '[:card/types :card/power :card/toughness] card-eid)]
+      (d/transact! conn [(objects/build-object-tx card-eid card-data :library player-eid 0)]))
     @conn))
 
 

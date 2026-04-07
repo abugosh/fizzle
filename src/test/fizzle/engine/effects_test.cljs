@@ -6,6 +6,7 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.effects :as fx]
     [fizzle.engine.grants :as grants]
+    [fizzle.engine.objects :as objects]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.state-based :as sba]
     [fizzle.engine.zones :as zones]
@@ -85,20 +86,12 @@
    Position 0 = top of library."
   [db player-id card-ids]
   (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)]
+        player-eid (q/get-player-eid db player-id)
+        ;; All library cards use Dark Ritual card def (mill tests only care about zone/count)
+        card-eid (d/q '[:find ?e . :where [?e :card/id :dark-ritual]] @conn)
+        card-data (d/pull @conn '[:card/types :card/power :card/toughness] card-eid)]
     (doseq [idx (range (count card-ids))]
-      ;; For simplicity, all library cards reference the same Dark Ritual card def
-      ;; (In real game each would be different card, but for mill test we just need objects)
-      (let [card-eid (d/q '[:find ?e .
-                            :where [?e :card/id :dark-ritual]]
-                          @conn)]
-        (d/transact! conn [{:object/id (random-uuid)
-                            :object/card card-eid
-                            :object/zone :library
-                            :object/owner player-eid
-                            :object/controller player-eid
-                            :object/position idx
-                            :object/tapped false}])))
+      (d/transact! conn [(objects/build-object-tx card-eid card-data :library player-eid idx)]))
     @conn))
 
 
@@ -534,19 +527,12 @@
   ([db player-id initial-counters]
    (let [conn (d/conn-from-db db)
          player-eid (q/get-player-eid db player-id)
-         card-eid (d/q '[:find ?e .
-                         :where [?e :card/id :dark-ritual]]
-                       @conn)
+         card-eid (d/q '[:find ?e . :where [?e :card/id :dark-ritual]] @conn)
+         card-data (d/pull @conn '[:card/types :card/power :card/toughness] card-eid)
          object-id (random-uuid)
-         base-entity {:object/id object-id
-                      :object/card card-eid
-                      :object/zone :battlefield
-                      :object/owner player-eid
-                      :object/controller player-eid
-                      :object/tapped false}
-         entity (if initial-counters
-                  (assoc base-entity :object/counters initial-counters)
-                  base-entity)]
+         entity (cond-> (objects/build-object-tx card-eid card-data :battlefield player-eid 0
+                                                 :id object-id)
+                  initial-counters (assoc :object/counters initial-counters))]
      (d/transact! conn [entity])
      [@conn object-id])))
 

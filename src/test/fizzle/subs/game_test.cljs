@@ -5,6 +5,7 @@
     [fizzle.db.queries :as q]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.grants :as grants]
+    [fizzle.engine.objects :as objects]
     [fizzle.subs.game :as subs]
     [re-frame.core :as rf]
     [re-frame.db :as rf-db]))
@@ -335,14 +336,11 @@
           _ (d/transact! conn [{:card/id :brain-freeze
                                 :card/name "Brain Freeze"}])
           card-eid (d/q '[:find ?e . :where [?e :card/id :brain-freeze]] @conn)
+          card-data (d/pull @conn '[:card/types :card/power :card/toughness] card-eid)
           player-eid (q/get-player-eid @conn :player-1)
           obj-id (random-uuid)
-          _ (d/transact! conn [{:object/id obj-id
-                                :object/card card-eid
-                                :object/zone :stack
-                                :object/owner player-eid
-                                :object/controller player-eid
-                                :object/tapped false}])
+          _ (d/transact! conn [(objects/build-object-tx card-eid card-data :stack player-eid 0
+                                                        :id obj-id)])
           game-db' @conn
           selection {:selection/type :storm-split
                      :selection/source-object-id obj-id
@@ -370,17 +368,16 @@
   (let [conn (d/conn-from-db game-db)
         player-eid (q/get-player-eid game-db player-id)
         card-id (keyword (str "card-" (random-uuid)))
-        _ (d/transact! conn [{:card/id card-id
-                              :card/name card-name
-                              :card/cmc cmc
-                              :card/types types}])
-        card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] @conn card-id)]
-    (d/transact! conn [{:object/id (random-uuid)
-                        :object/card card-eid
-                        :object/zone :battlefield
-                        :object/owner player-eid
-                        :object/controller player-eid
-                        :object/tapped false}])
+        creature? (contains? types :creature)
+        card-entity (cond-> {:card/id card-id
+                             :card/name card-name
+                             :card/cmc cmc
+                             :card/types types}
+                      creature? (assoc :card/power 1 :card/toughness 1))
+        _ (d/transact! conn [card-entity])
+        card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] @conn card-id)
+        card-data (d/pull @conn '[:card/types :card/power :card/toughness] card-eid)]
+    (d/transact! conn [(objects/build-object-tx card-eid card-data :battlefield player-eid 0)])
     @conn))
 
 
@@ -509,17 +506,14 @@
         _ (d/transact! conn [{:card/id card-id
                               :card/name card-name
                               :card/cmc 1
-                              :card/types #{:creature}}])
+                              :card/types #{:creature}
+                              :card/power power
+                              :card/toughness toughness}])
         card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] @conn card-id)
-        obj-id (random-uuid)
-        _ (d/transact! conn [{:object/id obj-id
-                              :object/card card-eid
-                              :object/zone :battlefield
-                              :object/owner player-eid
-                              :object/controller player-eid
-                              :object/tapped false
-                              :object/power power
-                              :object/toughness toughness}])]
+        card-data (d/pull @conn '[:card/types :card/power :card/toughness] card-eid)
+        obj-id (random-uuid)]
+    (d/transact! conn [(objects/build-object-tx card-eid card-data :battlefield player-eid 0
+                                                :id obj-id)])
     [@conn obj-id]))
 
 

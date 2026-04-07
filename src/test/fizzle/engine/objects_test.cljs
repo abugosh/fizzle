@@ -5,25 +5,34 @@
    Datascript tx maps for game objects, and that the canary shapes match
    what init.cljs, restorer.cljs, tokens.cljs, and test_helpers.cljs produce.
 
-   === Audit Results (fizzle-2ywh) ===
+   === Audit Results (fizzle-2ywh + fizzle-vg0k) ===
    Total helper calls (add-card-to-zone / add-cards-to-library / add-cards-to-graveyard):
      2191 grep matches across 192 test files
 
    Battlefield placements (add-card-to-zone :battlefield): 502 calls
 
-   MIGRATED (local add-test-creature helpers → th/add-test-creature):
+   MIGRATED (local add-test-creature helpers → th/add-test-creature, fizzle-2ywh):
      - cards/black/crippling_fatigue_test.cljs  — 13 call sites, local helper removed
      - cards/black/vendetta_test.cljs           — 8 call sites, local helper removed
      - engine/phase_mechanic_test.cljs          — 3 call sites, local helper removed
      - engine/effects_test.cljs (add-creature-with-toughness) — 5 call sites, removed
 
-   KEPT as helper (appropriate setup, not testing creature behavior):
-     - All 502 :battlefield placements for artifacts, lands, non-creature permanents
-     - subs/game_test.cljs add-battlefield-creature — tests subscription presentation
-       logic with custom field combinations (intentional, e.g. no summoning-sick)
-     - tap_land_test.cljs add-land-to-battlefield — tests land tap mechanics
-     - sphere_of_resistance_test.cljs add-decrease-modifier — tests cost reduction
-       static abilities on custom artifact cards
+   MIGRATED (reviewer gap sites → build-object-tx, fizzle-vg0k):
+     - engine/effects_test.cljs:add-library-cards — was missing build-object-tx, now migrated
+     - engine/effects_test.cljs:add-permanent — was missing :object/position + build-object-tx
+     - subs/calculator_test.cljs:add-card-to-library — inline construction, now migrated
+     - subs/game_test.cljs:add-battlefield-permanent — missing :object/position, now migrated
+     - subs/game_test.cljs:add-battlefield-creature — missing :object/position, now migrated
+     - subs/game_test.cljs:storm-split test inline — missing :object/position, now migrated
+
+   KEPT (justified, cannot use build-object-tx):
+     - All 502 :battlefield placements via th/add-card-to-zone — appropriate test setup
+     - subs/game_test.cljs:add-library-cards — NO :object/card ref (phantom counting objects);
+       zone-count subs don't need real card entities, forcing card refs adds false coupling
+     - subs/game_test.cljs:add-zone-cards — same as add-library-cards; counts only
+     - tap_land_test.cljs:add-land-to-battlefield — tests land tap mechanics
+     - sphere_of_resistance_test.cljs:add-decrease-modifier — custom artifact cards
+       with static abilities for cost-reduction testing
 
    New shared helper added: th/add-test-creature in test_helpers.cljs
      Signature: [db owner power toughness & {:keys [colors] :or {colors #{}}}]
