@@ -55,17 +55,26 @@
 
 (defn- objects-tx
   "Return transaction data for game objects in a zone.
-   For :hand, uses provided UUIDs. For :library, generates UUIDs and sets position."
+   For :hand, uses provided UUIDs. For :library, generates UUIDs and sets position.
+   Creature cards always get :object/power and :object/toughness from card definition."
   [db card-ids zone owner-eid uuids]
   (vec (map-indexed
          (fn [i [uuid card-id]]
-           {:object/id uuid
-            :object/card (get-card-eid db card-id)
-            :object/zone zone
-            :object/owner owner-eid
-            :object/controller owner-eid
-            :object/tapped false
-            :object/position (if (= zone :library) i 0)})
+           (let [card-eid (get-card-eid db card-id)
+                 card-data (d/pull db [:card/types :card/power :card/toughness] card-eid)
+                 creature? (contains? (set (:card/types card-data)) :creature)
+                 base {:object/id uuid
+                       :object/card card-eid
+                       :object/zone zone
+                       :object/owner owner-eid
+                       :object/controller owner-eid
+                       :object/tapped false
+                       :object/position (if (= zone :library) i 0)}]
+             (if creature?
+               (assoc base
+                      :object/power (:card/power card-data)
+                      :object/toughness (:card/toughness card-data))
+               base)))
          (map vector uuids card-ids))))
 
 
@@ -82,13 +91,21 @@
         hand-ids (take 7 card-ids)
         library-ids (drop 7 card-ids)
         make-obj (fn [card-id zone position]
-                   {:object/id (random-uuid)
-                    :object/card (get-card-eid db card-id)
-                    :object/zone zone
-                    :object/owner opp-eid
-                    :object/controller opp-eid
-                    :object/tapped false
-                    :object/position position})]
+                   (let [card-eid (get-card-eid db card-id)
+                         card-data (d/pull db [:card/types :card/power :card/toughness] card-eid)
+                         creature? (contains? (set (:card/types card-data)) :creature)
+                         base {:object/id (random-uuid)
+                               :object/card card-eid
+                               :object/zone zone
+                               :object/owner opp-eid
+                               :object/controller opp-eid
+                               :object/tapped false
+                               :object/position position}]
+                     (if creature?
+                       (assoc base
+                              :object/power (:card/power card-data)
+                              :object/toughness (:card/toughness card-data))
+                       base)))]
     (into (vec (map #(make-obj % :hand 0) hand-ids))
           (map-indexed (fn [i card-id] (make-obj card-id :library i)) library-ids))))
 

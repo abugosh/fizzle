@@ -98,19 +98,20 @@
 
                         (seq (:object/grants obj-map))
                         (assoc :object/grants (:object/grants obj-map)))]
-    (let [result
-          (if (= zone :battlefield)
-            (let [types     (card-types-set db card-eid)]
-              (if (creature? types)
-                (let [power     (card-base-stat db card-eid :card/power)
-                      toughness (card-base-stat db card-eid :card/toughness)]
-                  (cond-> with-optional
-                    (some? power)     (assoc :object/power power)
-                    (some? toughness) (assoc :object/toughness toughness)
-                    true              (assoc :object/summoning-sick false
-                                             :object/damage-marked 0)))
-                with-optional))
-            with-optional)]
+    (let [types (card-types-set db card-eid)
+          ;; Creatures get P/T in all zones; battlefield also gets combat attrs
+          with-creature (if (creature? types)
+                          (let [power     (card-base-stat db card-eid :card/power)
+                                toughness (card-base-stat db card-eid :card/toughness)]
+                            (cond-> with-optional
+                              (some? power)     (assoc :object/power power)
+                              (some? toughness) (assoc :object/toughness toughness)))
+                          with-optional)
+          result (if (and (= zone :battlefield) (creature? types))
+                   (assoc with-creature
+                          :object/summoning-sick false
+                          :object/damage-marked 0)
+                   with-creature)]
       (object-spec/validate-object-tx! result)
       result)))
 

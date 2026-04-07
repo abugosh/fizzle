@@ -435,3 +435,57 @@
       (is (= [:counterspell]
              (map :card/id (get-in out [:players :player-2 :hand])))
           "player-2 hand preserved"))))
+
+
+;; ---------------------------------------------------------------------------
+;; Creature P/T restoration in all zones (production path)
+
+(deftest restore-creature-in-graveyard-has-pt-test
+  (testing "creature restored to graveyard has :object/power and :object/toughness"
+    (let [db       (-> (th/create-test-db) (th/add-opponent))
+          [db _]   (th/add-card-to-zone db :cloud-of-faeries :graveyard :player-1)
+          snapshot (make-snapshot db)
+          restored (-> snapshot restorer/restore-game-state :game/db)
+          gy-objs  (q/get-objects-in-zone restored :player-1 :graveyard)
+          creature (first (filter #(= :cloud-of-faeries
+                                      (get-in % [:object/card :card/id]))
+                                  gy-objs))]
+      (is (some? creature) "Cloud of Faeries should be in graveyard")
+      (is (= 1 (:object/power creature))
+          "Creature in graveyard should have power from card definition")
+      (is (= 1 (:object/toughness creature))
+          "Creature in graveyard should have toughness from card definition"))))
+
+
+(deftest restore-creature-in-hand-has-pt-test
+  (testing "creature restored to hand has :object/power and :object/toughness"
+    (let [db       (-> (th/create-test-db) (th/add-opponent))
+          [db _]   (th/add-card-to-zone db :nimble-mongoose :hand :player-1)
+          snapshot (make-snapshot db)
+          restored (-> snapshot restorer/restore-game-state :game/db)
+          hand     (q/get-objects-in-zone restored :player-1 :hand)
+          creature (first (filter #(= :nimble-mongoose
+                                      (get-in % [:object/card :card/id]))
+                                  hand))]
+      (is (some? creature) "Nimble Mongoose should be in hand")
+      (is (= 1 (:object/power creature))
+          "Creature in hand should have power from card definition")
+      (is (= 1 (:object/toughness creature))
+          "Creature in hand should have toughness from card definition"))))
+
+
+(deftest restore-non-creature-no-pt-test
+  (testing "non-creature restored to graveyard does NOT have P/T"
+    (let [db       (-> (th/create-test-db) (th/add-opponent))
+          [db _]   (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
+          snapshot (make-snapshot db)
+          restored (-> snapshot restorer/restore-game-state :game/db)
+          gy-objs  (q/get-objects-in-zone restored :player-1 :graveyard)
+          obj      (first (filter #(= :dark-ritual
+                                      (get-in % [:object/card :card/id]))
+                                  gy-objs))]
+      (is (some? obj) "Dark Ritual should be in graveyard")
+      (is (nil? (:object/power obj))
+          "Non-creature should NOT have :object/power")
+      (is (nil? (:object/toughness obj))
+          "Non-creature should NOT have :object/toughness"))))

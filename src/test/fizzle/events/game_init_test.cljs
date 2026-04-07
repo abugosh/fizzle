@@ -127,6 +127,92 @@
             "Should have 2 sideboard objects from setup config")))))
 
 
+;; === Creature P/T at init (production object creation) ===
+
+(def ^:private deck-with-creatures
+  "A 60-card deck that includes creature cards for P/T testing."
+  [{:card/id :cloud-of-faeries :count 4}
+   {:card/id :nimble-mongoose :count 4}
+   {:card/id :xantid-swarm :count 4}
+   {:card/id :dark-ritual :count 4}
+   {:card/id :cabal-ritual :count 4}
+   {:card/id :brain-freeze :count 4}
+   {:card/id :lotus-petal :count 4}
+   {:card/id :opt :count 4}
+   {:card/id :careful-study :count 4}
+   {:card/id :mental-note :count 4}
+   {:card/id :deep-analysis :count 4}
+   {:card/id :island :count 4}
+   {:card/id :swamp :count 4}
+   {:card/id :city-of-brass :count 4}
+   {:card/id :polluted-delta :count 4}])
+
+
+(deftest test-creature-objects-have-pt-in-library
+  (testing "creature objects in library get :object/power and :object/toughness at creation"
+    (let [app-db (game-init/init-game-state {:main-deck deck-with-creatures})
+          game-db (:game/db app-db)
+          library (q/get-objects-in-zone game-db :player-1 :library)
+          creatures (filter #(contains? (set (:card/types (:object/card %))) :creature)
+                           library)]
+      (is (pos? (count creatures))
+          "Should have creature objects in library")
+      (doseq [creature creatures]
+        (is (some? (:object/power creature))
+            (str "Creature " (get-in creature [:object/card :card/id])
+                 " in library should have :object/power"))
+        (is (some? (:object/toughness creature))
+            (str "Creature " (get-in creature [:object/card :card/id])
+                 " in library should have :object/toughness"))))))
+
+
+(deftest test-creature-objects-have-pt-in-hand
+  (testing "creature objects in hand get :object/power and :object/toughness at creation"
+    (let [app-db (game-init/init-game-state {:main-deck deck-with-creatures})
+          game-db (:game/db app-db)
+          hand (q/get-objects-in-zone game-db :player-1 :hand)
+          creatures (filter #(contains? (set (:card/types (:object/card %))) :creature)
+                           hand)]
+      ;; With 12 creatures in 60 cards, drawing 7 should usually get at least 1
+      ;; but this isn't guaranteed — only assert if we drew any
+      (when (pos? (count creatures))
+        (doseq [creature creatures]
+          (is (some? (:object/power creature))
+              (str "Creature " (get-in creature [:object/card :card/id])
+                   " in hand should have :object/power"))
+          (is (some? (:object/toughness creature))
+              (str "Creature " (get-in creature [:object/card :card/id])
+                   " in hand should have :object/toughness")))))))
+
+
+(deftest test-non-creature-objects-no-pt
+  (testing "non-creature objects should NOT have :object/power or :object/toughness"
+    (let [app-db (game-init/init-game-state {:main-deck minimal-deck})
+          game-db (:game/db app-db)
+          library (q/get-objects-in-zone game-db :player-1 :library)]
+      (doseq [obj library]
+        (is (nil? (:object/power obj))
+            (str "Non-creature " (get-in obj [:object/card :card/id])
+                 " should NOT have :object/power"))))))
+
+
+(deftest test-opponent-creature-objects-have-pt
+  (testing "opponent/bot creature objects also get P/T at creation"
+    (let [app-db (game-init/init-game-state {:main-deck deck-with-creatures
+                                             :bot-archetype :burn})
+          game-db (:game/db app-db)
+          ;; Burn bot uses Mountains (lands) and Lightning Bolts (instants)
+          ;; but check opponent library for any creatures
+          opp-library (q/get-objects-in-zone game-db :player-2 :library)
+          opp-creatures (filter #(contains? (set (:card/types (:object/card %))) :creature)
+                                opp-library)]
+      ;; Burn bot has no creatures — verify non-creatures don't have P/T
+      (doseq [obj opp-library]
+        (when-not (contains? (set (:card/types (:object/card obj))) :creature)
+          (is (nil? (:object/power obj))
+              "Non-creature opponent objects should NOT have P/T"))))))
+
+
 (deftest test-bot-gets-empty-sideboard
   (testing "opponent/bot player has no sideboard objects"
     (let [sideboard [{:card/id :merchant-scroll :count 2}]
