@@ -4,6 +4,7 @@
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.db.queries :as q]
+    [fizzle.engine.zones :as zones]
     [fizzle.events.selection.core :as sel-core]
     [fizzle.test-helpers :as th]))
 
@@ -341,3 +342,92 @@
       (is (thrown-with-msg? js/Error #"not in valid targets"
             (th/cast-with-target db :player-1 bolt-id :not-a-real-player))
           "Should throw when target is not in valid targets"))))
+
+
+;; =====================================================
+;; Creature P/T in all zones tests (fizzle-pb06)
+;; =====================================================
+
+(deftest add-card-to-zone-creature-in-graveyard-has-pt-test
+  (testing "add-card-to-zone sets :object/power and :object/toughness for creatures in graveyard"
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :nimble-mongoose :graveyard :player-1)
+          obj (q/get-object db' obj-id)]
+      (is (= 1 (:object/power obj))
+          "Creature in graveyard should have :object/power")
+      (is (= 1 (:object/toughness obj))
+          "Creature in graveyard should have :object/toughness"))))
+
+
+(deftest add-card-to-zone-creature-in-hand-has-pt-test
+  (testing "add-card-to-zone sets :object/power and :object/toughness for creatures in hand"
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :nimble-mongoose :hand :player-1)
+          obj (q/get-object db' obj-id)]
+      (is (= 1 (:object/power obj))
+          "Creature in hand should have :object/power")
+      (is (= 1 (:object/toughness obj))
+          "Creature in hand should have :object/toughness"))))
+
+
+(deftest add-card-to-zone-non-creature-in-graveyard-no-pt-test
+  (testing "add-card-to-zone does NOT set :object/power for non-creature cards"
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
+          obj (q/get-object db' obj-id)]
+      (is (nil? (:object/power obj))
+          "Non-creature should NOT have :object/power")
+      (is (nil? (:object/toughness obj))
+          "Non-creature should NOT have :object/toughness"))))
+
+
+(deftest add-cards-to-library-creature-has-pt-test
+  (testing "add-cards-to-library sets :object/power and :object/toughness for creature cards"
+    (let [db (th/create-test-db)
+          [db' obj-ids] (th/add-cards-to-library db [:nimble-mongoose] :player-1)
+          obj (q/get-object db' (first obj-ids))]
+      (is (= 1 (:object/power obj))
+          "Creature in library should have :object/power")
+      (is (= 1 (:object/toughness obj))
+          "Creature in library should have :object/toughness"))))
+
+
+(deftest add-cards-to-graveyard-creature-has-pt-test
+  (testing "add-cards-to-graveyard sets :object/power and :object/toughness for creature cards"
+    (let [db (th/create-test-db)
+          [db' obj-ids] (th/add-cards-to-graveyard db [:nimble-mongoose] :player-1)
+          obj (q/get-object db' (first obj-ids))]
+      (is (= 1 (:object/power obj))
+          "Creature in graveyard (bulk) should have :object/power")
+      (is (= 1 (:object/toughness obj))
+          "Creature in graveyard (bulk) should have :object/toughness"))))
+
+
+(deftest creature-leaving-battlefield-resets-pt-to-base-test
+  (testing "creature leaving battlefield resets P/T to base values, not nil"
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :nimble-mongoose :battlefield :player-1)
+          ;; Move to graveyard (simulates creature dying)
+          db-after (zones/move-to-zone db' obj-id :graveyard)
+          obj (q/get-object db-after obj-id)]
+      (is (= 1 (:object/power obj))
+          "Creature after leaving battlefield should have reset :object/power (not nil)")
+      (is (= 1 (:object/toughness obj))
+          "Creature after leaving battlefield should have reset :object/toughness (not nil)"))))
+
+
+(deftest creature-entering-battlefield-keeps-existing-pt-test
+  (testing "creature entering battlefield keeps pre-existing P/T, adds summoning-sick and damage-marked"
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :nimble-mongoose :hand :player-1)
+          ;; Move to battlefield from hand (ETB)
+          db-after (zones/move-to-zone db' obj-id :battlefield)
+          obj (q/get-object db-after obj-id)]
+      (is (= 1 (:object/power obj))
+          "Creature on battlefield should have :object/power")
+      (is (= 1 (:object/toughness obj))
+          "Creature on battlefield should have :object/toughness")
+      (is (true? (:object/summoning-sick obj))
+          "Creature entering battlefield should have summoning-sick")
+      (is (= 0 (:object/damage-marked obj))
+          "Creature entering battlefield should have damage-marked 0"))))

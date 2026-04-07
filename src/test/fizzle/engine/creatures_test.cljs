@@ -302,16 +302,18 @@
 
 
 (deftest test-creature-leaving-bf-clears-fields
-  (testing "Creature leaving battlefield has creature fields retracted"
+  (testing "Creature leaving battlefield resets P/T to base values and retracts combat-only fields"
     (let [db (th/create-test-db)
           [db obj-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
-          ;; Verify creature fields are set
+          ;; Verify creature fields are set on battlefield
           _ (is (= 1 (:object/power (q/get-object db obj-id))))
           ;; Move to graveyard
           db (zones/move-to-zone db obj-id :graveyard)
           obj (q/get-object db obj-id)]
-      (is (nil? (:object/power obj)) "Power should be retracted")
-      (is (nil? (:object/toughness obj)) "Toughness should be retracted")
+      ;; P/T reset to card base values (not retracted — creatures have P/T in all zones)
+      (is (= 1 (:object/power obj)) "Power should reset to base value")
+      (is (= 1 (:object/toughness obj)) "Toughness should reset to base value")
+      ;; Combat-only attrs retracted
       (is (nil? (:object/summoning-sick obj)) "Summoning-sick should be retracted")
       (is (nil? (:object/damage-marked obj)) "Damage should be retracted"))))
 

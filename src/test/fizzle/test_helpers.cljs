@@ -76,17 +76,16 @@
                   :object/owner player-eid
                   :object/controller player-eid
                   :object/tapped false}
-        obj (cond
+        creature? (contains? card-types :creature)
+        obj (cond-> base-obj
               (= zone :library)
-              (assoc base-obj :object/position 0)
-              (and (= zone :battlefield) (contains? card-types :creature))
-              (assoc base-obj
-                     :object/power (:card/power card-def)
-                     :object/toughness (:card/toughness card-def)
-                     :object/summoning-sick true
-                     :object/damage-marked 0)
-              :else
-              base-obj)]
+              (assoc :object/position 0)
+              creature?
+              (assoc :object/power (:card/power card-def)
+                     :object/toughness (:card/toughness card-def))
+              (and creature? (= zone :battlefield))
+              (assoc :object/summoning-sick true
+                     :object/damage-marked 0))]
     (d/transact! conn [obj])
     [@conn obj-id]))
 
@@ -117,14 +116,22 @@
           [@conn object-ids]
           (let [card-id (first remaining)
                 obj-id (random-uuid)
-                card-eid (get-card-eid card-id)]
-            (d/transact! conn [{:object/id obj-id
-                                :object/card card-eid
-                                :object/zone :library
-                                :object/owner player-eid
-                                :object/controller player-eid
-                                :object/tapped false
-                                :object/position position}])
+                card-eid (get-card-eid card-id)
+                card-def (d/pull @conn [:card/types :card/power :card/toughness] card-eid)
+                creature? (contains? (set (:card/types card-def)) :creature)
+                base-obj {:object/id obj-id
+                          :object/card card-eid
+                          :object/zone :library
+                          :object/owner player-eid
+                          :object/controller player-eid
+                          :object/tapped false
+                          :object/position position}
+                obj (if creature?
+                      (assoc base-obj
+                             :object/power (:card/power card-def)
+                             :object/toughness (:card/toughness card-def))
+                      base-obj)]
+            (d/transact! conn [obj])
             (recur (rest remaining)
                    (inc position)
                    (conj object-ids obj-id))))))))
@@ -152,12 +159,20 @@
             (when (nil? card-eid)
               (throw (ex-info (str "Unknown card-id: " card-id)
                               {:card-id card-id})))
-            (d/transact! conn [{:object/id obj-id
-                                :object/card card-eid
-                                :object/zone :graveyard
-                                :object/owner player-eid
-                                :object/controller player-eid
-                                :object/tapped false}])
+            (let [card-def (d/pull @conn [:card/types :card/power :card/toughness] card-eid)
+                  creature? (contains? (set (:card/types card-def)) :creature)
+                  base-obj {:object/id obj-id
+                            :object/card card-eid
+                            :object/zone :graveyard
+                            :object/owner player-eid
+                            :object/controller player-eid
+                            :object/tapped false}
+                  obj (if creature?
+                        (assoc base-obj
+                               :object/power (:card/power card-def)
+                               :object/toughness (:card/toughness card-def))
+                        base-obj)]
+              (d/transact! conn [obj]))
             (recur (rest remaining)
                    (conj object-ids obj-id))))))))
 
