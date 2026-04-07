@@ -9,6 +9,7 @@
     [fizzle.db.storage :as storage]
     [fizzle.engine.card-spec :as card-spec]
     [fizzle.engine.cards :as cards]
+    [fizzle.engine.objects :as objects]
     [re-frame.core :as rf]))
 
 
@@ -62,19 +63,8 @@
          (fn [i [uuid card-id]]
            (let [card-eid (get-card-eid db card-id)
                  card-data (d/pull db [:card/types :card/power :card/toughness] card-eid)
-                 creature? (contains? (set (:card/types card-data)) :creature)
-                 base {:object/id uuid
-                       :object/card card-eid
-                       :object/zone zone
-                       :object/owner owner-eid
-                       :object/controller owner-eid
-                       :object/tapped false
-                       :object/position (if (= zone :library) i 0)}]
-             (if creature?
-               (assoc base
-                      :object/power (:card/power card-data)
-                      :object/toughness (:card/toughness card-data))
-               base)))
+                 position (if (= zone :library) i 0)]
+             (objects/build-object-tx card-eid card-data zone owner-eid position :id uuid)))
          (map vector uuids card-ids))))
 
 
@@ -92,20 +82,8 @@
         library-ids (drop 7 card-ids)
         make-obj (fn [card-id zone position]
                    (let [card-eid (get-card-eid db card-id)
-                         card-data (d/pull db [:card/types :card/power :card/toughness] card-eid)
-                         creature? (contains? (set (:card/types card-data)) :creature)
-                         base {:object/id (random-uuid)
-                               :object/card card-eid
-                               :object/zone zone
-                               :object/owner opp-eid
-                               :object/controller opp-eid
-                               :object/tapped false
-                               :object/position position}]
-                     (if creature?
-                       (assoc base
-                              :object/power (:card/power card-data)
-                              :object/toughness (:card/toughness card-data))
-                       base)))]
+                         card-data (d/pull db [:card/types :card/power :card/toughness] card-eid)]
+                     (objects/build-object-tx card-eid card-data zone opp-eid position)))]
     (into (vec (map #(make-obj % :hand 0) hand-ids))
           (map-indexed (fn [i card-id] (make-obj card-id :library i)) library-ids))))
 
