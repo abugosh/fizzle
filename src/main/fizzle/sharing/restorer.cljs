@@ -17,6 +17,7 @@
     [fizzle.db.storage :as storage]
     [fizzle.engine.cards :as cards]
     [fizzle.engine.object-spec :as object-spec]
+    [fizzle.engine.objects :as objects]
     [fizzle.engine.trigger-db :as trigger-db]))
 
 
@@ -56,64 +57,36 @@
 ;; ---------------------------------------------------------------------------
 ;; Object transactions per zone
 
-(defn- card-types-set
-  "Return the set of card types for a card entity (pulled as {:db/id eid})."
-  [db card-eid]
-  (let [types (d/q '[:find [?t ...] :in $ ?e :where [?e :card/types ?t]] db card-eid)]
-    (set types)))
-
-
-(defn- creature?
-  "True if the card types include :creature."
-  [card-types]
-  (contains? card-types :creature))
-
-
-(defn- card-base-stat
-  "Return a card stat field (e.g. :card/power) from the card entity, or nil."
-  [db card-eid field]
-  (d/q '[:find ?v . :in $ ?e ?f :where [?e ?f ?v]] db card-eid field))
-
-
 (defn- object-tx-for-zone
   "Build one object transaction map for restoring an object in a given zone.
 
-   For library objects, position is the index in the ordered array.
-   For battlefield creatures, restores power/toughness from card definition
-   and sets summoning-sick false (snapshot is mid-game, not just-entered).
-   Tapped, counters, and grants come from the portable object map."
-  [db obj-map zone owner-eid position]
-  (let [card-id  (:card/id obj-map)
-        card-eid (get-card-eid db card-id)
-        base     {:object/id         (random-uuid)
-                  :object/card       card-eid
-                  :object/zone       zone
-                  :object/owner      owner-eid
-                  :object/controller owner-eid
-                  :object/tapped     (boolean (:object/tapped obj-map))
-                  :object/position   (if (= zone :library) position 0)}
-        with-optional (cond-> base
-                        (seq (:object/counters obj-map))
-                        (assoc :object/counters (:object/counters obj-map))
+   Delegates base construction to build-object-tx (the shared chokepoint),
+   then overrides :object/tapped from snapshot and adds restore-specific
+   optional fields (:object/counters, :object/grants).
 
-                        (seq (:object/grants obj-map))
-                        (assoc :object/grants (:object/grants obj-map)))]
-    (let [types (card-types-set db card-eid)
-          ;; Creatures get P/T in all zones; battlefield also gets combat attrs
-          with-creature (if (creature? types)
-                          (let [power     (card-base-stat db card-eid :card/power)
-                                toughness (card-base-stat db card-eid :card/toughness)]
-                            (cond-> with-optional
-                              (some? power)     (assoc :object/power power)
-                              (some? toughness) (assoc :object/toughness toughness)))
-                          with-optional)
-          result (if (and (= zone :battlefield) (creature? types))
-                   (assoc with-creature
-                          :object/summoning-sick false
-                          :object/damage-marked 0)
-                   with-creature)]
-      (object-spec/validate-object-tx! result)
-      result)))
+   For battlefield creatures, also sets summoning-sick false and damage-marked 0
+   (snapshot is mid-game, not just-entered — creature was already on battlefield)."
+  [db obj-map zone owner-eid position]
+  (let [card-id     (:card/id obj-map)
+        card-eid    (get-card-eid db card-id)
+        card-data   (d/pull db [:card/types :card/power :card/toughness] card-eid)
+        creature?   (contains? (set (:card/types card-data)) :creature)
+        pos         (if (= zone :library) position 0)
+        result      (cond-> (-> (objects/build-object-tx card-eid card-data zone owner-eid pos)
+                                ;; Override tapped: restorer preserves snapshot state (build-object-tx defaults false)
+                                (assoc :object/tapped (boolean (:object/tapped obj-map))))
+                      (seq (:object/counters obj-map))
+                      (assoc :object/counters (:object/counters obj-map))
+
+                      (seq (:object/grants obj-map))
+                      (assoc :object/grants (:object/grants obj-map))
+
+                      ;; Battlefield creatures: set combat attrs (bypassing zone transition)
+                      (and (= zone :battlefield) creature?)
+                      (assoc :object/summoning-sick false
+                             :object/damage-marked 0))]
+    (object-spec/validate-object-tx! result)
+    result))
 
 
 (defn- transact-zone!

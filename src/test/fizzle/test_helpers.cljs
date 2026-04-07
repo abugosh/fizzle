@@ -16,6 +16,7 @@
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.cards :as cards]
     [fizzle.engine.effects-registry]
+    [fizzle.engine.objects :as objects]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.validation :as validation]
@@ -68,21 +69,11 @@
                                  ". Card not found in database.")
                             {:card-id card-id})))
         obj-id (random-uuid)
-        card-def (d/pull db [:card/types :card/power :card/toughness] card-eid)
-        card-types (set (:card/types card-def))
-        base-obj {:object/id obj-id
-                  :object/card card-eid
-                  :object/zone zone
-                  :object/owner player-eid
-                  :object/controller player-eid
-                  :object/tapped false}
-        creature? (contains? card-types :creature)
-        obj (cond-> base-obj
-              (= zone :library)
-              (assoc :object/position 0)
-              creature?
-              (assoc :object/power (:card/power card-def)
-                     :object/toughness (:card/toughness card-def))
+        card-data (d/pull db [:card/types :card/power :card/toughness] card-eid)
+        creature? (contains? (set (:card/types card-data)) :creature)
+        obj (cond-> (objects/build-object-tx card-eid card-data zone player-eid 0 :id obj-id)
+              ;; Helpers place objects directly on battlefield (no zone transition),
+              ;; so set battlefield-specific fields here — same responsibility as move-to-zone
               (and creature? (= zone :battlefield))
               (assoc :object/summoning-sick true
                      :object/damage-marked 0))]
@@ -100,37 +91,25 @@
     [db []]
     (let [conn (d/conn-from-db db)
           player-eid (q/get-player-eid db owner)
-          get-card-eid (fn [card-id]
-                         (let [eid (d/q '[:find ?e .
-                                          :in $ ?cid
-                                          :where [?e :card/id ?cid]]
-                                        @conn card-id)]
-                           (when (nil? eid)
-                             (throw (ex-info (str "Unknown card-id: " card-id)
-                                             {:card-id card-id})))
-                           eid))]
+          lookup-card-eid (fn [card-id]
+                            (let [eid (d/q '[:find ?e .
+                                             :in $ ?cid
+                                             :where [?e :card/id ?cid]]
+                                           @conn card-id)]
+                              (when (nil? eid)
+                                (throw (ex-info (str "Unknown card-id: " card-id)
+                                                {:card-id card-id})))
+                              eid))]
       (loop [remaining card-ids
              position 0
              object-ids []]
         (if (empty? remaining)
           [@conn object-ids]
-          (let [card-id (first remaining)
-                obj-id (random-uuid)
-                card-eid (get-card-eid card-id)
-                card-def (d/pull @conn [:card/types :card/power :card/toughness] card-eid)
-                creature? (contains? (set (:card/types card-def)) :creature)
-                base-obj {:object/id obj-id
-                          :object/card card-eid
-                          :object/zone :library
-                          :object/owner player-eid
-                          :object/controller player-eid
-                          :object/tapped false
-                          :object/position position}
-                obj (if creature?
-                      (assoc base-obj
-                             :object/power (:card/power card-def)
-                             :object/toughness (:card/toughness card-def))
-                      base-obj)]
+          (let [card-id   (first remaining)
+                obj-id    (random-uuid)
+                card-eid  (lookup-card-eid card-id)
+                card-data (d/pull @conn [:card/types :card/power :card/toughness] card-eid)
+                obj       (objects/build-object-tx card-eid card-data :library player-eid position :id obj-id)]
             (d/transact! conn [obj])
             (recur (rest remaining)
                    (inc position)
@@ -150,8 +129,8 @@
              object-ids []]
         (if (empty? remaining)
           [@conn object-ids]
-          (let [card-id (first remaining)
-                obj-id (random-uuid)
+          (let [card-id  (first remaining)
+                obj-id   (random-uuid)
                 card-eid (d/q '[:find ?e .
                                 :in $ ?cid
                                 :where [?e :card/id ?cid]]
@@ -159,19 +138,8 @@
             (when (nil? card-eid)
               (throw (ex-info (str "Unknown card-id: " card-id)
                               {:card-id card-id})))
-            (let [card-def (d/pull @conn [:card/types :card/power :card/toughness] card-eid)
-                  creature? (contains? (set (:card/types card-def)) :creature)
-                  base-obj {:object/id obj-id
-                            :object/card card-eid
-                            :object/zone :graveyard
-                            :object/owner player-eid
-                            :object/controller player-eid
-                            :object/tapped false}
-                  obj (if creature?
-                        (assoc base-obj
-                               :object/power (:card/power card-def)
-                               :object/toughness (:card/toughness card-def))
-                        base-obj)]
+            (let [card-data (d/pull @conn [:card/types :card/power :card/toughness] card-eid)
+                  obj       (objects/build-object-tx card-eid card-data :graveyard player-eid 0 :id obj-id)]
               (d/transact! conn [obj]))
             (recur (rest remaining)
                    (conj object-ids obj-id))))))))
