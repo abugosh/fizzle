@@ -2049,47 +2049,6 @@
   (th/add-card-to-zone db card-id :battlefield player-id))
 
 
-(defn add-creature-with-toughness
-  "Add a fake creature object directly to the db with specified toughness.
-   Used when we need a creature with specific toughness but no registered card exists.
-   The :object/card is a real card eid with toughness injected via a synthetic card map.
-   Instead, we insert a synthetic card entity with the given toughness.
-   Returns [db object-id card-eid]."
-  [db player-id toughness colors]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        card-id (keyword (str "synthetic-creature-" (random-uuid)))
-        object-id (random-uuid)
-        ;; Insert a synthetic card entity
-        card-tx {:db/id -1
-                 :card/id card-id
-                 :card/name (str "Synthetic Creature " toughness)
-                 :card/cmc 3
-                 :card/mana-cost {:generic 3}
-                 :card/colors (or colors #{})
-                 :card/types #{:creature}
-                 :card/text ""
-                 :card/power 2
-                 :card/toughness toughness}
-        _ (d/transact! conn [card-tx])
-        card-eid (d/q '[:find ?e .
-                        :in $ ?cid
-                        :where [?e :card/id ?cid]]
-                      @conn card-id)
-        obj-tx {:object/id object-id
-                :object/card card-eid
-                :object/zone :battlefield
-                :object/owner player-eid
-                :object/controller player-eid
-                :object/tapped false
-                :object/power 2
-                :object/toughness toughness
-                :object/summoning-sick true
-                :object/damage-marked 0}
-        _ (d/transact! conn [obj-tx])]
-    [@conn object-id card-eid]))
-
-
 ;; === execute-effect :bounce-all tests ===
 
 (deftest test-bounce-all-returns-artifacts-to-hand
@@ -2213,7 +2172,7 @@
 (deftest test-lose-life-equal-to-toughness-basic
   (testing "caster loses life equal to target creature's toughness (e.g., 3 for 2/3)"
     ;; Catches: basic logic failure — wrong field read or wrong amount
-    (let [[db target-id _] (add-creature-with-toughness (th/create-test-db) :player-1 3 #{:green})
+    (let [[db target-id] (th/add-test-creature (th/create-test-db) :player-1 2 3 :colors #{:green})
           _ (is (= :battlefield (:object/zone (q/get-object db target-id))))
           effect {:effect/type :lose-life-equal-to-toughness
                   :effect/target target-id}
@@ -2225,7 +2184,7 @@
 (deftest test-lose-life-equal-to-toughness-zero-toughness
   (testing "target creature with toughness 0 causes no life loss"
     ;; Catches: zero-toughness handling — must be a no-op
-    (let [[db target-id _] (add-creature-with-toughness (th/create-test-db) :player-1 0 #{:green})
+    (let [[db target-id] (th/add-test-creature (th/create-test-db) :player-1 2 0 :colors #{:green})
           effect {:effect/type :lose-life-equal-to-toughness
                   :effect/target target-id}
           db' (fx/execute-effect db :player-1 effect)]
@@ -2249,7 +2208,7 @@
   (testing "life loss can push life below 0 (no floor)"
     ;; Catches: incorrect floor at 0 — MTG allows life to go negative
     (let [db (th/create-test-db {:life 2})
-          [db target-id _] (add-creature-with-toughness db :player-1 5 #{:green})
+          [db target-id] (th/add-test-creature db :player-1 2 5 :colors #{:green})
           effect {:effect/type :lose-life-equal-to-toughness
                   :effect/target target-id}
           db' (fx/execute-effect db :player-1 effect)]
@@ -2263,7 +2222,7 @@
     ;; :card/toughness (permanent, on card entity) — Vendetta's destroy-then-life-loss
     ;; After :destroy, creature moves to graveyard and :object/toughness is retracted.
     ;; The :lose-life-equal-to-toughness effect must still read the card toughness.
-    (let [[db target-id _] (add-creature-with-toughness (th/create-test-db) :player-1 4 #{:green})
+    (let [[db target-id] (th/add-test-creature (th/create-test-db) :player-1 2 4 :colors #{:green})
           ;; Destroy the creature first (simulating Vendetta's first effect)
           destroy-effect {:effect/type :destroy
                           :effect/target target-id}
@@ -2282,7 +2241,7 @@
 (deftest test-lose-life-equal-to-toughness-high-toughness
   (testing "high toughness creature (0/7) causes 7 life loss"
     ;; Catches: off-by-one or wrong field read for high toughness values
-    (let [[db target-id _] (add-creature-with-toughness (th/create-test-db) :player-1 7 #{:green})
+    (let [[db target-id] (th/add-test-creature (th/create-test-db) :player-1 2 7 :colors #{:green})
           effect {:effect/type :lose-life-equal-to-toughness
                   :effect/target target-id}
           db' (fx/execute-effect db :player-1 effect)]

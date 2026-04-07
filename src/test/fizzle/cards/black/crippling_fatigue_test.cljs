@@ -12,7 +12,6 @@
    - Flashback spell is exiled after use"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
-    [datascript.core :as d]
     [fizzle.cards.black.crippling-fatigue :as crippling-fatigue]
     [fizzle.db.queries :as q]
     [fizzle.engine.creatures :as creatures]
@@ -33,33 +32,6 @@
   (let [[db obj-id] (th/add-card-to-zone db card-id :hand owner)
         db (zones/move-to-zone db obj-id :battlefield)]
     [db obj-id]))
-
-
-(defn- add-test-creature
-  "Add a custom creature directly to the battlefield with given power/toughness.
-   Returns [db obj-id]."
-  [db owner power toughness]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db owner)
-        card-id (keyword (str "test-creature-" (random-uuid)))
-        _ (d/transact! conn [{:card/id card-id
-                              :card/name "Test Creature"
-                              :card/types #{:creature}
-                              :card/power power
-                              :card/toughness toughness}])
-        card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] @conn card-id)
-        obj-id (random-uuid)
-        _ (d/transact! conn [{:object/id obj-id
-                              :object/card card-eid
-                              :object/zone :battlefield
-                              :object/owner player-eid
-                              :object/controller player-eid
-                              :object/tapped false
-                              :object/power power
-                              :object/toughness toughness
-                              :object/summoning-sick true
-                              :object/damage-marked 0}])]
-    [@conn obj-id]))
 
 
 ;; === A. Card Definition Tests ===
@@ -143,7 +115,7 @@
           db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :crippling-fatigue :hand :player-1)
           ;; 2/2 creature: -2/-2 gives 0 toughness, SBA kills it
-          [db creature-id] (add-test-creature db :player-2 2 2)
+          [db creature-id] (th/add-test-creature db :player-2 2 2)
           db-cast (th/cast-with-target db :player-1 obj-id creature-id)
           {:keys [db]} (th/resolve-top db-cast)
           ;; SBAs fire via :db effect handler in production; call manually in tests
@@ -161,7 +133,7 @@
           db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :crippling-fatigue :hand :player-1)
           ;; 4/4 creature: -2/-2 gives 2 toughness, survives
-          [db creature-id] (add-test-creature db :player-2 4 4)
+          [db creature-id] (th/add-test-creature db :player-2 4 4)
           db-cast (th/cast-with-target db :player-1 obj-id creature-id)
           {:keys [db]} (th/resolve-top db-cast)]
       (is (= :battlefield (:object/zone (q/get-object db creature-id)))
@@ -175,7 +147,7 @@
     (let [db (th/create-test-db {:mana {:colorless 1 :black 2}})
           db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :crippling-fatigue :hand :player-1)
-          [db creature-id] (add-test-creature db :player-2 4 4)
+          [db creature-id] (th/add-test-creature db :player-2 4 4)
           db-cast (th/cast-with-target db :player-1 obj-id creature-id)
           {:keys [db]} (th/resolve-top db-cast)]
       (is (= :graveyard (:object/zone (q/get-object db obj-id)))
@@ -189,7 +161,7 @@
     (let [db (th/create-test-db)
           db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :crippling-fatigue :hand :player-1)
-          [db _creature-id] (add-test-creature db :player-2 2 2)]
+          [db _creature-id] (th/add-test-creature db :player-2 2 2)]
       (is (false? (rules/can-cast? db :player-1 obj-id))
           "Should not be castable without mana"))))
 
@@ -209,7 +181,7 @@
     (let [db (th/create-test-db)
           db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :crippling-fatigue :graveyard :player-1)
-          [db _creature-id] (add-test-creature db :player-2 2 2)]
+          [db _creature-id] (th/add-test-creature db :player-2 2 2)]
       (is (false? (rules/can-cast? db :player-1 obj-id))
           "Should not be castable from graveyard without mana"))))
 
@@ -221,7 +193,7 @@
     (let [db (th/create-test-db {:mana {:colorless 1 :black 2}})
           db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :crippling-fatigue :hand :player-1)
-          [db creature-id] (add-test-creature db :player-2 4 4)
+          [db creature-id] (th/add-test-creature db :player-2 4 4)
           storm-before (q/get-storm-count db :player-1)
           db-cast (th/cast-with-target db :player-1 obj-id creature-id)]
       (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
@@ -233,7 +205,7 @@
 (deftest apply-pt-modifier-creates-grant-on-creature-test
   (testing ":apply-pt-modifier effect creates :pt-modifier grant on target creature"
     (let [db (th/create-test-db)
-          [db creature-id] (add-test-creature db :player-1 2 2)
+          [db creature-id] (th/add-test-creature db :player-1 2 2)
           effect {:effect/type :apply-pt-modifier
                   :effect/target creature-id
                   :effect/power -2
@@ -254,7 +226,7 @@
 (deftest apply-pt-modifier-reads-effect-data-not-hardcoded-test
   (testing ":apply-pt-modifier reads power/toughness from effect data (not hardcoded)"
     (let [db (th/create-test-db)
-          [db creature-id] (add-test-creature db :player-1 4 4)
+          [db creature-id] (th/add-test-creature db :player-1 4 4)
           effect {:effect/type :apply-pt-modifier
                   :effect/target creature-id
                   :effect/power -1
@@ -271,7 +243,7 @@
 (deftest apply-pt-modifier-grant-has-eot-expiration-test
   (testing ":apply-pt-modifier grant expires at end of current turn cleanup"
     (let [db (th/create-test-db)
-          [db creature-id] (add-test-creature db :player-1 2 2)
+          [db creature-id] (th/add-test-creature db :player-1 2 2)
           game-state (q/get-game-state db)
           current-turn (:game/turn game-state)
           effect {:effect/type :apply-pt-modifier
@@ -290,7 +262,7 @@
 (deftest apply-pt-modifier-effective-toughness-reflects-modifier-test
   (testing "effective-toughness reflects -2/-2 modifier from grant"
     (let [db (th/create-test-db)
-          [db creature-id] (add-test-creature db :player-1 4 4)
+          [db creature-id] (th/add-test-creature db :player-1 4 4)
           toughness-before (creatures/effective-toughness db creature-id)
           effect {:effect/type :apply-pt-modifier
                   :effect/target creature-id
@@ -368,7 +340,7 @@
   (testing "Creature with toughness exactly 0 after modifier dies via SBA"
     (let [db (th/create-test-db)
           ;; 2/2 creature + -2/-2 = 0 toughness
-          [db creature-id] (add-test-creature db :player-1 2 2)
+          [db creature-id] (th/add-test-creature db :player-1 2 2)
           effect {:effect/type :apply-pt-modifier
                   :effect/target creature-id
                   :effect/power -2
@@ -385,7 +357,7 @@
   (testing "Creature with negative toughness dies via SBA"
     (let [db (th/create-test-db)
           ;; 1/1 creature + -2/-2 = -1 toughness
-          [db creature-id] (add-test-creature db :player-1 1 1)
+          [db creature-id] (th/add-test-creature db :player-1 1 1)
           effect {:effect/type :apply-pt-modifier
                   :effect/target creature-id
                   :effect/power -2
@@ -401,7 +373,7 @@
 (deftest sba-dead-creature-goes-to-graveyard-not-exile-test
   (testing "SBA moves creature to graveyard, not exile"
     (let [db (th/create-test-db)
-          [db creature-id] (add-test-creature db :player-1 2 2)
+          [db creature-id] (th/add-test-creature db :player-1 2 2)
           effect {:effect/type :apply-pt-modifier
                   :effect/target creature-id
                   :effect/power -2
@@ -416,7 +388,7 @@
   (testing "Creature with positive toughness after modifier survives SBA check"
     (let [db (th/create-test-db)
           ;; 4/4 creature + -2/-2 = 2/2, positive toughness
-          [db creature-id] (add-test-creature db :player-1 4 4)
+          [db creature-id] (th/add-test-creature db :player-1 4 4)
           effect {:effect/type :apply-pt-modifier
                   :effect/target creature-id
                   :effect/power -2
@@ -432,8 +404,8 @@
 (deftest sba-multiple-creatures-die-simultaneously-test
   (testing "Multiple creatures with 0 toughness all die from SBA check"
     (let [db (th/create-test-db)
-          [db creature1-id] (add-test-creature db :player-1 2 2)
-          [db creature2-id] (add-test-creature db :player-1 2 2)
+          [db creature1-id] (th/add-test-creature db :player-1 2 2)
+          [db creature2-id] (th/add-test-creature db :player-1 2 2)
           effect1 {:effect/type :apply-pt-modifier
                    :effect/target creature1-id
                    :effect/power -2
@@ -499,7 +471,7 @@
     (let [db (th/create-test-db {:life 20 :mana {:colorless 1 :black 1}})
           db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :crippling-fatigue :graveyard :player-1)
-          [db _creature-id] (add-test-creature db :player-2 4 4)]
+          [db _creature-id] (th/add-test-creature db :player-2 4 4)]
       (is (rules/can-cast? db :player-1 obj-id)
           "Should be castable from graveyard with {1}{B} + life available"))))
 
@@ -509,7 +481,7 @@
     (let [db (th/create-test-db {:life 2 :mana {:colorless 1 :black 1}})
           db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :crippling-fatigue :graveyard :player-1)
-          [db _creature-id] (add-test-creature db :player-2 4 4)]
+          [db _creature-id] (th/add-test-creature db :player-2 4 4)]
       (is (false? (rules/can-cast? db :player-1 obj-id))
           "Should not be castable from graveyard with only 2 life"))))
 
@@ -519,7 +491,7 @@
     (let [db (th/create-test-db {:life 20 :mana {:colorless 1 :black 1}})
           db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :crippling-fatigue :graveyard :player-1)
-          [db creature-id] (add-test-creature db :player-2 4 4)
+          [db creature-id] (th/add-test-creature db :player-2 4 4)
           db-cast (th/cast-with-target db :player-1 obj-id creature-id)
           {:keys [db]} (th/resolve-top db-cast)]
       (is (= :exile (:object/zone (q/get-object db obj-id)))
@@ -531,7 +503,7 @@
     (let [db (th/create-test-db {:life 20 :mana {:colorless 1 :black 1}})
           db (th/add-opponent db)
           [db obj-id] (th/add-card-to-zone db :crippling-fatigue :graveyard :player-1)
-          [db creature-id] (add-test-creature db :player-2 4 4)
+          [db creature-id] (th/add-test-creature db :player-2 4 4)
           life-before (q/get-life-total db :player-1)
           db-cast (th/cast-with-target db :player-1 obj-id creature-id)]
       (is (= (- life-before 3) (q/get-life-total db-cast :player-1))

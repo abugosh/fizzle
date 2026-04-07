@@ -145,6 +145,43 @@
                    (conj object-ids obj-id))))))))
 
 
+(defn add-test-creature
+  "Create a synthetic creature with custom P/T on the battlefield.
+   Used when tests need a creature with specific stats not matching any registered card.
+   Uses build-object-tx for the object — same chokepoint as production code.
+
+   Parameters:
+     db      - Datascript database value
+     owner   - player keyword (:player-1, :player-2)
+     power   - integer power value
+     toughness - integer toughness value
+   Options (keyword args):
+     :colors - set of color keywords, default #{}
+
+   Returns [db obj-id]."
+  [db owner power toughness & {:keys [colors] :or {colors #{}}}]
+  (let [conn (d/conn-from-db db)
+        player-eid (q/get-player-eid db owner)
+        card-id (keyword (str "test-creature-" (random-uuid)))
+        _ (d/transact! conn [{:card/id card-id
+                              :card/name "Test Creature"
+                              :card/cmc 1
+                              :card/mana-cost {:colorless 1}
+                              :card/colors colors
+                              :card/types #{:creature}
+                              :card/text ""
+                              :card/power power
+                              :card/toughness toughness}])
+        card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] @conn card-id)
+        card-data {:card/types #{:creature} :card/power power :card/toughness toughness}
+        obj-id (random-uuid)
+        obj (-> (objects/build-object-tx card-eid card-data :battlefield player-eid 0 :id obj-id)
+                (assoc :object/summoning-sick true
+                       :object/damage-marked 0))]
+    (d/transact! conn [obj])
+    [@conn obj-id]))
+
+
 (defn get-zone-count
   "Count objects in a zone for a player."
   [db zone owner]

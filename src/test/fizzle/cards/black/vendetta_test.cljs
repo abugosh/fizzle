@@ -11,7 +11,6 @@
    - Life loss reads :card/toughness (persists after destroy)"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
-    [datascript.core :as d]
     [fizzle.cards.black.vendetta :as vendetta]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
@@ -19,36 +18,6 @@
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
-
-
-;; === Helpers ===
-
-(defn- add-test-creature
-  "Add a custom creature directly to the battlefield with given power/toughness and colors.
-   Returns [db obj-id]."
-  [db owner power toughness colors]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db owner)
-        card-id (keyword (str "test-creature-" (random-uuid)))
-        _ (d/transact! conn [{:card/id card-id
-                              :card/name "Test Creature"
-                              :card/types #{:creature}
-                              :card/colors colors
-                              :card/power power
-                              :card/toughness toughness}])
-        card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] @conn card-id)
-        obj-id (random-uuid)
-        _ (d/transact! conn [{:object/id obj-id
-                              :object/card card-eid
-                              :object/zone :battlefield
-                              :object/owner player-eid
-                              :object/controller player-eid
-                              :object/tapped false
-                              :object/power power
-                              :object/toughness toughness
-                              :object/summoning-sick true
-                              :object/damage-marked 0}])]
-    [@conn obj-id]))
 
 
 ;; =====================================================
@@ -102,7 +71,7 @@
           [db vendetta-id] (th/add-card-to-zone db :vendetta :hand :player-1)
           db (mana/add-mana db :player-1 {:black 1})
           ;; White creature with toughness 3
-          [db creature-id] (add-test-creature db :player-2 2 3 #{:white})
+          [db creature-id] (th/add-test-creature db :player-2 2 3 :colors #{:white})
           caster-life-before (q/get-life-total db :player-1)
           db-cast (th/cast-with-target db :player-1 vendetta-id creature-id)
           result (resolution/resolve-one-item db-cast)
@@ -124,7 +93,7 @@
     (let [db (th/create-test-db)
           db (th/add-opponent db)
           [db vendetta-id] (th/add-card-to-zone db :vendetta :hand :player-1)
-          [db _creature-id] (add-test-creature db :player-2 2 3 #{:white})]
+          [db _creature-id] (th/add-test-creature db :player-2 2 3 :colors #{:white})]
       (is (false? (rules/can-cast? db :player-1 vendetta-id))
           "Should not be castable without mana"))))
 
@@ -145,7 +114,7 @@
           db (th/add-opponent db)
           [db vendetta-id] (th/add-card-to-zone db :vendetta :hand :player-1)
           db (mana/add-mana db :player-1 {:black 1})
-          [db _creature-id] (add-test-creature db :player-2 2 2 #{:black})]
+          [db _creature-id] (th/add-test-creature db :player-2 2 2 :colors #{:black})]
       (is (false? (rules/can-cast? db :player-1 vendetta-id))
           "Should not be castable when only black creatures are available"))))
 
@@ -160,7 +129,7 @@
           db (th/add-opponent db)
           [db vendetta-id] (th/add-card-to-zone db :vendetta :hand :player-1)
           db (mana/add-mana db :player-1 {:black 1})
-          [db creature-id] (add-test-creature db :player-2 2 3 #{:white})
+          [db creature-id] (th/add-test-creature db :player-2 2 3 :colors #{:white})
           storm-before (q/get-storm-count db :player-1)
           db-cast (th/cast-with-target db :player-1 vendetta-id creature-id)]
       (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
@@ -175,7 +144,7 @@
   (testing "Vendetta cannot target a black creature"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          [db _black-creature-id] (add-test-creature db :player-2 2 2 #{:black})
+          [db _black-creature-id] (th/add-test-creature db :player-2 2 2 :colors #{:black})
           target-req (first (:card/targeting vendetta/card))
           targets (targeting/find-valid-targets db :player-1 target-req)]
       (is (empty? targets)
@@ -186,7 +155,7 @@
   (testing "Vendetta can target a multicolor creature that is not black (e.g., red/green)"
     (let [db (th/create-test-db)
           db (th/add-opponent db)
-          [db creature-id] (add-test-creature db :player-2 3 3 #{:red :green})
+          [db creature-id] (th/add-test-creature db :player-2 3 3 :colors #{:red :green})
           target-req (first (:card/targeting vendetta/card))
           targets (targeting/find-valid-targets db :player-1 target-req)]
       (is (= 1 (count targets))
@@ -206,7 +175,7 @@
           [db vendetta-id] (th/add-card-to-zone db :vendetta :hand :player-1)
           db (mana/add-mana db :player-1 {:black 1})
           ;; 0/7 white creature
-          [db creature-id] (add-test-creature db :player-2 0 7 #{:white})
+          [db creature-id] (th/add-test-creature db :player-2 0 7 :colors #{:white})
           caster-life-before (q/get-life-total db :player-1)
           db-cast (th/cast-with-target db :player-1 vendetta-id creature-id)
           result (resolution/resolve-one-item db-cast)
@@ -222,7 +191,7 @@
           [db vendetta-id] (th/add-card-to-zone db :vendetta :hand :player-1)
           db (mana/add-mana db :player-1 {:black 1})
           ;; 2/5 creature — caster at 2 life loses 5 → -3
-          [db creature-id] (add-test-creature db :player-2 2 5 #{:white})
+          [db creature-id] (th/add-test-creature db :player-2 2 5 :colors #{:white})
           db-cast (th/cast-with-target db :player-1 vendetta-id creature-id)
           result (resolution/resolve-one-item db-cast)
           db-resolved (:db result)]

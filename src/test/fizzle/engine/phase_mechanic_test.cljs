@@ -39,38 +39,6 @@
     [db obj-id]))
 
 
-(defn add-test-creature-to-battlefield
-  "Add a synthetic creature to the battlefield with the given P/T.
-   The creature has summoning sickness set.
-   Returns [db object-id]."
-  [db owner power toughness]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db owner)
-        card-id (keyword (str "test-creature-" (random-uuid)))
-        _ (d/transact! conn [{:card/id card-id
-                              :card/name "Test Creature"
-                              :card/cmc 1
-                              :card/mana-cost {:colorless 1}
-                              :card/colors #{}
-                              :card/types #{:creature}
-                              :card/text "Test creature for phase tests"
-                              :card/power power
-                              :card/toughness toughness}])
-        card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] @conn card-id)
-        obj-id (random-uuid)
-        _ (d/transact! conn [{:object/id obj-id
-                              :object/card card-eid
-                              :object/zone :battlefield
-                              :object/owner player-eid
-                              :object/controller player-eid
-                              :object/tapped false
-                              :object/power power
-                              :object/toughness toughness
-                              :object/summoning-sick true
-                              :object/damage-marked 0}])]
-    [@conn obj-id]))
-
-
 ;; =====================================================
 ;; Tests: phase-out function
 ;; =====================================================
@@ -100,7 +68,7 @@
 (deftest phase-out-preserves-creature-fields-test
   (testing "phase-out preserves :object/power, :object/toughness, :object/summoning-sick"
     (let [db (th/create-test-db)
-          [db obj-id] (add-test-creature-to-battlefield db :player-1 3 4)
+          [db obj-id] (th/add-test-creature db :player-1 3 4)
           obj-before (q/get-object db obj-id)
           _ (is (= 3 (:object/power obj-before)) "Precondition: power is 3")
           _ (is (= 4 (:object/toughness obj-before)) "Precondition: toughness is 4")
@@ -161,7 +129,7 @@
 (deftest phase-in-does-not-reset-summoning-sickness-test
   (testing "phase-in does NOT reset summoning sickness — creature phased out sick stays sick"
     (let [db (th/create-test-db)
-          [db obj-id] (add-test-creature-to-battlefield db :player-1 2 2)
+          [db obj-id] (th/add-test-creature db :player-1 2 2)
           _ (is (true? (:object/summoning-sick (q/get-object db obj-id)))
                 "Precondition: creature has summoning sickness")
           db-phased (zones/phase-out db obj-id)
@@ -270,7 +238,7 @@
     ;; The real test: move-to-zone sets summoning-sick=true on ETB,
     ;; but phase-in preserves whatever state the creature had.
     (let [db (th/create-test-db)
-          [db obj-id] (add-test-creature-to-battlefield db :player-1 2 2)
+          [db obj-id] (th/add-test-creature db :player-1 2 2)
           ;; Manually clear summoning sickness (simulate creature that survived a turn)
           obj-eid (q/get-object-eid db obj-id)
           db-no-sick (d/db-with db [[:db/retract obj-eid :object/summoning-sick true]])
