@@ -431,3 +431,28 @@
           "Creature entering battlefield should have summoning-sick")
       (is (= 0 (:object/damage-marked obj))
           "Creature entering battlefield should have damage-marked 0"))))
+
+
+;; =====================================================
+;; cast-and-resolve defensive assert tests (fizzle-497a)
+;; =====================================================
+
+(deftest cast-and-resolve-throws-on-targeted-spell-test
+  (testing "cast-and-resolve throws for a spell with targeting requirements (use cast-with-target instead)"
+    (let [db (th/create-test-db {:mana {:red 1}})
+          db (th/add-opponent db)
+          [db bolt-id] (th/add-card-to-zone db :lightning-bolt :hand :player-1)]
+      ;; Lightning Bolt requires a target — cast-and-resolve should reject it fail-fast
+      (is (thrown-with-msg? js/Error #"targeting"
+            (th/cast-and-resolve db :player-1 bolt-id))
+          "Should throw for spell with targeting requirements"))))
+
+
+(deftest cast-and-resolve-works-for-simple-spell-test
+  (testing "cast-and-resolve succeeds for a spell with no pre-cast costs (e.g. Dark Ritual)"
+    (let [db (th/create-test-db {:mana {:black 1}})
+          [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          result-db (th/cast-and-resolve db :player-1 ritual-id)]
+      ;; Dark Ritual has no targeting/costs — should work without throwing
+      (is (map? result-db)
+          "Should return db (map) without throwing"))))

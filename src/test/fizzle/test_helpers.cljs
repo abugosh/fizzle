@@ -255,10 +255,24 @@
 (defn cast-and-resolve
   "Casts a spell and resolves it through the full production path.
    Asserts can-cast? before casting. For non-interactive spells only.
+   Throws if the spell has pre-cast costs (targeting, additional costs) —
+   use cast-with-target or cast-mode-with-target instead.
+   NOTE: :mana-allocation is not checked — simple spells with generic mana work fine.
    Returns resolved db."
   [db player-id obj-id]
   (assert (rules/can-cast? db player-id obj-id)
           (str "can-cast? returned false for " obj-id))
+  ;; Defensive assert: reject spells with pre-cast cost requirements
+  (let [mode (first (rules/get-casting-modes db player-id obj-id))
+        ctx {:game-db db :player-id player-id :object-id obj-id :mode mode}
+        cost-steps (remove #{:mana-allocation} casting/pre-cast-pipeline)
+        failing-step (first (filter #(some? (casting/evaluate-pre-cast-step % ctx)) cost-steps))]
+    (when failing-step
+      (throw (ex-info
+               (str "cast-and-resolve: spell has pre-cast requirements (step: " failing-step
+                    "). Use cast-with-target or cast-mode-with-target for targeting, "
+                    "or manually handle pre-cast costs before calling cast-and-resolve.")
+               {:obj-id obj-id :failing-step failing-step}))))
   (let [db-cast (rules/cast-spell db player-id obj-id)
         result (resolution/resolve-one-item db-cast)]
     (assert (nil? (:pending-selection result))
