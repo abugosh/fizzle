@@ -7,6 +7,7 @@
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
+    [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.triggers :as triggers]))
 
 
@@ -205,3 +206,242 @@
           db' (triggers/create-spell-copy db fake-id :player-1)]
       (is (= db db')
           "Should return db unchanged for nonexistent source"))))
+
+
+;; =====================================================
+;; trigger-type->event-type mapping tests
+;; =====================================================
+
+(deftest test-trigger-type-event-type-becomes-tapped
+  (testing ":becomes-tapped maps to :permanent-tapped"
+    (is (= :permanent-tapped (trigger-db/trigger-type->event-type :becomes-tapped)))))
+
+
+(deftest test-trigger-type-event-type-land-entered
+  (testing ":land-entered maps to :land-entered"
+    (is (= :land-entered (trigger-db/trigger-type->event-type :land-entered)))))
+
+
+(deftest test-trigger-type-event-type-creature-attacks
+  (testing ":creature-attacks maps to :creature-attacked"
+    (is (= :creature-attacked (trigger-db/trigger-type->event-type :creature-attacks)))))
+
+
+(deftest test-trigger-type-event-type-enters-battlefield
+  (testing ":enters-battlefield maps to :permanent-entered"
+    (is (= :permanent-entered (trigger-db/trigger-type->event-type :enters-battlefield)))))
+
+
+(deftest test-trigger-type-event-type-default-identity
+  (testing "unknown trigger type maps to itself (identity)"
+    (is (= :some-unknown-type (trigger-db/trigger-type->event-type :some-unknown-type)))))
+
+
+;; =====================================================
+;; ETB trigger tests (enters-battlefield / permanent-entered)
+;; =====================================================
+
+(defn- add-test-object-db-with
+  "Add a test object to db using d/db-with. Returns [db obj-eid]."
+  [db player-id]
+  (let [player-eid (q/get-player-eid db player-id)
+        card-eid (d/q '[:find ?e .
+                        :where [?e :card/id :dark-ritual]]
+                      db)
+        obj-id (random-uuid)
+        db' (d/db-with db [{:object/id obj-id
+                            :object/card card-eid
+                            :object/zone :battlefield
+                            :object/owner player-eid
+                            :object/controller player-eid
+                            :object/tapped false}])
+        obj-eid (d/q '[:find ?e .
+                       :in $ ?oid
+                       :where [?e :object/id ?oid]]
+                     db' obj-id)]
+    [db' obj-eid]))
+
+
+(deftest test-etb-trigger-created-and-queryable
+  (testing "ETB trigger entity is created and returned by get-triggers-for-event"
+    (let [db (init-game-state)
+          player-eid (q/get-player-eid db :player-1)
+          [db obj-eid] (add-test-object-db-with db :player-1)
+          card-triggers [{:trigger/type :enters-battlefield
+                          :trigger/effects [{:effect/type :draw :effect/amount 1}]}]
+          tx (trigger-db/create-triggers-for-card-tx db obj-eid player-eid card-triggers)
+          db' (d/db-with db tx)
+          etb-triggers (trigger-db/get-triggers-for-event
+                         db' {:event/type :permanent-entered
+                              :event/object-id obj-eid})]
+      (is (= 1 (count etb-triggers)))
+      (let [t (first etb-triggers)]
+        (is (= :permanent-entered (:trigger/event-type t)))
+        (is (= :enters-battlefield (:trigger/type t)))
+        (is (= [{:effect/type :draw :effect/amount 1}] (:trigger/effects t)))))))
+
+
+(deftest test-etb-trigger-does-not-fire-for-other-objects
+  (testing "ETB trigger with :self filter does not fire for different object"
+    (let [db (init-game-state)
+          player-eid (q/get-player-eid db :player-1)
+          [db obj-eid] (add-test-object-db-with db :player-1)
+          card-triggers [{:trigger/type :enters-battlefield
+                          :trigger/effects [{:effect/type :draw :effect/amount 1}]}]
+          tx (trigger-db/create-triggers-for-card-tx db obj-eid player-eid card-triggers)
+          db' (d/db-with db tx)
+          other-obj-eid 9999]
+      ;; Trigger with default :self filter should not match other objects
+      (is (= 0 (count (trigger-db/get-triggers-for-event
+                        db' {:event/type :permanent-entered
+                             :event/object-id other-obj-eid})))))))
+
+
+(deftest test-etb-trigger-effects-stored-correctly
+  (testing "ETB trigger stores effects data from card definition"
+    (let [db (init-game-state)
+          player-eid (q/get-player-eid db :player-1)
+          [db obj-eid] (add-test-object-db-with db :player-1)
+          effects [{:effect/type :draw :effect/amount 2}
+                   {:effect/type :add-mana :effect/mana {:blue 1}}]
+          card-triggers [{:trigger/type :enters-battlefield
+                          :trigger/effects effects}]
+          tx (trigger-db/create-triggers-for-card-tx db obj-eid player-eid card-triggers)
+          db' (d/db-with db tx)
+          triggers (trigger-db/get-triggers-for-event
+                     db' {:event/type :permanent-entered
+                          :event/object-id obj-eid})]
+      (is (= effects (:trigger/effects (first triggers)))))))
+
+
+;; =====================================================
+;; Mana-ability / becomes-tapped trigger tests
+;; =====================================================
+
+(deftest test-becomes-tapped-trigger-event-matching
+  (testing "becomes-tapped trigger matches :permanent-tapped event for source object"
+    (let [db (init-game-state)
+          player-eid (q/get-player-eid db :player-1)
+          [db obj-eid] (add-test-object-db-with db :player-1)
+          card-triggers [{:trigger/type :becomes-tapped
+                          :trigger/effects [{:effect/type :add-mana :effect/mana {:black 1}}]}]
+          tx (trigger-db/create-triggers-for-card-tx db obj-eid player-eid card-triggers)
+          db' (d/db-with db tx)]
+      ;; Matching: self tap event
+      (is (= 1 (count (trigger-db/get-triggers-for-event
+                        db' {:event/type :permanent-tapped
+                             :event/object-id obj-eid}))))
+      ;; Not matching: different object tap
+      (is (= 0 (count (trigger-db/get-triggers-for-event
+                        db' {:event/type :permanent-tapped
+                             :event/object-id 9999})))))))
+
+
+(deftest test-becomes-tapped-trigger-type-and-event-type
+  (testing "becomes-tapped trigger stores both :trigger/type and :trigger/event-type"
+    (let [db (init-game-state)
+          player-eid (q/get-player-eid db :player-1)
+          [db obj-eid] (add-test-object-db-with db :player-1)
+          card-triggers [{:trigger/type :becomes-tapped
+                          :trigger/effects [{:effect/type :add-mana :effect/mana {:black 1}}]}]
+          tx (trigger-db/create-triggers-for-card-tx db obj-eid player-eid card-triggers)
+          db' (d/db-with db tx)
+          triggers (trigger-db/get-triggers-for-event
+                     db' {:event/type :permanent-tapped
+                          :event/object-id obj-eid})]
+      (is (= :becomes-tapped (:trigger/type (first triggers))))
+      (is (= :permanent-tapped (:trigger/event-type (first triggers)))))))
+
+
+(deftest test-resolve-trigger-default-noop-for-etb
+  (testing "resolve-trigger :default is a no-op for unregistered trigger types like :enters-battlefield"
+    (let [db (init-game-state)
+          trigger {:trigger/type :enters-battlefield
+                   :trigger/controller :player-1}
+          db' (triggers/resolve-trigger db trigger)]
+      (is (= db db')
+          "resolve-trigger with no defmethod returns db unchanged"))))
+
+
+;; =====================================================
+;; Creature-attacks trigger tests
+;; =====================================================
+
+(deftest test-creature-attacks-trigger-event-matching
+  (testing "creature-attacks trigger matches :creature-attacked event for source creature"
+    (let [db (init-game-state)
+          player-eid (q/get-player-eid db :player-1)
+          [db obj-eid] (add-test-object-db-with db :player-1)
+          card-triggers [{:trigger/type :creature-attacks
+                          :trigger/effects [{:effect/type :draw :effect/amount 1}]}]
+          tx (trigger-db/create-triggers-for-card-tx db obj-eid player-eid card-triggers)
+          db' (d/db-with db tx)]
+      (is (= 1 (count (trigger-db/get-triggers-for-event
+                        db' {:event/type :creature-attacked
+                             :event/object-id obj-eid}))))
+      (is (= :creature-attacks (:trigger/type (first (trigger-db/get-triggers-for-event
+                                                       db' {:event/type :creature-attacked
+                                                            :event/object-id obj-eid}))))))))
+
+
+;; =====================================================
+;; matches-filter? edge cases (via get-triggers-for-event)
+;; =====================================================
+
+(deftest test-matches-filter-no-filter-matches-any-event-object
+  (testing "trigger with no :trigger/filter key matches any event object-id"
+    (let [db (init-game-state)
+          player-eid (q/get-player-eid db :player-1)
+          [db obj-eid] (add-test-object-db-with db :player-1)
+          tx (trigger-db/create-trigger-tx
+               {:trigger/type :enters-battlefield
+                :trigger/event-type :permanent-entered
+                :trigger/source obj-eid
+                :trigger/controller player-eid})
+          db' (d/db-with db tx)]
+      ;; No filter: matches any object-id
+      (is (= 1 (count (trigger-db/get-triggers-for-event
+                        db' {:event/type :permanent-entered
+                             :event/object-id 1234}))))
+      (is (= 1 (count (trigger-db/get-triggers-for-event
+                        db' {:event/type :permanent-entered
+                             :event/object-id 9999})))))))
+
+
+(deftest test-matches-filter-self-controller-resolved
+  (testing ":self-controller in filter is resolved to the player keyword at registration time"
+    (let [db (init-game-state)
+          player-eid (q/get-player-eid db :player-1)
+          [db obj-eid] (add-test-object-db-with db :player-1)
+          card-triggers [{:trigger/type :creature-attacks
+                          :trigger/filter {:event/controller :self-controller}
+                          :trigger/effects [{:effect/type :draw :effect/amount 1}]}]
+          tx (trigger-db/create-triggers-for-card-tx db obj-eid player-eid card-triggers)
+          db' (d/db-with db tx)
+          triggers (trigger-db/get-triggers-for-event
+                     db' {:event/type :creature-attacked
+                          :event/controller :player-1})]
+      ;; :self-controller resolved to :player-1 at registration
+      (is (= 1 (count triggers)))
+      (is (= :player-1 (get-in (first triggers) [:trigger/filter :event/controller]))))))
+
+
+(deftest test-create-triggers-for-card-tx-multiple-trigger-types
+  (testing "card with multiple trigger types creates separate trigger entities"
+    (let [db (init-game-state)
+          player-eid (q/get-player-eid db :player-1)
+          [db obj-eid] (add-test-object-db-with db :player-1)
+          card-triggers [{:trigger/type :enters-battlefield
+                          :trigger/effects [{:effect/type :draw :effect/amount 1}]}
+                         {:trigger/type :becomes-tapped
+                          :trigger/effects [{:effect/type :add-mana :effect/mana {:blue 1}}]}]
+          tx (trigger-db/create-triggers-for-card-tx db obj-eid player-eid card-triggers)
+          db' (d/db-with db tx)
+          etb (trigger-db/get-triggers-for-event
+                db' {:event/type :permanent-entered
+                     :event/object-id obj-eid})
+          tapped (trigger-db/get-triggers-for-event
+                   db' {:event/type :permanent-tapped
+                        :event/object-id obj-eid})]
+      (is (= 1 (count etb)))
+      (is (= 1 (count tapped))))))

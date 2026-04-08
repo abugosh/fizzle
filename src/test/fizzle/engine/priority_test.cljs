@@ -23,7 +23,7 @@
 (deftest yield-priority-adds-player-to-passed-set
   (let [[db p1-eid _ _] (setup-two-player-db)
         db' (priority/yield-priority db p1-eid)]
-    (is (contains? (priority/get-passed-eids db') p1-eid)
+    (is (= #{p1-eid} (priority/get-passed-eids db'))
         "Player 1 should be in the passed set after yielding")))
 
 
@@ -32,8 +32,7 @@
         db' (-> db
                 (priority/yield-priority p1-eid)
                 (priority/yield-priority p2-eid))]
-    (is (contains? (priority/get-passed-eids db') p1-eid))
-    (is (contains? (priority/get-passed-eids db') p2-eid))))
+    (is (= #{p1-eid p2-eid} (priority/get-passed-eids db')))))
 
 
 ;; === both-passed? ===

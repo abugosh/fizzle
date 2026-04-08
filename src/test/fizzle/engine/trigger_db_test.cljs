@@ -89,8 +89,8 @@
                 :trigger/description nil
                 :trigger/filter nil})
           m (first tx)]
-      (is (not (contains? m :trigger/description)))
-      (is (not (contains? m :trigger/filter))))))
+      (is (nil? (:trigger/description m)))
+      (is (nil? (:trigger/filter m))))))
 
 
 ;; === Transacting and querying trigger entities ===
