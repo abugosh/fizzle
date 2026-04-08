@@ -2244,3 +2244,266 @@
           db' (fx/execute-effect db :player-1 effect)]
       (is (= 20 (q/get-life-total db' :player-1))
           "Player life should be unchanged when target is nil"))))
+
+
+;; === execute-effect :bounce tests ===
+
+(def test-bounce-card
+  {:card/id :test-bounce-card
+   :card/name "Test Bounce Card"
+   :card/cmc 2
+   :card/mana-cost {:blue 2}
+   :card/colors #{:blue}
+   :card/types #{:instant}
+   :card/text "Return target permanent to its owner's hand."
+   :card/effects []})
+
+
+(deftest test-bounce-effect-moves-to-hand
+  (testing ":bounce effect returns object from battlefield to owner's hand"
+    ;; Catches: move-to-zone call missing or wrong destination zone
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          effect {:effect/type :bounce
+                  :effect/target object-id}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= :hand (get-object-zone db' object-id))
+          "Object should be in :hand after bounce"))))
+
+
+(deftest test-bounce-effect-nonexistent-target-is-noop
+  (testing ":bounce with nonexistent target returns db unchanged"
+    ;; Catches: missing get-object-eid existence guard
+    (let [db (init-game-state)
+          effect {:effect/type :bounce
+                  :effect/target (random-uuid)}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')
+          "db should be unchanged when target object does not exist"))))
+
+
+(deftest test-bounce-effect-nil-target-is-noop
+  (testing ":bounce with nil :effect/target returns db unchanged"
+    ;; Catches: missing nil guard before get-object-eid call
+    (let [db (init-game-state)
+          effect {:effect/type :bounce
+                  :effect/target nil}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')
+          "db should be unchanged when target is nil"))))
+
+
+(deftest test-bounce-effect-already-in-hand
+  (testing ":bounce of object already in hand returns db unchanged (move-to-zone same-zone no-op)"
+    ;; Catches: move-to-zone returning changed db on same-zone transition
+    ;; Production: bounce calls move-to-zone which is a no-op when source == destination
+    (let [[object-id db] (add-object-with-card (init-game-state) :player-1 test-bounce-card :hand)
+          effect {:effect/type :bounce
+                  :effect/target object-id}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= :hand (get-object-zone db' object-id))
+          "Object still in :hand after bounce from hand"))))
+
+
+;; === execute-effect :phase-out tests ===
+
+(deftest test-phase-out-effect-moves-to-phased-out
+  (testing ":phase-out effect changes object zone to :phased-out"
+    ;; Catches: zones/phase-out not called or wrong destination zone
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          effect {:effect/type :phase-out
+                  :effect/target object-id}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= :phased-out (get-object-zone db' object-id))
+          "Object should be in :phased-out zone after phase-out effect"))))
+
+
+(deftest test-phase-out-effect-nil-target-is-noop
+  (testing ":phase-out with nil target returns db unchanged"
+    ;; Catches: missing nil guard before get-object-eid call
+    (let [db (init-game-state)
+          effect {:effect/type :phase-out
+                  :effect/target nil}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')
+          "db should be unchanged when target is nil"))))
+
+
+(deftest test-phase-out-effect-nonexistent-target-is-noop
+  (testing ":phase-out with nonexistent target returns db unchanged"
+    ;; Catches: missing existence guard
+    (let [db (init-game-state)
+          effect {:effect/type :phase-out
+                  :effect/target (random-uuid)}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')
+          "db should be unchanged when target object does not exist"))))
+
+
+(deftest test-phase-out-effect-preserves-tapped-state
+  (testing ":phase-out preserves :object/tapped — uses direct d/db-with not move-to-zone"
+    ;; Catches: regression if someone changes phase-out to use move-to-zone (which
+    ;; would retract tapped state). phase-out does direct zone change to preserve state.
+    (let [conn (d/conn-from-db (init-game-state))
+          player-eid (q/get-player-eid @conn :player-1)
+          card-eid (d/q '[:find ?e . :where [?e :card/id :dark-ritual]] @conn)
+          card-data (d/pull @conn '[:card/types :card/power :card/toughness] card-eid)
+          object-id (random-uuid)
+          _ (d/transact! conn [(assoc (objects/build-object-tx card-eid card-data
+                                                               :battlefield player-eid 0
+                                                               :id object-id)
+                                      :object/tapped true)])
+          db @conn
+          effect {:effect/type :phase-out
+                  :effect/target object-id}
+          db' (fx/execute-effect db :player-1 effect)
+          obj' (q/get-object db' object-id)]
+      (is (= :phased-out (:object/zone obj'))
+          "Object should be in :phased-out zone")
+      (is (true? (:object/tapped obj'))
+          ":object/tapped should be preserved after phase-out (not reset)"))))
+
+
+;; === execute-effect :peek-random-hand tests ===
+
+(deftest test-peek-random-hand-stores-card-name
+  (testing ":peek-random-hand stores a card name string from target's hand in :game/peek-result"
+    ;; Catches: peek-result not set, set to entity/id instead of name string
+    ;; Note: string? + contains? is not tautological here — production could return nil or an entity
+    (let [db (-> (init-game-state)
+                 (add-opponent))
+          [_ db] (add-object-with-card db :player-2 test-bounce-card :hand)
+          hand-card-names #{"Test Bounce Card"}
+          effect {:effect/type :peek-random-hand
+                  :effect/target :player-2}
+          db' (fx/execute-effect db :player-1 effect)
+          result (d/q '[:find ?r . :where [_ :game/peek-result ?r]] db')]
+      (is (string? result)
+          ":game/peek-result should be a string (card name)")
+      (is (contains? hand-card-names result)
+          ":game/peek-result should be one of the card names from the target's hand"))))
+
+
+(deftest test-peek-random-hand-empty-hand-is-noop
+  (testing ":peek-random-hand with empty target hand returns db unchanged, no peek-result set"
+    ;; Catches: crash from rand-nth on empty seq — empty hand must be a no-op
+    (let [db (-> (init-game-state)
+                 (add-opponent))
+          effect {:effect/type :peek-random-hand
+                  :effect/target :player-2}
+          db' (fx/execute-effect db :player-1 effect)
+          result (d/q '[:find ?r . :where [_ :game/peek-result ?r]] db')]
+      (is (nil? result)
+          ":game/peek-result should not be set when target has empty hand"))))
+
+
+(deftest test-peek-random-hand-nil-target-is-noop
+  (testing ":peek-random-hand with nil :effect/target returns db unchanged"
+    ;; Catches: missing nil target guard
+    (let [db (init-game-state)
+          effect {:effect/type :peek-random-hand
+                  :effect/target nil}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')
+          "db should be unchanged when target is nil"))))
+
+
+(deftest test-peek-random-hand-peeks-opponent-hand
+  (testing ":peek-random-hand can target opponent's hand (player-2)"
+    ;; Catches: wrong player resolution or targeting only self
+    (let [db (-> (init-game-state)
+                 (add-opponent))
+          [_ db] (add-object-with-card db :player-2 test-bounce-card :hand)
+          effect {:effect/type :peek-random-hand
+                  :effect/target :player-2}
+          db' (fx/execute-effect db :player-1 effect)
+          result (d/q '[:find ?r . :where [_ :game/peek-result ?r]] db')]
+      (is (string? result)
+          "peek-result should be a card name string from opponent's hand"))))
+
+
+;; === execute-effect :gain-life-equal-to-cmc tests ===
+
+(def test-cmc3-card
+  {:card/id :test-cmc3-card
+   :card/name "Test CMC3 Card"
+   :card/cmc 3
+   :card/mana-cost {:colorless 1 :blue 2}
+   :card/colors #{:blue}
+   :card/types #{:instant}
+   :card/text "Test card with CMC 3."
+   :card/effects []})
+
+
+(def test-cmc0-card
+  {:card/id :test-cmc0-card
+   :card/name "Test CMC0 Card"
+   :card/cmc 0
+   :card/mana-cost {}
+   :card/colors #{}
+   :card/types #{:instant}
+   :card/text "Test card with CMC 0."
+   :card/effects []})
+
+
+(deftest test-gain-life-equal-to-cmc-happy-path
+  (testing ":gain-life-equal-to-cmc gains controller's life by object's CMC"
+    ;; Catches: wrong life delta, wrong player (gains for controller not caster)
+    (let [[object-id db] (add-object-with-card (init-game-state) :player-1 test-cmc3-card :battlefield)
+          effect {:effect/type :gain-life-equal-to-cmc
+                  :effect/target object-id}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 23 (q/get-life-total db' :player-1))
+          "Controller starts at 20, gains 3 from CMC=3 object → life should be 23"))))
+
+
+(deftest test-gain-life-equal-to-cmc-zero-is-noop
+  (testing ":gain-life-equal-to-cmc with CMC=0 is an explicit no-op (not 'gain 0 life')"
+    ;; Catches: missing (<= cmc 0) guard — production explicitly returns db unchanged
+    (let [[object-id db] (add-object-with-card (init-game-state) :player-1 test-cmc0-card :battlefield)
+          effect {:effect/type :gain-life-equal-to-cmc
+                  :effect/target object-id}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 20 (q/get-life-total db' :player-1))
+          "Life should be unchanged when CMC=0 (no-op guard fires)"))))
+
+
+(deftest test-gain-life-equal-to-cmc-no-cmc-key-is-noop
+  (testing ":gain-life-equal-to-cmc with no :card/cmc field defaults to 0 → no-op"
+    ;; Catches: NPE on nil cmc — production uses (or cmc 0) then <= 0 guard
+    (let [no-cmc-card (dissoc test-cmc3-card :card/cmc :card/id)
+          no-cmc-card (assoc no-cmc-card :card/id :test-no-cmc-card)
+          [object-id db] (add-object-with-card (init-game-state) :player-1 no-cmc-card :battlefield)
+          effect {:effect/type :gain-life-equal-to-cmc
+                  :effect/target object-id}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 20 (q/get-life-total db' :player-1))
+          "Life should be unchanged when card has no :card/cmc (defaults to 0 → no-op)"))))
+
+
+(deftest test-gain-life-equal-to-cmc-nil-target-is-noop
+  (testing ":gain-life-equal-to-cmc with nil target returns db unchanged"
+    ;; Catches: missing nil guard before get-object call
+    (let [db (init-game-state)
+          effect {:effect/type :gain-life-equal-to-cmc
+                  :effect/target nil}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 20 (q/get-life-total db' :player-1))
+          "Life should be unchanged when target is nil"))))
+
+
+(deftest test-gain-life-equal-to-cmc-gains-for-controller-not-caster
+  (testing ":gain-life-equal-to-cmc gains life for CONTROLLER of object, not the effect executor"
+    ;; Catches: using player-id (caster) instead of resolving controller from target object.
+    ;; This is a real divergence from most effects — production reads controller from the object.
+    ;; Setup: player-2 controls the object; effect executed by player-1.
+    ;; Expected: player-2 gains life (controller), player-1 does NOT.
+    (let [db (-> (init-game-state)
+                 (add-opponent))
+          [object-id db] (add-object-with-card db :player-2 test-cmc3-card :battlefield)
+          effect {:effect/type :gain-life-equal-to-cmc
+                  :effect/target object-id}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 23 (q/get-life-total db' :player-2))
+          "Controller (player-2) should gain 3 life (CMC=3)")
+      (is (= 20 (q/get-life-total db' :player-1))
+          "Caster/executor (player-1) should NOT gain life"))))
