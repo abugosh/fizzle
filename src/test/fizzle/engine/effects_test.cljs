@@ -2344,16 +2344,9 @@
   (testing ":phase-out preserves :object/tapped — uses direct d/db-with not move-to-zone"
     ;; Catches: regression if someone changes phase-out to use move-to-zone (which
     ;; would retract tapped state). phase-out does direct zone change to preserve state.
-    (let [conn (d/conn-from-db (init-game-state))
-          player-eid (q/get-player-eid @conn :player-1)
-          card-eid (d/q '[:find ?e . :where [?e :card/id :dark-ritual]] @conn)
-          card-data (d/pull @conn '[:card/types :card/power :card/toughness] card-eid)
-          object-id (random-uuid)
-          _ (d/transact! conn [(assoc (objects/build-object-tx card-eid card-data
-                                                               :battlefield player-eid 0
-                                                               :id object-id)
-                                      :object/tapped true)])
-          db @conn
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          obj-eid (q/get-object-eid db object-id)
+          db (d/db-with db [[:db/add obj-eid :object/tapped true]])
           effect {:effect/type :phase-out
                   :effect/target object-id}
           db' (fx/execute-effect db :player-1 effect)
@@ -2781,6 +2774,16 @@
           "Token card entity should have :card/colors #{:white}"))))
 
 
+(deftest test-create-token-nil-token-def-is-noop
+  (testing ":create-token with nil :effect/token — documents crash behavior (no nil guard in production)"
+    ;; Catches: nil token-def causes NPE in production (token destructuring is unconditional).
+    ;; This test documents that nil token crashes — if a nil guard is added, update to assert db unchanged.
+    (let [db (init-game-state)
+          effect {:effect/type :create-token :effect/token nil}]
+      (is (thrown? js/Error (fx/execute-effect db :player-1 effect))
+          "nil :effect/token should throw — production has no nil guard"))))
+
+
 ;; === execute-effect :apply-pt-modifier tests ===
 
 (deftest test-apply-pt-modifier-positive-delta
@@ -2992,12 +2995,12 @@
           effect {:effect/type :counter-ability
                   :effect/target spell-eid}
           db' (fx/execute-effect db :player-1 effect)
-          ;; Spell stack item should still exist
+          ;; Spell stack item should still exist with the same EID
           still-there (d/q '[:find ?e .
                              :where [?e :stack-item/type :spell]]
                            db')]
-      (is (some? still-there)
-          "Spell stack item should NOT be removed by :counter-ability"))))
+      (is (= spell-eid still-there)
+          "Spell stack item EID should be unchanged — :counter-ability must not remove :spell items"))))
 
 
 ;; === execute-effect :welder-swap tests ===
