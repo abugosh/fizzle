@@ -4,6 +4,7 @@
     [datascript.core :as d]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
+    [fizzle.engine.creatures :as creatures]
     [fizzle.engine.effects :as fx]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.objects :as objects]
@@ -2507,3 +2508,334 @@
           "Controller (player-2) should gain 3 life (CMC=3)")
       (is (= 20 (q/get-life-total db' :player-1))
           "Caster/executor (player-1) should NOT gain life"))))
+
+
+;; === execute-effect :tap-all tests ===
+
+(deftest test-tap-all-taps-untapped-creatures
+  (testing ":tap-all taps UNTAPPED creatures of matching permanent-type on target player's battlefield"
+    ;; Catches: filter missing tapped-check (all creatures tapped, not just untapped)
+    (let [db (init-game-state)
+          [db c1-id] (th/add-test-creature db :player-1 2 2)
+          [db c2-id] (th/add-test-creature db :player-1 1 1)
+          ;; Manually tap c2 so only c1 should be tapped by the effect
+          c2-eid (q/get-object-eid db c2-id)
+          db (d/db-with db [[:db/add c2-eid :object/tapped true]])
+          effect {:effect/type :tap-all
+                  :effect/target :player-1
+                  :effect/permanent-type :creature}
+          db' (fx/execute-effect db :player-1 effect)
+          c1-obj (q/get-object db' c1-id)
+          c2-obj (q/get-object db' c2-id)]
+      (is (true? (:object/tapped c1-obj))
+          "c1 (untapped) should be tapped after :tap-all")
+      (is (true? (:object/tapped c2-obj))
+          "c2 (already tapped) should remain tapped"))))
+
+
+(deftest test-tap-all-empty-battlefield-is-noop
+  (testing ":tap-all with no objects on battlefield returns db unchanged"
+    ;; Catches: crash on empty sequence reduction
+    (let [db (init-game-state)
+          effect {:effect/type :tap-all
+                  :effect/target :player-1
+                  :effect/permanent-type :creature}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')
+          "db should be unchanged when no permanents exist"))))
+
+
+(deftest test-tap-all-no-matching-type-is-noop
+  (testing ":tap-all skips objects whose card type does not match :effect/permanent-type"
+    ;; Catches: type filter missing (sorcery on battlefield not tapped by :creature tap-all)
+    (let [db (init-game-state)
+          [db obj-id] (add-permanent db :player-1) ; dark-ritual = sorcery
+          effect {:effect/type :tap-all
+                  :effect/target :player-1
+                  :effect/permanent-type :creature} ; creature filter; sorcery won't match
+          db' (fx/execute-effect db :player-1 effect)
+          obj (q/get-object db' obj-id)]
+      (is (false? (:object/tapped obj))
+          "Non-creature permanent should NOT be tapped by :creature tap-all"))))
+
+
+(deftest test-tap-all-already-tapped-unchanged
+  (testing ":tap-all skips already-tapped creatures — only UNTAPPED matching objects are tapped"
+    ;; Catches: missing untapped guard (would set tapped true redundantly but more importantly
+    ;; confirms the filter is correctly skipping already-tapped objects)
+    (let [db (init-game-state)
+          [db c1-id] (th/add-test-creature db :player-1 2 2)
+          [db c2-id] (th/add-test-creature db :player-1 1 1)
+          ;; Tap both creatures before the effect
+          c1-eid (q/get-object-eid db c1-id)
+          c2-eid (q/get-object-eid db c2-id)
+          db (d/db-with db [[:db/add c1-eid :object/tapped true]
+                            [:db/add c2-eid :object/tapped true]])
+          effect {:effect/type :tap-all
+                  :effect/target :player-1
+                  :effect/permanent-type :creature}
+          db' (fx/execute-effect db :player-1 effect)]
+      ;; db should be identical — no changes when all already tapped
+      (is (= db db')
+          "db should be unchanged when all matching permanents are already tapped"))))
+
+
+;; === execute-effect :untap-all tests ===
+
+(deftest test-untap-all-untaps-tapped-creatures
+  (testing ":untap-all untaps TAPPED creatures of matching permanent-type on target player's battlefield"
+    ;; Catches: filter missing tapped-check (untaps already-untapped objects)
+    (let [db (init-game-state)
+          [db c1-id] (th/add-test-creature db :player-1 2 2)
+          [db c2-id] (th/add-test-creature db :player-1 1 1)
+          ;; Tap c1 so only c1 should be untapped by the effect
+          c1-eid (q/get-object-eid db c1-id)
+          db (d/db-with db [[:db/add c1-eid :object/tapped true]])
+          effect {:effect/type :untap-all
+                  :effect/target :player-1
+                  :effect/permanent-type :creature}
+          db' (fx/execute-effect db :player-1 effect)
+          c1-obj (q/get-object db' c1-id)
+          c2-obj (q/get-object db' c2-id)]
+      (is (false? (:object/tapped c1-obj))
+          "c1 (tapped) should be untapped after :untap-all")
+      (is (false? (:object/tapped c2-obj))
+          "c2 (already untapped) should remain untapped"))))
+
+
+(deftest test-untap-all-empty-battlefield-is-noop
+  (testing ":untap-all with no objects on battlefield returns db unchanged"
+    ;; Catches: crash on empty sequence reduction
+    (let [db (init-game-state)
+          effect {:effect/type :untap-all
+                  :effect/target :player-1
+                  :effect/permanent-type :creature}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')
+          "db should be unchanged when no permanents exist"))))
+
+
+(deftest test-untap-all-no-matching-tapped-is-noop
+  (testing ":untap-all with no tapped matching creatures is a no-op"
+    ;; Catches: missing tapped guard (would try to untap already-untapped objects)
+    (let [db (init-game-state)
+          [db _c1-id] (th/add-test-creature db :player-1 2 2)
+          [db _c2-id] (th/add-test-creature db :player-1 1 1)
+          ;; Both creatures start untapped (default)
+          effect {:effect/type :untap-all
+                  :effect/target :player-1
+                  :effect/permanent-type :creature}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')
+          "db should be unchanged when all matching permanents are already untapped"))))
+
+
+(deftest test-untap-all-type-filter-respected
+  (testing ":untap-all only untaps objects matching :effect/permanent-type"
+    ;; Catches: type filter missing (tapped land untapped by :creature untap-all)
+    ;; Setup: tapped dark-ritual sorcery on battlefield; untap-all :creature should not touch it
+    (let [db (init-game-state)
+          [db obj-id] (add-permanent db :player-1)
+          obj-eid (q/get-object-eid db obj-id)
+          db (d/db-with db [[:db/add obj-eid :object/tapped true]])
+          effect {:effect/type :untap-all
+                  :effect/target :player-1
+                  :effect/permanent-type :creature}
+          db' (fx/execute-effect db :player-1 effect)
+          obj (q/get-object db' obj-id)]
+      (is (true? (:object/tapped obj))
+          "Non-creature permanent should NOT be untapped by :creature untap-all"))))
+
+
+;; === execute-effect :exile-zone tests ===
+
+(deftest test-exile-zone-moves-all-graveyard-to-exile
+  (testing ":exile-zone moves all objects in the specified zone to :exile"
+    ;; Catches: move-to-zone not called for all objects, or wrong destination
+    (let [db (init-game-state)
+          [_ db] (add-object-with-card db :player-1 test-bounce-card :graveyard)
+          [_ db] (add-object-with-card db :player-1 test-bounce-card :graveyard)
+          [_ db] (add-object-with-card db :player-1 test-bounce-card :graveyard)
+          effect {:effect/type :exile-zone
+                  :effect/target :player-1
+                  :effect/zone :graveyard}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 0 (count-zone db' :player-1 :graveyard))
+          "Graveyard should be empty after :exile-zone")
+      (is (= 3 (count-zone db' :player-1 :exile))
+          "All 3 cards should be in exile"))))
+
+
+(deftest test-exile-zone-empty-zone-is-noop
+  (testing ":exile-zone with an empty target zone returns db unchanged"
+    ;; Catches: crash on nil/empty reduce — production uses (or ... []) guard
+    (let [db (init-game-state)
+          effect {:effect/type :exile-zone
+                  :effect/target :player-1
+                  :effect/zone :graveyard}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')
+          "db should be unchanged when target zone is empty"))))
+
+
+(deftest test-exile-zone-nil-target-is-noop
+  (testing ":exile-zone with nil :effect/target returns db unchanged"
+    ;; Catches: missing nil guard — production checks (and target-player zone player-eid)
+    (let [db (init-game-state)
+          effect {:effect/type :exile-zone
+                  :effect/target nil
+                  :effect/zone :graveyard}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')
+          "db should be unchanged when :effect/target is nil"))))
+
+
+(deftest test-exile-zone-hand-zone
+  (testing ":exile-zone exiles the specified zone — :hand not :graveyard"
+    ;; Catches: zone parameter ignored (always exiles graveyard regardless of :effect/zone)
+    (let [db (init-game-state)
+          [hand-id db] (add-object-with-card db :player-1 test-bounce-card :hand)
+          [gy-id db]   (add-object-with-card db :player-1 test-bounce-card :graveyard)
+          effect {:effect/type :exile-zone
+                  :effect/target :player-1
+                  :effect/zone :hand}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= :exile (get-object-zone db' hand-id))
+          "Hand object should be in :exile after :exile-zone :hand")
+      (is (= :graveyard (get-object-zone db' gy-id))
+          "Graveyard object should remain in :graveyard (different zone)"))))
+
+
+;; === execute-effect :create-token tests ===
+
+(def test-soldier-token-def
+  {:token/types     #{:creature}
+   :token/name      "Soldier"
+   :token/power     1
+   :token/toughness 1
+   :token/subtypes  #{:soldier}
+   :token/colors    #{:white}})
+
+
+(deftest test-create-token-places-object-on-battlefield
+  (testing ":create-token creates an object in the owner's battlefield zone"
+    ;; Catches: wrong zone, object not created
+    (let [db (init-game-state)
+          effect {:effect/type  :create-token
+                  :effect/token test-soldier-token-def}
+          db' (fx/execute-effect db :player-1 effect)
+          bf-objects (q/get-objects-in-zone db' :player-1 :battlefield)]
+      (is (= 1 (count bf-objects))
+          "Exactly one object should be on the battlefield after token creation"))))
+
+
+(deftest test-create-token-has-correct-power-toughness
+  (testing ":create-token sets correct base :object/power and :object/toughness on the created object"
+    ;; Catches: P/T not propagated from token-def to object
+    (let [db (init-game-state)
+          effect {:effect/type  :create-token
+                  :effect/token test-soldier-token-def}
+          db' (fx/execute-effect db :player-1 effect)
+          obj (first (q/get-objects-in-zone db' :player-1 :battlefield))]
+      (is (= 1 (:object/power obj))
+          "Token power should match :token/power 1")
+      (is (= 1 (:object/toughness obj))
+          "Token toughness should match :token/toughness 1"))))
+
+
+(deftest test-create-token-has-summoning-sickness
+  (testing ":create-token sets :object/summoning-sick true on newly created token"
+    ;; Catches: missing summoning-sick flag (token could attack immediately)
+    (let [db (init-game-state)
+          effect {:effect/type  :create-token
+                  :effect/token test-soldier-token-def}
+          db' (fx/execute-effect db :player-1 effect)
+          obj (first (q/get-objects-in-zone db' :player-1 :battlefield))]
+      (is (true? (:object/summoning-sick obj))
+          "Token should have :object/summoning-sick true"))))
+
+
+(deftest test-create-token-card-entity-has-correct-types
+  (testing ":create-token creates a synthetic card entity with :card/types from token def"
+    ;; Catches: card entity not created, types not propagated to card entity
+    (let [db (init-game-state)
+          effect {:effect/type  :create-token
+                  :effect/token test-soldier-token-def}
+          db' (fx/execute-effect db :player-1 effect)
+          obj (first (q/get-objects-in-zone db' :player-1 :battlefield))
+          card (:object/card obj)]
+      (is (= #{:creature} (set (:card/types card)))
+          "Token card entity should have :card/types #{:creature}"))))
+
+
+(deftest test-create-token-card-entity-has-correct-colors
+  (testing ":create-token propagates :token/colors to the synthetic card entity"
+    ;; Catches: colors not set on card entity (e.g. for color-matching effects)
+    (let [db (init-game-state)
+          effect {:effect/type  :create-token
+                  :effect/token test-soldier-token-def}
+          db' (fx/execute-effect db :player-1 effect)
+          obj (first (q/get-objects-in-zone db' :player-1 :battlefield))
+          card (:object/card obj)]
+      (is (= #{:white} (set (:card/colors card)))
+          "Token card entity should have :card/colors #{:white}"))))
+
+
+;; === execute-effect :apply-pt-modifier tests ===
+
+(deftest test-apply-pt-modifier-positive-delta
+  (testing ":apply-pt-modifier with +1/+1 increases effective P/T by 1/1"
+    ;; Catches: grant not applied, wrong delta sign
+    (let [db (init-game-state)
+          [db obj-id] (th/add-test-creature db :player-1 2 2)
+          effect {:effect/type      :apply-pt-modifier
+                  :effect/target    obj-id
+                  :effect/power     1
+                  :effect/toughness 1}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 3 (creatures/effective-power db' obj-id))
+          "Effective power should be 2 base + 1 from grant = 3")
+      (is (= 3 (creatures/effective-toughness db' obj-id))
+          "Effective toughness should be 2 base + 1 from grant = 3"))))
+
+
+(deftest test-apply-pt-modifier-negative-delta
+  (testing ":apply-pt-modifier with -1/-1 decreases effective P/T by 1/1"
+    ;; Catches: sign handling — negative deltas must reduce not increase P/T
+    (let [db (init-game-state)
+          [db obj-id] (th/add-test-creature db :player-1 2 2)
+          effect {:effect/type      :apply-pt-modifier
+                  :effect/target    obj-id
+                  :effect/power     -1
+                  :effect/toughness -1}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 1 (creatures/effective-power db' obj-id))
+          "Effective power should be 2 base - 1 from grant = 1")
+      (is (= 1 (creatures/effective-toughness db' obj-id))
+          "Effective toughness should be 2 base - 1 from grant = 1"))))
+
+
+(deftest test-apply-pt-modifier-nil-target-is-noop
+  (testing ":apply-pt-modifier with nil :effect/target returns db unchanged"
+    ;; Catches: missing nil guard before get-object-eid call
+    (let [db (init-game-state)
+          effect {:effect/type      :apply-pt-modifier
+                  :effect/target    nil
+                  :effect/power     2
+                  :effect/toughness 2}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')
+          "db should be unchanged when target is nil"))))
+
+
+(deftest test-apply-pt-modifier-nonexistent-target-is-noop
+  (testing ":apply-pt-modifier with nonexistent target UUID returns db unchanged"
+    ;; Catches: missing existence guard — if object doesn't exist grant must not be created
+    (let [db (init-game-state)
+          effect {:effect/type      :apply-pt-modifier
+                  :effect/target    (random-uuid)
+                  :effect/power     2
+                  :effect/toughness 2}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')
+          "db should be unchanged when target object does not exist"))))
