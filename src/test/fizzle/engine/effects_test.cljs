@@ -2839,3 +2839,255 @@
           db' (fx/execute-effect db :player-1 effect)]
       (is (= db db')
           "db should be unchanged when target object does not exist"))))
+
+
+;; === execute-effect :counter-spell tests ===
+
+(def test-counter-spell-target
+  {:card/id :test-counter-spell-target
+   :card/name "Test Counter Target"
+   :card/cmc 3
+   :card/mana-cost {:colorless 2 :blue 1}
+   :card/colors #{:blue}
+   :card/types #{:instant}
+   :card/text "Test spell for counter-spell effect."
+   :card/effects []})
+
+
+(deftest test-counter-spell-direct-counter
+  (testing ":counter-spell moves target spell from :stack to :graveyard"
+    ;; Catches: counter-target-spell not called, wrong destination zone
+    (let [db (init-game-state)
+          [spell-id db] (add-object-with-card db :player-1 test-counter-spell-target :stack)
+          effect {:effect/type :counter-spell
+                  :effect/target spell-id}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= :graveyard (get-object-zone db' spell-id))
+          "Countered spell should move to :graveyard"))))
+
+
+(deftest test-counter-spell-nil-target-is-noop
+  (testing ":counter-spell with nil :effect/target returns db unchanged"
+    ;; Catches: missing nil guard — production if-not target-id returns db
+    (let [db (init-game-state)
+          effect {:effect/type :counter-spell
+                  :effect/target nil}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')
+          "db should be unchanged when target is nil"))))
+
+
+(deftest test-counter-spell-nonexistent-target-is-noop
+  (testing ":counter-spell with nonexistent target UUID returns db unchanged"
+    ;; Catches: missing get-object existence guard
+    (let [db (init-game-state)
+          effect {:effect/type :counter-spell
+                  :effect/target (random-uuid)}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')
+          "db should be unchanged when target does not exist"))))
+
+
+(deftest test-counter-spell-target-not-on-stack-is-noop
+  (testing ":counter-spell with target existing but NOT on stack returns db unchanged"
+    ;; Catches: missing zone guard — production checks (not= :stack zone) → returns db
+    (let [db (init-game-state)
+          ;; Object is in :hand, not :stack
+          [obj-id db] (add-object-with-card db :player-1 test-counter-spell-target :hand)
+          effect {:effect/type :counter-spell
+                  :effect/target obj-id}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= :hand (get-object-zone db' obj-id))
+          "Object in :hand should remain in :hand — counter-spell only acts on :stack objects")
+      (is (= db db')
+          "db should be unchanged when target is not on the stack"))))
+
+
+(deftest test-counter-spell-unless-pay-returns-tagged-map
+  (testing ":counter-spell with :effect/unless-pay returns {:db :needs-selection} map"
+    ;; Catches: unless-pay path broken, wrong controller resolution
+    ;; NOTE: uses execute-effect-checked (not execute-effect) to get the full tagged result
+    ;; execute-effect is a backward-compat wrapper that strips :needs-selection to plain db
+    ;; NOTE: tests shape of tagged return only — full selection flow is integration scope
+    (let [db (init-game-state)
+          [spell-id db] (add-object-with-card db :player-1 test-counter-spell-target :stack)
+          effect {:effect/type :counter-spell
+                  :effect/target spell-id
+                  :effect/unless-pay {:mana {:colorless 2}}}
+          result (fx/execute-effect-checked db :player-1 effect)]
+      (is (map? result)
+          "unless-pay path should return a map (tagged return), not plain db")
+      (is (contains? result :db)
+          "Tagged return should have :db key")
+      (is (contains? result :needs-selection)
+          "Tagged return should have :needs-selection key")
+      (is (= :player-1 (get-in result [:needs-selection :unless-pay/controller]))
+          ":unless-pay/controller should be :player-1 (the spell's controller)"))))
+
+
+;; === execute-effect :counter-ability tests ===
+
+(deftest test-counter-ability-removes-stack-item
+  (testing ":counter-ability removes an activated-ability stack item from the stack"
+    ;; Catches: remove-stack-item not called, stack item remains after counter
+    (let [db (init-game-state)
+          ;; Create an activated-ability stack item (use stack/create-stack-item)
+          [obj-id db] (add-object-with-card db :player-1 test-counter-spell-target :battlefield)
+          ability-item {:stack-item/type :activated-ability
+                        :stack-item/controller :player-1
+                        :stack-item/source obj-id
+                        :stack-item/effects [{:effect/type :add-mana :effect/mana {:blue 1}}]}
+          db (stack/create-stack-item db ability-item)
+          ;; Find the created stack item's :db/id to use as effect target
+          stack-eid (d/q '[:find ?e .
+                           :where [?e :stack-item/type :activated-ability]]
+                         db)
+          effect {:effect/type :counter-ability
+                  :effect/target stack-eid}
+          db' (fx/execute-effect db :player-1 effect)
+          ;; Check the stack item no longer exists
+          remaining (d/q '[:find ?e .
+                           :where [?e :stack-item/type :activated-ability]]
+                         db')]
+      (is (nil? remaining)
+          "Activated-ability stack item should be removed after :counter-ability"))))
+
+
+(deftest test-counter-ability-nil-target-is-noop
+  (testing ":counter-ability with nil :effect/target returns db unchanged"
+    ;; Catches: missing nil guard — production if-not target-eid returns db
+    (let [db (init-game-state)
+          effect {:effect/type :counter-ability
+                  :effect/target nil}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')
+          "db should be unchanged when target is nil"))))
+
+
+(deftest test-counter-ability-nonexistent-eid-is-noop
+  (testing ":counter-ability with nonexistent entity ID returns db unchanged"
+    ;; Catches: missing existence guard — d/pull on nonexistent eid returns nil
+    (let [db (init-game-state)
+          effect {:effect/type :counter-ability
+                  :effect/target 999999}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')
+          "db should be unchanged when entity ID does not exist"))))
+
+
+(deftest test-counter-ability-spell-type-is-noop
+  (testing ":counter-ability on a :spell stack item returns db unchanged (only counters abilities)"
+    ;; Catches: missing type guard — production checks (activated-ability or triggered-ability)
+    (let [db (init-game-state)
+          [obj-id db] (add-object-with-card db :player-1 test-counter-spell-target :stack)
+          obj-eid (q/get-object-eid db obj-id)
+          spell-item {:stack-item/type :spell
+                      :stack-item/controller :player-1
+                      :stack-item/source obj-id
+                      :stack-item/object-ref obj-eid}
+          db (stack/create-stack-item db spell-item)
+          spell-eid (d/q '[:find ?e .
+                           :where [?e :stack-item/type :spell]]
+                         db)
+          effect {:effect/type :counter-ability
+                  :effect/target spell-eid}
+          db' (fx/execute-effect db :player-1 effect)
+          ;; Spell stack item should still exist
+          still-there (d/q '[:find ?e .
+                             :where [?e :stack-item/type :spell]]
+                           db')]
+      (is (some? still-there)
+          "Spell stack item should NOT be removed by :counter-ability"))))
+
+
+;; === execute-effect :welder-swap tests ===
+
+(def test-welder-artifact-bf
+  {:card/id :test-welder-artifact-bf
+   :card/name "Test Welder Artifact BF"
+   :card/cmc 2
+   :card/mana-cost {:colorless 2}
+   :card/colors #{}
+   :card/types #{:artifact}
+   :card/text "Test artifact for welder-swap (battlefield side)."
+   :card/effects []})
+
+
+(def test-welder-artifact-gy
+  {:card/id :test-welder-artifact-gy
+   :card/name "Test Welder Artifact GY"
+   :card/cmc 3
+   :card/mana-cost {:colorless 3}
+   :card/colors #{}
+   :card/types #{:artifact}
+   :card/text "Test artifact for welder-swap (graveyard side)."
+   :card/effects []})
+
+
+(deftest test-welder-swap-happy-path
+  (testing ":welder-swap moves battlefield artifact to graveyard and graveyard artifact to battlefield"
+    ;; Catches: move-to-zone calls wrong zones, bf/gy targets swapped
+    (let [db (init-game-state)
+          [bf-id db] (add-object-with-card db :player-1 test-welder-artifact-bf :battlefield)
+          [gy-id db] (add-object-with-card db :player-1 test-welder-artifact-gy :graveyard)
+          effect {:effect/type :welder-swap
+                  :effect/target bf-id
+                  :effect/graveyard-id gy-id}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= :graveyard (get-object-zone db' bf-id))
+          "Battlefield artifact should move to :graveyard")
+      (is (= :battlefield (get-object-zone db' gy-id))
+          "Graveyard artifact should move to :battlefield"))))
+
+
+(deftest test-welder-swap-missing-bf-target-is-noop
+  (testing ":welder-swap with nil :effect/target (battlefield side) returns db unchanged"
+    ;; Catches: missing nil guard on bf-id — production if-not (and bf-id gy-id) returns db
+    (let [db (init-game-state)
+          [gy-id db] (add-object-with-card db :player-1 test-welder-artifact-gy :graveyard)
+          effect {:effect/type :welder-swap
+                  :effect/target nil
+                  :effect/graveyard-id gy-id}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')
+          "db should be unchanged when battlefield target (:effect/target) is nil"))))
+
+
+(deftest test-welder-swap-missing-gy-target-is-noop
+  (testing ":welder-swap with nil :effect/graveyard-id (graveyard side) returns db unchanged"
+    ;; Catches: missing nil guard on gy-id — production if-not (and bf-id gy-id) returns db
+    (let [db (init-game-state)
+          [bf-id db] (add-object-with-card db :player-1 test-welder-artifact-bf :battlefield)
+          effect {:effect/type :welder-swap
+                  :effect/target bf-id
+                  :effect/graveyard-id nil}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')
+          "db should be unchanged when graveyard target (:effect/graveyard-id) is nil"))))
+
+
+(deftest test-welder-swap-both-targets-nil-is-noop
+  (testing ":welder-swap with both targets nil returns db unchanged"
+    ;; Catches: nil AND check not short-circuiting properly
+    (let [db (init-game-state)
+          effect {:effect/type :welder-swap
+                  :effect/target nil
+                  :effect/graveyard-id nil}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')
+          "db should be unchanged when both targets are nil"))))
+
+
+(deftest test-welder-swap-bf-target-in-wrong-zone-is-noop
+  (testing ":welder-swap with battlefield target existing but in wrong zone returns db unchanged"
+    ;; Catches: missing zone legality check — production checks bf-legal = (= :battlefield zone)
+    (let [db (init-game-state)
+          ;; Both objects exist but bf-id is in graveyard (wrong zone)
+          [bf-id db] (add-object-with-card db :player-1 test-welder-artifact-bf :graveyard)
+          [gy-id db] (add-object-with-card db :player-1 test-welder-artifact-gy :graveyard)
+          effect {:effect/type :welder-swap
+                  :effect/target bf-id
+                  :effect/graveyard-id gy-id}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= db db')
+          "db should be unchanged when :effect/target is not on the battlefield"))))
