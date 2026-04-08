@@ -10,6 +10,7 @@
    on the dispatch-sync (re-frame event handler wiring) gap."
   (:require
     [cljs.test :refer-macros [deftest is testing]]
+    [clojure.string :as str]
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.events.lands :as lands]
@@ -73,7 +74,9 @@
           "history should have entries after ::play-land")
       (let [last-entry (last history-entries)]
         (is (= ::lands/play-land (:entry/event-type last-entry))
-            "last history entry event-type should be ::lands/play-land")))))
+            "last history entry event-type should be ::lands/play-land")
+        (is (not (str/blank? (:entry/description last-entry)))
+            "last history entry should have a non-blank :entry/description")))))
 
 
 ;; Test 3: ::play-land decrements land-plays-left

@@ -6,6 +6,7 @@
    Unit tests call pure functions directly for guard conditions and edge cases."
   (:require
     [cljs.test :refer-macros [deftest is testing]]
+    [clojure.string :as str]
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.grants :as grants]
@@ -72,24 +73,23 @@
           "history should have entries after activate-mana-ability")
       (let [last-entry (last history-entries)]
         (is (= ::abilities/activate-mana-ability (:entry/event-type last-entry))
-            "last history entry event-type should be ::abilities/activate-mana-ability")))))
+            "last history entry event-type should be ::abilities/activate-mana-ability")
+        (is (not (str/blank? (:entry/description last-entry)))
+            "last history entry should have a non-blank :entry/description")))))
 
 
-;; Test 3: activate-ability creates pending-selection for targeting (fetchland)
-(deftest activate-ability-creates-pending-selection-for-targeting
-  (testing "::activate-ability on a fetchland creates :ability-targeting pending selection"
+;; Test 3: activate-ability on fetchland places ability on stack (no targeting selection)
+(deftest activate-ability-fetchland-goes-to-stack
+  (testing "::activate-ability on a fetchland places ability on stack (no targeting — tutor uses selection)"
     (let [app-db (setup-app-db {:mana {:black 1}})
           game-db (:game/db app-db)
           [game-db' obj-id] (h/add-card-to-zone game-db :polluted-delta :battlefield :player-1)
           app-db' (assoc app-db :game/db game-db')
-          result (dispatch-event app-db' [::abilities/activate-ability obj-id 0])
-          selection (:game/pending-selection result)]
-      ;; Fetchland has sacrifice-self+tap+pay-life cost with tutor effect (no targeting)
-      ;; Actually polluted-delta has a tutor (not targeting) — so goes to stack directly
-      ;; Let's verify the stack has the ability item
-      (is (or selection
-              (seq (q/get-all-stack-items (:game/db result))))
-          "Either pending-selection or stack item should exist after ability activation"))))
+          result (dispatch-event app-db' [::abilities/activate-ability obj-id 0])]
+      ;; Polluted Delta has sacrifice-self cost (not sacrifice-permanent) —
+      ;; so it goes directly to stack without pausing for a sacrifice selection
+      (is (seq (q/get-all-stack-items (:game/db result)))
+          "Stack should have an ability item after activating Polluted Delta"))))
 
 
 ;; Test 4: activate-ability clears :game/selected-card
@@ -250,3 +250,18 @@
             "Stack should have the activated ability item")
         (is (= :activated-ability (:stack-item/type (first stack-items)))
             "Stack item type should be :activated-ability")))))
+
+
+;; Test 15: SBA — sacrifice cost moves permanent to graveyard
+(deftest activate-ability-sacrifice-moves-to-graveyard
+  (testing "activating fetchland (sacrifice-self cost) moves the fetchland to :graveyard"
+    (let [db (h/create-test-db {:life 20})
+          [db' obj-id] (h/add-card-to-zone db :polluted-delta :battlefield :player-1)
+          [db'' _] (h/add-cards-to-library db' [:island :swamp] :player-1)
+          _ (is (= :battlefield (:object/zone (q/get-object db'' obj-id)))
+                "Precondition: fetchland starts on battlefield")
+          result (abilities/activate-ability db'' :player-1 obj-id 0)
+          result-db (:db result)
+          land-after (q/get-object result-db obj-id)]
+      (is (= :graveyard (:object/zone land-after))
+          "Fetchland should be in :graveyard after sacrifice-self cost is paid on activation"))))

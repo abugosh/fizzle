@@ -6,6 +6,7 @@
    Unit tests call pure functions directly for edge cases and guard conditions."
   (:require
     [cljs.test :refer-macros [deftest is testing]]
+    [clojure.string :as str]
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
@@ -61,16 +62,26 @@
           after-3 (dispatch-event after-2 [::phases/advance-phase])
           _ (is (= :cleanup (:game/phase (q/get-game-state (:game/db after-3))))
                 "end → cleanup")
-          ;; cleanup → start new turn
+          ;; cleanup → start new turn (lands at :untap)
           after-turn (dispatch-event after-3 [::phases/start-turn])
-          result-db (:game/db after-turn)
+          _ (is (= :untap (:game/phase (q/get-game-state (:game/db after-turn))))
+                "new turn starts at :untap")
+          _ (is (= 2 (:game/turn (q/get-game-state (:game/db after-turn))))
+                "turn counter incremented to 2")
+          _ (is (= :player-2 (q/get-active-player-id (:game/db after-turn)))
+                "active player switched to player-2 (bot)")
+          ;; Continue the cycle: untap → upkeep → draw → main1
+          after-upkeep (dispatch-event after-turn [::phases/advance-phase])
+          _ (is (= :upkeep (:game/phase (q/get-game-state (:game/db after-upkeep))))
+                "untap → upkeep")
+          after-draw (dispatch-event after-upkeep [::phases/advance-phase])
+          _ (is (= :draw (:game/phase (q/get-game-state (:game/db after-draw))))
+                "upkeep → draw")
+          after-main1 (dispatch-event after-draw [::phases/advance-phase])
+          result-db (:game/db after-main1)
           game-state (q/get-game-state result-db)]
-      (is (= :untap (:game/phase game-state))
-          "new turn starts at :untap")
-      (is (= 2 (:game/turn game-state))
-          "turn counter incremented to 2")
-      (is (= :player-2 (q/get-active-player-id result-db))
-          "active player switched to player-2 (bot)")
+      (is (= :main1 (:game/phase game-state))
+          "draw → main1 completes the untap→upkeep→draw→main1 cycle")
       (is (= 0 (q/get-storm-count result-db :player-2))
           "storm count is 0 for new active player")
       (is (= 1 (d/q '[:find ?plays .
@@ -200,7 +211,9 @@
           "history should have entries after start-turn")
       (let [last-entry (last history-entries)]
         (is (= ::phases/start-turn (:entry/event-type last-entry))
-            "last history entry event-type should be ::phases/start-turn")))))
+            "last history entry event-type should be ::phases/start-turn")
+        (is (not (str/blank? (:entry/description last-entry)))
+            "last history entry should have a non-blank :entry/description")))))
 
 
 ;; Test 9: start-turn blocked by pending selection
@@ -320,3 +333,9 @@
           land-after (q/get-object (:game/db result) land-id)]
       (is (false? (:object/tapped land-after))
           "player-2's permanent should be untapped after start-turn fires untap trigger"))))
+
+
+;; Test deferred: advance-phase-fires-delayed-effects-in-upkeep
+;; Requires a card with :grant/delayed-effect (e.g., Rain of Filth) which
+;; is not available in test helpers. Setup complexity exceeds value for
+;; this epic. Tracked for future work.
