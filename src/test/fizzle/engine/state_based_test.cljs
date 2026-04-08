@@ -8,6 +8,32 @@
     [fizzle.test-helpers :as th]))
 
 
+;; === Token creation helper (d/db-with only — no mutable conn) ===
+
+(defn- add-test-token
+  "Create a token creature in a given zone using d/db-with.
+   Returns [db token-obj-id]."
+  [db owner zone]
+  (let [player-eid (q/get-player-eid db owner)
+        card-id    (keyword (str "token-card-" (random-uuid)))
+        db         (d/db-with db [{:card/id card-id
+                                   :card/name "Test Token"
+                                   :card/types #{:creature}
+                                   :card/power 1
+                                   :card/toughness 1}])
+        card-eid   (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] db card-id)
+        token-id   (random-uuid)
+        db         (d/db-with db [{:object/id token-id
+                                   :object/card card-eid
+                                   :object/zone zone
+                                   :object/owner player-eid
+                                   :object/controller player-eid
+                                   :object/is-token true
+                                   :object/tapped false
+                                   :object/damage-marked 0}])]
+    [db token-id card-eid]))
+
+
 ;; === Test helpers ===
 
 (defn add-permanent
@@ -443,3 +469,520 @@
       ;; Clean up
       (remove-method sba/check-sba :test-extensibility)
       (remove-method sba/execute-sba :test-extensibility))))
+
+
+;; === :lethal-damage SBA tests ===
+
+(deftest test-check-sba-lethal-damage-fires-at-equal
+  (testing "check-sba :lethal-damage fires when damage-marked == toughness"
+    (let [[db obj-id] (-> (th/create-test-db)
+                          (th/add-opponent)
+                          (th/add-test-creature :player-1 2 2))
+          obj-eid     (q/get-object-eid db obj-id)
+          db          (d/db-with db [[:db/add obj-eid :object/damage-marked 2]])
+          sbas        (sba/check-sba db :lethal-damage)]
+      (is (= 1 (count sbas))
+          "Should return exactly one SBA event")
+      (is (= :lethal-damage (:sba/type (first sbas)))
+          "SBA type should be :lethal-damage")
+      (is (= obj-id (:sba/target (first sbas)))
+          "SBA should target the damaged creature"))))
+
+
+(deftest test-check-sba-lethal-damage-fires-at-overkill
+  (testing "check-sba :lethal-damage fires when damage-marked > toughness (overkill)"
+    (let [[db obj-id] (-> (th/create-test-db)
+                          (th/add-opponent)
+                          (th/add-test-creature :player-1 2 2))
+          obj-eid     (q/get-object-eid db obj-id)
+          db          (d/db-with db [[:db/add obj-eid :object/damage-marked 5]])
+          sbas        (sba/check-sba db :lethal-damage)]
+      (is (= 1 (count sbas)))
+      (is (= :lethal-damage (:sba/type (first sbas)))))))
+
+
+(deftest test-check-sba-lethal-damage-no-fire-below-toughness
+  (testing "check-sba :lethal-damage does NOT fire when damage < toughness"
+    (let [[db obj-id] (-> (th/create-test-db)
+                          (th/add-opponent)
+                          (th/add-test-creature :player-1 2 4))
+          obj-eid     (q/get-object-eid db obj-id)
+          db          (d/db-with db [[:db/add obj-eid :object/damage-marked 2]])
+          sbas        (sba/check-sba db :lethal-damage)]
+      (is (empty? (filter #(= obj-id (:sba/target %)) sbas))
+          "Should not fire when damage < toughness"))))
+
+
+(deftest test-check-sba-lethal-damage-no-fire-zero-damage
+  (testing "check-sba :lethal-damage does NOT fire when damage-marked is 0"
+    (let [[db _obj-id] (-> (th/create-test-db)
+                           (th/add-opponent)
+                           (th/add-test-creature :player-1 2 2))
+          ;; damage-marked is already 0 from add-test-creature
+          sbas (sba/check-sba db :lethal-damage)]
+      (is (empty? sbas)
+          "Should not fire when damage-marked is 0"))))
+
+
+(deftest test-execute-sba-lethal-damage-moves-to-graveyard
+  (testing "execute-sba :lethal-damage moves creature to graveyard"
+    (let [[db obj-id] (-> (th/create-test-db)
+                          (th/add-opponent)
+                          (th/add-test-creature :player-1 2 2))
+          obj-eid     (q/get-object-eid db obj-id)
+          db          (d/db-with db [[:db/add obj-eid :object/damage-marked 2]])
+          sba-event   {:sba/type :lethal-damage :sba/target obj-id}
+          db'         (sba/execute-sba db sba-event)]
+      (is (= :graveyard (:object/zone (q/get-object db' obj-id)))
+          "Creature should be in graveyard after lethal-damage SBA"))))
+
+
+(deftest test-execute-sba-lethal-damage-noop-when-already-removed
+  (testing "execute-sba :lethal-damage no-ops when creature already gone"
+    (let [[db obj-id] (-> (th/create-test-db)
+                          (th/add-opponent)
+                          (th/add-test-creature :player-1 2 2))
+          obj-eid     (q/get-object-eid db obj-id)
+          ;; Retract creature manually before executing SBA
+          db          (d/db-with db [[:db.fn/retractEntity obj-eid]])
+          sba-event   {:sba/type :lethal-damage :sba/target obj-id}
+          db'         (sba/execute-sba db sba-event)]
+      (is (nil? (q/get-object-eid db' obj-id))
+          "Object should not exist, execute-sba should no-op"))))
+
+
+(deftest test-check-and-execute-sbas-lethal-damage-integration
+  (testing "check-and-execute-sbas detects lethal damage and moves creature to graveyard"
+    (let [[db obj-id] (-> (th/create-test-db)
+                          (th/add-opponent)
+                          (th/add-test-creature :player-1 3 3))
+          obj-eid     (q/get-object-eid db obj-id)
+          db          (d/db-with db [[:db/add obj-eid :object/damage-marked 3]])
+          db'         (sba/check-and-execute-sbas db)]
+      (is (= :graveyard (:object/zone (q/get-object db' obj-id)))
+          "check-and-execute-sbas should detect and apply lethal-damage SBA"))))
+
+
+(deftest test-check-sba-lethal-damage-opponent-creature
+  (testing "check-sba :lethal-damage fires for opponent's creature"
+    (let [[db obj-id] (-> (th/create-test-db)
+                          (th/add-opponent)
+                          (th/add-test-creature :player-2 2 2))
+          obj-eid     (q/get-object-eid db obj-id)
+          db          (d/db-with db [[:db/add obj-eid :object/damage-marked 3]])
+          sbas        (sba/check-sba db :lethal-damage)]
+      (is (= 1 (count sbas)))
+      (is (= :lethal-damage (:sba/type (first sbas))))
+      (is (= obj-id (:sba/target (first sbas)))
+          "SBA should fire for opponent's creature"))))
+
+
+(deftest test-check-and-execute-sbas-lethal-damage-opponent-integration
+  (testing "check-and-execute-sbas moves opponent creature to graveyard"
+    (let [[db obj-id] (-> (th/create-test-db)
+                          (th/add-opponent)
+                          (th/add-test-creature :player-2 2 2))
+          obj-eid     (q/get-object-eid db obj-id)
+          db          (d/db-with db [[:db/add obj-eid :object/damage-marked 2]])
+          db'         (sba/check-and-execute-sbas db)]
+      (is (= :graveyard (:object/zone (q/get-object db' obj-id)))
+          "Opponent's creature should be in graveyard"))))
+
+
+;; === :zero-toughness SBA tests ===
+
+(deftest test-check-sba-zero-toughness-fires-at-zero
+  (testing "check-sba :zero-toughness fires when creature has 0 toughness"
+    (let [[db obj-id] (-> (th/create-test-db)
+                          (th/add-opponent)
+                          (th/add-test-creature :player-1 1 0))
+          sbas        (sba/check-sba db :zero-toughness)]
+      (is (= 1 (count sbas))
+          "Should return exactly one SBA event")
+      (is (= :zero-toughness (:sba/type (first sbas)))
+          "SBA type should be :zero-toughness")
+      (is (= obj-id (:sba/target (first sbas)))
+          "SBA should target the 0-toughness creature"))))
+
+
+(deftest test-check-sba-zero-toughness-fires-negative
+  (testing "check-sba :zero-toughness fires when creature toughness is negative"
+    (let [[db obj-id] (-> (th/create-test-db)
+                          (th/add-opponent)
+                          (th/add-test-creature :player-1 1 -1))
+          sbas        (sba/check-sba db :zero-toughness)]
+      (is (= 1 (count sbas)))
+      (is (= obj-id (:sba/target (first sbas)))
+          "SBA should fire for negative toughness"))))
+
+
+(deftest test-check-sba-zero-toughness-no-fire-positive
+  (testing "check-sba :zero-toughness does NOT fire for creature with toughness > 0"
+    (let [[db obj-id] (-> (th/create-test-db)
+                          (th/add-opponent)
+                          (th/add-test-creature :player-1 2 2))
+          sbas        (sba/check-sba db :zero-toughness)]
+      (is (empty? (filter #(= obj-id (:sba/target %)) sbas))
+          "Should not fire when toughness > 0"))))
+
+
+(deftest test-execute-sba-zero-toughness-moves-to-graveyard
+  (testing "execute-sba :zero-toughness moves creature to graveyard"
+    (let [[db obj-id] (-> (th/create-test-db)
+                          (th/add-opponent)
+                          (th/add-test-creature :player-1 1 0))
+          sba-event   {:sba/type :zero-toughness :sba/target obj-id}
+          db'         (sba/execute-sba db sba-event)]
+      (is (= :graveyard (:object/zone (q/get-object db' obj-id)))
+          "Creature should be in graveyard after zero-toughness SBA"))))
+
+
+(deftest test-execute-sba-zero-toughness-noop-when-already-removed
+  (testing "execute-sba :zero-toughness no-ops when creature already gone"
+    (let [[db obj-id] (-> (th/create-test-db)
+                          (th/add-opponent)
+                          (th/add-test-creature :player-1 1 0))
+          obj-eid     (q/get-object-eid db obj-id)
+          db          (d/db-with db [[:db.fn/retractEntity obj-eid]])
+          sba-event   {:sba/type :zero-toughness :sba/target obj-id}
+          db'         (sba/execute-sba db sba-event)]
+      (is (nil? (q/get-object-eid db' obj-id))
+          "Object should not exist, execute-sba should no-op"))))
+
+
+(deftest test-check-and-execute-sbas-zero-toughness-integration
+  (testing "check-and-execute-sbas detects 0-toughness and moves creature to graveyard"
+    (let [[db obj-id] (-> (th/create-test-db)
+                          (th/add-opponent)
+                          (th/add-test-creature :player-1 2 0))
+          db'         (sba/check-and-execute-sbas db)]
+      (is (= :graveyard (:object/zone (q/get-object db' obj-id)))
+          "check-and-execute-sbas should detect and apply zero-toughness SBA"))))
+
+
+(deftest test-check-sba-zero-toughness-opponent-creature
+  (testing "check-sba :zero-toughness fires for opponent's 0-toughness creature"
+    (let [[db obj-id] (-> (th/create-test-db)
+                          (th/add-opponent)
+                          (th/add-test-creature :player-2 1 0))
+          sbas        (sba/check-sba db :zero-toughness)]
+      (is (= 1 (count sbas)))
+      (is (= :zero-toughness (:sba/type (first sbas))))
+      (is (= obj-id (:sba/target (first sbas)))
+          "SBA should fire for opponent's 0-toughness creature"))))
+
+
+(deftest test-check-and-execute-sbas-zero-toughness-opponent-integration
+  (testing "check-and-execute-sbas moves opponent's 0-toughness creature to graveyard"
+    (let [[db obj-id] (-> (th/create-test-db)
+                          (th/add-opponent)
+                          (th/add-test-creature :player-2 1 0))
+          db'         (sba/check-and-execute-sbas db)]
+      (is (= :graveyard (:object/zone (q/get-object db' obj-id)))
+          "Opponent's 0-toughness creature should move to graveyard"))))
+
+
+;; === :token-cleanup SBA tests ===
+
+(deftest test-check-sba-token-cleanup-fires-for-graveyard-token
+  (testing "check-sba :token-cleanup fires when token is in graveyard"
+    (let [[db token-id _] (-> (th/create-test-db)
+                              (th/add-opponent)
+                              (add-test-token :player-1 :graveyard))
+          sbas            (sba/check-sba db :token-cleanup)]
+      (is (= 1 (count sbas))
+          "Should return exactly one SBA event")
+      (is (= :token-cleanup (:sba/type (first sbas)))
+          "SBA type should be :token-cleanup")
+      (is (= token-id (:sba/target (first sbas)))
+          "SBA should target the graveyard token"))))
+
+
+(deftest test-check-sba-token-cleanup-fires-for-exile-token
+  (testing "check-sba :token-cleanup fires when token is in exile"
+    (let [[db token-id _] (-> (th/create-test-db)
+                              (th/add-opponent)
+                              (add-test-token :player-1 :exile))
+          sbas            (sba/check-sba db :token-cleanup)]
+      (is (= 1 (count sbas)))
+      (is (= :token-cleanup (:sba/type (first sbas))))
+      (is (= token-id (:sba/target (first sbas)))
+          "SBA should fire for exiled token"))))
+
+
+(deftest test-check-sba-token-cleanup-no-fire-for-battlefield-token
+  (testing "check-sba :token-cleanup does NOT fire for token on battlefield"
+    (let [[db token-id _] (-> (th/create-test-db)
+                              (th/add-opponent)
+                              (add-test-token :player-1 :battlefield))
+          sbas            (sba/check-sba db :token-cleanup)]
+      (is (empty? (filter #(= token-id (:sba/target %)) sbas))
+          "Should not fire for token on battlefield"))))
+
+
+(deftest test-execute-sba-token-cleanup-retracts-token-and-card
+  (testing "execute-sba :token-cleanup retracts both token entity and synthetic card entity"
+    (let [[db token-id card-eid] (-> (th/create-test-db)
+                                     (th/add-opponent)
+                                     (add-test-token :player-1 :graveyard))
+          sba-event              {:sba/type :token-cleanup :sba/target token-id}
+          db'                    (sba/execute-sba db sba-event)]
+      ;; Token object should be gone
+      (is (nil? (q/get-object-eid db' token-id))
+          "Token entity should be retracted")
+      ;; Synthetic card entity should also be gone
+      (is (nil? (d/q '[:find ?e . :in $ ?ceid :where [?e :db/id ?ceid]] db' card-eid))
+          "Synthetic card entity should also be retracted"))))
+
+
+(deftest test-execute-sba-token-cleanup-noop-when-already-removed
+  (testing "execute-sba :token-cleanup no-ops when token already gone"
+    (let [[db token-id _] (-> (th/create-test-db)
+                              (th/add-opponent)
+                              (add-test-token :player-1 :graveyard))
+          token-eid       (q/get-object-eid db token-id)
+          db              (d/db-with db [[:db.fn/retractEntity token-eid]])
+          sba-event       {:sba/type :token-cleanup :sba/target token-id}
+          db'             (sba/execute-sba db sba-event)]
+      (is (nil? (q/get-object-eid db' token-id))
+          "Token should not exist, execute-sba should no-op"))))
+
+
+(deftest test-check-and-execute-sbas-token-cleanup-integration
+  (testing "check-and-execute-sbas retracts graveyard token"
+    (let [[db token-id _] (-> (th/create-test-db)
+                              (th/add-opponent)
+                              (add-test-token :player-1 :graveyard))
+          db'             (sba/check-and-execute-sbas db)]
+      (is (nil? (q/get-object-eid db' token-id))
+          "check-and-execute-sbas should retract graveyard token"))))
+
+
+(deftest test-check-sba-token-cleanup-opponent-token
+  (testing "check-sba :token-cleanup fires for opponent's graveyard token"
+    (let [[db token-id _] (-> (th/create-test-db)
+                              (th/add-opponent)
+                              (add-test-token :player-2 :graveyard))
+          sbas            (sba/check-sba db :token-cleanup)]
+      (is (= 1 (count sbas)))
+      (is (= token-id (:sba/target (first sbas)))
+          "SBA should fire for opponent's graveyard token"))))
+
+
+(deftest test-check-and-execute-sbas-token-cleanup-opponent-integration
+  (testing "check-and-execute-sbas retracts opponent's graveyard token"
+    (let [[db token-id _] (-> (th/create-test-db)
+                              (th/add-opponent)
+                              (add-test-token :player-2 :graveyard))
+          db'             (sba/check-and-execute-sbas db)]
+      (is (nil? (q/get-object-eid db' token-id))
+          "Opponent's graveyard token should be retracted"))))
+
+
+;; === :state-check-trigger SBA tests ===
+
+(defn- add-creature-with-state-trigger
+  "Create a creature with a :card/state-triggers entry on the battlefield.
+   Returns [db obj-id]. Trigger condition: power >= threshold."
+  [db owner power toughness threshold]
+  (let [conn       (d/conn-from-db db)
+        player-eid (q/get-player-eid db owner)
+        card-id    (keyword (str "trigger-creature-" (random-uuid)))
+        trigger    {:state/condition {:condition/type :power-gte
+                                      :condition/threshold threshold}
+                    :state/effects   [{:effect/type :sacrifice :effect/target :self}]
+                    :state/description (str "Sacrifice when power >= " threshold)}
+        _ (d/transact! conn [{:card/id             card-id
+                              :card/name           "Trigger Creature"
+                              :card/types          #{:creature}
+                              :card/power          power
+                              :card/toughness      toughness
+                              :card/state-triggers [trigger]}])
+        card-eid   (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] @conn card-id)
+        obj-id     (random-uuid)
+        _ (d/transact! conn [{:object/id           obj-id
+                              :object/card         card-eid
+                              :object/zone         :battlefield
+                              :object/owner        player-eid
+                              :object/controller   player-eid
+                              :object/tapped       false
+                              :object/damage-marked 0
+                              :object/power        power
+                              :object/toughness    toughness
+                              :object/summoning-sick true}])]
+    [@conn obj-id]))
+
+
+(deftest test-check-sba-state-check-trigger-fires-when-condition-met
+  (testing "check-sba :state-check-trigger fires when power >= threshold"
+    (let [[db obj-id] (-> (th/create-test-db)
+                          (th/add-opponent)
+                          (add-creature-with-state-trigger :player-1 7 7 7))
+          sbas        (sba/check-sba db :state-check-trigger)]
+      (is (= 1 (count sbas))
+          "Should return exactly one SBA event")
+      (is (= :state-check-trigger (:sba/type (first sbas)))
+          "SBA type should be :state-check-trigger")
+      (is (= obj-id (:sba/target (first sbas)))
+          "SBA should target the creature whose condition is met"))))
+
+
+(deftest test-check-sba-state-check-trigger-no-fire-when-condition-not-met
+  (testing "check-sba :state-check-trigger does NOT fire when power < threshold"
+    (let [[db _obj-id] (-> (th/create-test-db)
+                           (th/add-opponent)
+                           (add-creature-with-state-trigger :player-1 3 3 7))
+          sbas         (sba/check-sba db :state-check-trigger)]
+      (is (empty? sbas)
+          "Should not fire when power < threshold"))))
+
+
+(deftest test-execute-sba-state-check-trigger-creates-stack-item
+  (testing "execute-sba :state-check-trigger creates a stack-item on the stack"
+    (let [[db obj-id] (-> (th/create-test-db)
+                          (th/add-opponent)
+                          (add-creature-with-state-trigger :player-1 7 7 7))
+          sbas        (sba/check-sba db :state-check-trigger)
+          db'         (sba/execute-sba db (first sbas))
+          stack-items (d/q '[:find [?e ...] :where [?e :stack-item/type :state-check-trigger]] db')]
+      (is (= 1 (count stack-items))
+          "Should create exactly one stack-item")
+      (let [item (d/pull db' [:stack-item/type :stack-item/source] (first stack-items))]
+        (is (= :state-check-trigger (:stack-item/type item))
+            "Stack item should have correct type")
+        (is (= obj-id (:stack-item/source item))
+            "Stack item should reference the source creature")))))
+
+
+(deftest test-check-sba-state-check-trigger-duplicate-guard
+  (testing "check-sba :state-check-trigger does NOT fire again when trigger already on stack"
+    (let [[db _obj-id] (-> (th/create-test-db)
+                           (th/add-opponent)
+                           (add-creature-with-state-trigger :player-1 7 7 7))
+          ;; First: fire the trigger and execute it (puts it on the stack)
+          sbas        (sba/check-sba db :state-check-trigger)
+          db-with-st  (sba/execute-sba db (first sbas))
+          ;; Now check again — duplicate guard should prevent re-firing
+          sbas-2      (sba/check-sba db-with-st :state-check-trigger)]
+      (is (empty? sbas-2)
+          "Duplicate guard should prevent trigger from firing again when already on stack"))))
+
+
+(deftest test-check-and-execute-sbas-state-check-trigger-integration
+  (testing "check-and-execute-sbas puts state-check-trigger on the stack"
+    (let [[db _obj-id] (-> (th/create-test-db)
+                           (th/add-opponent)
+                           (add-creature-with-state-trigger :player-1 7 7 7))
+          db'          (sba/check-and-execute-sbas db)
+          stack-items  (d/q '[:find [?e ...] :where [?e :stack-item/type :state-check-trigger]] db')]
+      (is (= 1 (count stack-items))
+          "check-and-execute-sbas should add state-check-trigger to stack"))))
+
+
+(deftest test-check-sba-state-check-trigger-fires-for-opponent-creature
+  (testing "check-sba :state-check-trigger fires for opponent's creature when condition is met"
+    (let [[db obj-id] (-> (th/create-test-db)
+                          (th/add-opponent)
+                          (add-creature-with-state-trigger :player-2 7 7 7))
+          sbas        (sba/check-sba db :state-check-trigger)]
+      (is (= 1 (count sbas))
+          "Should return exactly one SBA event for opponent creature")
+      (is (= :state-check-trigger (:sba/type (first sbas)))
+          "SBA type should be :state-check-trigger")
+      (is (= obj-id (:sba/target (first sbas)))
+          "SBA should target the opponent's creature"))))
+
+
+(deftest test-check-and-execute-sbas-state-check-trigger-opponent-integration
+  (testing "check-and-execute-sbas puts state-check-trigger on stack for opponent creature"
+    (let [[db _obj-id] (-> (th/create-test-db)
+                           (th/add-opponent)
+                           (add-creature-with-state-trigger :player-2 7 7 7))
+          db'          (sba/check-and-execute-sbas db)
+          stack-items  (d/q '[:find [?e ...] :where [?e :stack-item/type :state-check-trigger]] db')]
+      (is (= 1 (count stack-items))
+          "Opponent's creature state trigger should appear on stack"))))
+
+
+;; === :life-zero SBA opponent tests ===
+
+(deftest test-check-sba-life-zero-fires-for-opponent
+  (testing "check-sba :life-zero returns SBA event when opponent has life = 0"
+    (let [db   (th/create-test-db)
+          ;; Add opponent with 0 life via d/db-with after adding them
+          db   (th/add-opponent db)
+          opp-eid (q/get-player-eid db :player-2)
+          db   (d/db-with db [[:db/add opp-eid :player/life 0]])
+          sbas (sba/check-sba db :life-zero)]
+      (is (= 1 (count sbas))
+          "Should return exactly one SBA event for opponent at 0 life")
+      (is (= :life-zero (:sba/type (first sbas)))
+          "SBA type should be :life-zero")
+      (is (= :player-2 (:sba/player-id (first sbas)))
+          "SBA should identify the opponent as the player at 0 life"))))
+
+
+(deftest test-check-and-execute-sbas-life-zero-opponent-integration
+  (testing "check-and-execute-sbas detects opponent life=0 and sets loss condition with player-1 as winner"
+    (let [db      (th/create-test-db)
+          db      (th/add-opponent db)
+          opp-eid (q/get-player-eid db :player-2)
+          db      (d/db-with db [[:db/add opp-eid :player/life 0]])
+          db'     (sba/check-and-execute-sbas db)
+          game    (q/get-game-state db')
+          winner-eid (:game/winner game)
+          winner-pid (when winner-eid
+                       (:player/id (d/pull db' [:player/id] (:db/id winner-eid))))]
+      (is (= :life-zero (get-loss-condition db'))
+          "check-and-execute-sbas should detect opponent life-zero")
+      (is (= :player-1 winner-pid)
+          "Player-1 should win when opponent reaches 0 life"))))
+
+
+;; === Cascading SBA tests (real SBA types) ===
+
+(deftest test-cascading-lethal-damage-then-token-cleanup
+  (testing "lethal-damage on token → token moves to graveyard → token-cleanup retracts it"
+    ;; First loop: :lethal-damage fires, moves token to graveyard.
+    ;; Second loop: :token-cleanup fires, retracts token from graveyard.
+    (let [[db token-id _card-eid] (-> (th/create-test-db)
+                                      (th/add-opponent)
+                                      ;; Create token directly on battlefield via add-test-token
+                                      (add-test-token :player-1 :battlefield))
+          ;; Give the token enough damage to die
+          token-eid               (q/get-object-eid db token-id)
+          ;; First we need to mark it as a 1/1 (add-test-token creates 1/1)
+          ;; then give it 1 damage = lethal
+          db                      (d/db-with db [[:db/add token-eid :object/damage-marked 1]
+                                                 [:db/add token-eid :object/power 1]
+                                                 [:db/add token-eid :object/toughness 1]])
+          ;; Run full SBA loop
+          db'                     (sba/check-and-execute-sbas db)]
+      ;; Token should be fully gone (not just in graveyard — token-cleanup retracts it)
+      (is (nil? (q/get-object-eid db' token-id))
+          "Token should be fully retracted after lethal-damage + token-cleanup cascade"))))
+
+
+(deftest test-cascading-both-players-lethal-damage
+  (testing "lethal-damage SBA fires for both players' creatures simultaneously"
+    (let [[db p1-id] (-> (th/create-test-db)
+                         (th/add-opponent)
+                         (th/add-test-creature :player-1 2 2))
+          p1-eid     (q/get-object-eid db p1-id)
+          [db p2-id] (th/add-test-creature db :player-2 3 3)
+          p2-eid     (q/get-object-eid db p2-id)
+          ;; Both creatures take lethal damage
+          db         (d/db-with db [[:db/add p1-eid :object/damage-marked 2]
+                                    [:db/add p2-eid :object/damage-marked 3]])
+          sbas       (sba/check-sba db :lethal-damage)]
+      (is (= 2 (count sbas))
+          "Both creatures should trigger lethal-damage SBA")
+      (let [targets (set (map :sba/target sbas))]
+        (is (= #{p1-id p2-id} targets)
+            "Both creature IDs should appear as SBA targets"))
+      ;; Integration: both go to graveyard
+      (let [db' (sba/check-and-execute-sbas db)]
+        (is (= :graveyard (:object/zone (q/get-object db' p1-id)))
+            "Player-1's creature should be in graveyard")
+        (is (= :graveyard (:object/zone (q/get-object db' p2-id)))
+            "Player-2's creature should be in graveyard")))))
