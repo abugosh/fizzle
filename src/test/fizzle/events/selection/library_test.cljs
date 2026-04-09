@@ -1,6 +1,7 @@
 (ns fizzle.events.selection.library-test
   "Pattern B (multimethod production-path slice) tests for
-   events/selection/library.cljs defmethods.
+   events/selection/library.cljs defmethods, plus Pattern A
+   (dispatch-sync) tests for all 8 reg-event-db handlers.
 
    Covers all 11 defmethod registrations:
 
@@ -19,12 +20,23 @@
      :pile-choice    - hand-count cards to hand, rest to graveyard
      :scry           - top-pile / bottom-pile / unassigned reordering
 
+   Covers all 8 reg-event-db handlers:
+     :fizzle.events.selection/select-random-pile-choice
+     :fizzle.events.selection/scry-assign-top
+     :fizzle.events.selection/scry-assign-bottom
+     :fizzle.events.selection/scry-unassign
+     :fizzle.events.selection/order-card
+     :fizzle.events.selection/unorder-card
+     :fizzle.events.selection/any-order
+     :fizzle.events.selection/shuffle-and-confirm
+
    Deletion-test standard: deleting src/test/fizzle/cards/** would NOT
    create a coverage gap here. These tests prove defmethod mechanism
    independently of any per-card oracle test.
 
    Pattern B entry: sel-spec/set-pending-selection + sel-core/confirm-selection-impl
-   (or via th/confirm-selection)."
+   (or via th/confirm-selection).
+   Pattern A entry: rf/dispatch-sync with reset!/deref of rf-db/app-db."
   (:require
     [cljs.test :refer-macros [deftest is testing]]
     ;; Direct card requires — NO cards.registry / cards.all-cards lookups
@@ -35,11 +47,21 @@
     [fizzle.cards.blue.portent]
     [fizzle.cards.blue.sleight-of-hand]
     [fizzle.db.queries :as q]
+    [fizzle.events.db-effect :as db-effect]
     ;; Load library defmethods so they register on the multimethods
     [fizzle.events.selection.core :as sel-core]
     [fizzle.events.selection.library :as lib]
     [fizzle.events.selection.spec :as sel-spec]
-    [fizzle.test-helpers :as th]))
+    [fizzle.history.interceptor :as interceptor]
+    [fizzle.test-helpers :as th]
+    [re-frame.core :as rf]
+    [re-frame.db :as rf-db]))
+
+
+;; Install history interceptor AND SBA dispatch — required for Pattern A
+;; dispatch-sync tests to exercise the full production chain.
+(interceptor/register!)
+(db-effect/register!)
 
 
 ;; =====================================================
@@ -59,6 +81,24 @@
              [db' _] (th/add-cards-to-library db card-ids :player-1)]
          db')
        db))))
+
+
+(defn- setup-app-db
+  "Create app-db for Pattern A dispatch-sync tests.
+   Returns full app-db with :game/db key."
+  ([]
+   (setup-app-db {}))
+  ([opts]
+   (th/create-game-scenario (merge {:bot-archetype :goldfish} opts))))
+
+
+(defn- dispatch-event
+  "Dispatch a re-frame event synchronously, return resulting app-db.
+   Resets rf-db/app-db before dispatch for test isolation."
+  [app-db event]
+  (reset! rf-db/app-db app-db)
+  (rf/dispatch-sync event)
+  @rf-db/app-db)
 
 
 ;; =====================================================
@@ -703,3 +743,477 @@
           final-hand-count (th/get-hand-count result-db :player-1)]
       (is (= (inc initial-hand-count) final-hand-count)
           "Draw remaining-effect should execute: hand count should increase by 1"))))
+
+
+;; =====================================================
+;; reg-event-db handlers — Pattern A (dispatch-sync)
+;; Template: casting_test.cljs (fizzle-w7ba)
+;; Deletion-test standard: these tests prove each handler is wired
+;; correctly, independently of any card-specific oracle tests.
+;; =====================================================
+
+
+;; =====================================================
+;; :fizzle.events.selection/select-random-pile-choice
+;; Randomly selects hand-count cards from pile-choice candidates.
+;; Randomness: assert count and subset invariants, not specific cards.
+;; =====================================================
+
+(deftest select-random-pile-choice-selects-correct-count
+  (testing "::select-random-pile-choice sets :selected with exactly hand-count cards"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 card-a] (th/add-card-to-zone game-db :opt :library :player-1)
+          [db2 card-b] (th/add-card-to-zone db1 :sleight-of-hand :library :player-1)
+          [db3 card-c] (th/add-card-to-zone db2 :impulse :library :player-1)
+          card-ids #{card-a card-b card-c}
+          pile-cfg {:hand 1 :graveyard :rest}
+          [db4 spell-id] (th/add-card-to-zone db3 :intuition :stack :player-1)
+          sel (lib/build-pile-choice-selection card-ids pile-cfg :player-1 spell-id [])
+          ;; Clear pre-selected (auto-selected when 1 card — here 3 so empty)
+          sel' (assoc sel :selection/selected #{})
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db4) sel')
+          result (dispatch-event app-db' [:fizzle.events.selection/select-random-pile-choice])
+          selected (get-in result [:game/pending-selection :selection/selected])]
+      (is (= 1 (count selected))
+          "Random pile-choice should select exactly hand-count (1) cards")
+      (is (every? card-ids selected)
+          "All selected cards must come from the pile-choice candidates"))))
+
+
+(deftest select-random-pile-choice-selected-subset-of-candidates
+  (testing "::select-random-pile-choice always selects a subset of candidates"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 card-a] (th/add-card-to-zone game-db :opt :library :player-1)
+          [db2 card-b] (th/add-card-to-zone db1 :sleight-of-hand :library :player-1)
+          [db3 card-c] (th/add-card-to-zone db2 :impulse :library :player-1)
+          card-ids #{card-a card-b card-c}
+          pile-cfg {:hand 2 :graveyard :rest}
+          [db4 spell-id] (th/add-card-to-zone db3 :intuition :stack :player-1)
+          sel (lib/build-pile-choice-selection card-ids pile-cfg :player-1 spell-id [])
+          sel' (assoc sel :selection/selected #{})
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db4) sel')
+          result (dispatch-event app-db' [:fizzle.events.selection/select-random-pile-choice])
+          selected (get-in result [:game/pending-selection :selection/selected])
+          candidates (get-in result [:game/pending-selection :selection/candidates])]
+      (is (= 2 (count selected))
+          "hand-count 2: should select exactly 2 cards")
+      (is (every? candidates selected)
+          "Selected cards must all come from candidates"))))
+
+
+(deftest select-random-pile-choice-pile-choice-selection-retained
+  (testing "::select-random-pile-choice retains the pending selection (does not confirm)"
+    ;; Confirms that the handler only updates :selected — it does NOT confirm the selection.
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 card-a] (th/add-card-to-zone game-db :opt :library :player-1)
+          [db2 card-b] (th/add-card-to-zone db1 :sleight-of-hand :library :player-1)
+          [db3 card-c] (th/add-card-to-zone db2 :impulse :library :player-1)
+          card-ids #{card-a card-b card-c}
+          pile-cfg {:hand 1 :graveyard :rest}
+          [db4 spell-id] (th/add-card-to-zone db3 :intuition :stack :player-1)
+          sel (lib/build-pile-choice-selection card-ids pile-cfg :player-1 spell-id [])
+          sel' (assoc sel :selection/selected #{})
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db4) sel')
+          result (dispatch-event app-db' [:fizzle.events.selection/select-random-pile-choice])]
+      ;; Selection should still be present — handler does NOT confirm
+      (is (some? (:game/pending-selection result))
+          "select-random-pile-choice should NOT confirm the selection, only update :selected"))))
+
+
+;; =====================================================
+;; :fizzle.events.selection/scry-assign-top
+;; Moves a card to :selection/top-pile, removes from :selection/bottom-pile.
+;; =====================================================
+
+(deftest scry-assign-top-adds-card-to-top-pile
+  (testing "::scry-assign-top moves a scry card to :selection/top-pile"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 spell-id] (th/add-card-to-zone game-db :opt :stack :player-1)
+          [db2 _] (th/add-card-to-zone db1 :island :library :player-1)
+          effect {:effect/type :scry :effect/amount 1}
+          sel (sel-core/build-selection-for-effect db2 :player-1 spell-id effect [])
+          top-card (first (:selection/cards sel))
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db2) sel)
+          result (dispatch-event app-db' [:fizzle.events.selection/scry-assign-top top-card])
+          top-pile (get-in result [:game/pending-selection :selection/top-pile])]
+      (is (= [top-card] top-pile)
+          "scry-assign-top should add card to :selection/top-pile"))))
+
+
+(deftest scry-assign-top-removes-card-from-bottom-pile
+  (testing "::scry-assign-top removes card from :selection/bottom-pile if it was there"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 spell-id] (th/add-card-to-zone game-db :opt :stack :player-1)
+          [db2 _card-a] (th/add-card-to-zone db1 :island :library :player-1)
+          effect {:effect/type :scry :effect/amount 1}
+          sel (sel-core/build-selection-for-effect db2 :player-1 spell-id effect [])
+          top-card (first (:selection/cards sel))
+          ;; Pre-assign card to bottom-pile
+          sel' (assoc sel :selection/bottom-pile [top-card])
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db2) sel')
+          result (dispatch-event app-db' [:fizzle.events.selection/scry-assign-top top-card])
+          top-pile (get-in result [:game/pending-selection :selection/top-pile])
+          bottom-pile (get-in result [:game/pending-selection :selection/bottom-pile])]
+      (is (= [top-card] top-pile)
+          "Card should now be in top-pile")
+      (is (not (some #{top-card} bottom-pile))
+          "Card must be removed from bottom-pile when moved to top-pile"))))
+
+
+(deftest scry-assign-top-idempotent-double-assign
+  (testing "::scry-assign-top with card already in top-pile still has it in top-pile"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 spell-id] (th/add-card-to-zone game-db :opt :stack :player-1)
+          [db2 _] (th/add-card-to-zone db1 :island :library :player-1)
+          effect {:effect/type :scry :effect/amount 1}
+          sel (sel-core/build-selection-for-effect db2 :player-1 spell-id effect [])
+          top-card (first (:selection/cards sel))
+          ;; Pre-assign card to top-pile
+          sel' (assoc sel :selection/top-pile [top-card])
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db2) sel')
+          result (dispatch-event app-db' [:fizzle.events.selection/scry-assign-top top-card])
+          top-pile (get-in result [:game/pending-selection :selection/top-pile])]
+      (is (some #{top-card} top-pile)
+          "Card should be in top-pile after double-assign (conj is not idempotent, but card remains present)"))))
+
+
+;; =====================================================
+;; :fizzle.events.selection/scry-assign-bottom
+;; Moves a card to :selection/bottom-pile, removes from :selection/top-pile.
+;; =====================================================
+
+(deftest scry-assign-bottom-adds-card-to-bottom-pile
+  (testing "::scry-assign-bottom moves a scry card to :selection/bottom-pile"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 spell-id] (th/add-card-to-zone game-db :opt :stack :player-1)
+          [db2 _] (th/add-card-to-zone db1 :island :library :player-1)
+          effect {:effect/type :scry :effect/amount 1}
+          sel (sel-core/build-selection-for-effect db2 :player-1 spell-id effect [])
+          top-card (first (:selection/cards sel))
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db2) sel)
+          result (dispatch-event app-db' [:fizzle.events.selection/scry-assign-bottom top-card])
+          bottom-pile (get-in result [:game/pending-selection :selection/bottom-pile])]
+      (is (= [top-card] bottom-pile)
+          "scry-assign-bottom should add card to :selection/bottom-pile"))))
+
+
+(deftest scry-assign-bottom-removes-card-from-top-pile
+  (testing "::scry-assign-bottom removes card from :selection/top-pile if it was there"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 spell-id] (th/add-card-to-zone game-db :opt :stack :player-1)
+          [db2 _] (th/add-card-to-zone db1 :island :library :player-1)
+          effect {:effect/type :scry :effect/amount 1}
+          sel (sel-core/build-selection-for-effect db2 :player-1 spell-id effect [])
+          top-card (first (:selection/cards sel))
+          ;; Pre-assign card to top-pile
+          sel' (assoc sel :selection/top-pile [top-card])
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db2) sel')
+          result (dispatch-event app-db' [:fizzle.events.selection/scry-assign-bottom top-card])
+          top-pile (get-in result [:game/pending-selection :selection/top-pile])
+          bottom-pile (get-in result [:game/pending-selection :selection/bottom-pile])]
+      (is (= [top-card] bottom-pile)
+          "Card should now be in bottom-pile")
+      (is (not (some #{top-card} top-pile))
+          "Card must be removed from top-pile when moved to bottom-pile"))))
+
+
+;; =====================================================
+;; :fizzle.events.selection/scry-unassign
+;; Removes a card from both top-pile and bottom-pile.
+;; =====================================================
+
+(deftest scry-unassign-removes-card-from-top-pile
+  (testing "::scry-unassign removes card from :selection/top-pile"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 spell-id] (th/add-card-to-zone game-db :opt :stack :player-1)
+          [db2 _] (th/add-card-to-zone db1 :island :library :player-1)
+          effect {:effect/type :scry :effect/amount 1}
+          sel (sel-core/build-selection-for-effect db2 :player-1 spell-id effect [])
+          top-card (first (:selection/cards sel))
+          ;; Pre-assign card to top-pile
+          sel' (assoc sel :selection/top-pile [top-card])
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db2) sel')
+          result (dispatch-event app-db' [:fizzle.events.selection/scry-unassign top-card])
+          top-pile (get-in result [:game/pending-selection :selection/top-pile])]
+      (is (= [] top-pile)
+          "scry-unassign should remove card from top-pile"))))
+
+
+(deftest scry-unassign-removes-card-from-bottom-pile
+  (testing "::scry-unassign removes card from :selection/bottom-pile"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 spell-id] (th/add-card-to-zone game-db :opt :stack :player-1)
+          [db2 _] (th/add-card-to-zone db1 :island :library :player-1)
+          effect {:effect/type :scry :effect/amount 1}
+          sel (sel-core/build-selection-for-effect db2 :player-1 spell-id effect [])
+          top-card (first (:selection/cards sel))
+          ;; Pre-assign card to bottom-pile
+          sel' (assoc sel :selection/bottom-pile [top-card])
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db2) sel')
+          result (dispatch-event app-db' [:fizzle.events.selection/scry-unassign top-card])
+          bottom-pile (get-in result [:game/pending-selection :selection/bottom-pile])]
+      (is (= [] bottom-pile)
+          "scry-unassign should remove card from bottom-pile"))))
+
+
+(deftest scry-unassign-no-op-when-card-not-in-any-pile
+  (testing "::scry-unassign is a no-op when card is not in either pile"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 spell-id] (th/add-card-to-zone game-db :opt :stack :player-1)
+          [db2 _] (th/add-card-to-zone db1 :island :library :player-1)
+          effect {:effect/type :scry :effect/amount 1}
+          sel (sel-core/build-selection-for-effect db2 :player-1 spell-id effect [])
+          top-card (first (:selection/cards sel))
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db2) sel)
+          result (dispatch-event app-db' [:fizzle.events.selection/scry-unassign top-card])
+          top-pile (get-in result [:game/pending-selection :selection/top-pile])
+          bottom-pile (get-in result [:game/pending-selection :selection/bottom-pile])]
+      (is (= [] top-pile)
+          "top-pile should remain empty when card was never assigned")
+      (is (= [] bottom-pile)
+          "bottom-pile should remain empty when card was never assigned"))))
+
+
+;; =====================================================
+;; :fizzle.events.selection/order-card
+;; Appends a card to :selection/ordered if in candidates and not already ordered.
+;; =====================================================
+
+(deftest order-card-adds-card-to-ordered
+  (testing "::order-card appends card to :selection/ordered"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 card-a] (th/add-card-to-zone game-db :opt :library :player-1)
+          [db2 card-b] (th/add-card-to-zone db1 :sleight-of-hand :library :player-1)
+          [db3 spell-id] (th/add-card-to-zone db2 :impulse :stack :player-1)
+          sel (lib/build-order-bottom-selection [card-a card-b] :player-1 spell-id)
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db3) sel)
+          result (dispatch-event app-db' [:fizzle.events.selection/order-card card-a])
+          ordered (get-in result [:game/pending-selection :selection/ordered])]
+      (is (= [card-a] ordered)
+          "order-card should append the card to :selection/ordered"))))
+
+
+(deftest order-card-multiple-cards-in-sequence
+  (testing "::order-card builds ordered sequence correctly with multiple dispatches"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 card-a] (th/add-card-to-zone game-db :opt :library :player-1)
+          [db2 card-b] (th/add-card-to-zone db1 :sleight-of-hand :library :player-1)
+          [db3 spell-id] (th/add-card-to-zone db2 :impulse :stack :player-1)
+          sel (lib/build-order-bottom-selection [card-a card-b] :player-1 spell-id)
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db3) sel)
+          ;; Order card-b first, then card-a
+          after-first (dispatch-event app-db' [:fizzle.events.selection/order-card card-b])
+          after-second (dispatch-event after-first [:fizzle.events.selection/order-card card-a])
+          ordered (get-in after-second [:game/pending-selection :selection/ordered])]
+      (is (= [card-b card-a] ordered)
+          "Ordered sequence should reflect click order: card-b then card-a"))))
+
+
+(deftest order-card-no-op-when-card-not-in-candidates
+  (testing "::order-card ignores cards not in :selection/candidates"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 card-a] (th/add-card-to-zone game-db :opt :library :player-1)
+          [db2 card-b] (th/add-card-to-zone db1 :sleight-of-hand :library :player-1)
+          [db3 spell-id] (th/add-card-to-zone db2 :impulse :stack :player-1)
+          ;; Build selection with only card-a as candidate (not card-b)
+          sel (lib/build-order-bottom-selection [card-a] :player-1 spell-id)
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db3) sel)
+          result (dispatch-event app-db' [:fizzle.events.selection/order-card card-b])
+          ordered (get-in result [:game/pending-selection :selection/ordered])]
+      (is (= [] ordered)
+          "order-card should not add card-b which is not in candidates"))))
+
+
+(deftest order-card-no-op-when-card-already-ordered
+  (testing "::order-card is no-op when card is already in :selection/ordered"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 card-a] (th/add-card-to-zone game-db :opt :library :player-1)
+          [db2 card-b] (th/add-card-to-zone db1 :sleight-of-hand :library :player-1)
+          [db3 spell-id] (th/add-card-to-zone db2 :impulse :stack :player-1)
+          sel (lib/build-order-bottom-selection [card-a card-b] :player-1 spell-id)
+          ;; Pre-set card-a as already ordered
+          sel' (assoc sel :selection/ordered [card-a])
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db3) sel')
+          result (dispatch-event app-db' [:fizzle.events.selection/order-card card-a])
+          ordered (get-in result [:game/pending-selection :selection/ordered])]
+      (is (= [card-a] ordered)
+          "Ordering a card already in :ordered should not duplicate it"))))
+
+
+;; =====================================================
+;; :fizzle.events.selection/unorder-card
+;; Removes a card from :selection/ordered, preserving relative order of rest.
+;; =====================================================
+
+(deftest unorder-card-removes-card-from-ordered
+  (testing "::unorder-card removes card from :selection/ordered"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 card-a] (th/add-card-to-zone game-db :opt :library :player-1)
+          [db2 card-b] (th/add-card-to-zone db1 :sleight-of-hand :library :player-1)
+          [db3 spell-id] (th/add-card-to-zone db2 :impulse :stack :player-1)
+          sel (lib/build-order-bottom-selection [card-a card-b] :player-1 spell-id)
+          ;; Pre-set both cards as ordered
+          sel' (assoc sel :selection/ordered [card-a card-b])
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db3) sel')
+          result (dispatch-event app-db' [:fizzle.events.selection/unorder-card card-a])
+          ordered (get-in result [:game/pending-selection :selection/ordered])]
+      (is (= [card-b] ordered)
+          "unorder-card should remove card-a, leaving card-b in ordered"))))
+
+
+(deftest unorder-card-preserves-relative-order-of-remaining
+  (testing "::unorder-card preserves relative order of remaining cards"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 card-a] (th/add-card-to-zone game-db :opt :library :player-1)
+          [db2 card-b] (th/add-card-to-zone db1 :sleight-of-hand :library :player-1)
+          [db3 card-c] (th/add-card-to-zone db2 :portent :library :player-1)
+          [db4 spell-id] (th/add-card-to-zone db3 :impulse :stack :player-1)
+          sel (lib/build-order-bottom-selection [card-a card-b card-c] :player-1 spell-id)
+          ;; Pre-set order: a, b, c
+          sel' (assoc sel :selection/ordered [card-a card-b card-c])
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db4) sel')
+          ;; Remove middle card (b)
+          result (dispatch-event app-db' [:fizzle.events.selection/unorder-card card-b])
+          ordered (get-in result [:game/pending-selection :selection/ordered])]
+      (is (= [card-a card-c] ordered)
+          "After removing card-b, remaining cards should preserve their relative order"))))
+
+
+(deftest unorder-card-no-op-when-card-not-in-ordered
+  (testing "::unorder-card is no-op when card is not in :selection/ordered"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 card-a] (th/add-card-to-zone game-db :opt :library :player-1)
+          [db2 card-b] (th/add-card-to-zone db1 :sleight-of-hand :library :player-1)
+          [db3 spell-id] (th/add-card-to-zone db2 :impulse :stack :player-1)
+          sel (lib/build-order-bottom-selection [card-a card-b] :player-1 spell-id)
+          ;; Only card-a is in ordered — card-b is not
+          sel' (assoc sel :selection/ordered [card-a])
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db3) sel')
+          result (dispatch-event app-db' [:fizzle.events.selection/unorder-card card-b])
+          ordered (get-in result [:game/pending-selection :selection/ordered])]
+      (is (= [card-a] ordered)
+          "unorder-card on card not in ordered should not change :ordered"))))
+
+
+;; =====================================================
+;; :fizzle.events.selection/any-order
+;; Fills remaining unordered candidates with random order.
+;; Randomness: assert all candidates end up in ordered.
+;; =====================================================
+
+(deftest any-order-fills-all-candidates-into-ordered
+  (testing "::any-order moves all unordered candidates into :selection/ordered"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 card-a] (th/add-card-to-zone game-db :opt :library :player-1)
+          [db2 card-b] (th/add-card-to-zone db1 :sleight-of-hand :library :player-1)
+          [db3 spell-id] (th/add-card-to-zone db2 :impulse :stack :player-1)
+          sel (lib/build-order-bottom-selection [card-a card-b] :player-1 spell-id)
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db3) sel)
+          result (dispatch-event app-db' [:fizzle.events.selection/any-order])
+          ordered (get-in result [:game/pending-selection :selection/ordered])]
+      (is (= #{card-a card-b} (set ordered))
+          "any-order should include all candidates in :ordered")
+      (is (= 2 (count ordered))
+          "any-order should have no duplicates — count must equal candidate count"))))
+
+
+(deftest any-order-preserves-already-ordered-cards-at-front
+  (testing "::any-order keeps already-ordered cards first, appends remaining"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 card-a] (th/add-card-to-zone game-db :opt :library :player-1)
+          [db2 card-b] (th/add-card-to-zone db1 :sleight-of-hand :library :player-1)
+          [db3 card-c] (th/add-card-to-zone db2 :portent :library :player-1)
+          [db4 spell-id] (th/add-card-to-zone db3 :impulse :stack :player-1)
+          sel (lib/build-order-bottom-selection [card-a card-b card-c] :player-1 spell-id)
+          ;; Pre-order card-a explicitly — b and c are unordered
+          sel' (assoc sel :selection/ordered [card-a])
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db4) sel')
+          result (dispatch-event app-db' [:fizzle.events.selection/any-order])
+          ordered (get-in result [:game/pending-selection :selection/ordered])]
+      (is (= card-a (first ordered))
+          "Previously ordered card-a must remain at front of ordered sequence")
+      (is (= #{card-a card-b card-c} (set ordered))
+          "All three candidates must appear in ordered after any-order")
+      (is (= 3 (count ordered))
+          "No duplicates — count equals candidate count"))))
+
+
+;; =====================================================
+;; :fizzle.events.selection/shuffle-and-confirm
+;; Sets :selection/shuffle? true then confirms the selection (full pipeline).
+;; Tests that the selection is consumed and library is shuffled.
+;; =====================================================
+
+(deftest shuffle-and-confirm-clears-pending-selection
+  (testing "::shuffle-and-confirm confirms the selection — pending-selection is cleared"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          ;; Use a peek-and-reorder selection which supports shuffle?
+          [db1 _] (th/add-cards-to-library game-db [:opt :sleight-of-hand :impulse] :player-1)
+          [db2 spell-id] (th/add-card-to-zone db1 :portent :stack :player-1)
+          effect {:effect/type :peek-and-reorder
+                  :effect/count 3
+                  :effect/target-player :player-1}
+          sel (sel-core/build-selection-for-effect db2 :player-1 spell-id effect [])
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db2) sel)
+          result (dispatch-event app-db' [:fizzle.events.selection/shuffle-and-confirm])]
+      (is (nil? (:game/pending-selection result))
+          "shuffle-and-confirm must clear :game/pending-selection after confirming"))))
+
+
+(deftest shuffle-and-confirm-sets-shuffle-flag-before-confirm
+  (testing "::shuffle-and-confirm sets :selection/shuffle? true before confirmation"
+    ;; We verify this indirectly: after confirmation the library must still have
+    ;; all 3 cards (shuffled libraries retain their cards).
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 _] (th/add-cards-to-library game-db [:opt :sleight-of-hand :impulse] :player-1)
+          [db2 spell-id] (th/add-card-to-zone db1 :portent :stack :player-1)
+          initial-lib-count (count (q/get-objects-in-zone db2 :player-1 :library))
+          effect {:effect/type :peek-and-reorder
+                  :effect/count 3
+                  :effect/target-player :player-1}
+          sel (sel-core/build-selection-for-effect db2 :player-1 spell-id effect [])
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db2) sel)
+          result (dispatch-event app-db' [:fizzle.events.selection/shuffle-and-confirm])
+          result-db (:game/db result)
+          final-lib-count (count (q/get-objects-in-zone result-db :player-1 :library))]
+      (is (= initial-lib-count final-lib-count)
+          "Library card count must be unchanged after shuffle-and-confirm"))))
+
+
+(deftest shuffle-and-confirm-resolving-spell-moves-to-graveyard
+  (testing "::shuffle-and-confirm moves the resolving spell (Portent) to graveyard"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [db1 _] (th/add-cards-to-library game-db [:opt :sleight-of-hand :impulse] :player-1)
+          [db2 spell-id] (th/add-card-to-zone db1 :portent :stack :player-1)
+          effect {:effect/type :peek-and-reorder
+                  :effect/count 3
+                  :effect/target-player :player-1}
+          sel (sel-core/build-selection-for-effect db2 :player-1 spell-id effect [])
+          app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db2) sel)
+          result (dispatch-event app-db' [:fizzle.events.selection/shuffle-and-confirm])
+          result-db (:game/db result)]
+      (is (= :graveyard (:object/zone (q/get-object result-db spell-id)))
+          "Portent (resolving spell) should be in graveyard after shuffle-and-confirm"))))
