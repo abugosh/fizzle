@@ -38,6 +38,7 @@
     [fizzle.cards.green.nimble-mongoose]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
+    [fizzle.events.cleanup :as cleanup]
     [fizzle.events.selection.core :as sel-core]
     ;; Load zone-ops defmethods so they register on the multimethods
     [fizzle.events.selection.spec :as sel-spec]
@@ -155,19 +156,19 @@
 (deftest discard-executor-cleanup-path-expires-grants
   (testing ":discard executor with :selection/cleanup? true expires grants after discard"
     (let [db (setup-db)
+          ;; Add 8 cards to hand (max is 7) so begin-cleanup produces a discard-1 selection
           [db1 card-a] (th/add-card-to-zone db :dark-ritual :hand :player-1)
-          ;; Build a cleanup-style discard selection (from events/cleanup.cljs pattern)
-          sel {:selection/zone :hand
-               :selection/card-source :hand
-               :selection/select-count 1
-               :selection/player-id :player-1
-               :selection/selected #{}
-               :selection/type :discard
-               :selection/lifecycle :finalized
-               :selection/cleanup? true
-               :selection/validation :exact
-               :selection/auto-confirm? false}
-          app-db (sel-spec/set-pending-selection {:game/db db1} sel)
+          [db2 _] (th/add-card-to-zone db1 :dark-ritual :hand :player-1)
+          [db3 _] (th/add-card-to-zone db2 :dark-ritual :hand :player-1)
+          [db4 _] (th/add-card-to-zone db3 :dark-ritual :hand :player-1)
+          [db5 _] (th/add-card-to-zone db4 :dark-ritual :hand :player-1)
+          [db6 _] (th/add-card-to-zone db5 :dark-ritual :hand :player-1)
+          [db7 _] (th/add-card-to-zone db6 :dark-ritual :hand :player-1)
+          [db8 _] (th/add-card-to-zone db7 :dark-ritual :hand :player-1)
+          ;; Use the production begin-cleanup builder — produces cleanup? selection
+          cleanup-result (cleanup/begin-cleanup db8 :player-1)
+          sel (:pending-selection cleanup-result)
+          app-db (sel-spec/set-pending-selection {:game/db db8} sel)
           app-db' (update app-db :game/pending-selection assoc :selection/selected #{card-a})
           result (sel-core/confirm-selection-impl app-db')
           db' (:game/db result)]
@@ -319,11 +320,14 @@
       ;; Only player-2's own creatures appear in valid-targets.
       (is (contains? (set (:selection/valid-targets next-sel)) target-id)
           "Player-2's creature should be a valid copy target")
-      ;; The copy object ID and stack item EID should be set on the chained selection
-      (is (some? (:selection/chain-copy-object-id next-sel))
-          "chain-copy-object-id should be set on the chained selection")
-      (is (some? (:selection/chain-copy-stack-item-eid next-sel))
-          "chain-copy-stack-item-eid should be set"))))
+      ;; The copy object and stack item EID should reference valid state in the db
+      (let [db' (:game/db after-chain)
+            copy-id (:selection/chain-copy-object-id next-sel)
+            si-eid (:selection/chain-copy-stack-item-eid next-sel)]
+        (is (= :stack (:object/zone (q/get-object db' copy-id)))
+            "chain-copy object should be in :stack zone")
+        (is (some? (d/entity db' si-eid))
+            "chain-copy stack-item EID should resolve to a valid db entity")))))
 
 
 ;; =====================================================

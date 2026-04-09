@@ -187,9 +187,6 @@
           result (sel-core/confirm-selection-impl app-db')
           db' (:game/db result)
           blocker-obj (q/get-object db' blocker-id)]
-      ;; Blocker should have :object/blocking set to attacker's entity-id
-      (is (some? (:object/blocking blocker-obj))
-          "Blocker should have :object/blocking set after assign-blockers executor")
       ;; The blocking reference should point to the attacker
       (let [atk-eid (q/get-object-eid db' c1-id)]
         (is (= atk-eid (:object/blocking blocker-obj))
@@ -324,8 +321,6 @@
             chained-sel (:game/pending-selection result2)]
 
         ;; Verify step 2 effects: blocker assigned to atk1
-        (is (some? (:object/blocking (q/get-object db2 blocker-id)))
-            "Round-trip: blocker should be blocking atk1 after step 2")
         (is (= (q/get-object-eid db2 atk1-id)
                (:object/blocking (q/get-object db2 blocker-id)))
             "Round-trip: blocker should reference atk1 as the blocked attacker")

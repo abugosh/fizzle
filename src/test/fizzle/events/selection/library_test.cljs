@@ -819,8 +819,11 @@
           app-db' (sel-spec/set-pending-selection (assoc app-db :game/db db4) sel')
           result (dispatch-event app-db' [:fizzle.events.selection/select-random-pile-choice])]
       ;; Selection should still be present — handler does NOT confirm
-      (is (some? (:game/pending-selection result))
-          "select-random-pile-choice should NOT confirm the selection, only update :selected"))))
+      (let [result-sel (:game/pending-selection result)]
+        (is (= :pile-choice (:selection/type result-sel))
+            "select-random-pile-choice should NOT confirm the selection, only update :selected")
+        (is (seq (:selection/selected result-sel))
+            "select-random-pile-choice should populate :selected with candidate cards")))))
 
 
 ;; =====================================================

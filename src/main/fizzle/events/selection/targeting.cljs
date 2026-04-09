@@ -225,6 +225,10 @@
 
 (defmethod core/execute-confirmed-selection :ability-cast-targeting
   [game-db selection]
+  ;; NOTE: The :chaining lifecycle branch of this executor is unreachable
+  ;; with the current card library because no card combines :target/type :ability
+  ;; with generic mana cost (Stifle is {U} only). If such a card is added,
+  ;; add a chaining-branch test to targeting_test.cljs.
   (if (= :chaining (:selection/lifecycle selection))
     ;; Chaining: chain builder will provide mana-allocation
     {:db game-db}
