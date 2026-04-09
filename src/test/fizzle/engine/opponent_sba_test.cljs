@@ -311,34 +311,33 @@
 
 (defn- add-opponent-creature-with-state-trigger
   "Create an opponent creature with a :card/state-triggers entry on the battlefield.
-   Returns [db obj-id]. Trigger condition: power >= threshold."
+   Returns [db obj-id]. Uses d/db-with (no mutable conn). Trigger condition: power >= threshold."
   [db power toughness threshold]
-  (let [conn       (d/conn-from-db db)
-        opp-eid    (q/get-player-eid db :player-2)
-        card-id    (keyword (str "opp-trigger-creature-" (random-uuid)))
-        trigger    {:state/condition  {:condition/type      :power-gte
-                                       :condition/threshold threshold}
-                    :state/effects    [{:effect/type :sacrifice :effect/target :self}]
-                    :state/description (str "Sacrifice when power >= " threshold)}
-        _          (d/transact! conn [{:card/id             card-id
-                                       :card/name           "Opponent Trigger Creature"
-                                       :card/types          #{:creature}
-                                       :card/power          power
-                                       :card/toughness      toughness
-                                       :card/state-triggers [trigger]}])
-        card-eid   (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] @conn card-id)
-        obj-id     (random-uuid)
-        _          (d/transact! conn [{:object/id            obj-id
-                                       :object/card          card-eid
-                                       :object/zone          :battlefield
-                                       :object/owner         opp-eid
-                                       :object/controller    opp-eid
-                                       :object/tapped        false
-                                       :object/damage-marked 0
-                                       :object/power         power
-                                       :object/toughness     toughness
-                                       :object/summoning-sick true}])]
-    [@conn obj-id]))
+  (let [opp-eid  (q/get-player-eid db :player-2)
+        card-id  (keyword (str "opp-trigger-creature-" (random-uuid)))
+        trigger  {:state/condition   {:condition/type      :power-gte
+                                      :condition/threshold threshold}
+                  :state/effects     [{:effect/type :sacrifice :effect/target :self}]
+                  :state/description (str "Sacrifice when power >= " threshold)}
+        db       (d/db-with db [{:card/id             card-id
+                                 :card/name           "Opponent Trigger Creature"
+                                 :card/types          #{:creature}
+                                 :card/power          power
+                                 :card/toughness      toughness
+                                 :card/state-triggers [trigger]}])
+        card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] db card-id)
+        obj-id   (random-uuid)
+        db       (d/db-with db [{:object/id            obj-id
+                                 :object/card          card-eid
+                                 :object/zone          :battlefield
+                                 :object/owner         opp-eid
+                                 :object/controller    opp-eid
+                                 :object/tapped        false
+                                 :object/damage-marked 0
+                                 :object/power         power
+                                 :object/toughness     toughness
+                                 :object/summoning-sick true}])]
+    [db obj-id]))
 
 
 (deftest opponent-state-check-trigger-fires-when-condition-met

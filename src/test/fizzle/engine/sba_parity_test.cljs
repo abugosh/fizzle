@@ -348,10 +348,8 @@
           sba-targets (set (map :sba/target sbas))]
       (is (= 2 (count sbas))
           "Should return two token-cleanup SBAs")
-      (is (contains? sba-targets token1-id)
-          "Should target graveyard token")
-      (is (contains? sba-targets token2-id)
-          "Should target exile token"))))
+      (is (= #{token1-id token2-id} sba-targets)
+          "Should target exactly the graveyard and exile tokens"))))
 
 
 ;; === :token-cleanup SBA — player-2 (opponent) ===
@@ -551,10 +549,8 @@
           player-ids (set (map :sba/player-id sbas))]
       (is (= 2 (count sbas))
           "Should return one SBA per player at 0 life")
-      (is (contains? player-ids :player-1)
-          "Should include player-1")
-      (is (contains? player-ids :player-2)
-          "Should include player-2"))))
+      (is (= #{:player-1 :player-2} player-ids)
+          "Should include both player-1 and player-2"))))
 
 
 (deftest test-check-and-execute-sbas-both-at-zero-first-processed-wins

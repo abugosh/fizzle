@@ -67,27 +67,8 @@
 ;; A. Baseline: Simple spell → effects → no SBA
 ;; =====================================================
 
-(deftest test-simple-spell-resolve-end-to-end
-  (testing "Dark Ritual resolves: effect adds mana, spell moves to graveyard, no SBA fires"
-    (let [game-db (th/create-test-db {:mana {:black 3}})
-          [game-db obj-id] (th/add-card-to-zone game-db :dark-ritual :hand :player-1)
-          ;; Cast spell (puts it on stack)
-          game-db-cast (th/cast-and-resolve game-db :player-1 obj-id)
-          ;; cast-and-resolve already resolves — verify final state
-          mana-pool (q/get-mana-pool game-db-cast :player-1)]
-      ;; Spell should be in graveyard
-      (is (= :graveyard (:object/zone (q/get-object game-db-cast obj-id)))
-          "Dark Ritual should be in graveyard after resolution")
-      ;; Effect executed: started with 3 black, paid 1 to cast, added 3 = 5
-      (is (= 5 (:black mana-pool))
-          "Dark Ritual adds 3 black mana (3 start - 1 cost + 3 effect = 5)")
-      ;; Stack should be empty
-      (is (empty? (q/get-all-stack-items game-db-cast))
-          "Stack should be empty after full resolution"))))
-
-
-(deftest test-simple-spell-resolve-via-dispatch-sync
-  (testing "Dark Ritual resolve via dispatch-sync goes through db-effect SBA chokepoint"
+(deftest test-simple-spell-resolve-via-cast-and-resolve
+  (testing "Dark Ritual resolve via cast-and-resolve: effect adds mana, spell moves to graveyard, no SBA fires"
     (let [game-db (th/create-test-db {:mana {:black 3}})
           [game-db obj-id] (th/add-card-to-zone game-db :dark-ritual :hand :player-1)
           ;; Cast only — put on stack, don't resolve yet
@@ -375,6 +356,44 @@
           result-db (:game/db app-db-2)]
       (is (empty? (q/get-all-stack-items result-db))
           "Stack should be completely empty after all items resolve"))))
+
+
+;; =====================================================
+;; H. Interactive effect: pause → selection → resume
+;; =====================================================
+
+(deftest test-interactive-effect-pause-and-resume
+  (testing "Duress resolves with interactive pause: hand-reveal-discard selection returned, then completed"
+    ;; Duress resolves → discard-from-revealed-hand effect triggers selection pause
+    ;; → confirm-selection discards the chosen card
+    (let [game-db (th/create-test-db {:mana {:black 1}})
+          game-db (th/add-opponent game-db)
+          ;; Add Dark Ritual to opponent's hand — valid Duress target (instant, noncreature, nonland)
+          [game-db target-id] (th/add-card-to-zone game-db :dark-ritual :hand :player-2)
+          ;; Cast Duress targeting opponent
+          [game-db duress-id] (th/add-card-to-zone game-db :duress :hand :player-1)
+          game-db-cast (th/cast-with-target game-db :player-1 duress-id :player-2)
+          ;; Resolve — should pause for hand-reveal-discard selection
+          result-1 (th/resolve-top game-db-cast)
+          sel (:selection result-1)
+          game-db-paused (:db result-1)]
+      ;; Verify the interactive pause happened
+      (is (some? sel)
+          "Precondition: resolve-top should return a pending selection for Duress")
+      (is (= :hand-reveal-discard (:selection/type sel))
+          "Selection type should be :hand-reveal-discard")
+      ;; Confirm selection — choose Dark Ritual to discard
+      (let [result-2 (th/confirm-selection game-db-paused sel #{target-id})
+            game-db-final (:db result-2)]
+        ;; Duress should be in graveyard (resolved)
+        (is (= :graveyard (:object/zone (q/get-object game-db-final duress-id)))
+            "Duress should be in graveyard after resolving")
+        ;; Dark Ritual should be in opponent's graveyard (discarded)
+        (is (= :graveyard (:object/zone (q/get-object game-db-final target-id)))
+            "Dark Ritual should be discarded to opponent's graveyard")
+        ;; No loss condition — SBAs found nothing to act on
+        (is (nil? (:game/loss-condition (q/get-game-state game-db-final)))
+            "No SBA should have fired during Duress resolution")))))
 
 
 (deftest test-resolve-top-no-op-on-empty-stack

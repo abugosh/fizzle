@@ -445,3 +445,49 @@
                         :event/object-id obj-eid})]
       (is (= 1 (count etb)))
       (is (= 1 (count tapped))))))
+
+
+;; =====================================================
+;; Sacrifice trigger tests
+;; =====================================================
+
+(deftest test-sacrifice-trigger-registered-and-queryable
+  (testing "sacrifice trigger is registered and matched by get-triggers-for-event"
+    (let [db (init-game-state)
+          player-eid (q/get-player-eid db :player-1)
+          [db obj-eid] (add-test-object-db-with db :player-1)
+          card-triggers [{:trigger/type :sacrifice
+                          :trigger/effects [{:effect/type :draw :effect/amount 1}]}]
+          tx (trigger-db/create-triggers-for-card-tx db obj-eid player-eid card-triggers)
+          db' (d/db-with db tx)
+          sacrifice-triggers (trigger-db/get-triggers-for-event
+                               db' {:event/type :sacrifice
+                                    :event/object-id obj-eid})]
+      (is (= 1 (count sacrifice-triggers))
+          "Should return exactly one sacrifice trigger")
+      (let [t (first sacrifice-triggers)]
+        (is (= :sacrifice (:trigger/type t))
+            "Trigger type should be :sacrifice")
+        (is (= :sacrifice (:trigger/event-type t))
+            "Event type should be :sacrifice (identity mapping via :default defmethod)")
+        (is (= [{:effect/type :draw :effect/amount 1}] (:trigger/effects t))
+            "Trigger effects should match card definition")))))
+
+
+(deftest test-sacrifice-trigger-does-not-fire-for-other-event-types
+  (testing "sacrifice trigger does not match ETB or tapped events"
+    (let [db (init-game-state)
+          player-eid (q/get-player-eid db :player-1)
+          [db obj-eid] (add-test-object-db-with db :player-1)
+          card-triggers [{:trigger/type :sacrifice
+                          :trigger/effects [{:effect/type :draw :effect/amount 1}]}]
+          tx (trigger-db/create-triggers-for-card-tx db obj-eid player-eid card-triggers)
+          db' (d/db-with db tx)]
+      (is (= 0 (count (trigger-db/get-triggers-for-event
+                        db' {:event/type :permanent-entered
+                             :event/object-id obj-eid})))
+          "Sacrifice trigger should not fire for ETB events")
+      (is (= 0 (count (trigger-db/get-triggers-for-event
+                        db' {:event/type :permanent-tapped
+                             :event/object-id obj-eid})))
+          "Sacrifice trigger should not fire for tapped events"))))

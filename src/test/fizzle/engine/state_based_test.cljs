@@ -783,34 +783,33 @@
 
 (defn- add-creature-with-state-trigger
   "Create a creature with a :card/state-triggers entry on the battlefield.
-   Returns [db obj-id]. Trigger condition: power >= threshold."
+   Returns [db obj-id]. Uses d/db-with (no mutable conn). Trigger condition: power >= threshold."
   [db owner power toughness threshold]
-  (let [conn       (d/conn-from-db db)
-        player-eid (q/get-player-eid db owner)
+  (let [player-eid (q/get-player-eid db owner)
         card-id    (keyword (str "trigger-creature-" (random-uuid)))
-        trigger    {:state/condition {:condition/type :power-gte
-                                      :condition/threshold threshold}
-                    :state/effects   [{:effect/type :sacrifice :effect/target :self}]
+        trigger    {:state/condition   {:condition/type      :power-gte
+                                        :condition/threshold threshold}
+                    :state/effects     [{:effect/type :sacrifice :effect/target :self}]
                     :state/description (str "Sacrifice when power >= " threshold)}
-        _ (d/transact! conn [{:card/id             card-id
-                              :card/name           "Trigger Creature"
-                              :card/types          #{:creature}
-                              :card/power          power
-                              :card/toughness      toughness
-                              :card/state-triggers [trigger]}])
-        card-eid   (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] @conn card-id)
+        db         (d/db-with db [{:card/id             card-id
+                                   :card/name           "Trigger Creature"
+                                   :card/types          #{:creature}
+                                   :card/power          power
+                                   :card/toughness      toughness
+                                   :card/state-triggers [trigger]}])
+        card-eid   (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] db card-id)
         obj-id     (random-uuid)
-        _ (d/transact! conn [{:object/id           obj-id
-                              :object/card         card-eid
-                              :object/zone         :battlefield
-                              :object/owner        player-eid
-                              :object/controller   player-eid
-                              :object/tapped       false
-                              :object/damage-marked 0
-                              :object/power        power
-                              :object/toughness    toughness
-                              :object/summoning-sick true}])]
-    [@conn obj-id]))
+        db         (d/db-with db [{:object/id            obj-id
+                                   :object/card          card-eid
+                                   :object/zone          :battlefield
+                                   :object/owner         player-eid
+                                   :object/controller    player-eid
+                                   :object/tapped        false
+                                   :object/damage-marked 0
+                                   :object/power         power
+                                   :object/toughness     toughness
+                                   :object/summoning-sick true}])]
+    [db obj-id]))
 
 
 (deftest test-check-sba-state-check-trigger-fires-when-condition-met
