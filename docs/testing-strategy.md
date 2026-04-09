@@ -10,6 +10,28 @@ This guide defines the testing standards for card implementations in Fizzle. Eve
 
 **Verify exact values, not just existence.** Assertions should check specific expected values. `(is (= :dark-ritual (:card/id card)))` catches real bugs. `(is (some? (:card/id card)))` catches almost nothing.
 
+## Scope: Card Tests vs Event Tests
+
+This document defines the standard for **card tests** — files under `src/test/fizzle/cards/**` that prove a card's oracle fidelity and its end-to-end gameplay behavior. Card tests validate **data**.
+
+Event-layer tests — files under `src/test/fizzle/events/**` — prove the correctness of the **mechanism** that interprets card data: `reg-event-db` handlers in `events/`, and `defmethod` registrations on the selection pipeline multimethods. Event tests validate **mechanism**.
+
+**The two layers must prove themselves independently.** Per [ADR-025](adr/adr-025-event-layer-tests-independent-of-card-data.md), event-layer tests must cover every behaviorally distinct branch of every handler and defmethod **without relying on card tests for coverage**. The concrete standard is the deletion test: *if `src/test/fizzle/cards/**` were deleted, would the event-layer tests still prove the mechanism works?*
+
+Why this matters: cards are data (per CLAUDE.md "data over code" principle), and the event layer is a mechanism. A mechanism whose correctness is only provable through specific data instances is not separable from that data. Event tests must be provable with any card set — including a future dynamically-loaded catalog.
+
+Practical consequences for card test authors:
+- **Do not write card tests to close coverage gaps in event handlers.** If a `reg-event-db` branch isn't covered, the fix belongs in an event test file, not a card test file.
+- **Do not reach for card tests to validate selection-pipeline wiring.** Selection multimethods belong in `src/test/fizzle/events/selection/**`.
+- **Some intentional coverage overlap is expected.** A card test and an event test may exercise the same code path at different abstraction levels. This is not redundancy — they prove different things.
+
+Exemplar event-layer test files:
+- `src/test/fizzle/events/phases_test.cljs`, `abilities_test.cljs`, `lands_test.cljs` — Pattern A (`reg-event-db` wiring via `rf/dispatch-sync`)
+- `src/test/fizzle/events/integration/mana_allocation_test.cljs` — production-path integration pattern
+- `src/test/fizzle/events/selection/costs_allocation_test.cljs`, `storm_split_test.cljs` — selection submodule coverage
+
+The rest of this document covers card testing exclusively.
+
 ## Test File Structure
 
 Test files mirror the card source path:
