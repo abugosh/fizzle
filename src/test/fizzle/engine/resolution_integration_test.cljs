@@ -378,8 +378,6 @@
           sel (:selection result-1)
           game-db-paused (:db result-1)]
       ;; Verify the interactive pause happened
-      (is (some? sel)
-          "Precondition: resolve-top should return a pending selection for Duress")
       (is (= :hand-reveal-discard (:selection/type sel))
           "Selection type should be :hand-reveal-discard")
       ;; Confirm selection — choose Dark Ritual to discard
