@@ -38,6 +38,7 @@
     ;; Load library defmethods so they register on the multimethods
     [fizzle.events.selection.core :as sel-core]
     [fizzle.events.selection.library :as lib]
+    [fizzle.events.selection.spec :as sel-spec]
     [fizzle.test-helpers :as th]))
 
 
@@ -425,8 +426,6 @@
           candidates (:selection/candidates sel)
           pick-id (first candidates)
           {:keys [selection]} (th/confirm-selection db1 sel #{pick-id})]
-      (is (some? selection)
-          "Should chain to next selection when 2+ cards in remainder")
       (is (= :order-bottom (:selection/type selection))
           "Chained selection should be :order-bottom"))))
 
@@ -447,9 +446,9 @@
           sel (lib/build-order-bottom-selection [card-a card-b] :player-1 spell-id)
           ;; :order-bottom uses :selection/ordered (not :selection/selected)
           ;; Must use confirm-selection-impl directly with ordered set
-          sel-with-order (assoc sel :selection/ordered [card-a card-b])
-          app-db {:game/db db3 :game/pending-selection sel-with-order}
-          result (sel-core/confirm-selection-impl app-db)
+          app-db (sel-spec/set-pending-selection {:game/db db3} sel)
+          app-db' (update app-db :game/pending-selection assoc :selection/ordered [card-a card-b])
+          result (sel-core/confirm-selection-impl app-db')
           db (:game/db result)]
       (let [card-a-obj (q/get-object db card-a)
             card-b-obj (q/get-object db card-b)]
@@ -470,9 +469,9 @@
           [db2 card-b] (th/add-card-to-zone db1 :sleight-of-hand :library :player-1)
           [db3 spell-id] (th/add-card-to-zone db2 :impulse :stack :player-1)
           sel (lib/build-order-bottom-selection [card-a card-b] :player-1 spell-id)
-          sel-with-order (assoc sel :selection/ordered [card-a card-b])
-          app-db {:game/db db3 :game/pending-selection sel-with-order}
-          result (sel-core/confirm-selection-impl app-db)
+          app-db (sel-spec/set-pending-selection {:game/db db3} sel)
+          app-db' (update app-db :game/pending-selection assoc :selection/ordered [card-a card-b])
+          result (sel-core/confirm-selection-impl app-db')
           db (:game/db result)]
       ;; card-a should have position > non-candidate max position (>= non_candidate_count)
       (let [card-a-pos (:object/position (q/get-object db card-a))]
@@ -495,9 +494,9 @@
           sel (lib/build-order-top-selection [card-a card-b] :player-1 spell-id)
           ;; :order-top uses :selection/ordered (not :selection/selected)
           ;; Order: [card-b, card-a] → card-b at position 0, card-a at position 1
-          sel-with-order (assoc sel :selection/ordered [card-b card-a])
-          app-db {:game/db db3 :game/pending-selection sel-with-order}
-          result (sel-core/confirm-selection-impl app-db)
+          app-db (sel-spec/set-pending-selection {:game/db db3} sel)
+          app-db' (update app-db :game/pending-selection assoc :selection/ordered [card-b card-a])
+          result (sel-core/confirm-selection-impl app-db')
           db (:game/db result)]
       (let [card-a-obj (q/get-object db card-a)
             card-b-obj (q/get-object db card-b)]
@@ -520,9 +519,9 @@
           non-candidates (filter #(not= (:object/id %) card-a) lib-before)
           sel (lib/build-order-top-selection [card-a] :player-1 spell-id)
           ;; :order-top uses :selection/ordered (not :selection/selected)
-          sel-with-order (assoc sel :selection/ordered [card-a])
-          app-db {:game/db db2 :game/pending-selection sel-with-order}
-          result (sel-core/confirm-selection-impl app-db)
+          app-db (sel-spec/set-pending-selection {:game/db db2} sel)
+          app-db' (update app-db :game/pending-selection assoc :selection/ordered [card-a])
+          result (sel-core/confirm-selection-impl app-db')
           db (:game/db result)]
       ;; card-a should be at position 0
       (is (= 0 (:object/position (q/get-object db card-a)))
@@ -553,9 +552,9 @@
                 "Precondition: builder should find all 3 cards as candidates")
           ;; :peek-and-reorder uses :selection/ordered (not :selection/selected)
           ;; Reverse the order: [card-c, card-b, card-a]
-          sel-with-order (assoc sel :selection/ordered [card-c card-b card-a])
-          app-db {:game/db db2 :game/pending-selection sel-with-order}
-          result (sel-core/confirm-selection-impl app-db)
+          app-db (sel-spec/set-pending-selection {:game/db db2} sel)
+          app-db' (update app-db :game/pending-selection assoc :selection/ordered [card-c card-b card-a])
+          result (sel-core/confirm-selection-impl app-db')
           db (:game/db result)]
       (let [pos-a (:object/position (q/get-object db card-a))
             pos-b (:object/position (q/get-object db card-b))
@@ -576,9 +575,9 @@
           effect {:effect/type :peek-and-reorder :effect/count 2 :effect/may-shuffle? true}
           sel (sel-core/build-selection-for-effect db2 :player-1 spell-id effect [])
           ;; Add shuffle? flag (simulates "shuffle" button in UI)
-          sel-with-shuffle (assoc sel :selection/shuffle? true)
-          app-db {:game/db db2 :game/pending-selection sel-with-shuffle}
-          result (sel-core/confirm-selection-impl app-db)
+          app-db (sel-spec/set-pending-selection {:game/db db2} sel)
+          app-db' (update app-db :game/pending-selection assoc :selection/shuffle? true)
+          result (sel-core/confirm-selection-impl app-db')
           result-db (:game/db result)]
       ;; Both cards should still be in library (shuffled, not moved)
       (is (= :library (:object/zone (q/get-object result-db card-a)))
@@ -643,9 +642,9 @@
           effect {:effect/type :scry :effect/amount 1}
           sel (sel-core/build-selection-for-effect db1 :player-1 spell-id effect [])
           top-card (first (:selection/cards sel))
-          sel-top (assoc sel :selection/top-pile [top-card] :selection/bottom-pile [])
-          app-db {:game/db db1 :game/pending-selection sel-top}
-          result (sel-core/confirm-selection-impl app-db)
+          app-db (sel-spec/set-pending-selection {:game/db db1} sel)
+          app-db' (update app-db :game/pending-selection assoc :selection/top-pile [top-card] :selection/bottom-pile [])
+          result (sel-core/confirm-selection-impl app-db')
           result-db (:game/db result)]
       (is (= :library (:object/zone (q/get-object result-db top-card)))
           "Top-pile card should remain in library")
@@ -660,9 +659,9 @@
           effect {:effect/type :scry :effect/amount 1}
           sel (sel-core/build-selection-for-effect db1 :player-1 spell-id effect [])
           top-card (first (:selection/cards sel))
-          sel-bottom (assoc sel :selection/top-pile [] :selection/bottom-pile [top-card])
-          app-db {:game/db db1 :game/pending-selection sel-bottom}
-          result (sel-core/confirm-selection-impl app-db)
+          app-db (sel-spec/set-pending-selection {:game/db db1} sel)
+          app-db' (update app-db :game/pending-selection assoc :selection/top-pile [] :selection/bottom-pile [top-card])
+          result (sel-core/confirm-selection-impl app-db')
           result-db (:game/db result)
           all-lib (q/get-objects-in-zone result-db :player-1 :library)
           max-pos (when (seq all-lib) (apply max (map :object/position all-lib)))]
@@ -679,9 +678,9 @@
           effect {:effect/type :scry :effect/amount 1}
           sel (sel-core/build-selection-for-effect db1 :player-1 spell-id effect [])
           top-card (first (:selection/cards sel))
-          sel-top (assoc sel :selection/top-pile [top-card] :selection/bottom-pile [])
-          app-db {:game/db db1 :game/pending-selection sel-top}
-          result (sel-core/confirm-selection-impl app-db)
+          app-db (sel-spec/set-pending-selection {:game/db db1} sel)
+          app-db' (update app-db :game/pending-selection assoc :selection/top-pile [top-card] :selection/bottom-pile [])
+          result (sel-core/confirm-selection-impl app-db')
           result-db (:game/db result)]
       (is (= :graveyard (:object/zone (q/get-object result-db spell-id)))
           "Resolving spell (Opt) should be in graveyard after scry confirm"))))
@@ -697,9 +696,9 @@
           ;; Pass draw as remaining-effect (Opt: scry 1, THEN draw 1)
           sel (sel-core/build-selection-for-effect db1 :player-1 spell-id effect [draw-effect])
           top-card (first (:selection/cards sel))
-          sel-top (assoc sel :selection/top-pile [top-card] :selection/bottom-pile [])
-          app-db {:game/db db1 :game/pending-selection sel-top}
-          result (sel-core/confirm-selection-impl app-db)
+          app-db (sel-spec/set-pending-selection {:game/db db1} sel)
+          app-db' (update app-db :game/pending-selection assoc :selection/top-pile [top-card] :selection/bottom-pile [])
+          result (sel-core/confirm-selection-impl app-db')
           result-db (:game/db result)
           final-hand-count (th/get-hand-count result-db :player-1)]
       (is (= (inc initial-hand-count) final-hand-count)
