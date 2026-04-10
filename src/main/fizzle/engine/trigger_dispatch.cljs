@@ -42,29 +42,11 @@
 
 (defn matches?
   "Returns true if the event satisfies the trigger's :trigger/match map.
-   Empty/nil match = wildcard (fires on event-type match alone, preserving
-   backwards compatibility for existing triggers like City of Brass).
-   :self sigil compares the event field against the trigger-source UUID.
-   Uses ::missing sentinel so absent fields (vs nil-valued) correctly return false.
-
-   Arguments:
-     event          - Event map to match against
-     trigger-source - UUID of the source object (for :self sigil resolution)
-     trigger        - Trigger map with optional :trigger/match
-
-   Returns:
-     Boolean - true if event satisfies all match-map conditions"
+   Delegates to trigger-db/matches? — exported here for backward compatibility
+   and for callers that already require trigger-dispatch.
+   See trigger-db/matches? for full documentation."
   [event trigger-source trigger]
-  (let [match-map (:trigger/match trigger)]
-    (or (nil? match-map)
-        (empty? match-map)
-        (every? (fn [[event-key expected]]
-                  (let [actual (get event event-key ::missing)]
-                    (cond
-                      (= actual ::missing) false
-                      (= expected :self)   (= actual trigger-source)
-                      :else                (= actual expected))))
-                match-map))))
+  (trigger-db/matches? event trigger-source trigger))
 
 
 (defn- enrich-event-ids
@@ -145,7 +127,12 @@
   [db event]
   (let [enriched-event (enrich-event-ids db event)
         ds-triggers (trigger-db/get-triggers-for-event db enriched-event)
-        matching (mapv #(datascript-trigger->dispatch-format db %) ds-triggers)
+        ;; Convert to dispatch format (source EID → UUID, controller EID → keyword)
+        ;; then apply :trigger/match filter using the original (UUID-based) event
+        matching (into []
+                       (comp (map #(datascript-trigger->dispatch-format db %))
+                             (filter #(matches? event (:trigger/source %) %)))
+                       ds-triggers)
         ;; Group by uses-stack? - note: false = immediate, true = stacked
         ;; Default to true (card triggers use stack) if not specified
         {stacked true, immediate false} (group-by #(get % :trigger/uses-stack? true) matching)]

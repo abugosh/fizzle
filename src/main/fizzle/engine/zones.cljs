@@ -11,7 +11,63 @@
   (:require
     [datascript.core :as d]
     [fizzle.db.queries :as q]
-    [fizzle.engine.stack :as stack]))
+    [fizzle.engine.events :as events]
+    [fizzle.engine.stack :as stack]
+    [fizzle.engine.trigger-db :as trigger-db]))
+
+
+(defn- dispatch-zone-change-event
+  "Dispatch a zone-change event to all matching stacked triggers.
+   Creates stack items for triggers whose :trigger/filter and :trigger/match
+   both satisfy the event.
+
+   Uses trigger-db and stack directly to avoid the circular dependency:
+   trigger-dispatch -> triggers -> effects -> zones.
+
+   Arguments:
+     db    - Datascript db value (post-move commit)
+     event - Zone-change event map (:event/object-id is UUID, from/to are zone keywords)
+
+   Returns:
+     New db with matching trigger stack items added."
+  [db event]
+  (let [;; Enrich event: convert UUID :event/object-id to EID for DS filter matching
+        ;; (trigger-db/get-triggers-for-event uses the enriched event for :trigger/filter)
+        enriched-event (cond-> event
+                         (:event/object-id event)
+                         (assoc :event/object-id
+                                (q/get-object-eid db (:event/object-id event))))
+        ;; get-triggers-for-event filters by :trigger/event-type + :trigger/filter
+        ds-triggers (trigger-db/get-triggers-for-event db enriched-event)]
+    (reduce (fn [db-acc t]
+              (let [src-eid     (let [s (:trigger/source t)]
+                                  (if (map? s) (:db/id s) s))
+                    src-uuid    (when src-eid
+                                  (d/q '[:find ?oid .
+                                         :in $ ?e
+                                         :where [?e :object/id ?oid]]
+                                       db-acc src-eid))
+                    ctrl-eid    (let [c (:trigger/controller t)]
+                                  (if (map? c) (:db/id c) c))
+                    ctrl-pid    (when ctrl-eid
+                                  (d/q '[:find ?pid .
+                                         :in $ ?e
+                                         :where [?e :player/id ?pid]]
+                                       db-acc ctrl-eid))
+                    uses-stack? (get t :trigger/uses-stack? true)]
+                ;; Apply :trigger/match second-stage filter using original (UUID-form) event
+                (if (and uses-stack?
+                         (trigger-db/matches? event src-uuid t))
+                  (stack/create-stack-item
+                    db-acc
+                    (cond-> {:stack-item/type    (:trigger/event-type t)
+                             :stack-item/controller ctrl-pid
+                             :stack-item/effects (or (:trigger/effects t) [])}
+                      src-uuid                 (assoc :stack-item/source src-uuid)
+                      (:trigger/description t) (assoc :stack-item/description (:trigger/description t))))
+                  db-acc)))
+            db
+            ds-triggers)))
 
 
 (defn shuffle-library
@@ -118,8 +174,17 @@
             txs (-> base-txs
                     (into trigger-retract-txs)
                     (into creature-leave-txs)
-                    (into creature-enter-txs))]
-        (d/db-with db txs)))))
+                    (into creature-enter-txs))
+            ;; Commit zone move
+            db' (d/db-with db txs)]
+        ;; Dispatch zone-change event for triggered abilities.
+        ;; NOTE: This fires during mulligan (~67 calls per attempt) when the
+        ;; deck contains zone-change-triggered cards. Those triggers land on
+        ;; the stack but do not stall init — no player has priority yet.
+        ;; This is acceptable under Path Y (no director loop changes in this epic).
+        (dispatch-zone-change-event
+          db'
+          (events/zone-change-event object-id current-zone new-zone))))))
 
 
 (defn phase-out

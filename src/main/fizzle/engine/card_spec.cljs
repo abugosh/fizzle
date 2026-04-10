@@ -50,7 +50,7 @@
 
 
 (def valid-trigger-types
-  #{:becomes-tapped :land-entered :creature-attacks :enters-battlefield})
+  #{:becomes-tapped :land-entered :creature-attacks :enters-battlefield :zone-change})
 
 
 (def valid-restriction-types
@@ -469,9 +469,18 @@
 (s/def :trigger/filter map?)
 
 
+(s/def :trigger/match-value
+  (s/or :self #{:self}
+        :value any?))
+
+
+(s/def :trigger/match
+  (s/nilable (s/map-of keyword? :trigger/match-value)))
+
+
 (s/def ::trigger
   (s/keys :req [:trigger/type :trigger/effects]
-          :opt [:trigger/description :trigger/filter]))
+          :opt [:trigger/description :trigger/filter :trigger/match]))
 
 
 ;; === Additional Cost Spec ===

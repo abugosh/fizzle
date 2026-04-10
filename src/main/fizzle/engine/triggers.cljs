@@ -9,8 +9,7 @@
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.effects :as effects]
-    [fizzle.engine.stack :as stack]
-    [fizzle.engine.zones :as zones]))
+    [fizzle.engine.stack :as stack]))
 
 
 (defmulti resolve-trigger
@@ -122,6 +121,17 @@
       db)))
 
 
+(defn- phase-in-object
+  "Phase a single object back to the battlefield.
+   Direct zone assignment — bypasses move-to-zone intentionally to preserve
+   all object state (tapped, counters, creature fields, triggers).
+   Does NOT trigger ETB, does NOT reset tapped state."
+  [db object-id]
+  (if-let [obj-eid (q/get-object-eid db object-id)]
+    (d/db-with db [[:db/add obj-eid :object/zone :battlefield]])
+    db))
+
+
 (defn- phase-in-permanents
   "Phase in all phased-out permanents owned by the active player.
    Called at beginning of untap step, before untapping.
@@ -136,7 +146,7 @@
                             [?obj :object/zone :phased-out]]
                           db player-eid))]
     (reduce (fn [db' obj]
-              (zones/phase-in db' (:object/id obj)))
+              (phase-in-object db' (:object/id obj)))
             db
             (or phased-out []))))
 

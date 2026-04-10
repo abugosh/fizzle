@@ -201,6 +201,16 @@
                 :stack-item/description]))
 
 
+;; :zone-change — trigger from :zone-change card triggers (e.g., Gaea's Blessing)
+;; Fires when an object moves from one zone to another, filtered by :trigger/match.
+(defmethod stack-item-type-spec :zone-change [_]
+  (s/keys :req [:stack-item/type
+                :stack-item/controller]
+          :opt [:stack-item/source
+                :stack-item/effects
+                :stack-item/description]))
+
+
 ;; :test — test-only sentinel type (used in turn_test to verify stack non-empty)
 (defmethod stack-item-type-spec :test [_]
   (s/keys :req [:stack-item/type

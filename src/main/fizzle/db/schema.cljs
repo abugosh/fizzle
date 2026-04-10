@@ -106,6 +106,7 @@
    :trigger/source         {:db/valueType :db.type/ref}  ; Ref to source object entity (nil for game-rule triggers)
    :trigger/controller     {:db/valueType :db.type/ref}  ; Ref to controlling player entity
    :trigger/filter         {}              ; EDN map: {:event/object-id :self}, {:event/phase :draw}, etc.
+   :trigger/match          {}              ; Declarative match map: keyword->value-or-:self, AND semantics. For zone-change triggers.
    :trigger/effects        {}              ; Vector of effect maps [{:effect/type :deal-damage :effect/amount 1}]
    :trigger/description    {}              ; String, human-readable for UI/log
    :trigger/uses-stack?    {}              ; Boolean (default true when nil)

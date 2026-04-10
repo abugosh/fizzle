@@ -1,0 +1,229 @@
+(ns fizzle.engine.zone-change-dispatch-test
+  "Integration tests for zone-change trigger dispatch from move-to-zone.
+   Uses programmatic fixture cards — no dependency on Gaea's Blessing (Epic 2).
+
+   Zone-change triggers fire when move-to-zone commits a zone transition,
+   filtered by a declarative :trigger/match map. :self sigil matches the
+   specific object that moved."
+  (:require
+    [cljs.test :refer-macros [deftest testing is]]
+    [datascript.core :as d]
+    [fizzle.db.queries :as q]
+    [fizzle.engine.events :as game-events]
+    [fizzle.engine.trigger-db :as trigger-db]
+    [fizzle.engine.trigger-dispatch :as dispatch]
+    [fizzle.engine.zones :as zones]
+    [fizzle.events.lands :as lands]
+    [fizzle.test-helpers :as th]))
+
+
+;; =====================================================
+;; Fixture helpers
+;; =====================================================
+
+(defn- get-stack-items
+  "Return all stack items by position."
+  [db]
+  (d/q '[:find [(pull ?e [*]) ...]
+         :where [?e :stack-item/position _]]
+       db))
+
+
+(defn- add-fixture-to-library-with-trigger
+  "Add a dark-ritual card to library with a zone-change trigger that matches
+   library→graveyard moves of :self. Returns [db obj-id].
+
+   The trigger uses :trigger/match {:event/from-zone :library
+                                     :event/to-zone :graveyard
+                                     :event/object-id :self}
+   Effect is :draw with :effect/amount 0 (observable no-op)."
+  [db owner]
+  (let [[db obj-id] (th/add-card-to-zone db :dark-ritual :library owner)
+        obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
+        player-eid (q/get-player-eid db owner)
+        trigger-tx (trigger-db/create-trigger-tx
+                     {:trigger/type :zone-change
+                      :trigger/event-type :zone-change
+                      :trigger/source obj-eid
+                      :trigger/controller player-eid
+                      :trigger/match {:event/from-zone :library
+                                      :event/to-zone :graveyard
+                                      :event/object-id :self}
+                      :trigger/effects [{:effect/type :draw :effect/amount 0}]
+                      :trigger/uses-stack? true})
+        db (d/db-with db trigger-tx)]
+    [db obj-id]))
+
+
+;; =====================================================
+;; Integration: zone-change fires on library→graveyard
+;; =====================================================
+
+(deftest zone-change-fires-on-library-to-graveyard-match
+  (testing "move-to-zone library→graveyard dispatches zone-change trigger to stack"
+    (let [db (th/create-test-db)
+          [db obj-id] (add-fixture-to-library-with-trigger db :player-1)
+          initial-stack (get-stack-items db)
+          db-after (zones/move-to-zone db obj-id :graveyard)
+          stack-after (get-stack-items db-after)]
+      (is (= 0 (count initial-stack)) "Precondition: stack starts empty")
+      (is (= 1 (count stack-after)) "Trigger fires exactly once on library→graveyard move"))))
+
+
+(deftest zone-change-fires-exactly-once
+  (testing "zone-change trigger appears exactly once on the stack (not 0, not 2)"
+    (let [db (th/create-test-db)
+          [db obj-id] (add-fixture-to-library-with-trigger db :player-1)
+          db-after (zones/move-to-zone db obj-id :graveyard)
+          stack (get-stack-items db-after)]
+      (is (= 1 (count stack)) "Exactly one stack item created"))))
+
+
+(deftest zone-change-stack-item-source-is-fixture-uuid
+  (testing "stack item source matches the fixture object's UUID"
+    (let [db (th/create-test-db)
+          [db obj-id] (add-fixture-to-library-with-trigger db :player-1)
+          db-after (zones/move-to-zone db obj-id :graveyard)
+          stack (get-stack-items db-after)]
+      (is (= 1 (count stack)) "Precondition: one stack item exists")
+      (when (= 1 (count stack))
+        (is (= obj-id (:stack-item/source (first stack)))
+            "Stack item source UUID matches the fixture object")))))
+
+
+;; =====================================================
+;; Integration: negative - from-zone filter excludes
+;; =====================================================
+
+(deftest zone-change-does-not-fire-from-hand
+  (testing "fixture trigger does NOT fire when object moves hand→graveyard (from-zone filter)"
+    (let [db (th/create-test-db)
+          [db obj-id] (add-fixture-to-library-with-trigger db :player-1)
+          ;; First move fixture from library to hand (silently replaces position in library)
+          db-in-hand (zones/move-to-zone db obj-id :hand)
+          ;; Clear any stack items from that move
+          stack-before (count (get-stack-items db-in-hand))
+          ;; Now move from hand to graveyard — should NOT fire the library-triggered trigger
+          db-after (zones/move-to-zone db-in-hand obj-id :graveyard)
+          new-stack-items (- (count (get-stack-items db-after)) stack-before)]
+      (is (= 0 new-stack-items)
+          "Trigger should NOT fire: from-zone filter requires :library not :hand"))))
+
+
+(deftest zone-change-does-not-fire-between-non-matching-zones
+  (testing "fixture trigger does NOT fire when moving battlefield→exile"
+    (let [db (th/create-test-db)
+          [db obj-id] (add-fixture-to-library-with-trigger db :player-1)
+          ;; Move fixture to battlefield first (bypasses library step)
+          db-bf (zones/move-to-zone db obj-id :battlefield)
+          stack-before (count (get-stack-items db-bf))
+          ;; Move battlefield→exile — both from/to zones differ from trigger match-map
+          db-after (zones/move-to-zone db-bf obj-id :exile)
+          new-items (- (count (get-stack-items db-after)) stack-before)]
+      (is (= 0 new-items)
+          "Trigger does NOT fire: battlefield→exile doesn't match library→graveyard"))))
+
+
+;; =====================================================
+;; Integration: :self sigil excludes other objects
+;; =====================================================
+
+(deftest zone-change-self-sigil-excludes-other-cards
+  (testing ":self filter: milling a different card does NOT fire the fixture's trigger"
+    (let [db (th/create-test-db)
+          ;; Add fixture with zone-change trigger to library
+          [db _fixture-id] (add-fixture-to-library-with-trigger db :player-1)
+          ;; Add a plain card (no trigger) to library
+          [db plain-id] (th/add-card-to-zone db :dark-ritual :library :player-1)
+          stack-before (count (get-stack-items db))
+          ;; Mill only the plain card (no trigger)
+          db-after (zones/move-to-zone db plain-id :graveyard)
+          new-items (- (count (get-stack-items db-after)) stack-before)]
+      (is (= 0 new-items)
+          ":self filter: fixture trigger does NOT fire when a different card moves"))))
+
+
+;; =====================================================
+;; Integration: two fixture cards in sequence
+;; =====================================================
+
+(deftest zone-change-fires-for-each-matching-card-in-sequence
+  (testing "milling two fixture cards produces two distinct trigger stack items"
+    (let [db (th/create-test-db)
+          [db obj-id-1] (add-fixture-to-library-with-trigger db :player-1)
+          [db obj-id-2] (add-fixture-to-library-with-trigger db :player-1)
+          db-after-1 (zones/move-to-zone db obj-id-1 :graveyard)
+          db-after-2 (zones/move-to-zone db-after-1 obj-id-2 :graveyard)
+          stack (get-stack-items db-after-2)
+          sources (set (map :stack-item/source stack))]
+      (is (= 2 (count stack)) "Two mills produce two trigger stack items")
+      (is (= #{obj-id-1 obj-id-2} sources)
+          "Each stack item has a distinct source UUID"))))
+
+
+;; =====================================================
+;; Integration: EID stability after move
+;; =====================================================
+
+(deftest zone-change-trigger-source-is-stable-after-move
+  (testing "stack item source UUID remains valid (object queryable) after zone transition"
+    (let [db (th/create-test-db)
+          [db obj-id] (add-fixture-to-library-with-trigger db :player-1)
+          db-after (zones/move-to-zone db obj-id :graveyard)
+          stack (get-stack-items db-after)]
+      (is (= 1 (count stack)) "Precondition: trigger fired")
+      (when (= 1 (count stack))
+        (let [source-uuid (:stack-item/source (first stack))
+              obj-after-move (q/get-object db-after source-uuid)]
+          (is (= obj-id source-uuid) "Stack item source matches the moved object's UUID")
+          (is (= :graveyard (:object/zone obj-after-move))
+              "Object is still queryable via get-object after move, zone is graveyard"))))))
+
+
+;; =====================================================
+;; Backwards compatibility: City of Brass still fires
+;; =====================================================
+
+(deftest city-of-brass-becomes-tapped-still-fires
+  (testing "existing :becomes-tapped trigger on City of Brass still fires after zone-change wiring"
+    (let [db (th/create-test-db)
+          [db cob-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
+          ;; Play the land (registers Datascript triggers)
+          db-bf (lands/play-land db :player-1 cob-id)
+          _ (is (= :battlefield (:object/zone (q/get-object db-bf cob-id)))
+                "Precondition: City of Brass on battlefield")
+          ;; Dispatch permanent-tapped event (simulating what mana-activation does)
+          event (game-events/permanent-tapped-event cob-id :player-1)
+          db-dispatched (dispatch/dispatch-event db-bf event)
+          stack-items (get-stack-items db-dispatched)
+          cob-triggers (filter #(= :permanent-tapped (:stack-item/type %)) stack-items)]
+      (is (pos? (count cob-triggers))
+          "City of Brass :becomes-tapped trigger should still fire (backwards compat)"))))
+
+
+;; =====================================================
+;; Mulligan non-crash test
+;; =====================================================
+
+(deftest mulligan-with-zone-change-fixture-does-not-crash
+  (testing "zone-change triggers in library do not crash during mulligan-like hand/library moves"
+    ;; The fixture's trigger is library→graveyard.
+    ;; Mulligan moves (library↔hand) do not match — no stack items created.
+    ;; This test verifies no exception and that moves complete correctly.
+    ;;
+    ;; Simplified: just move fixture back and forth between library and hand.
+    ;; The real mulligan (opening_hand.cljs) does ~67 such moves per attempt.
+    (let [db (th/create-test-db)
+          ;; Add fixture to library (has zone-change library→graveyard trigger)
+          [db fixture-id] (add-fixture-to-library-with-trigger db :player-1)
+          stack-before (count (get-stack-items db))
+          ;; Mulligan-like: move fixture from library to hand
+          db-to-hand (zones/move-to-zone db fixture-id :hand)
+          ;; Move back to library
+          db-to-lib (zones/move-to-zone db-to-hand fixture-id :library)
+          stack-after (count (get-stack-items db-to-lib))]
+      ;; No crash occurred (if we reach here), and trigger did not fire (wrong zones)
+      (is (= stack-before stack-after)
+          "No zone-change stack items created for library↔hand moves (trigger requires library→graveyard)")
+      (is (= :library (:object/zone (q/get-object db-to-lib fixture-id)))
+          "Fixture is back in library after round-trip"))))
