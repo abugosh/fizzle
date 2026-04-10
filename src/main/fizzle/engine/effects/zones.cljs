@@ -1,10 +1,12 @@
 (ns fizzle.engine.effects.zones
   "Zone-operation effects: mill, draw, exile-self, discard-hand,
-   return-from-graveyard, sacrifice, destroy, exile-zone, bounce."
+   return-from-graveyard, sacrifice, destroy, exile-zone, bounce,
+   shuffle-from-graveyard-to-library."
   (:require
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.effects :as effects]
+    [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.engine.zones :as zones]))
 
@@ -239,3 +241,49 @@
               (zone-change-dispatch/move-to-zone gy-id :battlefield))
           ;; Either target is no longer legal — do nothing
           db)))))
+
+
+(defmethod effects/execute-effect-impl :shuffle-from-graveyard-to-library
+  [db player-id effect _object-id]
+  ;; Two paths:
+  ;;   :auto — non-interactive (trigger path): move all graveyard cards to library then shuffle.
+  ;;   :player — interactive (sorcery resolution): signal needs-selection for zone-pick builder.
+  ;;
+  ;; :effect/target is expected to be a concrete player-id by the time this runs
+  ;; (pre-resolve-targets resolves :targeted-player before effects fire).
+  ;; :self-controller resolves to the current player-id (trigger controller).
+  (let [selection (:effect/selection effect)
+        raw-target (:effect/target effect)
+        resolved-player (cond
+                          (or (nil? raw-target) (= raw-target :self-controller))
+                          player-id
+                          :else raw-target)]
+    (case selection
+      :auto
+      (let [gy-cards (or (q/get-objects-in-zone db resolved-player :graveyard) [])
+            ;; Move all graveyard cards to library (each move dispatches zone-change triggers)
+            db-moved (reduce (fn [db' obj]
+                               (let [obj-id (:object/id obj)
+                                     card-triggers (or (get-in obj [:object/card :card/triggers]) [])
+                                     ;; Move the card to library
+                                     db-after-move (zone-change-dispatch/move-to-zone db' obj-id :library)
+                                     ;; Re-register library zone-change triggers so next mill fires them
+                                     lib-triggers (filterv
+                                                    (fn [t]
+                                                      (and (= :zone-change (:trigger/type t))
+                                                           (= :library (get-in t [:trigger/match :event/from-zone]))))
+                                                    card-triggers)]
+                                 (if (seq lib-triggers)
+                                   ;; Owner EID: :object/owner is a ref, may be {:db/id N} or raw EID
+                                   (let [owner-ref (:object/owner obj)
+                                         owner-eid (if (map? owner-ref) (:db/id owner-ref) owner-ref)
+                                         obj-eid (q/get-object-eid db-after-move obj-id)
+                                         tx (trigger-db/create-triggers-for-card-tx
+                                              db-after-move obj-eid owner-eid lib-triggers)]
+                                     (d/db-with db-after-move tx))
+                                   db-after-move)))
+                             db
+                             gy-cards)]
+        (zones/shuffle-library db-moved resolved-player))
+      ;; :player (interactive) — zone-pick builder handles UI, we just signal
+      {:db db :needs-selection effect})))

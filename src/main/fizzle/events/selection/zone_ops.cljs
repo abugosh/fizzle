@@ -1,6 +1,6 @@
 (ns fizzle.events.selection.zone-ops
   "Zone operation selection domains: graveyard-return, chain-bounce,
-   and custom discard executor.
+   shuffle-from-graveyard-to-library, and custom discard executor.
 
    Discard builder: handled by generic zone-pick builder in core.cljs
    via hierarchy (derive :discard :zone-pick). Custom executor remains
@@ -16,6 +16,7 @@
     [fizzle.engine.stack :as stack]
     [fizzle.engine.triggers :as triggers]
     [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
+    [fizzle.engine.zones :as zones]
     [fizzle.events.selection.core :as core]))
 
 
@@ -91,6 +92,20 @@
                      (zone-change-dispatch/move-to-zone gdb obj-id :graveyard))
                    game-db
                    selected)})))
+
+
+(defmethod core/execute-confirmed-selection :shuffle-from-graveyard-to-library
+  [game-db selection]
+  ;; Custom executor: moves selected graveyard cards to library, then shuffles.
+  ;; The generic zone-pick executor only moves cards without shuffling.
+  ;; 0 selected is valid ("up to N" — can choose none).
+  (let [selected (:selection/selected selection)
+        target-player (:selection/player-id selection)
+        db-moved (reduce (fn [gdb obj-id]
+                           (zone-change-dispatch/move-to-zone gdb obj-id :library))
+                         game-db
+                         selected)]
+    {:db (zones/shuffle-library db-moved target-player)}))
 
 
 ;; =====================================================

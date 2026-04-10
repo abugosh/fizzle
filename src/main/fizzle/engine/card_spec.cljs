@@ -22,7 +22,8 @@
     :bounce :bounce-all :chain-bounce :counter-spell :counter-ability
     :peek-random-hand :grant-mana-ability :create-token :apply-pt-modifier
     :welder-swap :untap-lands :tap-all :untap-all
-    :lose-life-equal-to-toughness :phase-out :change-land-types})
+    :lose-life-equal-to-toughness :phase-out :change-land-types
+    :shuffle-from-graveyard-to-library})
 
 
 (def valid-cost-types
@@ -329,6 +330,11 @@
           :opt [:effect/condition]))
 
 
+(defmethod effect-type-spec :shuffle-from-graveyard-to-library [_]
+  (s/keys :req [:effect/type :effect/count :effect/selection]
+          :opt [:effect/target :effect/condition]))
+
+
 ;; Runtime-only types: never appear in card definitions but must have defmethods
 ;; for s/exercise and completeness
 
@@ -393,7 +399,9 @@
                                 :effect/criteria {:match/not-types #{:creature :land}}}
    :storm-copies          {:effect/type :storm-copies}
    :lose-life             {:effect/type :lose-life :effect/amount 3}
-   :gain-life             {:effect/type :gain-life :effect/amount 3}})
+   :gain-life             {:effect/type :gain-life :effect/amount 3}
+   :shuffle-from-graveyard-to-library
+   {:effect/type :shuffle-from-graveyard-to-library :effect/count 3 :effect/selection :player}})
 
 
 (defn minimal-valid-effect

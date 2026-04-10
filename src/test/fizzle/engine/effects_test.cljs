@@ -3094,3 +3094,62 @@
           db' (fx/execute-effect db :player-1 effect)]
       (is (= db db')
           "db should be unchanged when :effect/target is not on the battlefield"))))
+
+
+;; === execute-effect :shuffle-from-graveyard-to-library tests ===
+
+(deftest test-shuffle-from-graveyard-to-library-auto-moves-all-cards
+  (testing ":auto selection path moves all graveyard cards to library and shuffles"
+    ;; Catches: missing defmethod for :shuffle-from-graveyard-to-library
+    ;; and missing :auto handling.
+    ;; th/add-card-to-zone returns [db obj-id] tuple — must destructure.
+    (let [db (-> (init-game-state)
+                 (add-opponent))
+          [db _] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
+          [db _] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
+          [db _] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
+          initial-gy-count (count-zone db :player-1 :graveyard)
+          initial-lib-count (count-zone db :player-1 :library)
+          effect {:effect/type :shuffle-from-graveyard-to-library
+                  :effect/target :player-1
+                  :effect/count :all
+                  :effect/selection :auto}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 3 initial-gy-count) "Setup: 3 cards in graveyard")
+      (is (= 0 (count-zone db' :player-1 :graveyard))
+          "After :auto path: graveyard should be empty")
+      (is (= (+ initial-lib-count 3) (count-zone db' :player-1 :library))
+          "After :auto path: library gains all 3 former graveyard cards"))))
+
+
+(deftest test-shuffle-from-graveyard-to-library-player-returns-needs-selection
+  (testing ":player selection path returns {:db db :needs-selection effect}"
+    ;; Catches: missing :player branch — must signal interaction needed.
+    ;; Uses execute-effect-checked (not execute-effect) to get tagged result.
+    (let [db (init-game-state)
+          effect {:effect/type :shuffle-from-graveyard-to-library
+                  :effect/target :player-1
+                  :effect/count 3
+                  :effect/selection :player}
+          result (fx/execute-effect-checked db :player-1 effect)]
+      (is (map? result) "Player path must return a map, not a plain db")
+      (is (contains? result :db) "Result must contain :db key")
+      (is (contains? result :needs-selection) "Result must contain :needs-selection key")
+      (is (= effect (:needs-selection result)) "needs-selection must be the effect map"))))
+
+
+(deftest test-shuffle-from-graveyard-to-library-auto-empty-graveyard-is-noop
+  (testing ":auto path with empty graveyard is a no-op (0 cards = legal per oracle 'up to')"
+    ;; Catches: potential crash on empty reduce or nil gy-cards
+    ;; No add-opponent needed — just test player-1 with empty graveyard.
+    (let [db (init-game-state)
+          initial-lib-count (count-zone db :player-1 :library)
+          effect {:effect/type :shuffle-from-graveyard-to-library
+                  :effect/target :player-1
+                  :effect/count :all
+                  :effect/selection :auto}
+          db' (fx/execute-effect db :player-1 effect)]
+      (is (= 0 (count-zone db' :player-1 :graveyard))
+          "Graveyard stays empty")
+      (is (= initial-lib-count (count-zone db' :player-1 :library))
+          "Library unchanged when graveyard was empty"))))

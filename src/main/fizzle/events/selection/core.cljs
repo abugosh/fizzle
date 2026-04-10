@@ -43,6 +43,7 @@
       (derive :discard :zone-pick)
       (derive :return-from-graveyard :zone-pick)
       (derive :graveyard-return :zone-pick)
+      (derive :shuffle-from-graveyard-to-library :zone-pick)
       ;; Accumulator: distribute/increment a value via stepper controls
       (derive :storm-split :accumulator)
       (derive :x-mana-cost :accumulator)
@@ -131,7 +132,13 @@
                            :target-zone :hand
                            :card-source :zone
                            :validation :at-most
-                           :min-count 0}})
+                           :min-count 0}
+   :shuffle-from-graveyard-to-library
+   {:source-zone :graveyard
+    :target-zone :library
+    :card-source :zone
+    :validation :at-most
+    :min-count 0}})
 
 
 (defn- resolve-target-player

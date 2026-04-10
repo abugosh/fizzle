@@ -54,6 +54,7 @@
     [fizzle.cards.blue.vision-charm :as vision-charm]
     [fizzle.cards.blue.words-of-wisdom :as words-of-wisdom]
     [fizzle.cards.green.crumble :as crumble]
+    [fizzle.cards.green.gaeas-blessing :as gaeas-blessing]
     [fizzle.cards.green.hunting-pack :as hunting-pack]
     [fizzle.cards.green.nimble-mongoose :as nimble-mongoose]
     [fizzle.cards.green.xantid-swarm :as xantid-swarm]
@@ -143,6 +144,7 @@
        tormods-crypt/card
        urzas-bauble/card
        crumble/card
+       gaeas-blessing/card
        hunting-pack/card
        nimble-mongoose/card
        xantid-swarm/card

@@ -466,13 +466,13 @@
 
 
 (deftest test-exercise-generates-valid-effects
-  (testing "spec can generate valid effect maps for all 40 types (s/exercise substitute)"
+  (testing "spec can generate valid effect maps for all 41 types (s/exercise substitute)"
     ;; cljs.spec.gen.alpha requires test.check which is not in this project's deps.
     ;; minimal-valid-effect covers the same guarantee with full type coverage:
-    ;; one known-valid instance per type, all 40 conforming to ::effect.
+    ;; one known-valid instance per type, all 41 conforming to ::effect.
     (let [examples (map card-spec/minimal-valid-effect card-spec/valid-effect-types)]
-      (is (= 40 (count examples))
-          "should have exactly 40 minimal examples — one per effect type")
+      (is (= 41 (count examples))
+          "should have exactly 41 minimal examples — one per effect type")
       (doseq [effect examples]
         (is (s/valid? ::card-spec/effect effect)
             (str "Generated effect failed validation: " effect))))))
