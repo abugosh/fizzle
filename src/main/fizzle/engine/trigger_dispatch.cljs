@@ -40,6 +40,33 @@
       true)))
 
 
+(defn matches?
+  "Returns true if the event satisfies the trigger's :trigger/match map.
+   Empty/nil match = wildcard (fires on event-type match alone, preserving
+   backwards compatibility for existing triggers like City of Brass).
+   :self sigil compares the event field against the trigger-source UUID.
+   Uses ::missing sentinel so absent fields (vs nil-valued) correctly return false.
+
+   Arguments:
+     event          - Event map to match against
+     trigger-source - UUID of the source object (for :self sigil resolution)
+     trigger        - Trigger map with optional :trigger/match
+
+   Returns:
+     Boolean - true if event satisfies all match-map conditions"
+  [event trigger-source trigger]
+  (let [match-map (:trigger/match trigger)]
+    (or (nil? match-map)
+        (empty? match-map)
+        (every? (fn [[event-key expected]]
+                  (let [actual (get event event-key ::missing)]
+                    (cond
+                      (= actual ::missing) false
+                      (= expected :self)   (= actual trigger-source)
+                      :else                (= actual expected))))
+                match-map))))
+
+
 (defn- enrich-event-ids
   "Convert event UUIDs to entity IDs for Datascript filter matching.
    Events use UUIDs (:event/object-id is a UUID), but Datascript triggers

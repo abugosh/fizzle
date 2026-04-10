@@ -278,3 +278,97 @@
           event {:event/type :phase-entered :event/phase :draw}
           result (dispatch/dispatch-event db event)]
       (is (= db result)))))
+
+
+;; === matches? tests (declarative :trigger/match map) ===
+
+(deftest matches?-absent-match-is-wildcard
+  (testing "absent :trigger/match fires on any event (backwards compat)"
+    (let [source (random-uuid)
+          trigger {:trigger/source source}
+          event {:event/type :zone-change
+                 :event/object-id (random-uuid)
+                 :event/from-zone :hand
+                 :event/to-zone :graveyard}]
+      (is (true? (dispatch/matches? event source trigger))))))
+
+
+(deftest matches?-empty-match-is-wildcard-empty-map
+  (testing "empty :trigger/match {} returns true for any event (backwards compat)"
+    (let [trigger {:trigger/type :zone-change
+                   :trigger/match {}}
+          event {:event/type :zone-change
+                 :event/object-id (random-uuid)
+                 :event/from-zone :hand
+                 :event/to-zone :graveyard}]
+      (is (true? (dispatch/matches? event (random-uuid) trigger))))))
+
+
+(deftest matches?-single-literal-field-match
+  (testing "single literal field match returns true when field matches"
+    (let [trigger {:trigger/type :zone-change
+                   :trigger/match {:event/from-zone :library}}
+          event-match {:event/type :zone-change
+                       :event/from-zone :library
+                       :event/to-zone :graveyard}
+          event-no-match {:event/type :zone-change
+                          :event/from-zone :hand
+                          :event/to-zone :graveyard}]
+      (is (true? (dispatch/matches? event-match (random-uuid) trigger)))
+      (is (false? (dispatch/matches? event-no-match (random-uuid) trigger))))))
+
+
+(deftest matches?-self-sigil-matches-source
+  (testing ":self sigil compares event field against trigger-source argument"
+    (let [source-id (random-uuid)
+          trigger {:trigger/type :zone-change
+                   :trigger/match {:event/object-id :self}}
+          event {:event/type :zone-change
+                 :event/object-id source-id
+                 :event/from-zone :library
+                 :event/to-zone :graveyard}]
+      (is (true? (dispatch/matches? event source-id trigger))))))
+
+
+(deftest matches?-self-sigil-rejects-other
+  (testing ":self sigil returns false when event field does not match trigger-source"
+    (let [source-id (random-uuid)
+          other-id (random-uuid)
+          trigger {:trigger/type :zone-change
+                   :trigger/match {:event/object-id :self}}
+          event {:event/type :zone-change
+                 :event/object-id other-id
+                 :event/from-zone :library
+                 :event/to-zone :graveyard}]
+      (is (false? (dispatch/matches? event source-id trigger))))))
+
+
+(deftest matches?-multiple-fields-AND-semantics
+  (testing "all fields in match-map must match (AND semantics)"
+    (let [trigger {:trigger/type :zone-change
+                   :trigger/match {:event/from-zone :library
+                                   :event/to-zone :graveyard}}
+          event-both {:event/from-zone :library :event/to-zone :graveyard}
+          event-one-wrong {:event/from-zone :library :event/to-zone :exile}
+          event-other-wrong {:event/from-zone :hand :event/to-zone :graveyard}]
+      (is (true? (dispatch/matches? event-both (random-uuid) trigger)))
+      (is (false? (dispatch/matches? event-one-wrong (random-uuid) trigger)))
+      (is (false? (dispatch/matches? event-other-wrong (random-uuid) trigger))))))
+
+
+(deftest matches?-missing-event-field-returns-false
+  (testing "match map referencing absent event field returns false (no exception)"
+    (let [trigger {:trigger/type :zone-change
+                   :trigger/match {:event/fake-field :x}}
+          event {:event/type :zone-change
+                 :event/from-zone :library}]
+      (is (false? (dispatch/matches? event (random-uuid) trigger))))))
+
+
+(deftest matches?-value-mismatch-returns-false
+  (testing "match map with mismatched value returns false"
+    (let [trigger {:trigger/type :zone-change
+                   :trigger/match {:event/to-zone :graveyard}}
+          event {:event/type :zone-change
+                 :event/to-zone :exile}]
+      (is (false? (dispatch/matches? event (random-uuid) trigger))))))
