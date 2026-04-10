@@ -192,9 +192,12 @@
           "Dark Ritual should be a candidate in the selection")
       ;; Confirm selecting dark-ritual
       (let [{:keys [db]} (th/confirm-selection db selection #{ritual-id})]
-        ;; Dark Ritual left the graveyard — may be in library or drawn to hand
+        ;; Dark Ritual left the graveyard — not= :graveyard since draw may pull it to hand
         (is (not= :graveyard (th/get-object-zone db ritual-id))
-            "Dark Ritual should not remain in graveyard after being selected")
+            "Dark Ritual should not remain in graveyard after being selected for shuffle")
+        ;; The card is now in library or hand (not graveyard)
+        (is (contains? #{:library :hand} (th/get-object-zone db ritual-id))
+            "Dark Ritual should be in library or hand (draw may pull it back from library)")
         ;; Caster drew a card (draw fires after confirm — library had extra cards)
         ;; Baseline: hand count after casting (GB on stack = 0 hand cards)
         (is (= (inc hand-count-post-cast)
@@ -286,10 +289,16 @@
       ;; Confirm with 3 selected — id-4 must remain in graveyard
       ;; Note: draw fires after confirm so library card goes to hand (not the selected ones)
       (let [{:keys [db]} (th/confirm-selection db sel #{id-1 id-2 id-3})]
+        ;; All 3 selected cards left the graveyard (may be in library or hand after draw)
         (is (not= :graveyard (th/get-object-zone db id-1)) "Card 1 left graveyard")
         (is (not= :graveyard (th/get-object-zone db id-2)) "Card 2 left graveyard")
         (is (not= :graveyard (th/get-object-zone db id-3)) "Card 3 left graveyard")
-        (is (= :graveyard (th/get-object-zone db id-4)) "Card 4 stays in graveyard")))))
+        ;; Cards 4 and 5 were NOT selected and remain in graveyard
+        (is (= :graveyard (th/get-object-zone db id-4)) "Card 4 stays in graveyard")
+        ;; Graveyard has id-4, _id-5, and GB (cleanup) — selected cards (id-1/2/3) left
+        ;; Net change: graveyard had 5, lost 3 selected, gained GB on cleanup = 3 total
+        (is (= 3 (count (q/get-objects-in-zone db :player-1 :graveyard)))
+            "Graveyard should have 3 cards: id-4, id-5 (not selected) + GB (cleanup)")))))
 
 
 (deftest gaeas-blessing-selection-zero-cards-legal-test
@@ -378,8 +387,8 @@
         (is (< (count (q/get-objects-in-zone db :player-2 :graveyard))
                opp-gy-before)
             "Opponent's graveyard should shrink after selection")
-        (is (not= :graveyard (th/get-object-zone db opp-id))
-            "Opponent's card should not remain in graveyard")))))
+        (is (= :library (th/get-object-zone db opp-id))
+            "Opponent's card should be in library after shuffle selection")))))
 
 
 ;; =====================================================

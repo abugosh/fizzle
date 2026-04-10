@@ -71,12 +71,12 @@
 
 
 (deftest test-mulligan-preserves-sculpted-card-ids
-  (testing "after mulligan with must-contain {:dark-ritual 2}, hand has 2 dark-rituals"
+  (testing "after mulligan with must-contain {:dark-ritual 2}, hand has at least 2 dark-rituals"
     (let [app-db (create-opening-hand-app-db {:dark-ritual 2})
           result (opening-hand/mulligan-handler app-db)
           dr-count (count (filter #(= :dark-ritual %) (hand-card-ids result)))]
-      (is (= 2 dr-count)
-          "Hand should contain exactly 2 Dark Rituals after mulligan"))))
+      (is (>= dr-count 2)
+          "Hand should contain at least 2 Dark Rituals after mulligan (random fill may add more)"))))
 
 
 (deftest test-mulligan-sculpted-ids-track-current-hand

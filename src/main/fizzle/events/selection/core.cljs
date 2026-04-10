@@ -174,6 +174,7 @@
              :selection/select-count (or (:effect/count effect)
                                          (:effect/select-count effect))
              :selection/player-id target-player
+             :selection/caster-id player-id
              :selection/selected #{}
              :selection/spell-id object-id
              :selection/remaining-effects remaining-effects
@@ -360,7 +361,7 @@
    a new pending selection (chained interactive effects support)."
   [app-db result selection on-complete]
   (let [remaining-effects (:selection/remaining-effects selection)
-        player-id (:selection/player-id selection)
+        player-id (or (:selection/caster-id selection) (:selection/player-id selection))
         object-id (:selection/spell-id selection)
         remaining-result (effects/reduce-effects (:db result) player-id
                                                  (or remaining-effects []))]

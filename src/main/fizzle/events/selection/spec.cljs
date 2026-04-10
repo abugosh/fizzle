@@ -53,6 +53,7 @@
 (s/def :selection/object-id (s/or :kw keyword? :uuid uuid?))
 (s/def :selection/stack-item-eid int?)
 (s/def :selection/source-type keyword?)
+(s/def :selection/caster-id :game/player-id)
 
 
 ;; =====================================================
@@ -107,6 +108,28 @@
                 :selection/remaining-effects
                 :selection/pattern
                 :selection/min-count]))
+
+
+;; :shuffle-from-graveyard-to-library — built by zone-pick builder with graveyard config.
+;; card-source :zone → always has :selection/candidate-ids. Caster-id tracks original caster
+;; for remaining-effects (draw fires for caster, not targeted player).
+(defmethod selection-type-spec :shuffle-from-graveyard-to-library [_]
+  (s/keys :req [:selection/type
+                :selection/lifecycle
+                :selection/player-id
+                :selection/selected
+                :selection/validation
+                :selection/auto-confirm?
+                :selection/candidate-ids]
+          :opt [:selection/zone
+                :selection/card-source
+                :selection/target-zone
+                :selection/select-count
+                :selection/spell-id
+                :selection/remaining-effects
+                :selection/pattern
+                :selection/min-count
+                :selection/caster-id]))
 
 
 ;; :hand-reveal-discard — built by build-hand-reveal-discard-selection in zone_ops.cljs.
