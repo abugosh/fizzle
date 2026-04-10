@@ -4,7 +4,7 @@
   (:require
     [fizzle.db.queries :as queries]
     [fizzle.engine.mana :as mana]
-    [fizzle.engine.zones :as zones]
+    [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
 
@@ -36,10 +36,10 @@
                  (mana/can-pay? game-db player-id cycling-cost))
       {:db game-db}
       (let [db-after-pay (mana/pay-mana game-db player-id cycling-cost)
-            db-after-discard (zones/move-to-zone db-after-pay object-id :graveyard)
+            db-after-discard (zone-change-dispatch/move-to-zone db-after-pay object-id :graveyard)
             top-card (first (queries/get-top-n-library db-after-discard player-id 1))
             db-final (if top-card
-                       (zones/move-to-zone db-after-discard top-card :hand)
+                       (zone-change-dispatch/move-to-zone db-after-discard top-card :hand)
                        db-after-discard)]
         {:db db-final}))))
 

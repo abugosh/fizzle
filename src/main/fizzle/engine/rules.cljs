@@ -15,6 +15,7 @@
     [fizzle.engine.stack :as stack]
     [fizzle.engine.static-abilities :as static-abilities]
     [fizzle.engine.targeting :as targeting]
+    [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.engine.zones :as zones]))
 
 
@@ -352,7 +353,7 @@
     (-> db
         (mana/pay-mana player-id effective-cost)
         (pay-additional-costs player-id object-id (:mode/additional-costs mode))
-        (zones/move-to-zone object-id :stack)
+        (zone-change-dispatch/move-to-zone object-id :stack)
         (create-spell-stack-item player-id object-id)
         (set-cast-mode object-id mode)
         (increment-storm player-id)
@@ -372,7 +373,7 @@
     (-> db
         (mana/pay-mana-with-allocation player-id effective-cost allocation)
         (pay-additional-costs player-id object-id (:mode/additional-costs mode))
-        (zones/move-to-zone object-id :stack)
+        (zone-change-dispatch/move-to-zone object-id :stack)
         (create-spell-stack-item player-id object-id)
         (set-cast-mode object-id mode)
         (increment-storm player-id)
@@ -483,7 +484,7 @@
                               mode-destination mode-destination
                               (permanent-type? card-types) :battlefield
                               :else :graveyard)]
-            (zones/move-to-zone db-after-effects object-id destination)))))))
+            (zone-change-dispatch/move-to-zone db-after-effects object-id destination)))))))
 
 
 (defn move-spell-off-stack
@@ -509,7 +510,7 @@
               ;; Only :exile overrides graveyard (flashback rule).
               ;; :battlefield (permanents) goes to graveyard when countered/fizzled.
               destination (if (= :exile mode-destination) :exile :graveyard)]
-          (zones/move-to-zone db object-id destination))))))
+          (zone-change-dispatch/move-to-zone db object-id destination))))))
 
 
 ;; =====================================================

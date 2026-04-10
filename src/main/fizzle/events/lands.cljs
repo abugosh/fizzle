@@ -9,7 +9,7 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
-    [fizzle.engine.zones :as zones]
+    [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
 
@@ -45,7 +45,7 @@
                             [?e :player/land-plays-left ?plays]]
                           db player-id)
           db-after-move (-> db
-                            (zones/move-to-zone object-id :battlefield)
+                            (zone-change-dispatch/move-to-zone object-id :battlefield)
                             (d/db-with [[:db/add player-eid :player/land-plays-left (dec land-plays)]]))
           obj-after (queries/get-object db-after-move object-id)
           card (:object/card obj-after)

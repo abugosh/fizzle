@@ -27,7 +27,7 @@
   "Add a creature card to battlefield with proper creature fields."
   [db card-id owner]
   (let [[db obj-id] (th/add-card-to-zone db card-id :hand owner)
-        db (zones/move-to-zone db obj-id :battlefield)]
+        db (zones/move-to-zone* db obj-id :battlefield)]
     [db obj-id]))
 
 
@@ -746,7 +746,7 @@
           db (th/add-opponent db)
           ;; Lotus Petal is an artifact, not a creature
           [db _obj-id] (th/add-card-to-zone db :lotus-petal :hand :player-1)
-          db (zones/move-to-zone db _obj-id :battlefield)
+          db (zones/move-to-zone* db _obj-id :battlefield)
           sbas (sba/check-sba db :zero-toughness)]
       (is (empty? sbas)
           "Non-creature should not trigger zero toughness SBA"))))

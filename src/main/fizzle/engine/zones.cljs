@@ -5,69 +5,17 @@
 
    Valid zones: :hand, :library, :graveyard, :stack, :battlefield, :exile, :sideboard, :phased-out
 
-   Stack-item safety: When an object leaves the :stack zone (via move-to-zone
+   Stack-item safety: When an object leaves the :stack zone (via move-to-zone*
    or remove-object), any associated stack-item is automatically cleaned up.
-   This prevents orphaned stack items that would stall the priority system."
+   This prevents orphaned stack items that would stall the priority system.
+
+   Public API note: prefer engine/zone-change-dispatch/move-to-zone over move-to-zone*
+   for all callers outside the trigger→effects cycle. move-to-zone* is the raw
+   zone-change primitive with no trigger dispatch."
   (:require
     [datascript.core :as d]
     [fizzle.db.queries :as q]
-    [fizzle.engine.events :as events]
-    [fizzle.engine.stack :as stack]
-    [fizzle.engine.trigger-db :as trigger-db]))
-
-
-(defn- dispatch-zone-change-event
-  "Dispatch a zone-change event to all matching stacked triggers.
-   Creates stack items for triggers whose :trigger/filter and :trigger/match
-   both satisfy the event.
-
-   Uses trigger-db and stack directly to avoid the circular dependency:
-   trigger-dispatch -> triggers -> effects -> zones.
-
-   Arguments:
-     db    - Datascript db value (post-move commit)
-     event - Zone-change event map (:event/object-id is UUID, from/to are zone keywords)
-
-   Returns:
-     New db with matching trigger stack items added."
-  [db event]
-  (let [;; Enrich event: convert UUID :event/object-id to EID for DS filter matching
-        ;; (trigger-db/get-triggers-for-event uses the enriched event for :trigger/filter)
-        enriched-event (cond-> event
-                         (:event/object-id event)
-                         (assoc :event/object-id
-                                (q/get-object-eid db (:event/object-id event))))
-        ;; get-triggers-for-event filters by :trigger/event-type + :trigger/filter
-        ds-triggers (trigger-db/get-triggers-for-event db enriched-event)]
-    (reduce (fn [db-acc t]
-              (let [src-eid     (let [s (:trigger/source t)]
-                                  (if (map? s) (:db/id s) s))
-                    src-uuid    (when src-eid
-                                  (d/q '[:find ?oid .
-                                         :in $ ?e
-                                         :where [?e :object/id ?oid]]
-                                       db-acc src-eid))
-                    ctrl-eid    (let [c (:trigger/controller t)]
-                                  (if (map? c) (:db/id c) c))
-                    ctrl-pid    (when ctrl-eid
-                                  (d/q '[:find ?pid .
-                                         :in $ ?e
-                                         :where [?e :player/id ?pid]]
-                                       db-acc ctrl-eid))
-                    uses-stack? (get t :trigger/uses-stack? true)]
-                ;; Apply :trigger/match second-stage filter using original (UUID-form) event
-                (if (and uses-stack?
-                         (trigger-db/matches? event src-uuid t))
-                  (stack/create-stack-item
-                    db-acc
-                    (cond-> {:stack-item/type    (:trigger/event-type t)
-                             :stack-item/controller ctrl-pid
-                             :stack-item/effects (or (:trigger/effects t) [])}
-                      src-uuid                 (assoc :stack-item/source src-uuid)
-                      (:trigger/description t) (assoc :stack-item/description (:trigger/description t))))
-                  db-acc)))
-            db
-            ds-triggers)))
+    [fizzle.engine.stack :as stack]))
 
 
 (defn shuffle-library
@@ -96,13 +44,18 @@
       db)))
 
 
-(defn move-to-zone
-  "Move a game object to a new zone. Pure function: (db, args) -> db
+(defn move-to-zone*
+  "Move a game object to a new zone. Raw primitive — no zone-change trigger dispatch.
+   Pure function: (db, args) -> db
+
+   Use engine/zone-change-dispatch/move-to-zone for callers that need trigger dispatch.
+   Use this directly only when trigger dispatch is not needed or would create a cycle
+   (e.g., engine/effects.cljs which is part of the trigger→effects→zones chain).
 
    Arguments:
-     db - Datascript database value
+     db        - Datascript database value
      object-id - The :object/id of the object to move
-     new-zone - The target zone keyword
+     new-zone  - The target zone keyword
 
    Returns:
      New db with object in new zone, or same db if already in that zone.
@@ -174,22 +127,13 @@
             txs (-> base-txs
                     (into trigger-retract-txs)
                     (into creature-leave-txs)
-                    (into creature-enter-txs))
-            ;; Commit zone move
-            db' (d/db-with db txs)]
-        ;; Dispatch zone-change event for triggered abilities.
-        ;; NOTE: This fires during mulligan (~67 calls per attempt) when the
-        ;; deck contains zone-change-triggered cards. Those triggers land on
-        ;; the stack but do not stall init — no player has priority yet.
-        ;; This is acceptable under Path Y (no director loop changes in this epic).
-        (dispatch-zone-change-event
-          db'
-          (events/zone-change-event object-id current-zone new-zone))))))
+                    (into creature-enter-txs))]
+        (d/db-with db txs)))))
 
 
 (defn phase-out
   "Phase out a permanent. Direct zone change to :phased-out — bypasses
-   move-to-zone intentionally to preserve all object state (tapped,
+   move-to-zone* intentionally to preserve all object state (tapped,
    counters, creature fields, triggers). Does NOT retract triggers or
    reset tapped state."
   [db object-id]
@@ -200,7 +144,7 @@
 
 (defn phase-in
   "Phase in a permanent. Direct zone change back to :battlefield —
-   bypasses move-to-zone intentionally. Does NOT trigger ETB, does NOT
+   bypasses move-to-zone* intentionally. Does NOT trigger ETB, does NOT
    reset tapped state, does NOT add summoning sickness. Preserves all
    object state exactly as it was when phased out."
   [db object-id]
@@ -222,7 +166,7 @@
                            [?e :object/position ?pos]]
                          db player-eid)
                     -1)
-        db (move-to-zone db object-id :library)
+        db (move-to-zone* db object-id :library)
         obj-eid (q/get-object-eid db object-id)]
     (d/db-with db [[:db/add obj-eid :object/position (inc max-pos)]])))
 

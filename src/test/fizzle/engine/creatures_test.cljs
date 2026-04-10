@@ -19,7 +19,7 @@
   [db card-id owner]
   (let [[db obj-id] (th/add-card-to-zone db card-id :hand owner)
         ;; Move to battlefield through zone transition (will set creature fields)
-        db (zones/move-to-zone db obj-id :battlefield)]
+        db (zones/move-to-zone* db obj-id :battlefield)]
     [db obj-id]))
 
 
@@ -311,7 +311,7 @@
           obj-before (q/get-object db obj-id)
           _ (is (nil? (:object/power obj-before)) "Object should NOT have P/T before battlefield")
           ;; Move to battlefield via production zone transition
-          db (zones/move-to-zone db obj-id :battlefield)
+          db (zones/move-to-zone* db obj-id :battlefield)
           obj (q/get-object db obj-id)]
       ;; P/T must be set from card definition by the zone transition
       (is (= 1 (:object/power obj)) "Zone transition must set power from card definition")
@@ -324,7 +324,7 @@
   (testing "Land entering battlefield does not get creature fields"
     (let [db (th/create-test-db)
           [db obj-id] (th/add-card-to-zone db :island :hand :player-1)
-          db (zones/move-to-zone db obj-id :battlefield)
+          db (zones/move-to-zone* db obj-id :battlefield)
           obj (q/get-object db obj-id)]
       (is (nil? (:object/power obj)) "Land should not have power")
       (is (nil? (:object/toughness obj)) "Land should not have toughness")
@@ -338,7 +338,7 @@
           ;; Verify creature fields are set on battlefield
           _ (is (= 1 (:object/power (q/get-object db obj-id))))
           ;; Move to graveyard
-          db (zones/move-to-zone db obj-id :graveyard)
+          db (zones/move-to-zone* db obj-id :graveyard)
           obj (q/get-object db obj-id)]
       ;; P/T reset to card base values (not retracted — creatures have P/T in all zones)
       (is (= 1 (:object/power obj)) "Power should reset to base value")

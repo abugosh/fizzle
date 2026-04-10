@@ -5,7 +5,7 @@
     [datascript.core :as d]
     [fizzle.db.queries :as queries]
     [fizzle.engine.grants :as grants]
-    [fizzle.engine.zones :as zones]
+    [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.events.selection.spec :as sel-spec]))
 
 
@@ -80,7 +80,7 @@
   [db _player-id selected-ids]
   (let [;; Move selected cards to graveyard
         db-after-discard (reduce (fn [d obj-id]
-                                   (zones/move-to-zone d obj-id :graveyard))
+                                   (zone-change-dispatch/move-to-zone d obj-id :graveyard))
                                  db
                                  selected-ids)
         ;; Now expire grants (Rule 514.2 - after discard) and clear damage

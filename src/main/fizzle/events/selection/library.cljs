@@ -9,6 +9,7 @@
     [datascript.core :as d]
     [fizzle.db.queries :as queries]
     [fizzle.engine.effects :as effects]
+    [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.engine.zones :as zones]
     [fizzle.events.selection.core :as core]
     [re-frame.core :as rf]))
@@ -386,7 +387,7 @@
       ;; Cards found: move ALL to target zone, set tapped if needed, then shuffle ONCE
       (let [;; Move all selected cards to target zone
             db-after-moves (reduce (fn [d card-id]
-                                     (zones/move-to-zone d card-id target-zone))
+                                     (zone-change-dispatch/move-to-zone d card-id target-zone))
                                    game-db
                                    selected)
             ;; If entering battlefield tapped, set tapped state for all moved cards
@@ -430,7 +431,7 @@
         shuffle-remainder? (:selection/shuffle-remainder? selection)
         ;; Move selected cards to hand
         db-after-selected (reduce (fn [d card-id]
-                                    (zones/move-to-zone d card-id selected-zone))
+                                    (zone-change-dispatch/move-to-zone d card-id selected-zone))
                                   game-db
                                   selected)
         ;; Get max position in library to put remainder at bottom
@@ -572,12 +573,12 @@
         graveyard-cards (set/difference all-candidates hand-selected)
         ;; Move selected cards to hand
         db-after-hand (reduce (fn [d card-id]
-                                (zones/move-to-zone d card-id :hand))
+                                (zone-change-dispatch/move-to-zone d card-id :hand))
                               game-db
                               hand-selected)
         ;; Move remaining to graveyard
         db-after-graveyard (reduce (fn [d card-id]
-                                     (zones/move-to-zone d card-id :graveyard))
+                                     (zone-change-dispatch/move-to-zone d card-id :graveyard))
                                    db-after-hand
                                    graveyard-cards)]
     db-after-graveyard))
@@ -645,7 +646,7 @@
                                        db-after-reorder
                                        (or remaining-effects []))
             ;; Move spell to graveyard
-            db-after-move (zones/move-to-zone db-after-remaining spell-id :graveyard)
+            db-after-move (zone-change-dispatch/move-to-zone db-after-remaining spell-id :graveyard)
             ;; Remove stack-item for spell
             db-final (core/remove-spell-stack-item db-after-move spell-id)]
         (-> app-db
@@ -704,7 +705,7 @@
       ;; Order-bottom will handle remainder — only move selected to hand
       (let [selected-zone (or (:selection/selected-zone selection) :hand)]
         {:db (reduce (fn [d card-id]
-                       (zones/move-to-zone d card-id selected-zone))
+                       (zone-change-dispatch/move-to-zone d card-id selected-zone))
                      game-db
                      selected)})
       ;; Standard path: execute immediately
@@ -738,7 +739,7 @@
         ;; Only move spell if it exists (test helpers may not create spell objects)
         spell-obj (queries/get-object db-after-remaining spell-id)
         db-after-move (if spell-obj
-                        (zones/move-to-zone db-after-remaining spell-id :graveyard)
+                        (zone-change-dispatch/move-to-zone db-after-remaining spell-id :graveyard)
                         db-after-remaining)
         db-final (core/remove-spell-stack-item db-after-move spell-id)]
     {:db db-final}))
@@ -760,7 +761,7 @@
         db-after-move (if (= current-zone :stack)
                         (let [cast-mode (:object/cast-mode spell-obj)
                               destination (or (:mode/on-resolve cast-mode) :graveyard)]
-                          (zones/move-to-zone db-after-effects spell-id destination))
+                          (zone-change-dispatch/move-to-zone db-after-effects spell-id destination))
                         db-after-effects)
         db-final (core/remove-spell-stack-item db-after-move spell-id)]
     {:db db-final}))
@@ -776,7 +777,7 @@
                                      (effects/execute-effect d player-id effect))
                                    db-after-reorder
                                    (or remaining-effects []))
-        db-after-move (zones/move-to-zone db-after-remaining spell-id :graveyard)
+        db-after-move (zone-change-dispatch/move-to-zone db-after-remaining spell-id :graveyard)
         db-final (core/remove-spell-stack-item db-after-move spell-id)]
     {:db db-final}))
 

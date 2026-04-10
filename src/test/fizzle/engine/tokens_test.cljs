@@ -144,7 +144,7 @@
           token (first (filter :object/is-token bf))
           token-id (:object/id token)
           ;; Move token to graveyard
-          db (zones/move-to-zone db token-id :graveyard)
+          db (zones/move-to-zone* db token-id :graveyard)
           ;; Run SBAs
           db (sba/check-and-execute-sbas db)]
       (is (nil? (q/get-object db token-id))
@@ -159,7 +159,7 @@
           token (first (filter :object/is-token bf))
           token-id (:object/id token)
           ;; Move token to hand
-          db (zones/move-to-zone db token-id :hand)
+          db (zones/move-to-zone* db token-id :hand)
           ;; Run SBAs
           db (sba/check-and-execute-sbas db)]
       (is (nil? (q/get-object db token-id))
@@ -174,7 +174,7 @@
           token (first (filter :object/is-token bf))
           token-id (:object/id token)
           ;; Move token to exile
-          db (zones/move-to-zone db token-id :exile)
+          db (zones/move-to-zone* db token-id :exile)
           ;; Run SBAs
           db (sba/check-and-execute-sbas db)]
       (is (nil? (q/get-object db token-id))

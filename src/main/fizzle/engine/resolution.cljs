@@ -23,6 +23,7 @@
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.engine.triggers :as triggers]
+    [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.engine.zones :as zones]))
 
 
@@ -130,7 +131,7 @@
                         mode-destination mode-destination
                         (rules/permanent-type? card-types) :battlefield
                         :else :graveyard)
-          db-after-move (zones/move-to-zone db object-id destination)
+          db-after-move (zone-change-dispatch/move-to-zone db object-id destination)
           card (:object/card obj)]
       (if (= destination :battlefield)
         (let [controller-ref (:object/controller obj)

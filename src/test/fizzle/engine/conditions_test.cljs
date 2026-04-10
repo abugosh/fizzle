@@ -95,7 +95,7 @@
                 "Precondition: should have threshold with 7 cards")
           ;; Remove 1 card by moving to exile
           gy-card (first (q/get-objects-in-zone db-7 :player-1 :graveyard))
-          db-6 (zones/move-to-zone db-7 (:object/id gy-card) :exile)]
+          db-6 (zones/move-to-zone* db-7 (:object/id gy-card) :exile)]
       (is (= 6 (count (q/get-objects-in-zone db-6 :player-1 :graveyard)))
           "Should have 6 cards after removal")
       (is (false? (conditions/threshold? db-6 :player-1))

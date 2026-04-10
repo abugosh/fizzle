@@ -15,7 +15,7 @@
     [fizzle.engine.mana :as mana]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.triggers :as triggers]
-    [fizzle.engine.zones :as zones]
+    [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.events.selection.core :as core]))
 
 
@@ -67,7 +67,7 @@
   [game-db selection]
   (let [selected (:selection/selected selection)
         db-after-discard (reduce (fn [gdb obj-id]
-                                   (zones/move-to-zone gdb obj-id :graveyard))
+                                   (zone-change-dispatch/move-to-zone gdb obj-id :graveyard))
                                  game-db
                                  selected)]
     (if (:selection/cleanup? selection)
@@ -88,7 +88,7 @@
       {:db game-db}
       ;; Discard the selected card to graveyard
       {:db (reduce (fn [gdb obj-id]
-                     (zones/move-to-zone gdb obj-id :graveyard))
+                     (zone-change-dispatch/move-to-zone gdb obj-id :graveyard))
                    game-db
                    selected)})))
 
@@ -195,7 +195,7 @@
       (let [land-id (first selected)
             chain-controller (:selection/chain-controller selection)
             spell-id (:selection/spell-id selection)
-            db-after-sac (zones/move-to-zone game-db land-id :graveyard)
+            db-after-sac (zone-change-dispatch/move-to-zone game-db land-id :graveyard)
             db-with-copy (triggers/create-spell-copy
                            db-after-sac spell-id chain-controller)]
         {:db db-with-copy}))))

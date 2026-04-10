@@ -3,6 +3,7 @@
    Operates on live game state between setup and gameplay phases."
   (:require
     [fizzle.db.queries :as queries]
+    [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.engine.zones :as zones]
     [re-frame.core :as rf]))
 
@@ -18,7 +19,7 @@
         human-pid (queries/get-human-player-id game-db)
         hand-objs (queries/get-objects-in-zone game-db human-pid :hand)
         db-after-return (reduce (fn [db obj]
-                                  (zones/move-to-zone db (:object/id obj) :library))
+                                  (zone-change-dispatch/move-to-zone db (:object/id obj) :library))
                                 game-db
                                 hand-objs)
         ;; Shuffle library
@@ -45,7 +46,7 @@
         hand-objs-new (concat sculpted-objs random-objs)
         ;; Move selected objects from library to hand
         db-with-hand (reduce (fn [db obj]
-                               (zones/move-to-zone db (:object/id obj) :hand))
+                               (zone-change-dispatch/move-to-zone db (:object/id obj) :hand))
                              db-shuffled
                              hand-objs-new)
         ;; Track sculpted UUIDs

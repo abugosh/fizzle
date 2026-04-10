@@ -1712,7 +1712,7 @@
           db-with-gy (reduce (fn [d _]
                                (let [top (first (q/get-top-n-library d :player-1 1))]
                                  (if top
-                                   (zones/move-to-zone d top :graveyard)
+                                   (zones/move-to-zone* d top :graveyard)
                                    d)))
                              db-with-lib (range 7))
           effect {:effect/type :discard

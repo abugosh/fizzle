@@ -88,7 +88,7 @@
           _ (is (= 1 (count cob-triggers-before))
                 "CoB trigger should exist before leaving")
           ;; Move to graveyard (sacrifice) - should unregister trigger
-          db-after-leave (zones/move-to-zone db-with-trigger obj-id :graveyard)
+          db-after-leave (zones/move-to-zone* db-with-trigger obj-id :graveyard)
           ;; Find CoB triggers after leave
           cob-triggers-after (filter #(= :permanent-tapped (:trigger/event-type %))
                                      (trigger-db/get-all-triggers db-after-leave))]
@@ -198,7 +198,7 @@
           _ (is (= 1 (count (q/get-all-stack-items db-after-tap)))
                 "Trigger on stack")
           ;; Sacrifice CoB with trigger on stack (unregisters future triggers)
-          db-after-sacrifice (zones/move-to-zone db-after-tap obj-id :graveyard)
+          db-after-sacrifice (zones/move-to-zone* db-after-tap obj-id :graveyard)
           _ (is (= :graveyard (:object/zone (q/get-object db-after-sacrifice obj-id)))
                 "CoB is in graveyard")
           ;; Resolve trigger - should still deal damage even though source is gone

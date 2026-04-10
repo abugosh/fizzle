@@ -492,7 +492,7 @@
           [db obj-id] (th/add-card-to-zone db :xantid-swarm :hand :player-1)
           hand-keys (pull-stored-keys db obj-id)
           ;; Move to battlefield
-          db-bf (zones/move-to-zone db obj-id :battlefield)
+          db-bf (zones/move-to-zone* db obj-id :battlefield)
           bf-keys (pull-stored-keys db-bf obj-id)
           ;; Keys added by move-to-zone
           added-keys (cset/difference bf-keys hand-keys)]
@@ -507,7 +507,7 @@
           [db obj-id] (th/add-card-to-zone db :xantid-swarm :battlefield :player-1)
           bf-keys (pull-stored-keys db obj-id)
           ;; Move out of battlefield to graveyard
-          db-gy (zones/move-to-zone db obj-id :graveyard)
+          db-gy (zones/move-to-zone* db obj-id :graveyard)
           gy-keys (pull-stored-keys db-gy obj-id)
           removed-keys (cset/difference bf-keys gy-keys)]
       (is (contains? removed-keys :object/summoning-sick)

@@ -218,7 +218,7 @@
           db (mana/add-mana db :player-1 {:blue 1})
           db-cast (th/cast-with-target db :player-1 annul-id petal-id)
           ;; Simulate petal resolving first: move to battlefield (permanent)
-          db-petal-resolved (zones/move-to-zone db-cast petal-id :battlefield)
+          db-petal-resolved (zones/move-to-zone* db-cast petal-id :battlefield)
           ;; Resolve Annul — target left stack, should fizzle
           result (resolution/resolve-one-item db-petal-resolved)
           db-resolved (:db result)]

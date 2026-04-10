@@ -15,7 +15,7 @@
     (let [db (init-game-state)
           hand (q/get-hand db :player-1)
           object-id (:object/id (first hand))
-          db' (zones/move-to-zone db object-id :stack)]
+          db' (zones/move-to-zone* db object-id :stack)]
       (is (= :stack (:object/zone (q/get-object db' object-id))))
       (is (empty? (q/get-hand db' :player-1)))
       (is (= 1 (count (q/get-objects-in-zone db' :player-1 :stack)))))))
@@ -27,8 +27,8 @@
           hand (q/get-hand db :player-1)
           object-id (:object/id (first hand))
           db' (-> db
-                  (zones/move-to-zone object-id :stack)
-                  (zones/move-to-zone object-id :graveyard))]
+                  (zones/move-to-zone* object-id :stack)
+                  (zones/move-to-zone* object-id :graveyard))]
       (is (= :graveyard (:object/zone (q/get-object db' object-id))))
       (is (empty? (q/get-objects-in-zone db' :player-1 :stack)))
       (is (= 1 (count (q/get-objects-in-zone db' :player-1 :graveyard)))))))
@@ -40,7 +40,7 @@
           hand (q/get-hand db :player-1)
           object-id (:object/id (first hand))
           original-obj (q/get-object db object-id)
-          db' (zones/move-to-zone db object-id :stack)
+          db' (zones/move-to-zone* db object-id :stack)
           moved-obj (q/get-object db' object-id)]
       (is (= (:object/owner original-obj) (:object/owner moved-obj)))
       (is (= (:object/controller original-obj) (:object/controller moved-obj)))
@@ -52,7 +52,7 @@
     (let [db (init-game-state)
           hand (q/get-hand db :player-1)
           object-id (:object/id (first hand))
-          db' (zones/move-to-zone db object-id :hand)]
+          db' (zones/move-to-zone* db object-id :hand)]
       (is (= db db') "Same-zone move should be exact no-op")
       (is (= :hand (:object/zone (q/get-object db' object-id))))
       (is (= 1 (count (q/get-hand db' :player-1)))))))
@@ -63,7 +63,7 @@
     (let [db (init-game-state)
           hand (q/get-hand db :player-1)
           object-id (:object/id (first hand))
-          db' (zones/move-to-zone db object-id :battlefield)]
+          db' (zones/move-to-zone* db object-id :battlefield)]
       (is (= :battlefield (:object/zone (q/get-object db' object-id))))
       (is (= 1 (count (q/get-objects-in-zone db' :player-1 :battlefield)))))))
 
@@ -73,7 +73,7 @@
     (let [db (init-game-state)
           hand (q/get-hand db :player-1)
           object-id (:object/id (first hand))
-          db' (zones/move-to-zone db object-id :exile)]
+          db' (zones/move-to-zone* db object-id :exile)]
       (is (= :exile (:object/zone (q/get-object db' object-id))))
       (is (= 1 (count (q/get-objects-in-zone db' :player-1 :exile)))))))
 
@@ -84,14 +84,14 @@
           hand (q/get-hand db :player-1)
           object-id (:object/id (first hand))
           ;; Move to battlefield, then tap it
-          db' (zones/move-to-zone db object-id :battlefield)
+          db' (zones/move-to-zone* db object-id :battlefield)
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]]
                        db' object-id)
           db-tapped (d/db-with db' [[:db/add obj-eid :object/tapped true]])
           _ (is (true? (:object/tapped (q/get-object db-tapped object-id)))
                 "Precondition: object is tapped on battlefield")
           ;; Move to graveyard (should reset tapped)
-          db-gy (zones/move-to-zone db-tapped object-id :graveyard)
+          db-gy (zones/move-to-zone* db-tapped object-id :graveyard)
           _ (is (false? (:object/tapped (q/get-object db-gy object-id)))
                 "Precondition: tapped reset when leaving battlefield")
           ;; Manually set tapped true in graveyard (simulating stale state)
@@ -101,7 +101,7 @@
           _ (is (true? (:object/tapped (q/get-object db-gy-tapped object-id)))
                 "Precondition: object has tapped=true in graveyard")
           ;; Move back to battlefield — should enter untapped
-          db-back (zones/move-to-zone db-gy-tapped object-id :battlefield)]
+          db-back (zones/move-to-zone* db-gy-tapped object-id :battlefield)]
       (is (= :battlefield (:object/zone (q/get-object db-back object-id))))
       (is (false? (:object/tapped (q/get-object db-back object-id)))
           "Permanent should enter battlefield untapped (MTG rule 110.6)"))))
@@ -261,7 +261,7 @@
           hand (q/get-hand db :player-1)
           obj-id (:object/id (first hand))
           ;; Move to battlefield first
-          db-bf (zones/move-to-zone db obj-id :battlefield)
+          db-bf (zones/move-to-zone* db obj-id :battlefield)
           ;; Create a Datascript trigger entity linked to this object
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db-bf obj-id)
           player-eid (d/q '[:find ?e . :where [?e :player/id :player-1]] db-bf)
@@ -276,7 +276,7 @@
           _ (is (= (+ before-trigger-count 1) (count (trigger-db/get-all-triggers db-with-trigger)))
                 "Precondition: trigger should exist")
           ;; Move off battlefield to graveyard
-          db-gy (zones/move-to-zone db-with-trigger obj-id :graveyard)]
+          db-gy (zones/move-to-zone* db-with-trigger obj-id :graveyard)]
       ;; Card trigger should be retracted; turn-based triggers remain
       (is (= before-trigger-count (count (trigger-db/get-all-triggers db-gy)))
           "Card trigger should be retracted when source leaves battlefield")
@@ -304,7 +304,7 @@
                                                 :trigger/source other-eid
                                                 :trigger/controller player-eid}]}])
           ;; Move hand card to graveyard (not from battlefield)
-          db-gy (zones/move-to-zone db obj-id :graveyard)]
+          db-gy (zones/move-to-zone* db obj-id :graveyard)]
       ;; Trigger for other source should still exist (+1 over baseline)
       (is (= (+ before-count 1) (count (trigger-db/get-all-triggers db-gy)))
           "Trigger for other source should survive non-battlefield zone change"))))

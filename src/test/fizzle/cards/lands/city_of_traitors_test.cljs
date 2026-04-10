@@ -226,7 +226,7 @@
           _ (is (= 1 (count (q/get-all-stack-items db-after-island)))
                 "Precondition: trigger on stack")
           ;; Manually sacrifice CoT (simulating response)
-          db-after-sacrifice (zones/move-to-zone db-after-island cot-id :graveyard)
+          db-after-sacrifice (zones/move-to-zone* db-after-island cot-id :graveyard)
           _ (is (= :graveyard (:object/zone (q/get-object db-after-sacrifice cot-id)))
                 "Precondition: CoT in graveyard before trigger resolves")
           ;; Resolve the trigger - should handle gracefully

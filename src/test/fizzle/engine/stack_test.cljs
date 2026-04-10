@@ -343,7 +343,7 @@
           stack-item (stack/get-stack-item-by-object-ref db' obj-eid)]
       (is (some? stack-item) "Stack-item exists before resolution")
       ;; Resolve the spell - this moves the object off the stack
-      ;; When an object leaves the stack via zones/move-to-zone, any associated
+      ;; When an object leaves the stack via zones/move-to-zone*, any associated
       ;; stack-item is automatically cleaned up (see zones.cljs move-to-zone)
       (let [db-resolved (rules/resolve-spell db' :player-1 object-id)]
         ;; Stack-item should be removed because object left the stack

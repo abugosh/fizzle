@@ -144,7 +144,7 @@
           ;; Verify 3/3 with threshold
           _ (is (= 3 (creatures/effective-power db obj-id)))
           ;; Remove a card from graveyard to break threshold
-          db (zones/move-to-zone db (first gy-ids) :exile)]
+          db (zones/move-to-zone* db (first gy-ids) :exile)]
       (is (= 1 (creatures/effective-power db obj-id))
           "Power should drop to 1 without threshold")
       (is (= 1 (creatures/effective-toughness db obj-id))

@@ -16,7 +16,7 @@
     [fizzle.engine.resolution :as resolution]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.validation :as validation]
-    [fizzle.engine.zones :as zones]
+    [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.events.selection.spec :as sel-spec]
     [fizzle.history.descriptions :as descriptions]))
 
@@ -185,7 +185,7 @@
   (let [selected (:selection/selected selection)
         target-zone (:selection/target-zone selection)]
     {:db (reduce (fn [gdb obj-id]
-                   (zones/move-to-zone gdb obj-id target-zone))
+                   (zone-change-dispatch/move-to-zone gdb obj-id target-zone))
                  game-db
                  selected)}))
 

@@ -15,7 +15,7 @@
     [fizzle.engine.conditions :as conditions]
     [fizzle.engine.creatures :as creatures]
     [fizzle.engine.stack :as stack]
-    [fizzle.engine.zones :as zones]))
+    [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]))
 
 
 (defmulti check-sba
@@ -202,7 +202,7 @@
   [db sba]
   (let [object-id (:sba/target sba)]
     (if (q/get-object-eid db object-id)
-      (zones/move-to-zone db object-id :graveyard)
+      (zone-change-dispatch/move-to-zone db object-id :graveyard)
       db)))
 
 
@@ -228,7 +228,7 @@
   [db sba]
   (let [object-id (:sba/target sba)]
     (if (q/get-object-eid db object-id)
-      (zones/move-to-zone db object-id :graveyard)
+      (zone-change-dispatch/move-to-zone db object-id :graveyard)
       db)))
 
 

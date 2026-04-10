@@ -292,7 +292,7 @@
           targets {:target-enchantment enchant-id}
           requirements (targeting/get-targeting-requirements ray/card)
           ;; Target is removed before resolution (e.g., destroyed by another spell)
-          db-target-removed (zones/move-to-zone db enchant-id :graveyard)]
+          db-target-removed (zones/move-to-zone* db enchant-id :graveyard)]
       ;; Verify target is no longer legal
       (is (false? (targeting/all-targets-legal? db-target-removed targets requirements))
           "Target should no longer be legal after being removed"))))

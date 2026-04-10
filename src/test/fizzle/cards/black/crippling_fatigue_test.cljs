@@ -30,7 +30,7 @@
   "Add a creature card to the battlefield with proper creature fields set."
   [db card-id owner]
   (let [[db obj-id] (th/add-card-to-zone db card-id :hand owner)
-        db (zones/move-to-zone db obj-id :battlefield)]
+        db (zones/move-to-zone* db obj-id :battlefield)]
     [db obj-id]))
 
 
@@ -121,7 +121,7 @@
           ;; SBAs fire via :db effect handler in production; call manually in tests
           db (sba/check-and-execute-sbas db)]
       ;; SBA detects creature with 0 toughness and moves it to graveyard.
-      ;; After zones/move-to-zone to graveyard, object/power and object/toughness
+      ;; After zones/move-to-zone* to graveyard, object/power and object/toughness
       ;; are retracted; the grant stays on the object in graveyard.
       (is (= :graveyard (:object/zone (q/get-object db creature-id)))
           "2/2 creature killed by -2/-2 should be moved to graveyard by SBA"))))

@@ -229,7 +229,7 @@
           [db [sorcery-id]] (th/add-cards-to-graveyard db [:careful-study] :player-1)
           db-cast (th/cast-with-target db :player-1 recoup-id sorcery-id)
           ;; Remove the target before resolution (simulate Tormod's Crypt)
-          db-target-exiled (zones/move-to-zone db-cast sorcery-id :exile)
+          db-target-exiled (zones/move-to-zone* db-cast sorcery-id :exile)
           db-resolved (:db (resolution/resolve-one-item db-target-exiled))]
       ;; Recoup should be in graveyard (fizzled, not flashback cast)
       (is (= :graveyard (th/get-object-zone db-resolved recoup-id))
@@ -248,7 +248,7 @@
           ;; Target sorcery1
           db-cast (th/cast-with-target db :player-1 recoup-id sorcery1-id)
           ;; Remove sorcery1 (even though sorcery2 still exists)
-          db-target-exiled (zones/move-to-zone db-cast sorcery1-id :exile)
+          db-target-exiled (zones/move-to-zone* db-cast sorcery1-id :exile)
           db-resolved (:db (resolution/resolve-one-item db-target-exiled))]
       ;; Recoup fizzles (target invalid)
       (is (= :graveyard (th/get-object-zone db-resolved recoup-id))

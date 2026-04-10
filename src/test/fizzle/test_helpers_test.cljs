@@ -420,7 +420,7 @@
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :nimble-mongoose :battlefield :player-1)
           ;; Move to graveyard (simulates creature dying)
-          db-after (zones/move-to-zone db' obj-id :graveyard)
+          db-after (zones/move-to-zone* db' obj-id :graveyard)
           obj (q/get-object db-after obj-id)]
       (is (= 1 (:object/power obj))
           "Creature after leaving battlefield should have reset :object/power (not nil)")
@@ -433,7 +433,7 @@
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :nimble-mongoose :hand :player-1)
           ;; Move to battlefield from hand (ETB)
-          db-after (zones/move-to-zone db' obj-id :battlefield)
+          db-after (zones/move-to-zone* db' obj-id :battlefield)
           obj (q/get-object db-after obj-id)]
       (is (= 1 (:object/power obj))
           "Creature on battlefield should have :object/power")

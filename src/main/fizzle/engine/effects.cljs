@@ -239,7 +239,7 @@
           (let [cast-mode (:object/cast-mode obj)
                 mode-destination (:mode/on-resolve cast-mode)
                 destination (if (= :exile mode-destination) :exile :graveyard)]
-            (zones/move-to-zone db target-id destination))))
+            (zones/move-to-zone* db target-id destination))))
       db)))
 
 

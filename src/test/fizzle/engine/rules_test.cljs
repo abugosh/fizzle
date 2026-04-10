@@ -41,7 +41,7 @@
           ritual (first hand)
           obj-id (:object/id ritual)
           ;; Move card to stack (simulating cast without using cast-spell)
-          db' (zones/move-to-zone db obj-id :stack)]
+          db' (zones/move-to-zone* db obj-id :stack)]
       ;; Card is on stack, not in hand - should return false
       (is (false? (rules/can-cast? db' :player-1 obj-id))))))
 
@@ -705,7 +705,7 @@
           ritual (first hand)
           obj-id (:object/id ritual)
           ;; Move Dark Ritual (no flashback) to graveyard
-          db' (zones/move-to-zone db obj-id :graveyard)
+          db' (zones/move-to-zone* db obj-id :graveyard)
           modes (rules/get-casting-modes db' :player-1 obj-id)]
       (is (empty? modes)
           "Should return empty vector - Dark Ritual can't be cast from graveyard"))))
@@ -877,7 +877,7 @@
       ;; Wrong zone - should be false
       (let [db' (-> db
                     (mana/add-mana :player-1 {:black 1})
-                    (zones/move-to-zone (:object/id ritual) :graveyard))]
+                    (zones/move-to-zone* (:object/id ritual) :graveyard))]
         (is (false? (rules/can-cast? db' :player-1 (:object/id ritual)))
             "can-cast? should return false when card not in hand (no flashback)")))))
 

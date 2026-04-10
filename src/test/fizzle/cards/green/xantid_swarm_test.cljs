@@ -30,7 +30,7 @@
    from the object creation)."
   [db card-id owner]
   (let [[db obj-id] (th/add-card-to-zone db card-id :hand owner)
-        db (zones/move-to-zone db obj-id :battlefield)]
+        db (zones/move-to-zone* db obj-id :battlefield)]
     [db obj-id]))
 
 
@@ -395,7 +395,7 @@
           ;; Add Xantid Swarm for the bot (player-2) with direct battlefield placement
           [db obj-id] (th/add-card-to-zone db :xantid-swarm :hand :player-2)
           ;; Cast resolves and registers triggers in Datascript
-          db (zones/move-to-zone db obj-id :battlefield)
+          db (zones/move-to-zone* db obj-id :battlefield)
           ;; Register triggers manually for the battlefield object
           ;; (simulating what move-resolved-spell does for cast permanents)
           obj-eid (q/get-object-eid db obj-id)
