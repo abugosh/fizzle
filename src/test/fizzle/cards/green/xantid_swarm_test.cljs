@@ -15,7 +15,6 @@
     [fizzle.engine.events :as game-events]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.rules :as rules]
-    [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.engine.zones :as zones]
     [fizzle.events.resolution :as resolution]
@@ -392,17 +391,10 @@
   (testing "Bot-controlled Xantid Swarm restricts the human player when it attacks"
     (let [db (th/create-test-db)
           db (th/add-opponent db {:bot-archetype :burn})
-          ;; Add Xantid Swarm for the bot (player-2) with direct battlefield placement
-          [db obj-id] (th/add-card-to-zone db :xantid-swarm :hand :player-2)
-          ;; Cast resolves and registers triggers in Datascript
-          db (zones/move-to-zone* db obj-id :battlefield)
-          ;; Register triggers manually for the battlefield object
-          ;; (simulating what move-resolved-spell does for cast permanents)
-          obj-eid (q/get-object-eid db obj-id)
-          p2-eid (q/get-player-eid db :player-2)
-          card-triggers (:card/triggers xantid-swarm/card)
-          tx (trigger-db/create-triggers-for-card-tx db obj-eid p2-eid card-triggers)
-          db (d/db-with db tx)
+          ;; Add Xantid Swarm for the bot (player-2) directly on battlefield.
+          ;; th/add-card-to-zone uses build-object-tx — the single registration
+          ;; chokepoint that includes trigger entities inline.
+          [db obj-id] (th/add-card-to-zone db :xantid-swarm :battlefield :player-2)
           db (clear-summoning-sickness db obj-id)
           ;; Dispatch creature-attacked event as player-2 controller
           event (game-events/creature-attacked-event obj-id :player-2)

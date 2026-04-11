@@ -154,7 +154,10 @@
                     (assoc :trigger/description (:trigger/description ct))
 
                     (:trigger/match ct)
-                    (assoc :trigger/match (:trigger/match ct)))))
+                    (assoc :trigger/match (:trigger/match ct))
+
+                    (:trigger/active-zone ct)
+                    (assoc :trigger/active-zone (:trigger/active-zone ct)))))
               card-triggers)]
     [{:db/id object-eid
       :object/triggers trigger-entities}]))

@@ -6,7 +6,6 @@
     [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.state-based :as state-based]
-    [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.turn-based :as turn-based]
     [fizzle.events.lands :as lands]
     [fizzle.events.phases :as phases]
@@ -29,31 +28,11 @@
 
 (defn add-land-to-battlefield
   "Add a land card to the battlefield for a player.
-   Also creates Datascript trigger entities for cards with triggers.
+   Uses th/add-card-to-zone which calls build-object-tx — the single
+   registration chokepoint that includes trigger entities inline.
    Returns [db object-id] tuple."
   [db card-id player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        card-eid (d/q '[:find ?e .
-                        :in $ ?cid
-                        :where [?e :card/id ?cid]]
-                      db card-id)
-        obj-id (random-uuid)]
-    (d/transact! conn [{:object/id obj-id
-                        :object/card card-eid
-                        :object/zone :battlefield
-                        :object/owner player-eid
-                        :object/controller player-eid
-                        :object/tapped false}])
-    ;; Create Datascript trigger entities for this card
-    (let [result-db @conn
-          card (d/pull result-db '[*] card-eid)]
-      (when (seq (:card/triggers card))
-        (let [obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]]
-                           result-db obj-id)
-              tx (trigger-db/create-triggers-for-card-tx result-db obj-eid player-eid (:card/triggers card))]
-          (d/transact! conn tx))))
-    [@conn obj-id]))
+  (th/add-card-to-zone db card-id :battlefield player-id))
 
 
 (defn get-object-tapped

@@ -178,6 +178,45 @@
       (is (= {:exclude-self true} (:trigger/filter (first triggers)))))))
 
 
+(deftest test-create-triggers-for-card-tx-propagates-active-zone
+  (testing "creates triggers with :trigger/active-zone when card trigger has it"
+    (let [db (init-game-state)
+          player-eid (get-player-eid db)
+          [db obj-eid] (transact-object db player-eid)
+          card-triggers [{:trigger/type :zone-change
+                          :trigger/active-zone :graveyard
+                          :trigger/filter {}
+                          :trigger/effects [{:effect/type :shuffle-from-graveyard-to-library}]}]
+          tx (trigger-db/create-triggers-for-card-tx db obj-eid player-eid card-triggers)
+          conn (d/conn-from-db db)
+          _ (d/transact! conn tx)
+          new-db @conn
+          triggers (filter #(= :zone-change (:trigger/event-type %))
+                           (trigger-db/get-all-triggers new-db))]
+      (is (= 1 (count triggers)))
+      (let [t (first triggers)]
+        (is (= :graveyard (:trigger/active-zone t))
+            "active-zone :graveyard should be propagated from card trigger data")))))
+
+
+(deftest test-create-triggers-for-card-tx-no-active-zone-absent
+  (testing "creates triggers without :trigger/active-zone when card trigger lacks it"
+    (let [db (init-game-state)
+          player-eid (get-player-eid db)
+          [db obj-eid] (transact-object db player-eid)
+          card-triggers [{:trigger/type :becomes-tapped
+                          :trigger/effects [{:effect/type :deal-damage :effect/amount 1}]}]
+          tx (trigger-db/create-triggers-for-card-tx db obj-eid player-eid card-triggers)
+          conn (d/conn-from-db db)
+          _ (d/transact! conn tx)
+          new-db @conn
+          triggers (filter #(= :permanent-tapped (:trigger/event-type %))
+                           (trigger-db/get-all-triggers new-db))]
+      (is (= 1 (count triggers)))
+      (is (nil? (:trigger/active-zone (first triggers)))
+          "No :trigger/active-zone field should be stored when card trigger omits it"))))
+
+
 (deftest test-create-triggers-for-card-tx-links-object
   (testing "trigger entities are linked to source object via :object/triggers"
     (let [db (init-game-state)
