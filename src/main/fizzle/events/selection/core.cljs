@@ -304,11 +304,15 @@
     (if (:needs-selection remaining-result)
       ;; Interactive effect in remaining-effects: build next selection, defer cleanup.
       ;; The spell stays on stack; cleanup happens after the final selection resolves.
+      ;; Propagate source-type from parent selection so cleanup uses the correct branch.
       (let [next-effect (:needs-selection remaining-result)
             further-remaining (vec (:remaining-effects remaining-result))
             next-sel (build-selection-for-effect (:db remaining-result) player-id object-id
                                                  next-effect further-remaining)
-            next-sel (cond-> next-sel on-complete (assoc :selection/on-complete on-complete))]
+            next-sel (cond-> next-sel
+                       (not (:selection/source-type next-sel))
+                       (assoc :selection/source-type (:selection/source-type selection))
+                       on-complete (assoc :selection/on-complete on-complete))]
         (-> app-db
             (assoc :game/db (:db remaining-result))
             (sel-spec/set-pending-selection next-sel)))
@@ -344,11 +348,14 @@
 
 (defn- chaining-path
   "Chaining lifecycle: call build-chain-selection. If it returns a selection,
-   chain to it. If nil, fall through to standard path."
+   chain to it. If nil, fall through to standard path.
+   Propagates :selection/source-type from parent so cleanup uses the correct branch."
   [app-db result selection on-complete]
   (let [next-sel (build-chain-selection (:db result) selection)]
     (if next-sel
       (let [chained-sel (cond-> next-sel
+                          (not (:selection/source-type next-sel))
+                          (assoc :selection/source-type (:selection/source-type selection))
                           on-complete (assoc :selection/on-complete on-complete))]
         (-> app-db
             (assoc :game/db (:db result))

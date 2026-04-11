@@ -42,12 +42,16 @@
         ;; Non-spell stack items (activated abilities, triggered abilities)
         ;; don't have an object-ref — use :stack-item source type so
         ;; cleanup-selection-source removes the stack-item directly.
-        sel (if (not (:stack-item/object-ref stack-item))
-              (-> sel
-                  (dissoc :selection/spell-id)
-                  (assoc :selection/stack-item-eid stack-item-eid
-                         :selection/source-type :stack-item))
-              sel)]
+        ;; Spell stack items get :spell source type so cleanup knows to
+        ;; call move-resolved-spell after removing the stack-item.
+        ;; Guard: sel can be nil when builder returns nil (e.g., empty library).
+        sel (when sel
+              (if (not (:stack-item/object-ref stack-item))
+                (-> sel
+                    (dissoc :selection/spell-id)
+                    (assoc :selection/stack-item-eid stack-item-eid
+                           :selection/source-type :stack-item))
+                (assoc sel :selection/source-type :spell)))]
     {:db (:db result) :pending-selection sel}))
 
 

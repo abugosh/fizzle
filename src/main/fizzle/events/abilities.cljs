@@ -226,10 +226,11 @@
     ;; Has targeting (no sacrifice) - pause for target selection (don't pay costs yet)
     (seq (targeting/get-targeting-requirements ability))
     {:db db
-     :pending-selection (build-ability-target-selection
-                          db player-id object-id ability-index
-                          (first (targeting/get-targeting-requirements ability)) {}
-                          (vec (rest (targeting/get-targeting-requirements ability))))}
+     :pending-selection (assoc (build-ability-target-selection
+                                 db player-id object-id ability-index
+                                 (first (targeting/get-targeting-requirements ability)) {}
+                                 (vec (rest (targeting/get-targeting-requirements ability))))
+                               :selection/source-type :ability)}
 
     ;; Has generic mana cost - enter mana allocation
     (and (:mana (:ability/cost ability))

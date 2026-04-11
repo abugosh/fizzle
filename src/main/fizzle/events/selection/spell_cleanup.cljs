@@ -23,43 +23,30 @@
 
 (defn cleanup-selection-source
   "Clean up the source of a resolved selection.
-   Handles 2 source types:
-   - :stack-item → remove the stack-item entity
-   - nil/spell → remove stack-item first (needs object EID), then move spell
-                  off stack via resolution/move-resolved-spell (single source
-                  of truth for copy vs non-copy zone transitions)"
+   Dispatches on explicit :selection/source-type with 3 branches:
+
+   - :ability  → remove the stack-item entity (no spell zone transition)
+   - :spell    → remove stack-item + move spell via move-resolved-spell
+                  (idempotent: zone guard in move-resolved-spell handles
+                   already-moved spells such as those moved by :exile-self)
+   - default   → nil/unknown source-type: no-op (legacy path, non-spell
+                  selections, or selections that don't own a source)"
   [game-db selection]
-  (let [source-type (:selection/source-type selection)]
-    (if (= source-type :stack-item)
-      (let [si-eid (:selection/stack-item-eid selection)]
-        (stack/remove-stack-item game-db si-eid))
-      (let [spell-id (:selection/spell-id selection)
-            spell-obj (when spell-id (queries/get-object game-db spell-id))
-            current-zone (:object/zone spell-obj)]
-        (cond
-          ;; No spell-id: nothing to clean up (e.g., finalized selection without spell context)
-          (nil? spell-id)
-          game-db
+  (case (:selection/source-type selection)
+    ;; :stack-item is the legacy non-spell source type (abilities/triggers via non-object-ref).
+    ;; Both :ability and :stack-item just remove the stack-item — no spell move needed.
+    (:ability :stack-item)
+    (let [si-eid (:selection/stack-item-eid selection)]
+      (stack/remove-stack-item game-db si-eid))
 
-          ;; Spell object already removed (e.g., copy that ceased to exist)
-          (nil? spell-obj)
-          game-db
+    :spell
+    (let [spell-id (:selection/spell-id selection)]
+      (if (nil? spell-id)
+        ;; Guard: routing bug produced :spell source-type with no spell-id
+        game-db
+        (-> game-db
+            (remove-spell-stack-item spell-id)
+            (resolution/move-resolved-spell spell-id (queries/get-object game-db spell-id)))))
 
-          ;; Spell on stack: normal cleanup path
-          (= current-zone :stack)
-          (-> game-db
-              (remove-spell-stack-item spell-id)
-              (resolution/move-resolved-spell spell-id spell-obj))
-
-          ;; Spell already moved off stack by its own effects (exile-self, graveyard).
-          ;; This is expected when effects like :exile-self run before cleanup.
-          ;; Warn on non-exile/non-graveyard zones since those likely indicate a
-          ;; routing bug (e.g., ETB trigger mis-routed through spell cleanup path).
-          :else
-          (do
-            (when-not (contains? #{:exile :graveyard} current-zone)
-              (js/console.warn
-                (str "cleanup-selection-source: spell " spell-id
-                     " is in zone " current-zone " (not :stack). "
-                     "If this is not expected, check build-selection-from-result routing.")))
-            game-db))))))
+    ;; default: nil/unknown source-type — no-op
+    game-db))
