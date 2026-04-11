@@ -1,5 +1,6 @@
 (ns fizzle.engine.zone-change-dispatch
-  "Public move-to-zone entry point that dispatches :zone-change trigger events.
+  "Public move-to-zone entry point that dispatches :zone-change trigger events
+   and :land-entered trigger events when a land enters the battlefield.
 
    Lives outside the zones→trigger-dispatch→triggers→effects→zones cycle.
    All callers should use this namespace's move-to-zone instead of zones/move-to-zone*
@@ -8,7 +9,10 @@
    Exception: engine/effects.cljs cannot use this namespace (would create a cycle
    through triggers→effects) and therefore uses zones/move-to-zone* directly.
    That path (counter-spell zone changes) is acceptable — countered spells moving
-   to graveyard from stack do not trigger zone-change abilities in Premodern combo."
+   to graveyard from stack do not trigger zone-change abilities in Premodern combo.
+
+   NOTE: Cannot require engine/rules here — rules requires zone-change-dispatch
+   (circular). Land type check is inlined."
   (:require
     [fizzle.db.queries :as q]
     [fizzle.engine.events :as events]
@@ -43,6 +47,20 @@
     ;; Only dispatch if the zone actually changed (move-to-zone* short-circuits no-ops)
     (if (= from-zone new-zone)
       db'
-      (trigger-dispatch/dispatch-event
-        db'
-        (events/zone-change-event object-id from-zone new-zone)))))
+      (let [db-after-zone-change (trigger-dispatch/dispatch-event
+                                   db'
+                                   (events/zone-change-event object-id from-zone new-zone))]
+        ;; Additionally dispatch :land-entered when a land enters the battlefield.
+        ;; Cannot use rules/land-card? here (circular dep: rules → zone-change-dispatch),
+        ;; so we inline the land type check.
+        (if (= new-zone :battlefield)
+          (let [obj (q/get-object db' object-id)
+                card-types (:card/types (:object/card obj))]
+            (if (contains? (set card-types) :land)
+              (let [controller-eid (:db/id (:object/controller obj))
+                    controller-id (q/get-player-id db' controller-eid)]
+                (trigger-dispatch/dispatch-event
+                  db-after-zone-change
+                  (events/land-entered-event object-id controller-id)))
+              db-after-zone-change))
+          db-after-zone-change)))))

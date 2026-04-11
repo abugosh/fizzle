@@ -5,10 +5,8 @@
     [datascript.core :as d]
     [fizzle.db.queries :as queries]
     [fizzle.engine.effects :as effects]
-    [fizzle.engine.events :as game-events]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.trigger-db :as trigger-db]
-    [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
@@ -29,10 +27,11 @@
    Pure function: (db, player-id, object-id) -> db
 
    Validates via rules/can-play-land?, then:
-   1. Moves land to battlefield and decrements land plays
-   2. Registers card triggers
-   3. Fires ETB effects from :card/etb-effects
-   4. Dispatches :land-entered event for triggers like City of Traitors
+   1. Moves land to battlefield (zone-change-dispatch/move-to-zone dispatches
+      both :zone-change and :land-entered triggers at the chokepoint)
+   2. Decrements land plays
+   3. Registers card triggers
+   4. Fires ETB effects from :card/etb-effects
 
    Returns unchanged db if validation fails."
   [db player-id object-id]
@@ -65,7 +64,9 @@
                                  db-after-triggers
                                  etb-effects)
                          db-after-triggers)]
-      (dispatch/dispatch-event db-after-etb (game-events/land-entered-event object-id player-id)))))
+      ;; :land-entered is now dispatched from the zone-change-dispatch/move-to-zone chokepoint
+      ;; (called above via zone-change-dispatch/move-to-zone). No explicit dispatch needed here.
+      db-after-etb)))
 
 
 (rf/reg-event-db

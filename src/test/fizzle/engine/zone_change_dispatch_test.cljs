@@ -205,6 +205,76 @@
 
 
 ;; =====================================================
+;; :land-entered dispatch from move-to-zone chokepoint
+;; =====================================================
+
+(deftest land-entered-fires-when-land-moves-to-battlefield-via-chokepoint
+  (testing "move-to-zone dispatches :land-entered when a land enters the battlefield"
+    (let [db (th/create-test-db)
+          [db island-id] (th/add-card-to-zone db :island :hand :player-1)
+          player-eid (q/get-player-eid db :player-1)
+          ;; Register a :land-entered trigger to observe the event
+          trigger-tx (trigger-db/create-trigger-tx
+                       {:trigger/event-type :land-entered
+                        :trigger/controller player-eid
+                        :trigger/filter {}
+                        :trigger/uses-stack? true
+                        :trigger/effects [{:effect/type :draw :effect/amount 0}]})
+          db (d/db-with db trigger-tx)
+          stack-before (count (get-stack-items db))
+          ;; Call chokepoint directly — NOT through events/lands/play-land
+          db-after (zone-change-dispatch/move-to-zone db island-id :battlefield)
+          stack-after (count (get-stack-items db-after))]
+      (is (= 0 stack-before) "Precondition: stack starts empty")
+      (is (= 1 (- stack-after stack-before))
+          ":land-entered trigger fires when land enters battlefield via chokepoint"))))
+
+
+(deftest land-entered-does-not-fire-for-non-land-entering-battlefield
+  (testing "move-to-zone does NOT dispatch :land-entered for a non-land card entering battlefield"
+    (let [db (th/create-test-db)
+          [db spell-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          player-eid (q/get-player-eid db :player-1)
+          ;; Register :land-entered trigger
+          trigger-tx (trigger-db/create-trigger-tx
+                       {:trigger/event-type :land-entered
+                        :trigger/controller player-eid
+                        :trigger/filter {}
+                        :trigger/uses-stack? true
+                        :trigger/effects [{:effect/type :draw :effect/amount 0}]})
+          db (d/db-with db trigger-tx)
+          stack-before (count (get-stack-items db))
+          ;; Move a non-land to battlefield
+          db-after (zone-change-dispatch/move-to-zone db spell-id :battlefield)
+          stack-after (count (get-stack-items db-after))]
+      (is (= 0 stack-before) "Precondition: stack starts empty")
+      (is (= 0 (- stack-after stack-before))
+          ":land-entered trigger must NOT fire when non-land card enters battlefield"))))
+
+
+(deftest land-entered-does-not-fire-when-land-moves-to-non-battlefield-zone
+  (testing "move-to-zone does NOT dispatch :land-entered when a land moves to graveyard"
+    (let [db (th/create-test-db)
+          [db island-id] (th/add-card-to-zone db :island :hand :player-1)
+          player-eid (q/get-player-eid db :player-1)
+          ;; Register :land-entered trigger
+          trigger-tx (trigger-db/create-trigger-tx
+                       {:trigger/event-type :land-entered
+                        :trigger/controller player-eid
+                        :trigger/filter {}
+                        :trigger/uses-stack? true
+                        :trigger/effects [{:effect/type :draw :effect/amount 0}]})
+          db (d/db-with db trigger-tx)
+          stack-before (count (get-stack-items db))
+          ;; Move land to graveyard — should NOT fire :land-entered
+          db-after (zone-change-dispatch/move-to-zone db island-id :graveyard)
+          stack-after (count (get-stack-items db-after))]
+      (is (= 0 stack-before) "Precondition: stack starts empty")
+      (is (= 0 (- stack-after stack-before))
+          ":land-entered must NOT fire when land moves to graveyard (only :battlefield)"))))
+
+
+;; =====================================================
 ;; Mulligan non-crash test (real production path)
 ;; =====================================================
 
