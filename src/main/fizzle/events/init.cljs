@@ -10,6 +10,7 @@
     [fizzle.engine.card-spec :as card-spec]
     [fizzle.engine.cards :as cards]
     [fizzle.engine.objects :as objects]
+    [fizzle.engine.trigger-db :as trigger-db]
     [re-frame.core :as rf]))
 
 
@@ -88,6 +89,26 @@
           (map-indexed (fn [i card-id] (make-obj card-id :library i)) library-ids))))
 
 
+(defn- register-card-triggers
+  "Register triggers for all game objects that have :card/triggers.
+   Called once at init after all objects are created. The trigger match
+   system handles zone filtering — registering triggers for cards in any
+   zone is safe and correct."
+  [conn]
+  (let [db @conn
+        objects-with-triggers (d/q '[:find ?obj-eid ?owner-eid
+                                     :where
+                                     [?obj-eid :object/card ?card-eid]
+                                     [?obj-eid :object/owner ?owner-eid]
+                                     [?card-eid :card/triggers ?_]]
+                                   db)]
+    (doseq [[obj-eid owner-eid] objects-with-triggers]
+      (let [card-eid (:db/id (:object/card (d/entity db obj-eid)))
+            card (d/pull db [:card/triggers] card-eid)]
+        (d/transact! conn (trigger-db/create-triggers-for-card-tx
+                            @conn obj-eid owner-eid (:card/triggers card)))))))
+
+
 (defn init-game-state
   "Initialize a fresh game state from config.
    Config keys:
@@ -124,6 +145,7 @@
       (when (seq sb-card-ids)
         (d/transact! conn (objects-tx @conn sb-card-ids :sideboard player-eid
                                       (repeatedly (count sb-card-ids) random-uuid)))))
+    (register-card-triggers conn)
     (d/transact! conn (game-state/create-game-entity-tx player-eid {}))
     (d/transact! conn [[:db/add player-eid :player/stops (:player stops)]
                        [:db/add player-eid :player/opponent-stops (or (:opponent-stops stops) #{})]

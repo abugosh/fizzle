@@ -8,6 +8,7 @@
     [fizzle.bots.protocol :as bot]
     [fizzle.db.queries :as q]
     [fizzle.db.storage :as storage]
+    [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.events.init :as game-init]
     [fizzle.events.setup :as setup]))
 
@@ -428,6 +429,33 @@
           battlefield (q/get-objects-in-zone db :player-1 :battlefield)]
       (is (= 0 (count battlefield))
           "Player battlefield should start empty"))))
+
+
+;; === Card trigger registration tests ===
+
+(deftest test-init-registers-triggers-for-player-library
+  (testing "Gaea's Blessing in player library has its zone-change trigger registered at init"
+    ;; Force 7 dark-rituals into hand via must-contain so both GBs stay in library
+    (let [app-db (game-init/init-game-state
+                   {:main-deck [{:card/id :dark-ritual :count 30}
+                                {:card/id :island :count 28}
+                                {:card/id :gaeas-blessing :count 2}]
+                    :must-contain {:dark-ritual 7}})
+          db (:game/db app-db)
+          gb-objects (filter #(= :gaeas-blessing (get-in % [:object/card :card/id]))
+                             (q/get-objects-in-zone db :player-1 :library))
+          gb-obj (first gb-objects)
+          gb-id (:object/id gb-obj)
+          db-after (zone-change-dispatch/move-to-zone db gb-id :graveyard)
+          stack-items (d/q '[:find [(pull ?e [:stack-item/type]) ...]
+                             :where [?e :stack-item/position _]]
+                           db-after)]
+      (is (= 2 (count gb-objects))
+          "Both Gaea's Blessings should be in library (hand is all Dark Rituals)")
+      (is (= 1 (count stack-items))
+          "Milling Gaea's Blessing should produce a zone-change trigger on the stack")
+      (is (= :zone-change (:stack-item/type (first stack-items)))
+          "Stack item should be a zone-change trigger"))))
 
 
 ;; === Phase stops initialization tests ===

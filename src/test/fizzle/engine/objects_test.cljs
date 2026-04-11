@@ -323,7 +323,9 @@
           obj-eid (d/q '[:find ?e . :in $ ?id :where [?e :object/id ?id]]
                        game-db (:object/id creature-obj))
           stored-keys (set (keys (d/pull game-db '[*] obj-eid)))
-          relevant-stored-keys (disj stored-keys :db/id)]
+          ;; :object/triggers is added by register-card-triggers at init
+          ;; for cards with :card/triggers — this is expected post-init state
+          relevant-stored-keys (disj stored-keys :db/id :object/triggers)]
       (is (= build-keys relevant-stored-keys)))))
 
 

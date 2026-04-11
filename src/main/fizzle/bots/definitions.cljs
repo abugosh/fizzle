@@ -31,8 +31,21 @@
      :rule/action {:action :cast-spell :card-id :lightning-bolt :target :opponent}}]})
 
 
+(def goldfish-blessing-spec
+  {:bot/name "Goldfish + Blessing"
+   :bot/deck [{:card/id :plains :count 12}
+              {:card/id :island :count 12}
+              {:card/id :swamp :count 12}
+              {:card/id :mountain :count 12}
+              {:card/id :forest :count 10}
+              {:card/id :gaeas-blessing :count 2}]
+   :bot/phase-actions {:main1 :play-land}
+   :bot/priority-rules []})
+
+
 (def ^:private registry
   {:goldfish goldfish-spec
+   :goldfish-blessing goldfish-blessing-spec
    :burn burn-spec})
 
 

@@ -142,6 +142,7 @@
                 :value (name (or bot-archetype :goldfish))
                 :on-change #(rf/dispatch [::setup/set-bot-archetype (keyword (.. % -target -value))])}
        [:option {:value "goldfish"} "Goldfish"]
+       [:option {:value "goldfish-blessing"} "Goldfish + Blessing"]
        [:option {:value "burn"} "Burn"]]]]))
 
 

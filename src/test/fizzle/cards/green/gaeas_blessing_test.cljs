@@ -40,29 +40,18 @@
 
 
 (defn- add-gb-to-library-with-trigger
-  "Add a Gaea's Blessing object to library and manually register its library trigger.
-   Required because test helpers add objects directly to zones without registering
-   trigger entities (trigger_db/create-triggers-for-card-tx normally handles this).
+  "Add a Gaea's Blessing object to library and register its triggers via
+   the production create-triggers-for-card-tx path. Reads :card/triggers
+   from the card definition — if the card changes, this helper stays in sync.
 
    Returns [db obj-id]."
   [db owner]
   (let [[db obj-id] (th/add-card-to-zone db :gaeas-blessing :library owner)
         obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
         player-eid (q/get-player-eid db owner)
-        trigger-tx (trigger-db/create-trigger-tx
-                     {:trigger/type :zone-change
-                      :trigger/event-type :zone-change
-                      :trigger/source obj-eid
-                      :trigger/controller player-eid
-                      :trigger/match {:event/from-zone :library
-                                      :event/to-zone :graveyard
-                                      :event/object-id :self}
-                      :trigger/effects [{:effect/type :shuffle-from-graveyard-to-library
-                                         :effect/target :self-controller
-                                         :effect/count :all
-                                         :effect/selection :auto}]
-                      :trigger/uses-stack? true})
-        db (d/db-with db trigger-tx)]
+        db (d/db-with db (trigger-db/create-triggers-for-card-tx
+                           db obj-eid player-eid
+                           (:card/triggers gaeas-blessing/card)))]
     [db obj-id]))
 
 
