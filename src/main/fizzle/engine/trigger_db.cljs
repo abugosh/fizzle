@@ -194,12 +194,60 @@
        db))
 
 
-(defn get-triggers-for-event
-  "Find triggers matching an event, applying filter logic.
+(defn- self-scoped?
+  "Returns true if the trigger is self-scoped.
+   Self-scoped triggers have {:event/object-id :self} in either
+   :trigger/filter or :trigger/match. Zone check is skipped for these —
+   match-map is the sole authority for zone relevance.
 
-   First queries by :trigger/event-type, then applies filter matching in code.
-   Filter matching handles :self resolution, :exclude-self, exact match,
-   and multiple conditions (all must match).
+   Arguments:
+     trigger - Trigger entity map
+
+   Returns:
+     Boolean - true if trigger is self-scoped"
+  [trigger]
+  (or (= :self (get (:trigger/filter trigger) :event/object-id))
+      (= :self (get (:trigger/match trigger) :event/object-id))))
+
+
+(defn- in-active-zone?
+  "Returns true if the trigger's source is in the trigger's :trigger/active-zone.
+   Defaults to :battlefield when :trigger/active-zone is absent.
+   Skips zone check for always-active triggers (:trigger/always-active? true).
+
+   Uses d/q to look up source EID directly — more reliable than reading
+   :trigger/source from the pull result when dealing with ref attributes.
+   If no :trigger/source datom exists, trigger is treated as sourceless and fires.
+
+   Arguments:
+     db      - Datascript db value
+     trigger - Trigger entity map
+
+   Returns:
+     Boolean - true if trigger is eligible to fire"
+  [db trigger]
+  (if (:trigger/always-active? trigger)
+    true
+    (let [trigger-eid (:db/id trigger)
+          source-eid (d/q '[:find ?s .
+                            :in $ ?t
+                            :where [?t :trigger/source ?s]]
+                          db trigger-eid)]
+      (if (nil? source-eid)
+        true
+        (let [source-zone (:object/zone (d/entity db source-eid))
+              active-zone (or (:trigger/active-zone trigger) :battlefield)]
+          (= source-zone active-zone))))))
+
+
+(defn get-triggers-for-event
+  "Find triggers matching an event, applying filter and zone check logic.
+
+   First queries by :trigger/event-type, then applies filter matching and
+   zone relevance in code. Zone check: observer triggers only fire when
+   their source is in :trigger/active-zone (default :battlefield).
+   Self-scoped triggers (match or filter has {:event/object-id :self})
+   skip the zone check — match-map is the sole zone authority for them.
 
    Arguments:
      db    - Datascript db value
@@ -213,4 +261,6 @@
                           :in $ ?et
                           :where [?e :trigger/event-type ?et]]
                         db event-type)]
-    (filter #(matches-filter? % event) candidates)))
+    (->> candidates
+         (filter #(matches-filter? % event))
+         (filter #(or (self-scoped? %) (in-active-zone? db %))))))

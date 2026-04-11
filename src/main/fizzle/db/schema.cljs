@@ -111,6 +111,7 @@
    :trigger/description    {}              ; String, human-readable for UI/log
    :trigger/uses-stack?    {}              ; Boolean (default true when nil)
    :trigger/always-active? {}              ; Boolean, true for game-rule triggers (no source zone check)
+   :trigger/active-zone    {}              ; Keyword: zone source must be in for trigger to fire (default :battlefield, omit for self-scoped)
    :trigger/type           {}              ; Original trigger type keyword from card def (:becomes-tapped, :land-entered, :draw-step)
    :object/triggers        {:db/valueType   :db.type/ref
                             :db/cardinality :db.cardinality/many

@@ -461,15 +461,16 @@
 (deftest test-gb-trigger-fires-via-init-game-state
   (testing "Gaea's Blessing library trigger fires when milled via init-game-state full path (regression: fizzle-r25p)"
     ;; Use init-game-state to exercise the FULL production path.
-    ;; GB is sculpted into library (not hand) — it must have its trigger
-    ;; embedded at object creation (build-object-tx), not via ETB registration.
+    ;; Sculpt 7 islands to hand — guarantees GB stays in library (not drawn).
+    ;; GB trigger must be embedded at object creation (build-object-tx),
+    ;; not via ETB registration — this tests that path.
     (let [app-db (init/init-game-state {:main-deck gb-deck
-                                        :must-contain {}})
+                                        :must-contain {:island 7}})
           game-db (:game/db app-db)
-          ;; Find GB in the library (not in hand — init-game-state shuffled it there)
+          ;; Find GB in the library (guaranteed by must-contain {:island 7})
           library (q/get-objects-in-zone game-db :player-1 :library)
           gb-obj (some (fn [o] (when (= :gaeas-blessing (get-in o [:object/card :card/id])) o)) library)
-          _ (is (some? gb-obj) "Precondition: GB must be in library after init")
+          _ (is (some? gb-obj) "Precondition: GB must be in library after init (7 islands sculpted to hand)")
           gb-id (:object/id gb-obj)
           stack-before (get-stack-items game-db)
           ;; Mill GB from library to graveyard — trigger should fire
