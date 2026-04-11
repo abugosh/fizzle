@@ -12,6 +12,7 @@
     [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.engine.zones :as zones]
     [fizzle.events.selection.core :as core]
+    [fizzle.events.selection.spell-cleanup :as spell-cleanup]
     [re-frame.core :as rf]))
 
 
@@ -648,7 +649,7 @@
             ;; Move spell to graveyard
             db-after-move (zone-change-dispatch/move-to-zone db-after-remaining spell-id :graveyard)
             ;; Remove stack-item for spell
-            db-final (core/remove-spell-stack-item db-after-move spell-id)]
+            db-final (spell-cleanup/remove-spell-stack-item db-after-move spell-id)]
         (-> app-db
             (assoc :game/db db-final)
             (dissoc :game/pending-selection)))
@@ -741,7 +742,7 @@
         db-after-move (if spell-obj
                         (zone-change-dispatch/move-to-zone db-after-remaining spell-id :graveyard)
                         db-after-remaining)
-        db-final (core/remove-spell-stack-item db-after-move spell-id)]
+        db-final (spell-cleanup/remove-spell-stack-item db-after-move spell-id)]
     {:db db-final}))
 
 
@@ -763,7 +764,7 @@
                               destination (or (:mode/on-resolve cast-mode) :graveyard)]
                           (zone-change-dispatch/move-to-zone db-after-effects spell-id destination))
                         db-after-effects)
-        db-final (core/remove-spell-stack-item db-after-move spell-id)]
+        db-final (spell-cleanup/remove-spell-stack-item db-after-move spell-id)]
     {:db db-final}))
 
 
@@ -778,7 +779,7 @@
                                    db-after-reorder
                                    (or remaining-effects []))
         db-after-move (zone-change-dispatch/move-to-zone db-after-remaining spell-id :graveyard)
-        db-final (core/remove-spell-stack-item db-after-move spell-id)]
+        db-final (spell-cleanup/remove-spell-stack-item db-after-move spell-id)]
     {:db db-final}))
 
 
