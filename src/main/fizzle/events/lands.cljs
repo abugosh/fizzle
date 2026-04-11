@@ -6,7 +6,6 @@
     [fizzle.db.queries :as queries]
     [fizzle.engine.effects :as effects]
     [fizzle.engine.rules :as rules]
-    [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
@@ -49,21 +48,16 @@
           obj-after (queries/get-object db-after-move object-id)
           card (:object/card obj-after)
           etb-effects (:card/etb-effects card)
-          db-after-triggers (if (seq (:card/triggers card))
-                              (let [obj-eid (queries/get-object-eid db-after-move object-id)
-                                    tx (trigger-db/create-triggers-for-card-tx
-                                         db-after-move obj-eid player-eid (:card/triggers card))]
-                                (d/db-with db-after-move tx))
-                              db-after-move)
+          ;; Triggers are embedded in the object at creation (build-object-tx) — no ETB registration needed.
           db-after-etb (if (seq etb-effects)
                          (reduce (fn [db' effect]
                                    (let [resolved-effect (if (= :self (:effect/target effect))
                                                            (assoc effect :effect/target object-id)
                                                            effect)]
                                      (effects/execute-effect db' player-id resolved-effect)))
-                                 db-after-triggers
+                                 db-after-move
                                  etb-effects)
-                         db-after-triggers)]
+                         db-after-move)]
       ;; :land-entered is now dispatched from the zone-change-dispatch/move-to-zone chokepoint
       ;; (called above via zone-change-dispatch/move-to-zone). No explicit dispatch needed here.
       db-after-etb)))

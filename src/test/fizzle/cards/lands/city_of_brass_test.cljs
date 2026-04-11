@@ -197,15 +197,15 @@
           "Trigger should fire — proves ETB registered the trigger"))))
 
 
-(deftest city-of-brass-no-trigger-without-play-test
-  (testing "City of Brass added directly to battlefield has no trigger (no ETB path)"
+(deftest city-of-brass-trigger-fires-when-added-directly-to-battlefield-test
+  (testing "City of Brass trigger fires even when added directly to battlefield (triggers at object creation)"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
-          ;; Tap — no trigger registration because we bypassed play-land
+          ;; Tap — trigger registered at object creation (build-object-tx), so it WILL fire
           db-tapped (engine-mana/activate-mana-ability db' :player-1 obj-id :black)]
-      ;; Mana should still be produced
+      ;; Mana should be produced
       (is (= 1 (:black (q/get-mana-pool db-tapped :player-1)))
-          "Mana should be added regardless of trigger registration")
-      ;; No trigger on stack (triggers weren't registered via ETB)
-      (is (= 0 (count (q/get-all-stack-items db-tapped)))
-          "No trigger should fire — card bypassed ETB trigger registration"))))
+          "Mana should be added when CoB tapped")
+      ;; Trigger IS on stack (registered at object creation, not ETB)
+      (is (= 1 (count (q/get-all-stack-items db-tapped)))
+          "Trigger fires when CoB is tapped — registered at object creation regardless of ETB path"))))

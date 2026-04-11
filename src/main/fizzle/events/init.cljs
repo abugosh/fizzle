@@ -10,7 +10,6 @@
     [fizzle.engine.card-spec :as card-spec]
     [fizzle.engine.cards :as cards]
     [fizzle.engine.objects :as objects]
-    [fizzle.engine.trigger-db :as trigger-db]
     [re-frame.core :as rf]))
 
 
@@ -58,21 +57,23 @@
 (defn- objects-tx
   "Return transaction data for game objects in a zone.
    For :hand, uses provided UUIDs. For :library, generates UUIDs and sets position.
-   Creature cards always get :object/power and :object/toughness from card definition."
+   Creature cards always get :object/power and :object/toughness from card definition.
+   Cards with :card/triggers get their trigger entities embedded via build-object-tx."
   [db card-ids zone owner-eid uuids]
   (vec (map-indexed
          (fn [i [uuid card-id]]
            (let [card-eid (get-card-eid db card-id)
-                 card-data (d/pull db [:card/types :card/power :card/toughness] card-eid)
+                 card-data (d/pull db [:card/types :card/power :card/toughness :card/triggers] card-eid)
                  position (if (= zone :library) i 0)]
-             (objects/build-object-tx card-eid card-data zone owner-eid position :id uuid)))
+             (objects/build-object-tx db card-eid card-data zone owner-eid position :id uuid)))
          (map vector uuids card-ids))))
 
 
 (defn- opponent-deck-tx
   "Return transaction data for opponent's library and opening hand from a deck list.
    Shuffles the deck, draws 7 for hand, rest goes in library.
-   deck-list: vector of {:card/id :count} maps (from bot-deck multimethod)."
+   deck-list: vector of {:card/id :count} maps (from bot-deck multimethod).
+   Cards with :card/triggers get their trigger entities embedded via build-object-tx."
   [db opp-eid deck-list]
   (let [card-ids (shuffle
                    (into []
@@ -83,30 +84,10 @@
         library-ids (drop 7 card-ids)
         make-obj (fn [card-id zone position]
                    (let [card-eid (get-card-eid db card-id)
-                         card-data (d/pull db [:card/types :card/power :card/toughness] card-eid)]
-                     (objects/build-object-tx card-eid card-data zone opp-eid position)))]
+                         card-data (d/pull db [:card/types :card/power :card/toughness :card/triggers] card-eid)]
+                     (objects/build-object-tx db card-eid card-data zone opp-eid position)))]
     (into (vec (map #(make-obj % :hand 0) hand-ids))
           (map-indexed (fn [i card-id] (make-obj card-id :library i)) library-ids))))
-
-
-(defn- register-card-triggers
-  "Register triggers for all game objects that have :card/triggers.
-   Called once at init after all objects are created. The trigger match
-   system handles zone filtering — registering triggers for cards in any
-   zone is safe and correct."
-  [conn]
-  (let [db @conn
-        objects-with-triggers (d/q '[:find ?obj-eid ?owner-eid
-                                     :where
-                                     [?obj-eid :object/card ?card-eid]
-                                     [?obj-eid :object/owner ?owner-eid]
-                                     [?card-eid :card/triggers ?_]]
-                                   db)]
-    (doseq [[obj-eid owner-eid] objects-with-triggers]
-      (let [card-eid (:db/id (:object/card (d/entity db obj-eid)))
-            card (d/pull db [:card/triggers] card-eid)]
-        (d/transact! conn (trigger-db/create-triggers-for-card-tx
-                            @conn obj-eid owner-eid (:card/triggers card)))))))
 
 
 (defn init-game-state
@@ -145,7 +126,6 @@
       (when (seq sb-card-ids)
         (d/transact! conn (objects-tx @conn sb-card-ids :sideboard player-eid
                                       (repeatedly (count sb-card-ids) random-uuid)))))
-    (register-card-triggers conn)
     (d/transact! conn (game-state/create-game-entity-tx player-eid {}))
     (d/transact! conn [[:db/add player-eid :player/stops (:player stops)]
                        [:db/add player-eid :player/opponent-stops (or (:opponent-stops stops) #{})]

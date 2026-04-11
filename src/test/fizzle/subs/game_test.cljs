@@ -339,7 +339,7 @@
           card-data (d/pull @conn '[:card/types :card/power :card/toughness] card-eid)
           player-eid (q/get-player-eid @conn :player-1)
           obj-id (random-uuid)
-          _ (d/transact! conn [(objects/build-object-tx card-eid card-data :stack player-eid 0
+          _ (d/transact! conn [(objects/build-object-tx @conn card-eid card-data :stack player-eid 0
                                                         :id obj-id)])
           game-db' @conn
           selection {:selection/type :storm-split
@@ -377,7 +377,7 @@
         _ (d/transact! conn [card-entity])
         card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] @conn card-id)
         card-data (d/pull @conn '[:card/types :card/power :card/toughness] card-eid)]
-    (d/transact! conn [(objects/build-object-tx card-eid card-data :battlefield player-eid 0)])
+    (d/transact! conn [(objects/build-object-tx @conn card-eid card-data :battlefield player-eid 0)])
     @conn))
 
 
@@ -512,7 +512,7 @@
         card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] @conn card-id)
         card-data (d/pull @conn '[:card/types :card/power :card/toughness] card-eid)
         obj-id (random-uuid)]
-    (d/transact! conn [(objects/build-object-tx card-eid card-data :battlefield player-eid 0
+    (d/transact! conn [(objects/build-object-tx @conn card-eid card-data :battlefield player-eid 0
                                                 :id obj-id)])
     [@conn obj-id]))
 

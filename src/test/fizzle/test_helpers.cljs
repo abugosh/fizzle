@@ -69,9 +69,9 @@
                                  ". Card not found in database.")
                             {:card-id card-id})))
         obj-id (random-uuid)
-        card-data (d/pull db [:card/types :card/power :card/toughness] card-eid)
+        card-data (d/pull db [:card/types :card/power :card/toughness :card/triggers] card-eid)
         creature? (contains? (set (:card/types card-data)) :creature)
-        obj (cond-> (objects/build-object-tx card-eid card-data zone player-eid 0 :id obj-id)
+        obj (cond-> (objects/build-object-tx db card-eid card-data zone player-eid 0 :id obj-id)
               ;; Helpers place objects directly on battlefield (no zone transition),
               ;; so set battlefield-specific fields here — same responsibility as move-to-zone
               (and creature? (= zone :battlefield))
@@ -108,8 +108,8 @@
           (let [card-id   (first remaining)
                 obj-id    (random-uuid)
                 card-eid  (lookup-card-eid card-id)
-                card-data (d/pull @conn [:card/types :card/power :card/toughness] card-eid)
-                obj       (objects/build-object-tx card-eid card-data :library player-eid position :id obj-id)]
+                card-data (d/pull @conn [:card/types :card/power :card/toughness :card/triggers] card-eid)
+                obj       (objects/build-object-tx @conn card-eid card-data :library player-eid position :id obj-id)]
             (d/transact! conn [obj])
             (recur (rest remaining)
                    (inc position)
@@ -138,8 +138,8 @@
             (when (nil? card-eid)
               (throw (ex-info (str "Unknown card-id: " card-id)
                               {:card-id card-id})))
-            (let [card-data (d/pull @conn [:card/types :card/power :card/toughness] card-eid)
-                  obj       (objects/build-object-tx card-eid card-data :graveyard player-eid 0 :id obj-id)]
+            (let [card-data (d/pull @conn [:card/types :card/power :card/toughness :card/triggers] card-eid)
+                  obj       (objects/build-object-tx @conn card-eid card-data :graveyard player-eid 0 :id obj-id)]
               (d/transact! conn [obj]))
             (recur (rest remaining)
                    (conj object-ids obj-id))))))))
@@ -173,9 +173,10 @@
                               :card/power power
                               :card/toughness toughness}])
         card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] @conn card-id)
+        ;; Synthetic card has no :card/triggers — no triggers will be embedded by build-object-tx.
         card-data {:card/types #{:creature} :card/power power :card/toughness toughness}
         obj-id (random-uuid)
-        obj (-> (objects/build-object-tx card-eid card-data :battlefield player-eid 0 :id obj-id)
+        obj (-> (objects/build-object-tx @conn card-eid card-data :battlefield player-eid 0 :id obj-id)
                 (assoc :object/summoning-sick true
                        :object/damage-marked 0))]
     (d/transact! conn [obj])

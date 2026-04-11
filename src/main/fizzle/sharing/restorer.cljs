@@ -7,7 +7,7 @@
 
    Objects receive fresh UUIDs — original UUIDs are not preserved across sessions.
    Card references are resolved via card-id → entity lookup (same as init.cljs).
-   Triggers are recreated from card definitions for battlefield permanents.
+   Triggers are embedded in objects at creation via build-object-tx (same as init.cljs).
    Turn-based triggers are recreated for both players."
   (:require
     [datascript.core :as d]
@@ -17,8 +17,7 @@
     [fizzle.db.storage :as storage]
     [fizzle.engine.cards :as cards]
     [fizzle.engine.object-spec :as object-spec]
-    [fizzle.engine.objects :as objects]
-    [fizzle.engine.trigger-db :as trigger-db]))
+    [fizzle.engine.objects :as objects]))
 
 
 ;; ---------------------------------------------------------------------------
@@ -65,14 +64,16 @@
    optional fields (:object/counters, :object/grants).
 
    For battlefield creatures, also sets summoning-sick false and damage-marked 0
-   (snapshot is mid-game, not just-entered — creature was already on battlefield)."
+   (snapshot is mid-game, not just-entered — creature was already on battlefield).
+
+   Cards with :card/triggers get their trigger entities embedded via build-object-tx."
   [db obj-map zone owner-eid position]
   (let [card-id     (:card/id obj-map)
         card-eid    (get-card-eid db card-id)
-        card-data   (d/pull db [:card/types :card/power :card/toughness] card-eid)
+        card-data   (d/pull db [:card/types :card/power :card/toughness :card/triggers] card-eid)
         creature?   (contains? (set (:card/types card-data)) :creature)
         pos         (if (= zone :library) position 0)
-        result      (cond-> (-> (objects/build-object-tx card-eid card-data zone owner-eid pos)
+        result      (cond-> (-> (objects/build-object-tx db card-eid card-data zone owner-eid pos)
                                 ;; Override tapped: restorer preserves snapshot state (build-object-tx defaults false)
                                 (assoc :object/tapped (boolean (:object/tapped obj-map))))
                       (seq (:object/counters obj-map))
@@ -100,30 +101,6 @@
                         (fn [i obj-map]
                           (object-tx-for-zone db obj-map zone owner-eid i))
                         obj-maps)))))
-
-
-;; ---------------------------------------------------------------------------
-;; Battlefield triggers
-
-(defn- create-battlefield-triggers!
-  "For every object on the battlefield with :card/triggers, create trigger
-   entities linked to the object. Mirrors the ETB path in resolution.cljs."
-  [conn player-id]
-  (let [db        @conn
-        owner-eid (get-player-eid db player-id)
-        bf-objects (d/q '[:find [(pull ?o [:db/id {:object/card [:card/id :card/triggers]}]) ...]
-                          :in $ ?owner
-                          :where [?o :object/owner ?owner]
-                          [?o :object/zone :battlefield]]
-                        db owner-eid)]
-    (doseq [obj bf-objects]
-      (let [card         (:object/card obj)
-            card-triggers (:card/triggers card)]
-        (when (seq card-triggers)
-          (let [obj-eid (:db/id obj)
-                tx      (trigger-db/create-triggers-for-card-tx
-                          @conn obj-eid owner-eid card-triggers)]
-            (d/transact! conn tx)))))))
 
 
 ;; ---------------------------------------------------------------------------
@@ -183,16 +160,14 @@
                            [:db/add p1-eid :player/opponent-stops (or (:opponent-stops stops) #{})]]))
       (when p2-eid
         (d/transact! conn [[:db/add p2-eid :player/stops (bot-protocol/bot-stops bot-archetype)]])))
-    ;; Transact objects for each zone
+    ;; Transact objects for each zone.
+    ;; Triggers are embedded in objects at creation via build-object-tx — no post-creation registration needed.
     (doseq [[player-id player-map] players]
       (transact-zone! conn player-id :hand        (:hand player-map))
       (transact-zone! conn player-id :graveyard   (:graveyard player-map))
       (transact-zone! conn player-id :exile       (:exile player-map))
       (transact-zone! conn player-id :library     (:library player-map))
       (transact-zone! conn player-id :battlefield (:battlefield player-map)))
-    ;; Create triggers for battlefield permanents
-    (doseq [[player-id _] players]
-      (create-battlefield-triggers! conn player-id))
     ;; Transact game state entity
     (transact-game-state! conn snapshot)
     ;; Build app-db map (mirrors init-game-state shape, but :active-screen :game)

@@ -23,35 +23,6 @@
     [fizzle.test-helpers :as th]))
 
 
-;; === Test helpers ===
-
-(defn register-cob-trigger
-  "Register a City of Brass trigger as a Datascript entity.
-   Pure function: takes db and returns new db with trigger entity.
-
-   Arguments:
-     db            - Datascript database value
-     object-id     - UUID of the City of Brass object
-     controller-id - Player keyword (e.g., :player-1)
-
-   Returns:
-     New db with trigger entity linked to the object"
-  [db object-id controller-id]
-  (let [obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db object-id)
-        player-eid (d/q '[:find ?e . :in $ ?pid :where [?e :player/id ?pid]] db controller-id)]
-    (d/db-with db [{:db/id obj-eid
-                    :object/triggers [{:trigger/type :becomes-tapped
-                                       :trigger/event-type :permanent-tapped
-                                       :trigger/source obj-eid
-                                       :trigger/controller player-eid
-                                       :trigger/filter {:event/object-id :self}
-                                       :trigger/uses-stack? true
-                                       :trigger/effects [{:effect/type :deal-damage
-                                                          :effect/amount 1
-                                                          :effect/target :controller}]
-                                       :trigger/description "deals 1 damage to you"}]}])))
-
-
 ;; === Trigger registration on ETB ===
 
 (deftest test-cob-trigger-registered-on-etb
@@ -80,15 +51,13 @@
   (testing "City of Brass trigger is unregistered when it leaves the battlefield"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
-          ;; Manually register the trigger (simulating post-ETB state)
-          db-with-trigger (register-cob-trigger db' obj-id :player-1)
-          ;; Verify CoB trigger exists
+          ;; Trigger is registered at object creation via build-object-tx — no manual registration needed
           cob-triggers-before (filter #(= :permanent-tapped (:trigger/event-type %))
-                                      (trigger-db/get-all-triggers db-with-trigger))
+                                      (trigger-db/get-all-triggers db'))
           _ (is (= 1 (count cob-triggers-before))
-                "CoB trigger should exist before leaving")
+                "CoB trigger should exist (registered at object creation)")
           ;; Move to graveyard (sacrifice) - should unregister trigger
-          db-after-leave (zones/move-to-zone* db-with-trigger obj-id :graveyard)
+          db-after-leave (zones/move-to-zone* db' obj-id :graveyard)
           ;; Find CoB triggers after leave
           cob-triggers-after (filter #(= :permanent-tapped (:trigger/event-type %))
                                      (trigger-db/get-all-triggers db-after-leave))]
@@ -102,10 +71,9 @@
   (testing "Tapping City of Brass dispatches :permanent-tapped event"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
-          ;; Register trigger in Datascript
-          db-with-trigger (register-cob-trigger db' obj-id :player-1)
+          ;; Trigger registered at object creation via build-object-tx — no manual registration needed
           ;; Activate mana ability (should dispatch event via dispatch-event)
-          db-after-tap (engine-mana/activate-mana-ability db-with-trigger :player-1 obj-id :black)]
+          db-after-tap (engine-mana/activate-mana-ability db' :player-1 obj-id :black)]
       ;; Verify stack-item is on the stack
       (is (= 1 (count (q/get-all-stack-items db-after-tap)))
           "One stack-item should be on the stack after tapping CoB")
@@ -120,10 +88,9 @@
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
           initial-life (q/get-life-total db' :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
-          ;; Register trigger in Datascript
-          db-with-trigger (register-cob-trigger db' obj-id :player-1)
+          ;; Trigger registered at object creation via build-object-tx
           ;; Activate mana ability (trigger goes on stack)
-          db-after-tap (engine-mana/activate-mana-ability db-with-trigger :player-1 obj-id :black)
+          db-after-tap (engine-mana/activate-mana-ability db' :player-1 obj-id :black)
           _ (is (= 20 (q/get-life-total db-after-tap :player-1))
                 "Life unchanged before trigger resolves")
           ;; Resolve the trigger
@@ -136,10 +103,9 @@
   (testing "Tapping CoB multiple times (after untapping) creates multiple triggers"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
-          ;; Register trigger in Datascript
-          db-with-trigger (register-cob-trigger db' obj-id :player-1)
+          ;; Trigger registered at object creation via build-object-tx
           ;; First tap
-          db-after-first-tap (engine-mana/activate-mana-ability db-with-trigger :player-1 obj-id :black)
+          db-after-first-tap (engine-mana/activate-mana-ability db' :player-1 obj-id :black)
           _ (is (= 1 (count (q/get-all-stack-items db-after-first-tap)))
                 "One trigger on stack after first tap")
           ;; Resolve first trigger
@@ -169,18 +135,15 @@
   (testing "When two City of Brass are on battlefield, only the tapped one's trigger fires"
     (let [db (th/create-test-db)
           [db' obj-id-1] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
-          [db'' obj-id-2] (th/add-card-to-zone db' :city-of-brass :battlefield :player-1)
-          ;; Register triggers for both in Datascript
-          db-with-t1 (register-cob-trigger db'' obj-id-1 :player-1)
-          db-with-t2 (register-cob-trigger db-with-t1 obj-id-2 :player-1)
-          ;; Verify 2 CoB triggers registered
+          [db'' _obj-id-2] (th/add-card-to-zone db' :city-of-brass :battlefield :player-1)
+          ;; Both triggers registered at object creation via build-object-tx
           cob-triggers (filter #(= :permanent-tapped (:trigger/event-type %))
-                               (trigger-db/get-all-triggers db-with-t2))
+                               (trigger-db/get-all-triggers db''))
           _ (is (= 2 (count cob-triggers))
-                "Two CoB triggers registered")
+                "Two CoB triggers registered (one per object at creation)")
           ;; Tap only the first CoB
-          db-after-tap (engine-mana/activate-mana-ability db-with-t2 :player-1 obj-id-1 :black)]
-      ;; Only one trigger should fire (the tapped CoB's trigger)
+          db-after-tap (engine-mana/activate-mana-ability db'' :player-1 obj-id-1 :black)]
+      ;; Only one trigger should fire (the tapped CoB's :self filter matches only obj-id-1)
       (is (= 1 (count (q/get-all-stack-items db-after-tap)))
           "Only one trigger should be on stack (the tapped CoB's trigger)"))))
 
@@ -191,10 +154,9 @@
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
           initial-life (q/get-life-total db' :player-1)
           _ (is (= 20 initial-life) "Precondition: player starts at 20 life")
-          ;; Register trigger in Datascript
-          db-with-trigger (register-cob-trigger db' obj-id :player-1)
+          ;; Trigger registered at object creation via build-object-tx
           ;; Tap to create trigger on stack
-          db-after-tap (engine-mana/activate-mana-ability db-with-trigger :player-1 obj-id :black)
+          db-after-tap (engine-mana/activate-mana-ability db' :player-1 obj-id :black)
           _ (is (= 1 (count (q/get-all-stack-items db-after-tap)))
                 "Trigger on stack")
           ;; Sacrifice CoB with trigger on stack (unregisters future triggers)
@@ -234,27 +196,25 @@
   (testing "dispatch-event with :permanent-tapped adds matching trigger to stack"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
-          ;; Register a trigger in Datascript for this object
-          db-with-trigger (register-cob-trigger db' obj-id :player-1)
+          ;; Trigger registered at object creation via build-object-tx — no manual registration needed
           ;; Dispatch event for this object
           event (game-events/permanent-tapped-event obj-id :player-1)
-          db-after-dispatch (dispatch/dispatch-event db-with-trigger event)]
+          db-after-dispatch (dispatch/dispatch-event db' event)]
       ;; Trigger should be on stack
       (is (= 1 (count (q/get-all-stack-items db-after-dispatch)))
           "Trigger should be added to stack when matching event dispatched"))))
 
 
 (deftest test-dispatch-permanent-tapped-event-no-match
-  (testing "dispatch-event with :permanent-tapped doesn't trigger for different objects"
+  (testing "dispatch-event with :permanent-tapped: each CoB trigger only fires for its own tap"
     (let [db (th/create-test-db)
-          ;; Create two objects on battlefield
-          [db' obj-id-1] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
+          ;; Create two objects on battlefield — both get triggers at object creation
+          [db' _obj-id-1] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
           [db'' obj-id-2] (th/add-card-to-zone db' :city-of-brass :battlefield :player-1)
-          ;; Register a trigger for obj-id-1 only
-          db-with-trigger (register-cob-trigger db'' obj-id-1 :player-1)
-          ;; Dispatch event for a DIFFERENT object (obj-id-2)
+          ;; Dispatch event for obj-id-2 only
           event (game-events/permanent-tapped-event obj-id-2 :player-1)
-          db-after-dispatch (dispatch/dispatch-event db-with-trigger event)]
-      ;; No trigger should fire (filter doesn't match)
-      (is (= 0 (count (q/get-all-stack-items db-after-dispatch)))
-          "Trigger should NOT fire for a different object"))))
+          db-after-dispatch (dispatch/dispatch-event db'' event)]
+      ;; Only obj-id-2's trigger should fire (obj-id-1's :self filter doesn't match obj-id-2)
+      ;; The :event/object-id :self filter means obj-id-1's trigger only fires for obj-id-1 events
+      (is (= 1 (count (q/get-all-stack-items db-after-dispatch)))
+          "Only obj-id-2's trigger fires — obj-id-1's :self filter excludes obj-id-2 tap events"))))

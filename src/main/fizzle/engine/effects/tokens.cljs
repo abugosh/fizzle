@@ -29,14 +29,15 @@
                      (assoc :card/colors (:token/colors token-def))
                      (:token/keywords token-def)
                      (assoc :card/keywords (:token/keywords token-def)))
-        ;; Adapt token-def to card-data shape for build-object-tx
+        ;; Adapt token-def to card-data shape for build-object-tx.
+        ;; Tokens have no :card/triggers — no trigger entities will be embedded.
         card-data  {:card/types     (:token/types token-def)
                     :card/power     (:token/power token-def)
                     :card/toughness (:token/toughness token-def)}
         ;; Build base object via shared chokepoint, then add token-specific fields.
         ;; Tokens are placed directly on battlefield (no zone transition),
         ;; so caller sets summoning-sick and damage-marked here.
-        obj-tx     (-> (objects/build-object-tx card-tempid card-data :battlefield player-eid 0)
+        obj-tx     (-> (objects/build-object-tx db card-tempid card-data :battlefield player-eid 0)
                        (assoc :object/is-token      true
                               :object/summoning-sick true
                               :object/damage-marked  0))]

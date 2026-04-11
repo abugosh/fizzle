@@ -22,8 +22,8 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.card-spec :as card-spec]
     [fizzle.engine.rules :as rules]
-    [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
+    [fizzle.events.init :as init]
     [fizzle.test-helpers :as th]))
 
 
@@ -40,19 +40,13 @@
 
 
 (defn- add-gb-to-library-with-trigger
-  "Add a Gaea's Blessing object to library and register its triggers via
-   the production create-triggers-for-card-tx path. Reads :card/triggers
-   from the card definition — if the card changes, this helper stays in sync.
+  "Add a Gaea's Blessing object to library. Triggers are embedded at object creation
+   by build-object-tx (via th/add-card-to-zone which pulls :card/triggers).
+   No separate trigger registration needed — that was the OLD scattered-site approach.
 
    Returns [db obj-id]."
   [db owner]
-  (let [[db obj-id] (th/add-card-to-zone db :gaeas-blessing :library owner)
-        obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
-        player-eid (q/get-player-eid db owner)
-        db (d/db-with db (trigger-db/create-triggers-for-card-tx
-                           db obj-eid player-eid
-                           (:card/triggers gaeas-blessing/card)))]
-    [db obj-id]))
+  (th/add-card-to-zone db :gaeas-blessing :library owner))
 
 
 ;; =====================================================
@@ -450,3 +444,41 @@
         ;; GB itself shuffled back to library
         (is (= :library (th/get-object-zone db gb-id))
             "Gaea's Blessing itself shuffles back into library after trigger")))))
+
+
+;; =====================================================
+;; Production path regression: init-game-state (fizzle-r25p)
+;; =====================================================
+
+(def ^:private gb-deck
+  "Minimal deck with Gaea's Blessing for regression test.
+   GB trigger must be embedded at object creation via build-object-tx,
+   not registered at ETB — this test verifies that path."
+  (into [{:card/id :gaeas-blessing :count 1}]
+        (repeat 59 {:card/id :island :count 1})))
+
+
+(deftest test-gb-trigger-fires-via-init-game-state
+  (testing "Gaea's Blessing library trigger fires when milled via init-game-state full path (regression: fizzle-r25p)"
+    ;; Use init-game-state to exercise the FULL production path.
+    ;; GB is sculpted into library (not hand) — it must have its trigger
+    ;; embedded at object creation (build-object-tx), not via ETB registration.
+    (let [app-db (init/init-game-state {:main-deck gb-deck
+                                        :must-contain {}})
+          game-db (:game/db app-db)
+          ;; Find GB in the library (not in hand — init-game-state shuffled it there)
+          library (q/get-objects-in-zone game-db :player-1 :library)
+          gb-obj (some (fn [o] (when (= :gaeas-blessing (get-in o [:object/card :card/id])) o)) library)
+          _ (is (some? gb-obj) "Precondition: GB must be in library after init")
+          gb-id (:object/id gb-obj)
+          stack-before (get-stack-items game-db)
+          ;; Mill GB from library to graveyard — trigger should fire
+          db-after-mill (zone-change-dispatch/move-to-zone game-db gb-id :graveyard)
+          stack-after (get-stack-items db-after-mill)]
+      (is (= 0 (count stack-before))
+          "Precondition: stack starts empty")
+      (is (= 1 (count stack-after))
+          (str "GB library trigger should fire exactly once when milled via init-game-state. "
+               "Got " (count stack-after) " stack items. "
+               "If 0: trigger was not embedded at creation. "
+               "If >1: duplicate trigger registration bug.")))))

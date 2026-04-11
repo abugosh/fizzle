@@ -92,7 +92,7 @@
         card-eid (d/q '[:find ?e . :where [?e :card/id :dark-ritual]] @conn)
         card-data (d/pull @conn '[:card/types :card/power :card/toughness] card-eid)]
     (doseq [idx (range (count card-ids))]
-      (d/transact! conn [(objects/build-object-tx card-eid card-data :library player-eid idx)]))
+      (d/transact! conn [(objects/build-object-tx @conn card-eid card-data :library player-eid idx)]))
     @conn))
 
 
@@ -531,7 +531,7 @@
          card-eid (d/q '[:find ?e . :where [?e :card/id :dark-ritual]] @conn)
          card-data (d/pull @conn '[:card/types :card/power :card/toughness] card-eid)
          object-id (random-uuid)
-         entity (cond-> (objects/build-object-tx card-eid card-data :battlefield player-eid 0
+         entity (cond-> (objects/build-object-tx @conn card-eid card-data :battlefield player-eid 0
                                                  :id object-id)
                   initial-counters (assoc :object/counters initial-counters))]
      (d/transact! conn [entity])

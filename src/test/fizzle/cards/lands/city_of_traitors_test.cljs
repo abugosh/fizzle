@@ -21,6 +21,7 @@
     [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.zones :as zones]
+    [fizzle.events.init :as init]
     [fizzle.events.lands :as lands]
     [fizzle.events.resolution :as resolution]
     [fizzle.test-helpers :as th]))
@@ -86,18 +87,20 @@
   (testing "City of Traitors does NOT sacrifice when it enters the battlefield"
     (let [db (th/create-test-db {:land-plays 2})
           [db' obj-id] (th/add-card-to-zone db :city-of-traitors :hand :player-1)
-          ;; Count land-entered triggers before
+          ;; Trigger is registered at object creation (build-object-tx) — exists while in hand
+          ;; The exclude-self filter prevents it from firing for its own entry
           initial-triggers (filter #(= :land-entered (:trigger/event-type %))
                                    (trigger-db/get-all-triggers db'))
-          _ (is (empty? initial-triggers) "Precondition: no land-entered triggers")
+          _ (is (= 1 (count initial-triggers))
+                "Precondition: CoT trigger registered at object creation (in hand)")
           ;; Play the land
           db-after-play (lands/play-land db' :player-1 obj-id)]
       ;; Verify CoT is on battlefield (not sacrificed)
       (is (= :battlefield (:object/zone (q/get-object db-after-play obj-id)))
           "City of Traitors should be on battlefield after entering")
-      ;; Verify no trigger on stack (exclude-self filter should prevent)
+      ;; Verify no trigger on stack (exclude-self filter should prevent self-entry from triggering)
       (is (= 0 (count (q/get-all-stack-items db-after-play)))
-          "No trigger should fire when CoT enters (exclude-self filter)"))))
+          "No trigger should fire when CoT enters its own land-entered event (exclude-self filter)"))))
 
 
 ;; === Opponent land entry tests (should NOT trigger) ===
@@ -262,3 +265,50 @@
       ;; A trigger should be on stack (proving event was dispatched)
       (is (= 1 (count (q/get-all-stack-items db-after-play)))
           ":land-entered event should be dispatched when land enters"))))
+
+
+;; === Production path regression: init-game-state + play-land (fizzle-lmro bug fix) ===
+
+(def ^:private cot-deck
+  "Minimal deck with City of Traitors and Islands for regression test."
+  (into [{:card/id :city-of-traitors :count 1}]
+        (repeat 59 {:card/id :island :count 1})))
+
+
+(deftest test-cot-fires-exactly-once-via-init-game-state
+  (testing "City of Traitors sacrifice trigger fires exactly ONCE when second land played (regression: fizzle-lmro duplicate)"
+    ;; Use init-game-state to exercise the FULL production path (init → register → play-land)
+    ;; This is the key regression test for the duplicate trigger bug.
+    (let [app-db (init/init-game-state {:main-deck cot-deck
+                                        :must-contain {:city-of-traitors 1 :island 1}})
+          game-db (:game/db app-db)
+          ;; Grant 2 land plays so we can play both CoT and Island
+          player-eid (q/get-player-eid game-db :player-1)
+          game-db (d/db-with game-db [[:db/add player-eid :player/land-plays-left 2]])
+          ;; Find CoT and Island in hand
+          hand (q/get-hand game-db :player-1)
+          cot-obj (some (fn [o] (when (= :city-of-traitors (get-in o [:object/card :card/id])) o)) hand)
+          island-obj (some (fn [o] (when (= :island (get-in o [:object/card :card/id])) o)) hand)
+          _ (is (some? cot-obj) "Precondition: CoT must be in sculpted hand")
+          _ (is (some? island-obj) "Precondition: Island must be in sculpted hand")
+          cot-id (:object/id cot-obj)
+          island-id (:object/id island-obj)
+          ;; Play CoT first (should not trigger — exclude-self)
+          db-after-cot (lands/play-land game-db :player-1 cot-id)
+          _ (is (= :battlefield (:object/zone (q/get-object db-after-cot cot-id)))
+                "Precondition: CoT on battlefield after play")
+          _ (is (= 0 (count (q/get-all-stack-items db-after-cot)))
+                "Precondition: No trigger when CoT enters (exclude-self)")
+          ;; Play Island — CoT trigger should fire exactly ONCE
+          db-after-island (lands/play-land db-after-cot :player-1 island-id)
+          stack-items (q/get-all-stack-items db-after-island)]
+      (is (= 1 (count stack-items))
+          (str "CoT sacrifice trigger should fire exactly ONCE (not duplicate). "
+               "Got " (count stack-items) " stack items. "
+               "If 2: duplicate trigger bug — triggers registered multiple times."))
+      ;; Resolve the trigger and verify CoT is sacrificed
+      (let [db-final (:db (resolution/resolve-one-item db-after-island))]
+        (is (= :graveyard (:object/zone (q/get-object db-final cot-id)))
+            "CoT should be in graveyard after trigger resolves")
+        (is (= 0 (count (q/get-all-stack-items db-final)))
+            "Stack should be empty after trigger resolves")))))

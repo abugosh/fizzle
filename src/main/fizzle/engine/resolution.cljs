@@ -20,7 +20,6 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
-    [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.engine.triggers :as triggers]
     [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
@@ -151,24 +150,17 @@
                             mode-destination mode-destination
                             (rules/permanent-type? card-types) :battlefield
                             :else :graveyard)
-              db-after-move (zone-change-dispatch/move-to-zone db object-id destination)
-              card (:object/card obj)]
+              db-after-move (zone-change-dispatch/move-to-zone db object-id destination)]
           (if (= destination :battlefield)
             (let [controller-ref (:object/controller obj)
                   controller-eid (if (map? controller-ref) (:db/id controller-ref) controller-ref)
                   controller-id (d/q '[:find ?pid .
                                        :in $ ?e
                                        :where [?e :player/id ?pid]]
-                                     db-after-move controller-eid)
-                  ;; Register persistent triggers (e.g., becomes-tapped, land-entered)
-                  db-with-triggers (if (seq (:card/triggers card))
-                                     (let [obj-eid (queries/get-object-eid db-after-move object-id)
-                                           tx (trigger-db/create-triggers-for-card-tx
-                                                db-after-move obj-eid controller-eid (:card/triggers card))]
-                                       (d/db-with db-after-move tx))
-                                     db-after-move)]
-              ;; Dispatch permanent-entered event for ETB triggers
-              (dispatch/dispatch-event db-with-triggers
+                                     db-after-move controller-eid)]
+              ;; Triggers are embedded in the object at creation (build-object-tx) — no ETB registration needed.
+              ;; Dispatch permanent-entered event for ETB triggers.
+              (dispatch/dispatch-event db-after-move
                                        (game-events/permanent-entered-event object-id controller-id)))
             db-after-move))))))
 

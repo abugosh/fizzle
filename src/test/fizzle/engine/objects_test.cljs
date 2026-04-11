@@ -98,7 +98,7 @@
           card-eid (get-card-eid db :dark-ritual)
           card-data (d/pull db [:card/types :card/power :card/toughness] card-eid)
           owner-eid 99
-          tx (objects/build-object-tx card-eid card-data :hand owner-eid 0)]
+          tx (objects/build-object-tx db card-eid card-data :hand owner-eid 0)]
       (is (nil? (:object/power tx))
           "Non-creature should not have :object/power")
       (is (nil? (:object/toughness tx))
@@ -113,7 +113,7 @@
           card-eid (get-card-eid db :xantid-swarm)
           card-data (d/pull db [:card/types :card/power :card/toughness] card-eid)
           owner-eid 99
-          tx (objects/build-object-tx card-eid card-data :hand owner-eid 0)]
+          tx (objects/build-object-tx db card-eid card-data :hand owner-eid 0)]
       (is (= 0 (:object/power tx))
           "Xantid Swarm has power 0")
       (is (= 1 (:object/toughness tx))
@@ -128,7 +128,7 @@
           card-eid (get-card-eid db :dark-ritual)
           card-data (d/pull db [:card/types :card/power :card/toughness] card-eid)
           owner-eid 99
-          tx (objects/build-object-tx card-eid card-data :hand owner-eid 0)]
+          tx (objects/build-object-tx db card-eid card-data :hand owner-eid 0)]
       (is (uuid? (:object/id tx))
           "Object must have a UUID :object/id")
       (is (= card-eid (:object/card tx))
@@ -153,7 +153,7 @@
           card-eid (get-card-eid db :dark-ritual)
           card-data (d/pull db [:card/types :card/power :card/toughness] card-eid)
           owner-eid 99
-          tx (objects/build-object-tx card-eid card-data :library owner-eid 42)]
+          tx (objects/build-object-tx db card-eid card-data :library owner-eid 42)]
       (is (= 42 (:object/position tx))
           "Position 42 should be stored as :object/position"))))
 
@@ -166,7 +166,7 @@
           card-eid (get-card-eid db :dark-ritual)
           card-data (d/pull db [:card/types :card/power :card/toughness] card-eid)
           owner-eid 99
-          tx (objects/build-object-tx card-eid card-data :hand owner-eid 0)]
+          tx (objects/build-object-tx db card-eid card-data :hand owner-eid 0)]
       (is (= 0 (:object/position tx))
           "Hand position should be 0"))))
 
@@ -179,7 +179,7 @@
           card-eid (get-card-eid db :xantid-swarm)
           card-data (d/pull db [:card/types :card/power :card/toughness] card-eid)
           owner-eid 99
-          tx (objects/build-object-tx card-eid card-data :battlefield owner-eid 0)]
+          tx (objects/build-object-tx db card-eid card-data :battlefield owner-eid 0)]
       (is (nil? (:object/summoning-sick tx))
           "build-object-tx must NOT set summoning-sick (zones.cljs responsibility)")
       (is (nil? (:object/damage-marked tx))
@@ -194,7 +194,7 @@
           card-eid (get-card-eid db :xantid-swarm)
           card-data (d/pull db [:card/types :card/power :card/toughness] card-eid)
           owner-eid 99
-          tx (objects/build-object-tx card-eid card-data :hand owner-eid 0)]
+          tx (objects/build-object-tx db card-eid card-data :hand owner-eid 0)]
       (is (= 0 (:object/power tx)))
       (is (= 1 (:object/toughness tx))))))
 
@@ -207,7 +207,7 @@
           card-eid (get-card-eid db :xantid-swarm)
           card-data (d/pull db [:card/types :card/power :card/toughness] card-eid)
           owner-eid 99
-          tx (objects/build-object-tx card-eid card-data :graveyard owner-eid 0)]
+          tx (objects/build-object-tx db card-eid card-data :graveyard owner-eid 0)]
       (is (= 0 (:object/power tx)))
       (is (= 1 (:object/toughness tx))))))
 
@@ -221,7 +221,7 @@
           card-data (d/pull db [:card/types :card/power :card/toughness] card-eid)
           owner-eid 99
           my-uuid (random-uuid)
-          tx (objects/build-object-tx card-eid card-data :hand owner-eid 0 :id my-uuid)]
+          tx (objects/build-object-tx db card-eid card-data :hand owner-eid 0 :id my-uuid)]
       (is (= my-uuid (:object/id tx))
           "Provided UUID must be used as :object/id"))))
 
@@ -234,7 +234,7 @@
           card-eid (get-card-eid db :dark-ritual)
           card-data (d/pull db [:card/types :card/power :card/toughness] card-eid)
           owner-eid 99
-          tx (objects/build-object-tx card-eid card-data :hand owner-eid 0)]
+          tx (objects/build-object-tx db card-eid card-data :hand owner-eid 0)]
       (is (uuid? (:object/id tx))
           "Generated UUID should be a uuid"))))
 
@@ -248,7 +248,7 @@
           card-data (d/pull db [:card/types :card/power :card/toughness] card-eid)
           owner-eid 99
           controller-eid 88
-          tx (objects/build-object-tx card-eid card-data :hand owner-eid 0 :controller controller-eid)]
+          tx (objects/build-object-tx db card-eid card-data :hand owner-eid 0 :controller controller-eid)]
       (is (= owner-eid (:object/owner tx))
           "Owner should remain owner-eid")
       (is (= controller-eid (:object/controller tx))
@@ -280,26 +280,29 @@
 
 
 (deftest canary-non-creature-hand-shape-matches-init
-  (testing "build-object-tx key set matches init.cljs for non-creature in hand"
-    (let [;; Get key set from build-object-tx
+  (testing "build-object-tx key set matches init.cljs for non-creature without triggers in hand"
+    (let [;; Get key set from build-object-tx for dark-ritual (no :card/triggers)
           conn1 (d/create-conn schema)
           _ (d/transact! conn1 cards/all-cards)
           db1 @conn1
           card-eid (get-card-eid db1 :dark-ritual)
-          card-data (d/pull db1 [:card/types :card/power :card/toughness] card-eid)
-          build-keys (set (keys (objects/build-object-tx card-eid card-data :hand 99 0)))
+          card-data (d/pull db1 [:card/types :card/power :card/toughness :card/triggers] card-eid)
+          ;; Strip :db/id (tempid from tx map) — stored objects don't have this key
+          build-keys (disj (set (keys (objects/build-object-tx db1 card-eid card-data :hand 99 0))) :db/id)
           ;; Get key set from init.cljs objects-tx (via init-game-state)
-          app-db (init/init-game-state {:main-deck minimal-deck})
+          ;; Use must-contain to guarantee a dark-ritual is in hand
+          app-db (init/init-game-state {:main-deck minimal-deck
+                                        :must-contain {:dark-ritual 1}})
           game-db (:game/db app-db)
           hand (q/get-hand game-db :player-1)
-          ;; Find a non-creature object in hand (dark-ritual is non-creature)
-          non-creature (some (fn [obj]
-                               (let [card-types (set (:card/types (:object/card obj)))]
-                                 (when-not (contains? card-types :creature) obj)))
-                             hand)
+          ;; Find the dark-ritual object in hand (no triggers — ensures exact key match)
+          dr-obj (some (fn [obj]
+                         (when (= :dark-ritual (get-in obj [:object/card :card/id])) obj))
+                       hand)
+          _ (assert dr-obj "dark-ritual must be in sculpted hand from minimal-deck")
           ;; Pull the actual stored fields of this object
           obj-eid (d/q '[:find ?e . :in $ ?id :where [?e :object/id ?id]]
-                       game-db (:object/id non-creature))
+                       game-db (:object/id dr-obj))
           stored-keys (set (keys (d/pull game-db '[*] obj-eid)))
           ;; Remove :db/id which is a Datascript internal
           relevant-stored-keys (disj stored-keys :db/id)]
@@ -307,15 +310,17 @@
 
 
 (deftest canary-creature-hand-shape-matches-init
-  (testing "build-object-tx key set matches init.cljs for creature in hand"
-    (let [;; Get key set from build-object-tx for a creature
+  (testing "build-object-tx key set matches init.cljs for creature with triggers in hand"
+    (let [;; Get key set from build-object-tx for a creature WITH triggers (xantid-swarm)
+          ;; Must include :card/triggers in pull so build-object-tx embeds trigger entities
           conn1 (d/create-conn schema)
           _ (d/transact! conn1 cards/all-cards)
           db1 @conn1
           card-eid (get-card-eid db1 :xantid-swarm)
-          card-data (d/pull db1 [:card/types :card/power :card/toughness] card-eid)
-          build-keys (set (keys (objects/build-object-tx card-eid card-data :hand 99 0)))
-          ;; Use a deck of all xantid-swarm so every hand card is a creature
+          card-data (d/pull db1 [:card/types :card/power :card/toughness :card/triggers] card-eid)
+          ;; Strip :db/id (tempid from tx map) — stored objects don't have this key
+          build-keys (disj (set (keys (objects/build-object-tx db1 card-eid card-data :hand 99 0))) :db/id)
+          ;; Use a deck of all xantid-swarm so every hand card is a creature with triggers
           app-db (init/init-game-state {:main-deck [{:card/id :xantid-swarm :count 60}]})
           game-db (:game/db app-db)
           hand (q/get-hand game-db :player-1)
@@ -323,25 +328,28 @@
           obj-eid (d/q '[:find ?e . :in $ ?id :where [?e :object/id ?id]]
                        game-db (:object/id creature-obj))
           stored-keys (set (keys (d/pull game-db '[*] obj-eid)))
-          ;; :object/triggers is added by register-card-triggers at init
-          ;; for cards with :card/triggers — this is expected post-init state
-          relevant-stored-keys (disj stored-keys :db/id :object/triggers)]
+          ;; :object/triggers is embedded by build-object-tx at object creation (not ETB registration)
+          relevant-stored-keys (disj stored-keys :db/id)]
       (is (= build-keys relevant-stored-keys)))))
 
 
 (deftest canary-library-shape-matches-init
-  (testing "build-object-tx key set for :library zone matches init.cljs"
+  (testing "build-object-tx key set for :library zone matches init.cljs for card without triggers"
     (let [conn1 (d/create-conn schema)
           _ (d/transact! conn1 cards/all-cards)
           db1 @conn1
           card-eid (get-card-eid db1 :dark-ritual)
-          card-data (d/pull db1 [:card/types :card/power :card/toughness] card-eid)
-          ;; Library position is non-zero (e.g. index 5)
-          build-keys (set (keys (objects/build-object-tx card-eid card-data :library 99 5)))
+          card-data (d/pull db1 [:card/types :card/power :card/toughness :card/triggers] card-eid)
+          ;; Library position is non-zero (e.g. index 5). Strip :db/id (tempid in tx map).
+          build-keys (disj (set (keys (objects/build-object-tx db1 card-eid card-data :library 99 5))) :db/id)
           app-db (init/init-game-state {:main-deck minimal-deck})
           game-db (:game/db app-db)
           library (q/get-objects-in-zone game-db :player-1 :library)
-          lib-obj (first library)
+          ;; Find a dark-ritual in library (no triggers — ensures parity without :object/triggers key)
+          lib-obj (some (fn [o]
+                          (when (= :dark-ritual (get-in o [:object/card :card/id])) o))
+                        library)
+          _ (assert lib-obj "dark-ritual should be in library from minimal-deck")
           obj-eid (d/q '[:find ?e . :in $ ?id :where [?e :object/id ?id]]
                        game-db (:object/id lib-obj))
           stored-keys (set (keys (d/pull game-db '[*] obj-eid)))
@@ -371,8 +379,9 @@
           _ (d/transact! conn cards/all-cards)
           base-db @conn
           card-eid (get-card-eid base-db :dark-ritual)
-          card-data (d/pull base-db [:card/types :card/power :card/toughness] card-eid)
-          build-keys (set (keys (objects/build-object-tx card-eid card-data :hand 99 0)))]
+          card-data (d/pull base-db [:card/types :card/power :card/toughness :card/triggers] card-eid)
+          ;; Strip :db/id (tempid in tx map) — stored objects don't have this key
+          build-keys (disj (set (keys (objects/build-object-tx base-db card-eid card-data :hand 99 0))) :db/id)]
       (is (= build-keys restored-keys)
           (str "restorer hand keys should match build-object-tx. "
                "Extra in restorer: " (cset/difference restored-keys build-keys)
@@ -398,8 +407,9 @@
           _ (d/transact! conn cards/all-cards)
           base-db @conn
           card-eid (get-card-eid base-db :xantid-swarm)
-          card-data (d/pull base-db [:card/types :card/power :card/toughness] card-eid)
-          build-keys (set (keys (objects/build-object-tx card-eid card-data :battlefield 99 0)))]
+          card-data (d/pull base-db [:card/types :card/power :card/toughness :card/triggers] card-eid)
+          ;; Strip :db/id (tempid in tx map) — stored objects don't have this key
+          build-keys (disj (set (keys (objects/build-object-tx base-db card-eid card-data :battlefield 99 0))) :db/id)]
       ;; Restorer battlefield creatures must have summoning-sick and damage-marked on top of base
       (is (cset/subset? build-keys restored-keys)
           "Restored battlefield creature should have all build-object-tx keys plus more")
@@ -433,8 +443,9 @@
                                 :where [?o :object/id ?oid]
                                 [?o :object/card ?e]]
                               db token-obj-id)
-          card-data (d/pull db [:card/types :card/power :card/toughness] token-card-eid)
-          build-keys (set (keys (objects/build-object-tx token-card-eid card-data :battlefield 99 0)))]
+          card-data (d/pull db [:card/types :card/power :card/toughness :card/triggers] token-card-eid)
+          ;; Strip :db/id (tempid in tx map) — stored objects don't have this key
+          build-keys (disj (set (keys (objects/build-object-tx db token-card-eid card-data :battlefield 99 0))) :db/id)]
       (is (cset/subset? build-keys token-keys)
           "Token should have all build-object-tx keys")
       (is (contains? token-keys :object/is-token)
@@ -457,8 +468,9 @@
           _ (d/transact! conn cards/all-cards)
           base-db @conn
           card-eid (get-card-eid base-db :dark-ritual)
-          card-data (d/pull base-db [:card/types :card/power :card/toughness] card-eid)
-          build-keys (set (keys (objects/build-object-tx card-eid card-data :hand 99 0)))]
+          card-data (d/pull base-db [:card/types :card/power :card/toughness :card/triggers] card-eid)
+          ;; Strip :db/id (tempid in tx map) — stored objects don't have this key
+          build-keys (disj (set (keys (objects/build-object-tx base-db card-eid card-data :hand 99 0))) :db/id)]
       (is (= build-keys helper-keys)
           (str "test-helper hand keys should match build-object-tx. "
                "Extra in helper: " (cset/difference helper-keys build-keys)
@@ -475,8 +487,9 @@
           _ (d/transact! conn cards/all-cards)
           base-db @conn
           card-eid (get-card-eid base-db :xantid-swarm)
-          card-data (d/pull base-db [:card/types :card/power :card/toughness] card-eid)
-          build-keys (set (keys (objects/build-object-tx card-eid card-data :battlefield 99 0)))]
+          card-data (d/pull base-db [:card/types :card/power :card/toughness :card/triggers] card-eid)
+          ;; Strip :db/id (tempid in tx map) — stored objects don't have this key
+          build-keys (disj (set (keys (objects/build-object-tx base-db card-eid card-data :battlefield 99 0))) :db/id)]
       (is (cset/subset? build-keys helper-keys)
           "Helper battlefield creature should have all build-object-tx keys")
       (is (contains? helper-keys :object/summoning-sick)
@@ -516,3 +529,31 @@
           "Leaving battlefield should remove :object/summoning-sick")
       (is (contains? removed-keys :object/damage-marked)
           "Leaving battlefield should remove :object/damage-marked"))))
+
+
+;; === Tests for trigger inclusion in build-object-tx ===
+
+(deftest test-build-object-tx-includes-triggers-for-card-with-triggers
+  (testing "build-object-tx includes :object/triggers when card has :card/triggers"
+    (let [conn (d/create-conn schema)
+          _ (d/transact! conn cards/all-cards)
+          db @conn
+          card-eid (get-card-eid db :city-of-traitors)
+          card-data (d/pull db [:card/types :card/power :card/toughness :card/triggers] card-eid)
+          owner-eid 99
+          tx (objects/build-object-tx db card-eid card-data :hand owner-eid 0)]
+      (is (seq (:object/triggers tx))
+          "build-object-tx should include :object/triggers when card has :card/triggers"))))
+
+
+(deftest test-build-object-tx-no-triggers-for-card-without-triggers
+  (testing "build-object-tx does NOT include :object/triggers when card has no :card/triggers"
+    (let [conn (d/create-conn schema)
+          _ (d/transact! conn cards/all-cards)
+          db @conn
+          card-eid (get-card-eid db :dark-ritual)
+          card-data (d/pull db [:card/types :card/power :card/toughness :card/triggers] card-eid)
+          owner-eid 99
+          tx (objects/build-object-tx db card-eid card-data :hand owner-eid 0)]
+      (is (nil? (:object/triggers tx))
+          "build-object-tx should NOT add :object/triggers when card has no :card/triggers"))))

@@ -57,7 +57,7 @@
                         :card/cmc 1}])
     (let [card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] @conn card-id)
           card-data (d/pull @conn '[:card/types :card/power :card/toughness] card-eid)]
-      (d/transact! conn [(objects/build-object-tx card-eid card-data :library player-eid 0)]))
+      (d/transact! conn [(objects/build-object-tx @conn card-eid card-data :library player-eid 0)]))
     @conn))
 
 

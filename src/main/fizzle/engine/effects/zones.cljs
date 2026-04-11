@@ -6,7 +6,6 @@
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.effects :as effects]
-    [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.engine.zones :as zones]))
 
@@ -261,27 +260,12 @@
     (case selection
       :auto
       (let [gy-cards (or (q/get-objects-in-zone db resolved-player :graveyard) [])
-            ;; Move all graveyard cards to library (each move dispatches zone-change triggers)
+            ;; Move all graveyard cards to library (each move dispatches zone-change triggers).
+            ;; Triggers are embedded in objects at creation (build-object-tx) and persist through
+            ;; non-battlefield zone changes — no re-registration needed here.
             db-moved (reduce (fn [db' obj]
-                               (let [obj-id (:object/id obj)
-                                     card-triggers (or (get-in obj [:object/card :card/triggers]) [])
-                                     ;; Move the card to library
-                                     db-after-move (zone-change-dispatch/move-to-zone db' obj-id :library)
-                                     ;; Re-register library zone-change triggers so next mill fires them
-                                     lib-triggers (filterv
-                                                    (fn [t]
-                                                      (and (= :zone-change (:trigger/type t))
-                                                           (= :library (get-in t [:trigger/match :event/from-zone]))))
-                                                    card-triggers)]
-                                 (if (seq lib-triggers)
-                                   ;; Owner EID: :object/owner is a ref, may be {:db/id N} or raw EID
-                                   (let [owner-ref (:object/owner obj)
-                                         owner-eid (if (map? owner-ref) (:db/id owner-ref) owner-ref)
-                                         obj-eid (q/get-object-eid db-after-move obj-id)
-                                         tx (trigger-db/create-triggers-for-card-tx
-                                              db-after-move obj-eid owner-eid lib-triggers)]
-                                     (d/db-with db-after-move tx))
-                                   db-after-move)))
+                               (let [obj-id (:object/id obj)]
+                                 (zone-change-dispatch/move-to-zone db' obj-id :library)))
                              db
                              gy-cards)]
         (zones/shuffle-library db-moved resolved-player))
