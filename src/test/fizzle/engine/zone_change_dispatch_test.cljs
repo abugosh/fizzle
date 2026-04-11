@@ -16,6 +16,7 @@
     [fizzle.events.init :as game-init]
     [fizzle.events.lands :as lands]
     [fizzle.events.opening-hand :as opening-hand]
+    [fizzle.events.resolution :as resolution]
     [fizzle.events.setup :as setup]
     [fizzle.test-helpers :as th]))
 
@@ -300,3 +301,99 @@
           "Hand has 7 cards after mulligan")
       (is (= 0 (count stack-after))
           "No zone-change stack items: mulligan moves hand↔library, not library→graveyard"))))
+
+
+;; =====================================================
+;; Production path: play-land fires :land-entered once
+;; =====================================================
+
+(deftest land-entered-fires-exactly-once-via-play-land
+  (testing "lands/play-land fires :land-entered exactly once (regression guard against double-dispatch)"
+    ;; This test exercises the INTEGRATED path: play-land → zone-change-dispatch/move-to-zone.
+    ;; It guards against double-firing if someone re-adds an explicit :land-entered dispatch
+    ;; to events/lands.cljs while the chokepoint dispatch is also active.
+    (let [db (th/create-test-db {:land-plays 1})
+          [db island-id] (th/add-card-to-zone db :island :hand :player-1)
+          player-eid (q/get-player-eid db :player-1)
+          ;; Register a :land-entered observer trigger (does no harm, just counts)
+          trigger-tx (trigger-db/create-trigger-tx
+                       {:trigger/event-type :land-entered
+                        :trigger/controller player-eid
+                        :trigger/filter {}
+                        :trigger/uses-stack? true
+                        :trigger/effects [{:effect/type :draw :effect/amount 0}]})
+          db (d/db-with db trigger-tx)
+          stack-before (count (get-stack-items db))
+          ;; Play the land via the production path (NOT move-to-zone directly)
+          db-after (lands/play-land db :player-1 island-id)
+          stack-after (count (get-stack-items db-after))]
+      (is (= 0 stack-before) "Precondition: stack starts empty")
+      (is (= 1 (- stack-after stack-before))
+          ":land-entered fires exactly once via play-land (not 0, not 2)"))))
+
+
+;; =====================================================
+;; Production path: graveyard→battlefield fires :land-entered
+;; =====================================================
+
+(deftest land-entered-fires-when-land-returns-to-battlefield
+  (testing "move-to-zone fires :land-entered when land moves graveyard→battlefield (any origin zone)"
+    ;; This tests the epic's core motivation: a land returned from graveyard (e.g., via
+    ;; a reanimate effect) fires :land-entered. This would NOT work with the old explicit
+    ;; dispatch in events/lands.cljs — it only fired from play-land.
+    (let [db (th/create-test-db)
+          [db island-id] (th/add-card-to-zone db :island :graveyard :player-1)
+          player-eid (q/get-player-eid db :player-1)
+          ;; Register a :land-entered observer trigger
+          trigger-tx (trigger-db/create-trigger-tx
+                       {:trigger/event-type :land-entered
+                        :trigger/controller player-eid
+                        :trigger/filter {}
+                        :trigger/uses-stack? true
+                        :trigger/effects [{:effect/type :draw :effect/amount 0}]})
+          db (d/db-with db trigger-tx)
+          stack-before (count (get-stack-items db))
+          ;; Move from graveyard to battlefield — simulates return/reanimate effects
+          db-after (zone-change-dispatch/move-to-zone db island-id :battlefield)
+          stack-after (count (get-stack-items db-after))]
+      (is (= 0 stack-before) "Precondition: stack starts empty")
+      (is (= 1 (- stack-after stack-before))
+          ":land-entered fires when land moves graveyard→battlefield via move-to-zone"))))
+
+
+;; =====================================================
+;; Production path: City of Traitors real card integration
+;; =====================================================
+
+(deftest city-of-traitors-sacrifices-when-second-land-played-via-production-path
+  (testing "City of Traitors sacrifice trigger fires and resolves via production path"
+    ;; This is the crown jewel test: proves the REAL City of Traitors card works
+    ;; end-to-end after the :land-entered dispatch migration.
+    ;; If this test passes, the card is not broken in the actual game.
+    ;; Path: play-land (CoT) → play-land (Island) → CoT trigger on stack → resolve → CoT in graveyard
+    (let [db (th/create-test-db {:land-plays 2})
+          [db cot-id] (th/add-card-to-zone db :city-of-traitors :hand :player-1)
+          ;; Play City of Traitors (trigger registers, no :land-entered fires due to :exclude-self)
+          db (lands/play-land db :player-1 cot-id)
+          _ (is (= :battlefield (:object/zone (q/get-object db cot-id)))
+                "Precondition: City of Traitors on battlefield")
+          _ (is (= 0 (count (get-stack-items db)))
+                "Precondition: no triggers on stack after CoT enters (exclude-self)")
+          ;; Add Island to hand and play it (fires :land-entered, CoT trigger activates)
+          [db island-id] (th/add-card-to-zone db :island :hand :player-1)
+          db (lands/play-land db :player-1 island-id)
+          _ (is (= :battlefield (:object/zone (q/get-object db island-id)))
+                "Precondition: Island on battlefield")
+          _ (is (= 1 (count (get-stack-items db)))
+                "CoT sacrifice trigger should be on stack")
+          ;; Resolve the trigger — sacrifice should execute
+          db-resolved (:db (resolution/resolve-one-item db))]
+      ;; City of Traitors should now be in graveyard
+      (is (= :graveyard (:object/zone (q/get-object db-resolved cot-id)))
+          "City of Traitors should be in graveyard after sacrifice trigger resolves")
+      ;; Island should still be on battlefield
+      (is (= :battlefield (:object/zone (q/get-object db-resolved island-id)))
+          "Island should remain on battlefield")
+      ;; Stack should be empty
+      (is (= 0 (count (get-stack-items db-resolved)))
+          "Stack should be empty after trigger resolves"))))
