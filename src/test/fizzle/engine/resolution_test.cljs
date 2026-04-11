@@ -232,3 +232,92 @@
           result (engine-resolution/resolve-stack-item db stack-item)]
       (is (= db (:db result))
           "Default defmethod should return db unchanged"))))
+
+
+;; =====================================================
+;; move-resolved-spell zone guard (idempotency)
+;; =====================================================
+
+(deftest test-move-resolved-spell-spell-in-exile-is-noop
+  (testing "move-resolved-spell returns db unchanged when spell is already in :exile"
+    (let [db (th/create-test-db {:mana {:black 3}})
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :exile :player-1)
+          obj (queries/get-object db obj-id)
+          result-db (engine-resolution/move-resolved-spell db obj-id obj)]
+      ;; db should be identical — no zone change
+      (is (= db result-db)
+          "move-resolved-spell should return db unchanged when spell is in :exile")
+      ;; Object should still be in :exile
+      (is (= :exile (:object/zone (queries/get-object result-db obj-id)))
+          "Spell should remain in :exile"))))
+
+
+(deftest test-move-resolved-spell-spell-in-graveyard-is-noop
+  (testing "move-resolved-spell returns db unchanged when spell is already in :graveyard"
+    (let [db (th/create-test-db {:mana {:black 3}})
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
+          obj (queries/get-object db obj-id)
+          result-db (engine-resolution/move-resolved-spell db obj-id obj)]
+      ;; db should be identical — no zone change
+      (is (= db result-db)
+          "move-resolved-spell should return db unchanged when spell is in :graveyard")
+      ;; Object should still be in :graveyard
+      (is (= :graveyard (:object/zone (queries/get-object result-db obj-id)))
+          "Spell should remain in :graveyard"))))
+
+
+(deftest test-move-resolved-spell-copy-in-exile-is-noop
+  (testing "move-resolved-spell returns db unchanged when a copy is already in :exile"
+    (let [db (th/create-test-db {:mana {:black 3}})
+          [db src-id] (th/add-card-to-zone db :dark-ritual :exile :player-1)
+          ;; Mark the object as a copy
+          obj-eid (queries/get-object-eid db src-id)
+          db (d/db-with db [[:db/add obj-eid :object/is-copy true]])
+          obj (queries/get-object db src-id)
+          result-db (engine-resolution/move-resolved-spell db src-id obj)]
+      ;; Copy already off stack — should be a no-op (copy removal only happens from :stack)
+      (is (= db result-db)
+          "move-resolved-spell should return db unchanged for copy already in :exile")
+      ;; Object should still exist in :exile
+      (is (= :exile (:object/zone (queries/get-object result-db src-id)))
+          "Copy should remain in :exile"))))
+
+
+(deftest test-move-resolved-spell-unexpected-zone-emits-warn-and-is-noop
+  (testing "move-resolved-spell returns db unchanged + console.warn for unexpected zone :hand"
+    (let [db (th/create-test-db {:mana {:black 3}})
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          obj (queries/get-object db obj-id)
+          warned? (atom false)
+          _orig js/console.warn]
+      ;; Capture console.warn
+      (set! js/console.warn (fn [& _] (reset! warned? true)))
+      (try
+        (let [result-db (engine-resolution/move-resolved-spell db obj-id obj)]
+          ;; db unchanged
+          (is (= db result-db)
+              "move-resolved-spell should return db unchanged for :hand zone")
+          ;; Spell stays in hand
+          (is (= :hand (:object/zone (queries/get-object result-db obj-id)))
+              "Spell should remain in :hand")
+          ;; console.warn should have been called
+          (is @warned?
+              "console.warn should be emitted for unexpected zone :hand"))
+        (finally
+          (set! js/console.warn _orig))))))
+
+
+(deftest test-move-resolved-spell-uses-db-zone-not-stale-obj
+  (testing "move-resolved-spell re-fetches zone from db, ignoring stale obj parameter"
+    (let [db (th/create-test-db {:mana {:black 3}})
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :exile :player-1)
+          ;; Create a STALE obj that claims zone :stack — but db has :exile
+          fresh-obj (queries/get-object db obj-id)
+          stale-obj (assoc fresh-obj :object/zone :stack)
+          result-db (engine-resolution/move-resolved-spell db obj-id stale-obj)]
+      ;; Should be a no-op because db says :exile, not :stack
+      (is (= db result-db)
+          "move-resolved-spell should ignore stale obj zone and use db-fetched zone")
+      ;; Object should still be in :exile — not moved to graveyard
+      (is (= :exile (:object/zone (queries/get-object result-db obj-id)))
+          "Spell should remain in :exile despite stale obj claiming :stack"))))

@@ -117,40 +117,60 @@
    Both direct resolution (resolve-spell-type) and selection cleanup
    (cleanup-selection-source) must use this function.
 
+   Idempotent: if the spell's CURRENT zone (re-fetched from db) is not :stack,
+   returns db unchanged. This handles :exile-self and double-move cases.
+   The obj parameter zone field is NOT trusted — it may be stale.
+
    Arguments:
      db        - Datascript database value
      object-id - Object ID of the spell
-     obj       - Object entity map (pre-fetched)"
+     obj       - Object entity map (pre-fetched, zone field may be stale)"
   [db object-id obj]
-  (if (:object/is-copy obj)
-    (zones/remove-object db object-id)
-    (let [cast-mode (:object/cast-mode obj)
-          mode-destination (:mode/on-resolve cast-mode)
-          card-types (:card/types (:object/card obj))
-          destination (cond
-                        mode-destination mode-destination
-                        (rules/permanent-type? card-types) :battlefield
-                        :else :graveyard)
-          db-after-move (zone-change-dispatch/move-to-zone db object-id destination)
-          card (:object/card obj)]
-      (if (= destination :battlefield)
-        (let [controller-ref (:object/controller obj)
-              controller-eid (if (map? controller-ref) (:db/id controller-ref) controller-ref)
-              controller-id (d/q '[:find ?pid .
-                                   :in $ ?e
-                                   :where [?e :player/id ?pid]]
-                                 db-after-move controller-eid)
-              ;; Register persistent triggers (e.g., becomes-tapped, land-entered)
-              db-with-triggers (if (seq (:card/triggers card))
-                                 (let [obj-eid (queries/get-object-eid db-after-move object-id)
-                                       tx (trigger-db/create-triggers-for-card-tx
-                                            db-after-move obj-eid controller-eid (:card/triggers card))]
-                                   (d/db-with db-after-move tx))
-                                 db-after-move)]
-          ;; Dispatch permanent-entered event for ETB triggers
-          (dispatch/dispatch-event db-with-triggers
-                                   (game-events/permanent-entered-event object-id controller-id)))
-        db-after-move))))
+  ;; Re-fetch the current zone from db — the obj parameter may be stale (e.g.
+  ;; resolve-spell-type pre-fetches obj BEFORE running effects, so if :exile-self
+  ;; fires during effects, obj still claims :stack but db reflects :exile).
+  (let [current-obj (queries/get-object db object-id)
+        current-zone (:object/zone current-obj)]
+    (if (not= current-zone :stack)
+      ;; Not on stack — idempotent no-op (handles exile-self, double-move, ceased-to-exist copies)
+      (do
+        (when (and (some? current-zone)
+                   (not (contains? #{:exile :graveyard} current-zone)))
+          (js/console.warn
+            (str "move-resolved-spell: spell " object-id
+                 " is in zone " current-zone " (not :stack). "
+                 "If this is not expected, check spell disposition routing.")))
+        db)
+      ;; Spell is on stack — proceed with normal zone transition
+      (if (:object/is-copy obj)
+        (zones/remove-object db object-id)
+        (let [cast-mode (:object/cast-mode obj)
+              mode-destination (:mode/on-resolve cast-mode)
+              card-types (:card/types (:object/card obj))
+              destination (cond
+                            mode-destination mode-destination
+                            (rules/permanent-type? card-types) :battlefield
+                            :else :graveyard)
+              db-after-move (zone-change-dispatch/move-to-zone db object-id destination)
+              card (:object/card obj)]
+          (if (= destination :battlefield)
+            (let [controller-ref (:object/controller obj)
+                  controller-eid (if (map? controller-ref) (:db/id controller-ref) controller-ref)
+                  controller-id (d/q '[:find ?pid .
+                                       :in $ ?e
+                                       :where [?e :player/id ?pid]]
+                                     db-after-move controller-eid)
+                  ;; Register persistent triggers (e.g., becomes-tapped, land-entered)
+                  db-with-triggers (if (seq (:card/triggers card))
+                                     (let [obj-eid (queries/get-object-eid db-after-move object-id)
+                                           tx (trigger-db/create-triggers-for-card-tx
+                                                db-after-move obj-eid controller-eid (:card/triggers card))]
+                                       (d/db-with db-after-move tx))
+                                     db-after-move)]
+              ;; Dispatch permanent-entered event for ETB triggers
+              (dispatch/dispatch-event db-with-triggers
+                                       (game-events/permanent-entered-event object-id controller-id)))
+            db-after-move))))))
 
 
 (defn- resolve-spell-effects
