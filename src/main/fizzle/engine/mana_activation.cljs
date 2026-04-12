@@ -8,10 +8,8 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.abilities :as abilities]
     [fizzle.engine.effects :as effects]
-    [fizzle.engine.events :as game-events]
     [fizzle.engine.priority :as priority]
-    [fizzle.engine.stack :as stack]
-    [fizzle.engine.trigger-dispatch :as dispatch]))
+    [fizzle.engine.stack :as stack]))
 
 
 (defn activate-mana-ability
@@ -27,10 +25,12 @@
    Flow:
      1. Find mana ability from card data
      2. Check can-activate? via abilities module
-     3. Pay costs via abilities module (includes tap, remove counters)
+     3. Pay costs via abilities module — costs/pay-cost :tap dispatches :permanent-tapped
      4. Add chosen mana to pool
-     5. Fire matching triggers (e.g., City of Brass :becomes-tapped)
-     6. Check state-based actions (e.g., Gemstone Mine sacrifice)
+     5. Execute ability effects
+
+   Note: :permanent-tapped trigger dispatch happens inside costs/pay-cost :tap, which is
+   called by abilities/pay-all-costs in step 3. This is the tap chokepoint.
 
    Returns unchanged db if any step fails."
   [db player-id object-id mana-color]
@@ -121,11 +121,10 @@
                                                    (effects/execute-effect db' player-id resolved-effect)))
                                                db-after-produces
                                                (:ability/effects mana-ability []))
-                      ;; Step 3: Dispatch permanent-tapped event to trigger registered triggers
-                      ;; (replaces old fire-matching-triggers scanning approach)
-                      db-after-triggers (dispatch/dispatch-event db-after-effects
-                                                                 (game-events/permanent-tapped-event object-id player-id))]
-                  db-after-triggers)
+                      ;; Step 3: :permanent-tapped is now dispatched at the tap chokepoint
+                      ;; (costs/pay-cost :tap) — no longer dispatched here to prevent double-fire.
+                      ]
+                  db-after-effects)
                 db))
             db))
         db))))

@@ -5,7 +5,9 @@
    All functions are pure: (db, object-id, cost) -> db or nil."
   (:require
     [datascript.core :as d]
-    [fizzle.db.queries :as q]))
+    [fizzle.db.queries :as q]
+    [fizzle.engine.events :as game-events]
+    [fizzle.engine.trigger-dispatch :as dispatch]))
 
 
 (defn get-controller-eid
@@ -78,8 +80,15 @@
 (defmethod pay-cost :tap [db object-id cost]
   ;; Guard: check can pay first
   (when (can-pay? db object-id cost)
-    (let [obj-eid (q/get-object-eid db object-id)]
-      (d/db-with db [[:db/add obj-eid :object/tapped true]]))))
+    (let [obj-eid (q/get-object-eid db object-id)
+          db-tapped (d/db-with db [[:db/add obj-eid :object/tapped true]])
+          ;; Dispatch :permanent-tapped at the tap chokepoint (tap-as-cost path)
+          controller-eid (get-controller-eid db object-id)
+          player-id (when controller-eid (get-player-id-from-eid db controller-eid))]
+      (if player-id
+        (dispatch/dispatch-event db-tapped
+                                 (game-events/permanent-tapped-event object-id player-id))
+        db-tapped))))
 
 
 ;; === :remove-counter cost ===

@@ -6,6 +6,8 @@
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.effects :as effects]
+    [fizzle.engine.events :as game-events]
+    [fizzle.engine.trigger-dispatch :as dispatch]
     [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.engine.zones :as zones]))
 
@@ -180,6 +182,7 @@
   [db _player-id effect _object-id]
   ;; Mass tap: tap all UNTAPPED permanents of :effect/permanent-type
   ;; controlled by :effect/target player. Non-interactive — no player selection.
+  ;; Dispatches :permanent-tapped for each tapped permanent (tap-all chokepoint).
   (let [target-player (:effect/target effect)
         perm-type (:effect/permanent-type effect)
         bf-objects (or (q/get-objects-in-zone db target-player :battlefield) [])
@@ -189,9 +192,13 @@
                                                     perm-type)))
                                   bf-objects)]
     (reduce (fn [db' obj]
-              (let [obj-eid (q/get-object-eid db' (:object/id obj))]
+              (let [obj-id (:object/id obj)
+                    obj-eid (q/get-object-eid db' obj-id)]
                 (if obj-eid
-                  (d/db-with db' [[:db/add obj-eid :object/tapped true]])
+                  (let [db-tapped (d/db-with db' [[:db/add obj-eid :object/tapped true]])]
+                    ;; Dispatch :permanent-tapped at the tap-all chokepoint
+                    (dispatch/dispatch-event db-tapped
+                                             (game-events/permanent-tapped-event obj-id target-player)))
                   db')))
             db
             untapped-of-type)))

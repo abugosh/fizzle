@@ -8,7 +8,9 @@
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.creatures :as creatures]
-    [fizzle.engine.stack :as stack]))
+    [fizzle.engine.events :as game-events]
+    [fizzle.engine.stack :as stack]
+    [fizzle.engine.trigger-dispatch :as dispatch]))
 
 
 (defn has-creatures-on-battlefield?
@@ -34,17 +36,31 @@
 
 
 (defn tap-and-mark-attackers
-  "Tap selected attackers and mark them as attacking.
-   Pure function: (db, attacker-ids) -> db"
+  "Tap selected attackers and mark them as attacking. Dispatches :permanent-tapped
+   for each attacker tapped. Pure function: (db, attacker-ids) -> db"
   [db attacker-ids]
   (if (empty? attacker-ids)
     db
-    (let [txs (mapcat (fn [obj-id]
-                        (let [obj-eid (q/get-object-eid db obj-id)]
-                          [[:db/add obj-eid :object/tapped true]
-                           [:db/add obj-eid :object/attacking true]]))
-                      attacker-ids)]
-      (d/db-with db (vec txs)))))
+    (reduce (fn [db' obj-id]
+              (let [obj-eid (q/get-object-eid db' obj-id)
+                    controller-eid (d/q '[:find ?c .
+                                          :in $ ?e
+                                          :where [?e :object/controller ?c]]
+                                        db' obj-eid)
+                    player-id (when controller-eid
+                                (d/q '[:find ?pid .
+                                       :in $ ?e
+                                       :where [?e :player/id ?pid]]
+                                     db' controller-eid))
+                    db-tapped (d/db-with db' [[:db/add obj-eid :object/tapped true]
+                                              [:db/add obj-eid :object/attacking true]])]
+                ;; Dispatch :permanent-tapped at the combat-tap chokepoint
+                (if player-id
+                  (dispatch/dispatch-event db-tapped
+                                           (game-events/permanent-tapped-event obj-id player-id))
+                  db-tapped)))
+            db
+            attacker-ids)))
 
 
 (defn get-attacking-creatures
