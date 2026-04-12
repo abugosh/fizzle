@@ -21,7 +21,6 @@
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.validation :as validation]
     [fizzle.events.casting :as casting]
-    [fizzle.events.lands :as lands]
     [fizzle.events.resolution :as resolution]
     [fizzle.events.selection.core :as sel-core]
     [fizzle.events.selection.targeting :as sel-targeting]
@@ -249,9 +248,24 @@
 
 
 (defn tap-permanent
-  "Tap a permanent on the battlefield. Returns updated db."
+  "Set a permanent's tapped state to true for test setup purposes.
+   Pure function: (db, object-id) -> db
+
+   This is a TEST HELPER for initializing game state in tests (e.g., setting up
+   already-tapped permanents before testing untap behavior). It uses d/db-with
+   directly and does NOT dispatch :permanent-tapped — it is NOT a game-action tap.
+
+   For game-action taps that should fire :becomes-tapped triggers, use the
+   production paths:
+   - costs/pay-cost :tap — tap-as-cost (mana abilities, activated abilities)
+   - combat/tap-and-mark-attackers — attack declaration
+   - effects :tap-all — mass-tap effect"
   [db object-id]
-  (lands/tap-permanent db object-id))
+  (let [obj (q/get-object db object-id)]
+    (if obj
+      (let [obj-eid (q/get-object-eid db object-id)]
+        (d/db-with db [[:db/add obj-eid :object/tapped true]]))
+      db)))
 
 
 ;; =====================================================

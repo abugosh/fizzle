@@ -41,19 +41,6 @@
   (:object/tapped (q/get-object db object-id)))
 
 
-;; === tap-permanent tests ===
-
-(deftest test-tap-permanent-sets-tapped-true
-  (testing "tap-permanent sets :object/tapped to true on untapped land"
-    (let [db (create-tap-test-db)
-          [db' obj-id] (add-land-to-battlefield db :city-of-brass :player-1)
-          _ (is (false? (get-object-tapped db' obj-id))
-                "Precondition: land starts untapped")
-          db'' (lands/tap-permanent db' obj-id)]
-      (is (true? (get-object-tapped db'' obj-id))
-          "Land should be tapped after tap-permanent"))))
-
-
 ;; === activate-mana-ability tests ===
 
 (deftest test-activate-mana-ability-adds-mana-to-pool
@@ -159,10 +146,10 @@
           ;; Add two lands to battlefield
           [db' obj-id1] (add-land-to-battlefield db :city-of-brass :player-1)
           [db'' obj-id2] (add-land-to-battlefield db' :gemstone-mine :player-1)
-          ;; Tap both lands
+          ;; Tap both lands (using test helper — not a game-action tap, just test setup)
           db-tapped (-> db''
-                        (lands/tap-permanent obj-id1)
-                        (lands/tap-permanent obj-id2))
+                        (th/tap-permanent obj-id1)
+                        (th/tap-permanent obj-id2))
           _ (is (true? (get-object-tapped db-tapped obj-id1))
                 "Precondition: first land is tapped")
           _ (is (true? (get-object-tapped db-tapped obj-id2))

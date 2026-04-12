@@ -1,5 +1,5 @@
 (ns fizzle.events.lands
-  "Land play and permanent tapping.
+  "Land play and permanent untapping.
    Pure functions and re-frame event handlers."
   (:require
     [datascript.core :as d]
@@ -74,27 +74,6 @@
           (assoc :game/db game-db-after)
           (assoc :history/pending-entry
                  (descriptions/build-pending-entry game-db-after ::play-land description pid))))))
-
-
-(defn tap-permanent
-  "Tap a permanent on the battlefield.
-   Pure function: (db, object-id) -> db
-
-   Sets :object/tapped to true for the given object.
-   Returns unchanged db if object doesn't exist."
-  [db object-id]
-  (let [obj (queries/get-object db object-id)]
-    (if obj
-      (let [obj-eid (queries/get-object-eid db object-id)]
-        (d/db-with db [[:db/add obj-eid :object/tapped true]]))
-      db)))
-
-
-(rf/reg-event-db
-  ::tap-permanent
-  (fn [db [_ object-id]]
-    (let [game-db (:game/db db)]
-      (assoc db :game/db (tap-permanent game-db object-id)))))
 
 
 (defn untap-permanent

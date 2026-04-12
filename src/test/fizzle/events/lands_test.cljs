@@ -6,8 +6,8 @@
    Unit tests call pure functions directly for guard conditions and edge cases.
 
    NOTE: play_land_test.cljs and tap_land_test.cljs already cover the pure function
-   happy paths for play-land, tap-permanent, and mana activation. This file focuses
-   on the dispatch-sync (re-frame event handler wiring) gap."
+   happy paths for play-land and mana activation. This file focuses on the
+   dispatch-sync (re-frame event handler wiring) gap."
   (:require
     [cljs.test :refer-macros [deftest is testing]]
     [clojure.string :as str]
@@ -102,21 +102,6 @@
           "land-plays-left should be 0 after playing a land"))))
 
 
-;; Test 4: ::tap-permanent taps land via dispatch
-(deftest tap-permanent-dispatch-taps-land
-  (testing "::tap-permanent dispatch sets :object/tapped to true"
-    (let [app-db (setup-app-db)
-          game-db (:game/db app-db)
-          [game-db' obj-id] (h/add-card-to-zone game-db :island :battlefield :player-1)
-          _ (is (false? (:object/tapped (q/get-object game-db' obj-id)))
-                "Precondition: island starts untapped")
-          app-db' (assoc app-db :game/db game-db')
-          result (dispatch-event app-db' [::lands/tap-permanent obj-id])
-          land-after (q/get-object (:game/db result) obj-id)]
-      (is (true? (:object/tapped land-after))
-          "Island should be tapped after ::tap-permanent dispatch"))))
-
-
 ;; Test 5: ::play-land registers triggers for City of Brass
 (deftest play-land-dispatch-registers-triggers
   (testing "::play-land dispatch registers card triggers for City of Brass"
@@ -204,23 +189,13 @@
           "land-plays-left should be unchanged — land was not in hand"))))
 
 
-;; Test 10: tap-permanent with nonexistent object returns unchanged db
-(deftest tap-permanent-nonexistent-object
-  (testing "tap-permanent with a fake object-id returns unchanged db"
-    (let [db (h/create-test-db)
-          fake-id (random-uuid)
-          result (lands/tap-permanent db fake-id)]
-      (is (= db result)
-          "db should be unchanged when object-id does not exist"))))
-
-
-;; Test 11: untap-permanent sets :object/tapped to false
+;; Test 10: untap-permanent sets :object/tapped to false
 (deftest untap-permanent-sets-tapped-false
   (testing "untap-permanent sets :object/tapped to false on a tapped permanent"
     (let [db (h/create-test-db)
           [db' obj-id] (h/add-card-to-zone db :island :battlefield :player-1)
-          ;; Tap it first
-          db-tapped (lands/tap-permanent db' obj-id)
+          ;; Tap it first (using test helper — test state setup, not game action)
+          db-tapped (h/tap-permanent db' obj-id)
           _ (is (true? (:object/tapped (q/get-object db-tapped obj-id)))
                 "Precondition: island is tapped")
           result (lands/untap-permanent db-tapped obj-id)]
@@ -228,7 +203,7 @@
           "Island should be untapped after untap-permanent"))))
 
 
-;; Test 12: untap-permanent with nonexistent object returns unchanged db
+;; Test 11: untap-permanent with nonexistent object returns unchanged db
 (deftest untap-permanent-nonexistent-object
   (testing "untap-permanent with a fake object-id returns unchanged db"
     (let [db (h/create-test-db)

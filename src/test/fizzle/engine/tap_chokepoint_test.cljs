@@ -1,13 +1,17 @@
 (ns fizzle.engine.tap-chokepoint-test
   "Tests for the tap chokepoint migration.
 
-   Verifies that :permanent-tapped triggers fire from all three tap paths:
+   Verifies that :permanent-tapped triggers fire from all three game-action tap paths:
    1. costs/pay-cost :tap  — tap-as-cost (mana abilities, future non-mana abilities)
    2. combat/tap-and-mark-attackers — attack declaration taps
    3. effects :tap-all — mass tap effect (Twiddle-style)
 
-   Also verifies no double-fire: tapping via mana_activation should fire
-   exactly once (from costs.cljs, NOT from mana_activation.cljs)."
+   Also verifies:
+   - No double-fire: tapping via mana_activation fires exactly once
+   - th/tap-permanent (test setup helper) does NOT fire :permanent-tapped
+
+   Note: events/lands::tap-permanent was dead production code (no UI/views callers)
+   and was removed (Option B of reviewer gap fix)."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
@@ -111,3 +115,26 @@
       ;; CoB's :becomes-tapped trigger should fire via :permanent-tapped dispatch
       (is (= 1 (count (q/get-all-stack-items db-after-tap-all)))
           "One :permanent-tapped trigger on stack after :tap-all effect"))))
+
+
+;; === Path 4: events/lands — dead code removed ===
+;; The ::tap-permanent re-frame event and lands/tap-permanent function were dead
+;; production code with no UI/views callers. They bypassed the :permanent-tapped
+;; dispatch chokepoint and have been removed (Option B).
+;;
+;; th/tap-permanent in test_helpers now uses inline d/db-with directly.
+;; It is a TEST SETUP helper — not a game-action tap — and must NOT fire
+;; :permanent-tapped triggers (correct behavior for initializing test state).
+
+(deftest test-th-tap-permanent-sets-tapped-without-trigger
+  (testing "th/tap-permanent sets :object/tapped true without dispatching :permanent-tapped"
+    (let [db (th/create-test-db)
+          [db' obj-id] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
+          _ (is (= 0 (count (q/get-all-stack-items db')))
+                "Precondition: no stack items before test-helper tap")
+          db-after (th/tap-permanent db' obj-id)]
+      ;; th/tap-permanent is test setup — should NOT fire :permanent-tapped trigger
+      (is (true? (:object/tapped (q/get-object db-after obj-id)))
+          "Object should be tapped after th/tap-permanent")
+      (is (= 0 (count (q/get-all-stack-items db-after)))
+          "th/tap-permanent must NOT fire :permanent-tapped trigger (test setup, not game action)"))))
