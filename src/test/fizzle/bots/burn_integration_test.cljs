@@ -114,3 +114,27 @@
           "Should reach at least turn 3 (human->bot->human)")
       (is (= :player-1 (q/get-active-player-id result-db))
           "Active player at turn 3 should be human"))))
+
+
+;; === Damage E2E Test ===
+
+(deftest burn-bot-deals-damage-via-dispatch
+  (testing "burn bot resolves Lightning Bolt, reducing opponent life from 20 to 17 and bolt enters graveyard"
+    ;; Bug caught: if the bot→director→handler→SBA path breaks (e.g., director does not
+    ;; resolve stack items, or SBAs don't check life, or damage application is skipped),
+    ;; the life total stays at 20 and this test fails.
+    ;; The existing tests in this file only verify the bot's DECISION protocol (:cast-spell
+    ;; keyword), not the full path from decision to damage resolution.
+    (let [app-db (setup-burn-bot-app-db {:mountains 1 :bolts 1 :with-priority? true})
+          ;; yield-all? true: human auto-passes so bot can cast, both players pass,
+          ;; bolt resolves, SBAs run inline via director (sba/check-and-execute-sbas)
+          result (director/run-to-decision app-db {:yield-all? true})
+          result-db (:game/db (:app-db result))
+          human-life (q/get-life-total result-db :player-1)
+          bot-graveyard (q/get-objects-in-zone result-db :player-2 :graveyard)]
+      (is (= 17 human-life)
+          "Human life should be exactly 17 (20 - 3) after Lightning Bolt resolves")
+      (is (= 1 (count bot-graveyard))
+          "Lightning Bolt should be in bot's graveyard (exactly 1 card)")
+      (is (= :lightning-bolt (get-in (first bot-graveyard) [:object/card :card/id]))
+          "The card in bot's graveyard should be Lightning Bolt"))))
