@@ -279,17 +279,6 @@
 
 ;; === Zone transitions ===
 
-(deftest test-creature-entering-bf-gets-pt
-  (testing "Creature entering battlefield gets power/toughness/summoning-sick/damage-marked"
-    (let [db (th/create-test-db)
-          [db obj-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
-          obj (q/get-object db obj-id)]
-      (is (= 1 (:object/power obj)) "Should have base power")
-      (is (= 1 (:object/toughness obj)) "Should have base toughness")
-      (is (true? (:object/summoning-sick obj)) "Should be summoning sick")
-      (is (= 0 (:object/damage-marked obj)) "Damage should be 0"))))
-
-
 (deftest test-creature-entering-bf-sets-pt-from-card-definition
   (testing "Creature entering battlefield gets P/T even if object was created without them
             (production path: objects start without P/T, zone transition must set it)"

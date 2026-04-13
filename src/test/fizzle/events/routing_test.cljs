@@ -1,16 +1,12 @@
 (ns fizzle.events.routing-test
-  "Tests for screen routing - set-active-screen event."
-  (:require
-    [cljs.test :refer-macros [deftest testing is]]
-    [fizzle.events.init :as game-init]
-    [fizzle.events.setup :as setup]
-    [fizzle.events.ui :as ui-events]))
+  "Tests for screen routing - set-active-screen event.
+
+   NOTE: The previous test (set-active-screen-preserves-game-state) was a
+   tautology — it only verified the handler does not mutate game state, not
+   that routing itself works. Real routing coverage should verify navigation
+   side effects and screen transitions via production event dispatch.
+   Pending replacement in fizzle-ds6g.")
 
 
-(deftest test-set-active-screen-preserves-game-state
-  (testing "switching screens preserves game db"
-    (let [app-db (game-init/init-game-state {:main-deck (:deck/main setup/iggy-pop-decklist)})
-          game-db-before (:game/db app-db)
-          updated (ui-events/set-active-screen-handler app-db :setup)]
-      (is (= game-db-before (:game/db updated))
-          "Game db should be unchanged after screen switch"))))
+;; Placeholder: real routing coverage is tracked in fizzle-ds6g.
+;; Tests here should exercise routing via re-frame dispatch, not handler internals.

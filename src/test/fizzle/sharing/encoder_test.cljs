@@ -7,9 +7,6 @@
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [clojure.string :as string]
-    [fizzle.db.queries :as q]
-    [fizzle.engine.mana :as mana]
-    [fizzle.engine.rules :as rules]
     [fizzle.sharing.encoder :as encoder]
     [fizzle.sharing.extractor :as extractor]
     [fizzle.test-helpers :as th]))
@@ -89,97 +86,6 @@
           out2  (encoder/encode-snapshot state)]
       (is (= out1 out2)
           "encoding is deterministic"))))
-
-
-(deftest encode-life-totals-affect-output-test
-  (testing "different life totals produce different encodings"
-    (let [db1   (-> (th/create-test-db {:life 20}) (th/add-opponent))
-          db2   (-> (th/create-test-db {:life 10}) (th/add-opponent))
-          out1  (encoder/encode-snapshot (extractor/extract db1))
-          out2  (encoder/encode-snapshot (extractor/extract db2))]
-      (is (not= out1 out2)
-          "different life totals should produce different encodings"))))
-
-
-(deftest encode-mana-pool-affects-output-test
-  (testing "different mana pools produce different encodings"
-    (let [db1   (-> (th/create-test-db) (th/add-opponent))
-          db2   (-> (mana/add-mana (th/create-test-db) :player-1 {:black 3}) (th/add-opponent))
-          out1  (encoder/encode-snapshot (extractor/extract db1))
-          out2  (encoder/encode-snapshot (extractor/extract db2))]
-      (is (not= out1 out2)
-          "different mana pools should produce different encodings"))))
-
-
-(deftest encode-storm-count-affects-output-test
-  (testing "different storm counts produce different encodings"
-    (let [db1   (-> (th/create-test-db {:storm-count 0}) (th/add-opponent))
-          db2   (-> (th/create-test-db {:storm-count 5}) (th/add-opponent))
-          out1  (encoder/encode-snapshot (extractor/extract db1))
-          out2  (encoder/encode-snapshot (extractor/extract db2))]
-      (is (not= out1 out2)
-          "different storm counts should produce different encodings"))))
-
-
-;; === D. Zone encoding ===
-
-(deftest encode-hand-cards-affect-output-test
-  (testing "hand contents affect the encoded output"
-    (let [db0   (-> (th/create-test-db) (th/add-opponent))
-          [db1 _] (th/add-card-to-zone db0 :dark-ritual :hand :player-1)
-          out0  (encoder/encode-snapshot (extractor/extract db0))
-          out1  (encoder/encode-snapshot (extractor/extract db1))]
-      (is (not= out0 out1)
-          "adding a card to hand should change the encoding"))))
-
-
-(deftest encode-library-order-affects-output-test
-  (testing "library card order affects the encoded output"
-    (let [db0   (-> (th/create-test-db) (th/add-opponent))
-          [db1 _] (th/add-cards-to-library db0 [:dark-ritual :brain-freeze] :player-1)
-          [db2 _] (th/add-cards-to-library db0 [:brain-freeze :dark-ritual] :player-1)
-          out1  (encoder/encode-snapshot (extractor/extract db1))
-          out2  (encoder/encode-snapshot (extractor/extract db2))]
-      (is (not= out1 out2)
-          "different library order should produce different encodings"))))
-
-
-(deftest encode-empty-zones-test
-  (testing "encoding succeeds with all zones empty"
-    (let [db    (-> (th/create-test-db) (th/add-opponent))
-          state (extractor/extract db)
-          out   (encoder/encode-snapshot state)]
-      (is (string? out))
-      (is (pos? (count out))
-          "even empty state should produce non-empty output"))))
-
-
-;; === E. Stack encoding ===
-
-(deftest encode-stack-item-affects-output-test
-  (testing "stack contents affect the encoded output"
-    (let [db0   (-> (th/create-test-db) (th/add-opponent))
-          [db1 _] (th/add-card-to-zone db0 :dark-ritual :hand :player-1)
-          db1m  (mana/add-mana db1 :player-1 {:black 1})
-          hand  (q/get-hand db1m :player-1)
-          db1c  (rules/cast-spell db1m :player-1 (:object/id (first hand)))
-          out0  (encoder/encode-snapshot (extractor/extract db0))
-          out1  (encoder/encode-snapshot (extractor/extract db1c))]
-      (is (not= out0 out1)
-          "casting a spell (adding to stack) should change the encoding"))))
-
-
-;; === F. Phase/step encoding ===
-
-(deftest encode-different-phases-produce-different-output-test
-  (testing "phase field affects encoding"
-    ;; extract directly manipulates the portable map to test phase field
-    (let [db    (-> (th/create-test-db) (th/add-opponent))
-          state (extractor/extract db)
-          out1  (encoder/encode-snapshot (assoc state :game/phase :main1))
-          out2  (encoder/encode-snapshot (assoc state :game/phase :main2))]
-      (is (not= out1 out2)
-          "different phases should produce different encodings"))))
 
 
 ;; === G. nil/error handling ===

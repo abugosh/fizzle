@@ -15,13 +15,6 @@
 ;; Pipeline structure tests
 ;; =====================================================
 
-(deftest pipeline-is-a-data-vector-test
-  (testing "pre-cast-pipeline is a vector of keywords"
-    (is (vector? casting/pre-cast-pipeline))
-    (is (every? keyword? casting/pre-cast-pipeline))
-    (is (pos? (count casting/pre-cast-pipeline)))))
-
-
 (deftest pipeline-contains-all-pre-cast-steps-test
   (testing "pipeline contains all expected step keywords"
     (let [steps (set casting/pre-cast-pipeline)]

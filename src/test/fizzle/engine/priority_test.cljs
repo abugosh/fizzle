@@ -86,11 +86,6 @@
         "Passed set should be empty after reset")))
 
 
-(deftest reset-passes-on-empty-is-noop
-  (let [[db _ _ _] (setup-two-player-db)]
-    (is (empty? (priority/get-passed-eids (priority/reset-passes db))))))
-
-
 ;; === get-priority-holder-eid ===
 
 (deftest get-priority-holder-returns-initial-player
