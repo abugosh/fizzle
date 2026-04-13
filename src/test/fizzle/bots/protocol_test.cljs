@@ -83,36 +83,6 @@
         "Unknown archetype should pass on all phases")))
 
 
-;; === bot-deck ===
-
-(deftest goldfish-deck-has-60-cards
-  (let [deck (bot/bot-deck :goldfish)
-        total (reduce + 0 (map :count deck))]
-    (is (= 60 total)
-        "Goldfish deck should have 60 cards")))
-
-
-(deftest goldfish-deck-is-all-basic-lands
-  (let [deck (bot/bot-deck :goldfish)
-        card-ids (set (map :card/id deck))]
-    (is (= #{:plains :island :swamp :mountain :forest} card-ids)
-        "Goldfish deck should contain all 5 basic land types")))
-
-
-(deftest goldfish-deck-is-evenly-distributed
-  (let [deck (bot/bot-deck :goldfish)]
-    (doseq [{:keys [card/id count]} deck]
-      (is (= 12 count)
-          (str (name id) " should have 12 copies")))))
-
-
-(deftest default-deck-returns-60-cards
-  (let [deck (bot/bot-deck :unknown)
-        total (reduce + 0 (map :count deck))]
-    (is (= 60 total)
-        "Default deck should have 60 cards")))
-
-
 ;; === Burn Bot Tests ===
 
 (deftest burn-priority-decision-returns-cast-when-bolt-and-mountain

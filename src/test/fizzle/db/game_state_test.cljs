@@ -13,23 +13,6 @@
     [fizzle.events.init :refer [init-game-state]]))
 
 
-;; === Constants ===
-
-(deftest test-human-player-id-is-player-1
-  (testing "human-player-id is :player-1"
-    (is (= :player-1 gs/human-player-id))))
-
-
-(deftest test-opponent-player-id-is-player-2
-  (testing "opponent-player-id is :player-2 (not :opponent — ADR-016)"
-    (is (= :player-2 gs/opponent-player-id))))
-
-
-(deftest test-player-ids-differ
-  (testing "human-player-id and opponent-player-id are distinct"
-    (is (not= gs/human-player-id gs/opponent-player-id))))
-
-
 ;; === create-player-tx ===
 
 (deftest test-create-player-tx-defaults

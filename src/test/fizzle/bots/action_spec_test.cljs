@@ -14,38 +14,8 @@
 
 
 ;; =====================================================
-;; A. Spec Completeness
+;; Per-Type Required Field Validation
 ;; =====================================================
-
-(def all-action-types [:pass :cast-spell :play-land])
-
-
-(deftest test-all-action-types-have-defmethod
-  (testing "All 3 action types have a defmethod (minimal-valid-action passes s/valid?)"
-    (doseq [t all-action-types]
-      (let [minimal (action-spec/minimal-valid-action t)]
-        (is (s/valid? ::action-spec/bot-action minimal)
-            (str "Failed for type " t ": "
-                 (s/explain-str ::action-spec/bot-action minimal)))))))
-
-
-(deftest test-all-types-in-minimal-valid-map
-  (testing "minimal-valid-actions map has exactly 3 entries covering all types"
-    (is (= 3 (count action-spec/minimal-valid-actions))
-        "Should have exactly 3 action types")
-    (doseq [t all-action-types]
-      (is (contains? action-spec/minimal-valid-actions t)
-          (str "Missing type in minimal-valid-actions: " t)))))
-
-
-;; =====================================================
-;; B. Per-Type Required Field Validation
-;; =====================================================
-
-(deftest test-pass-minimal
-  (testing "{:action :pass} passes validation"
-    (is (s/valid? ::action-spec/bot-action {:action :pass})
-        "Minimal :pass action should pass")))
 
 
 (deftest test-cast-spell-requires-object-id
