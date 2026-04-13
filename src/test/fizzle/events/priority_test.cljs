@@ -3,11 +3,15 @@
     [cljs.test :refer-macros [deftest is testing]]
     [datascript.core :as d]
     [fizzle.bots.protocol :as bot-protocol]
+    [fizzle.cards.red.lightning-bolt]
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
+    [fizzle.events.casting :as casting]
+    [fizzle.events.db-effect :as db-effect]
     [fizzle.events.director :as director]
     [fizzle.events.phases :as phases]
     [fizzle.events.priority-flow :as priority-flow]
+    [fizzle.events.resolution :as resolution]
     [fizzle.events.ui :as ui-events]
     [fizzle.history.core :as history]
     [fizzle.history.interceptor :as interceptor]
@@ -16,8 +20,9 @@
     [re-frame.db :as rf-db]))
 
 
-;; Register interceptors for dispatch-sync tests
+;; Register interceptors and SBA dispatch for dispatch-sync tests
 (interceptor/register!)
+(db-effect/register!)
 
 
 (defn- setup-app-db
@@ -854,3 +859,24 @@
         db' (priority-flow/set-opponent-stops db p1-eid #{:upkeep :main2})]
     (is (= #{:upkeep :main2}
            (:player/opponent-stops (d/pull db' [:player/opponent-stops] p1-eid))))))
+
+
+;; === SBA sentinel: proves db-effect/register! is wired ===
+
+(deftest sba-life-zero-fires-in-priority-test
+  (testing "db-effect/register! wired: :life-zero SBA fires after bolt kills 1-life opponent"
+    ;; Bug caught: if db-effect/register! is missing, life reaches -2 but
+    ;; :game/loss-condition is never set — SBAs silently skip.
+    (let [base-app-db (h/create-game-scenario {:bot-archetype :goldfish :mana {:red 1}})
+          game-db (:game/db base-app-db)
+          p2-eid (q/get-player-eid game-db :player-2)
+          game-db' (d/db-with game-db [[:db/add p2-eid :player/life 1]])
+          [game-db'' obj-id] (h/add-card-to-zone game-db' :lightning-bolt :hand :player-1)
+          app-db (assoc base-app-db :game/db game-db'')
+          _ (reset! rf-db/app-db app-db)
+          _ (rf/dispatch-sync [::casting/cast-spell {:object-id obj-id :target :player-2}])
+          _ (rf/dispatch-sync [::resolution/resolve-top])
+          result-db (:game/db @rf-db/app-db)
+          game-state (q/get-game-state result-db)]
+      (is (= :life-zero (:game/loss-condition game-state))
+          ":life-zero SBA must fire when bolt kills 1-life opponent — proves db-effect/register! is wired"))))
