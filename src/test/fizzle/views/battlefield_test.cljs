@@ -7,29 +7,15 @@
 
 ;; === mana-bg-class ===
 
-(deftest mana-bg-class-white
-  (testing "white returns white mana bg + text classes"
-    (is (= "bg-mana-bg-white text-mana-white" (battlefield/mana-bg-class :white)))))
-
-
-(deftest mana-bg-class-blue
-  (testing "blue returns blue mana bg + text classes"
-    (is (= "bg-mana-bg-blue text-mana-blue" (battlefield/mana-bg-class :blue)))))
-
-
-(deftest mana-bg-class-black
-  (testing "black returns black mana bg + text classes"
-    (is (= "bg-mana-bg-black text-mana-black" (battlefield/mana-bg-class :black)))))
-
-
-(deftest mana-bg-class-red
-  (testing "red returns red mana bg + text classes"
-    (is (= "bg-mana-bg-red text-mana-red" (battlefield/mana-bg-class :red)))))
-
-
-(deftest mana-bg-class-green
-  (testing "green returns green mana bg + text classes"
-    (is (= "bg-mana-bg-green text-mana-green" (battlefield/mana-bg-class :green)))))
+(deftest mana-bg-class-all-colors
+  (testing "each mana color returns correct bg + text classes"
+    (doseq [[color expected] [[:white "bg-mana-bg-white text-mana-white"]
+                              [:blue  "bg-mana-bg-blue text-mana-blue"]
+                              [:black "bg-mana-bg-black text-mana-black"]
+                              [:red   "bg-mana-bg-red text-mana-red"]
+                              [:green "bg-mana-bg-green text-mana-green"]]]
+      (is (= expected (battlefield/mana-bg-class color))
+          (str "Failed for " color)))))
 
 
 (deftest mana-bg-class-unknown
@@ -166,29 +152,15 @@
 
 ;; === get-color-identity-bg-class ===
 
-(deftest get-color-identity-bg-class-white
-  (testing "white color identity returns cream tint"
-    (is (= "bg-identity-white" (card-styles/get-color-identity-bg-class #{:white} nil)))))
-
-
-(deftest get-color-identity-bg-class-blue
-  (testing "blue color identity returns blue tint"
-    (is (= "bg-identity-blue" (card-styles/get-color-identity-bg-class #{:blue} nil)))))
-
-
-(deftest get-color-identity-bg-class-black
-  (testing "black color identity returns dark tint"
-    (is (= "bg-identity-black" (card-styles/get-color-identity-bg-class #{:black} nil)))))
-
-
-(deftest get-color-identity-bg-class-red
-  (testing "red color identity returns red tint"
-    (is (= "bg-identity-red" (card-styles/get-color-identity-bg-class #{:red} nil)))))
-
-
-(deftest get-color-identity-bg-class-green
-  (testing "green color identity returns green tint"
-    (is (= "bg-identity-green" (card-styles/get-color-identity-bg-class #{:green} nil)))))
+(deftest get-color-identity-bg-class-mono-colors
+  (testing "each single color identity returns correct tint"
+    (doseq [[color expected] [[:white "bg-identity-white"]
+                              [:blue  "bg-identity-blue"]
+                              [:black "bg-identity-black"]
+                              [:red   "bg-identity-red"]
+                              [:green "bg-identity-green"]]]
+      (is (= expected (card-styles/get-color-identity-bg-class #{color} nil))
+          (str "Failed for " color)))))
 
 
 (deftest get-color-identity-bg-class-multicolor

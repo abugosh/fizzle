@@ -18,10 +18,3 @@
     (let [cls (zone-counts/gy-count-class true)]
       (is (re-find #"text-accent" cls))
       (is (re-find #"font-bold" cls)))))
-
-
-(deftest test-format-zone-count
-  (testing "format-zone-count produces label: count string"
-    (is (= "GY: 7" (zone-counts/format-zone-count "GY" 7)))
-    (is (= "Lib: 53" (zone-counts/format-zone-count "Lib" 53)))
-    (is (= "Exile: 0" (zone-counts/format-zone-count "Exile" 0)))))

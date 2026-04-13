@@ -6,34 +6,16 @@
 
 ;; === Mana color class mapping ===
 
-(deftest mana-color-class-white
-  (testing "white mana returns text-mana-white"
-    (is (= "text-mana-white" (mana-pool/mana-color-class :white)))))
-
-
-(deftest mana-color-class-blue
-  (testing "blue mana returns text-mana-blue"
-    (is (= "text-mana-blue" (mana-pool/mana-color-class :blue)))))
-
-
-(deftest mana-color-class-black
-  (testing "black mana returns text-mana-black"
-    (is (= "text-mana-black" (mana-pool/mana-color-class :black)))))
-
-
-(deftest mana-color-class-red
-  (testing "red mana returns text-mana-red"
-    (is (= "text-mana-red" (mana-pool/mana-color-class :red)))))
-
-
-(deftest mana-color-class-green
-  (testing "green mana returns text-mana-green"
-    (is (= "text-mana-green" (mana-pool/mana-color-class :green)))))
-
-
-(deftest mana-color-class-colorless
-  (testing "colorless mana returns text-mana-colorless"
-    (is (= "text-mana-colorless" (mana-pool/mana-color-class :colorless)))))
+(deftest mana-color-class-all-colors
+  (testing "each mana color returns correct text class"
+    (doseq [[color expected] [[:white    "text-mana-white"]
+                              [:blue     "text-mana-blue"]
+                              [:black    "text-mana-black"]
+                              [:red      "text-mana-red"]
+                              [:green    "text-mana-green"]
+                              [:colorless "text-mana-colorless"]]]
+      (is (= expected (mana-pool/mana-color-class color))
+          (str "Failed for " color)))))
 
 
 (deftest mana-color-class-unknown

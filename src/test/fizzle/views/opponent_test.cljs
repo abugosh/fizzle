@@ -6,53 +6,25 @@
 
 ;; === Player health color (low = bad) ===
 
-(deftest player-health-color-dead
-  (testing "player at 0 life shows critical"
-    (is (= "text-health-critical" (opponent/player-health-class 0)))))
-
-
-(deftest player-health-color-negative
-  (testing "player at negative life shows critical"
-    (is (= "text-health-critical" (opponent/player-health-class -3)))))
-
-
-(deftest player-health-color-low
-  (testing "player at 5 life shows danger"
-    (is (= "text-health-danger" (opponent/player-health-class 5)))))
-
-
-(deftest player-health-color-barely-low
-  (testing "player at 1 life shows danger"
-    (is (= "text-health-danger" (opponent/player-health-class 1)))))
-
-
-(deftest player-health-color-healthy
-  (testing "player at 6+ life shows good"
-    (is (= "text-health-good" (opponent/player-health-class 6)))))
-
-
-(deftest player-health-color-full
-  (testing "player at 20 life shows good"
-    (is (= "text-health-good" (opponent/player-health-class 20)))))
+(deftest player-health-class-boundaries
+  (testing "player health class by life total"
+    (doseq [[life expected] [[0  "text-health-critical"]
+                             [-3 "text-health-critical"]
+                             [1  "text-health-danger"]
+                             [5  "text-health-danger"]
+                             [6  "text-health-good"]
+                             [20 "text-health-good"]]]
+      (is (= expected (opponent/player-health-class life))
+          (str "Failed for life=" life)))))
 
 
 ;; === Opponent health color (low = good for player) ===
 
-(deftest opponent-health-color-dead
-  (testing "opponent at 0 life shows good (opponent dead = good for player)"
-    (is (= "text-health-good" (opponent/opponent-health-class 0)))))
-
-
-(deftest opponent-health-color-negative
-  (testing "opponent at negative life shows good"
-    (is (= "text-health-good" (opponent/opponent-health-class -5)))))
-
-
-(deftest opponent-health-color-low
-  (testing "opponent at 5 life shows danger"
-    (is (= "text-health-danger" (opponent/opponent-health-class 5)))))
-
-
-(deftest opponent-health-color-healthy
-  (testing "opponent at 20 life shows critical (opponent healthy = bad for player)"
-    (is (= "text-health-critical" (opponent/opponent-health-class 20)))))
+(deftest opponent-health-class-boundaries
+  (testing "opponent health class by life total (inverted)"
+    (doseq [[life expected] [[-5 "text-health-good"]
+                             [0  "text-health-good"]
+                             [5  "text-health-danger"]
+                             [20 "text-health-critical"]]]
+      (is (= expected (opponent/opponent-health-class life))
+          (str "Failed for life=" life)))))

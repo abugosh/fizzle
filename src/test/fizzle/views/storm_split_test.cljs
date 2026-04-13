@@ -4,11 +4,9 @@
     [fizzle.views.modals :as modals]))
 
 
-(deftest storm-split-target-label-self
-  (testing "player-1 target returns 'You'"
-    (is (= "You" (modals/storm-split-target-label :player-1)))))
-
-
-(deftest storm-split-target-label-player-2
-  (testing "player-2 target returns 'Opponent'"
-    (is (= "Opponent" (modals/storm-split-target-label :player-2)))))
+(deftest storm-split-target-label-all
+  (testing "target label mapping"
+    (doseq [[target expected] [[:player-1 "You"]
+                               [:player-2 "Opponent"]]]
+      (is (= expected (modals/storm-split-target-label target))
+          (str "Failed for " target)))))
