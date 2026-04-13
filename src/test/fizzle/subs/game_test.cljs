@@ -6,7 +6,11 @@
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.objects :as objects]
+    [fizzle.engine.stack :as stack]
+    [fizzle.events.selection.combat :as sel-combat]
+    [fizzle.events.selection.spec :as sel-spec]
     [fizzle.subs.game :as subs]
+    [fizzle.test-helpers :as th]
     [re-frame.core :as rf]
     [re-frame.db :as rf-db]))
 
@@ -281,48 +285,60 @@
 (deftest test-mana-allocation-state-nil-for-other-types
   (testing "mana-allocation-state returns nil for non-allocation selection types"
     (let [game-db (make-game-db)
-          result (sub-value {:game/db game-db
-                             :game/pending-selection {:selection/type :discard
-                                                      :selection/player-id :player-1}}
-                            [::subs/mana-allocation-state])]
+          ;; Use sel-spec/set-pending-selection (spec chokepoint) with a valid :discard selection.
+          ;; Ensures we exercise the real validation path instead of raw-assoc bypass.
+          discard-sel (get sel-spec/minimal-valid-selections :discard)
+          app-db (sel-spec/set-pending-selection {:game/db game-db} discard-sel)
+          result (sub-value app-db [::subs/mana-allocation-state])]
       (is (nil? result)))))
 
 
 (deftest test-mana-allocation-state-returns-selection-for-allocation
   (testing "mana-allocation-state returns selection map when type is :mana-allocation"
+    ;; Drive through sel-spec/set-pending-selection (spec-validated chokepoint).
+    ;; Selection built with all required fields per :mana-allocation spec.
+    ;; Tests that the sub passes through the real production shape with correct field values.
     (let [game-db (make-game-db)
           selection {:selection/type :mana-allocation
+                     :selection/lifecycle :finalized
+                     :selection/player-id :player-1
+                     :selection/validation :always
+                     :selection/auto-confirm? true
                      :selection/generic-remaining 3
                      :selection/generic-total 3
                      :selection/allocation {}
                      :selection/remaining-pool {:black 2 :blue 1 :red 0}
                      :selection/original-remaining-pool {:black 2 :blue 1 :red 0}
-                     :selection/colored-cost {:black 1}
-                     :selection/auto-confirm? true}
-          result (sub-value {:game/db game-db
-                             :game/pending-selection selection}
-                            [::subs/mana-allocation-state])]
+                     :selection/colored-cost {:black 1}}
+          app-db (sel-spec/set-pending-selection {:game/db game-db} selection)
+          result (sub-value app-db [::subs/mana-allocation-state])]
       (is (= :mana-allocation (:selection/type result)))
       (is (= 3 (:selection/generic-remaining result)))
+      (is (= 3 (:selection/generic-total result)))
       (is (= {} (:selection/allocation result)))
       (is (= {:black 2 :blue 1 :red 0} (:selection/remaining-pool result))))))
 
 
 (deftest test-mana-allocation-state-with-partial-allocation
   (testing "mana-allocation-state reflects partial allocation progress"
+    ;; Drive through sel-spec/set-pending-selection (spec-validated chokepoint).
+    ;; Partial allocation: 2 black spent, 1 generic remains from 3-generic total.
     (let [game-db (make-game-db)
           selection {:selection/type :mana-allocation
+                     :selection/lifecycle :finalized
+                     :selection/player-id :player-1
+                     :selection/validation :always
+                     :selection/auto-confirm? true
                      :selection/generic-remaining 1
                      :selection/generic-total 3
                      :selection/allocation {:black 2}
                      :selection/remaining-pool {:black 0 :blue 1 :red 0}
                      :selection/original-remaining-pool {:black 2 :blue 1 :red 0}
-                     :selection/colored-cost {:black 1}
-                     :selection/auto-confirm? true}
-          result (sub-value {:game/db game-db
-                             :game/pending-selection selection}
-                            [::subs/mana-allocation-state])]
+                     :selection/colored-cost {:black 1}}
+          app-db (sel-spec/set-pending-selection {:game/db game-db} selection)
+          result (sub-value app-db [::subs/mana-allocation-state])]
       (is (= 1 (:selection/generic-remaining result)))
+      (is (= 3 (:selection/generic-total result)))
       (is (= {:black 2} (:selection/allocation result)))
       (is (= {:black 0 :blue 1 :red 0} (:selection/remaining-pool result))))))
 
@@ -331,34 +347,27 @@
 
 (deftest test-storm-split-source-name-returns-spell-name
   (testing "storm-split-source-name returns card name from source object"
-    (let [game-db (make-game-db)
-          conn (d/conn-from-db game-db)
-          _ (d/transact! conn [{:card/id :brain-freeze
-                                :card/name "Brain Freeze"}])
-          card-eid (d/q '[:find ?e . :where [?e :card/id :brain-freeze]] @conn)
-          card-data (d/pull @conn '[:card/types :card/power :card/toughness] card-eid)
-          player-eid (q/get-player-eid @conn :player-1)
-          obj-id (random-uuid)
-          _ (d/transact! conn [(objects/build-object-tx @conn card-eid card-data :stack player-eid 0
-                                                        :id obj-id)])
-          game-db' @conn
-          selection {:selection/type :storm-split
-                     :selection/source-object-id obj-id
-                     :selection/copy-count 5}
-          result (sub-value {:game/db game-db'
-                             :game/pending-selection selection}
-                            [::subs/storm-split-source-name])]
+    ;; Production path: add brain-freeze to stack via th/add-card-to-zone (loads real card data),
+    ;; then build storm-split selection via sel-spec/set-pending-selection with actual source-object-id.
+    ;; The sub reads the card name from the real stack object — tests that lookup works correctly.
+    (let [db (th/create-test-db {:mana {:blue 2 :colorless 1}})
+          ;; Add brain-freeze to stack so the sub can look it up via queries/get-object
+          [game-db obj-id] (th/add-card-to-zone db :brain-freeze :stack :player-1)
+          selection (assoc (get sel-spec/minimal-valid-selections :storm-split)
+                           :selection/source-object-id obj-id
+                           :selection/player-id :player-1)
+          app-db (sel-spec/set-pending-selection {:game/db game-db} selection)
+          result (sub-value app-db [::subs/storm-split-source-name])]
       (is (= "Brain Freeze" result)))))
 
 
 (deftest test-storm-split-source-name-nil-when-not-storm-split
   (testing "storm-split-source-name returns nil for non-storm-split selection"
+    ;; Use sel-spec/set-pending-selection (spec chokepoint) with a valid :discard selection.
     (let [game-db (make-game-db)
-          selection {:selection/type :discard
-                     :selection/player-id :player-1}
-          result (sub-value {:game/db game-db
-                             :game/pending-selection selection}
-                            [::subs/storm-split-source-name])]
+          discard-sel (get sel-spec/minimal-valid-selections :discard)
+          app-db (sel-spec/set-pending-selection {:game/db game-db} discard-sel)
+          result (sub-value app-db [::subs/storm-split-source-name])]
       (is (nil? result)))))
 
 
@@ -690,42 +699,60 @@
 
 (deftest test-blocker-attacker-display-nil-for-non-blocker-selection
   (testing "blocker-attacker-display returns nil for non-assign-blockers selection type"
+    ;; Use sel-spec/set-pending-selection (spec chokepoint) with minimal :select-attackers
+    ;; selection from the spec's minimal-valid-selections. The sub checks for :assign-blockers
+    ;; specifically and returns nil for any other type.
     (let [game-db (make-game-db)
-          selection {:selection/type :select-attackers
-                     :selection/player-id :player-1}
-          result (sub-value {:game/db game-db
-                             :game/pending-selection selection}
-                            [::subs/blocker-attacker-display])]
+          ;; minimal-valid-selections[:select-attackers] has :selection/stack-item-eid 42
+          ;; (a fake EID) — acceptable here since the sub short-circuits on type mismatch
+          ;; before looking up any objects.
+          sel (get sel-spec/minimal-valid-selections :select-attackers)
+          app-db (sel-spec/set-pending-selection {:game/db game-db} sel)
+          result (sub-value app-db [::subs/blocker-attacker-display])]
       (is (nil? result)))))
 
 
 (deftest test-blocker-attacker-display-returns-attacker-data
   (testing "blocker-attacker-display returns attacker's display data when assign-blockers active"
-    (let [[game-db attacker-id] (add-battlefield-creature (make-game-db) :player-2 "Grizzly Bears" 2 2)
-          selection {:selection/type :assign-blockers
-                     :selection/player-id :player-1
-                     :selection/current-attacker attacker-id
-                     :selection/valid-targets []}
-          result (sub-value {:game/db game-db
-                             :game/pending-selection selection}
-                            [::subs/blocker-attacker-display])]
+    ;; Production path: create two-player game, add attacker creature (player-2),
+    ;; create declare-blockers stack item, build blocker selection via sel-combat/build-blocker-selection,
+    ;; then route through sel-spec/set-pending-selection chokepoint.
+    (let [db (th/create-test-db {:mana {:black 1}})
+          db (th/add-opponent db)
+          ;; Add attacker creature for player-2 (opponent)
+          [db attacker-id] (th/add-test-creature db :player-2 2 2)
+          ;; Create declare-blockers stack item to get a real EID
+          db (stack/create-stack-item db {:stack-item/type :declare-blockers
+                                          :stack-item/controller :player-1
+                                          :stack-item/description "Declare Blockers"})
+          si (d/q '[:find ?e . :where [?e :stack-item/type :declare-blockers]] db)
+          ;; Build blocker selection via production builder
+          sel (sel-combat/build-blocker-selection db [attacker-id] :player-1 si)
+          app-db (sel-spec/set-pending-selection {:game/db db} sel)
+          result (sub-value app-db [::subs/blocker-attacker-display])]
       (is (= 2 (:effective-power result)))
       (is (= 2 (:effective-toughness result)))
-      (is (= "Grizzly Bears" (:card-name result))))))
+      ;; Synthetic creature created by add-test-creature has card name "Test Creature"
+      (is (= "Test Creature" (:card-name result))))))
 
 
 ;; === ::selection-cards combat enrichment tests ===
 
 (deftest test-selection-cards-enriches-creatures-for-combat-selection
   (testing "selection-cards enriches creatures with :creature/display for select-attackers"
-    (let [[game-db obj-id] (add-battlefield-creature (make-game-db) :player-1 "Bear" 2 2)
-          selection {:selection/type :select-attackers
-                     :selection/player-id :player-1
-                     :selection/card-source :valid-targets
-                     :selection/valid-targets [obj-id]}
-          result (sub-value {:game/db game-db
-                             :game/pending-selection selection}
-                            [::subs/selection-cards])
+    ;; Production path: create declare-attackers stack item, build attacker selection
+    ;; via sel-combat/build-attacker-selection, route through sel-spec/set-pending-selection.
+    (let [db (th/create-test-db {})
+          db (th/add-opponent db)
+          [db obj-id] (th/add-test-creature db :player-1 2 2)
+          ;; Create declare-attackers stack item to get a real EID
+          db (stack/create-stack-item db {:stack-item/type :declare-attackers
+                                          :stack-item/controller :player-1
+                                          :stack-item/description "Declare Attackers"})
+          si (d/q '[:find ?e . :where [?e :stack-item/type :declare-attackers]] db)
+          sel (sel-combat/build-attacker-selection [obj-id] :player-1 si)
+          app-db (sel-spec/set-pending-selection {:game/db db} sel)
+          result (sub-value app-db [::subs/selection-cards])
           card (first result)]
       (is (= 2 (:effective-power (:creature/display card))))
       (is (= 2 (:effective-toughness (:creature/display card)))))))
@@ -733,29 +760,43 @@
 
 (deftest test-selection-cards-enriches-creatures-for-assign-blockers
   (testing "selection-cards enriches creatures with :creature/display for assign-blockers"
-    (let [[game-db obj-id] (add-battlefield-creature (make-game-db) :player-1 "Bear" 2 2)
-          selection {:selection/type :assign-blockers
-                     :selection/player-id :player-1
-                     :selection/card-source :valid-targets
-                     :selection/valid-targets [obj-id]}
-          result (sub-value {:game/db game-db
-                             :game/pending-selection selection}
-                            [::subs/selection-cards])
+    ;; Production path: create declare-blockers stack item, add potential blocker
+    ;; creature (player-1), build blocker selection via sel-combat/build-blocker-selection.
+    ;; The builder calls get-eligible-blockers which checks can-block? (creature?, untapped,
+    ;; no flying constraint) — the test creature satisfies all checks.
+    (let [db (th/create-test-db {})
+          db (th/add-opponent db)
+          [db _] (th/add-test-creature db :player-1 2 2)
+          ;; Attacker is a player-2 creature (opponent) with no flying
+          [db attacker-id] (th/add-test-creature db :player-2 3 3)
+          db (stack/create-stack-item db {:stack-item/type :declare-blockers
+                                          :stack-item/controller :player-1
+                                          :stack-item/description "Declare Blockers"})
+          si (d/q '[:find ?e . :where [?e :stack-item/type :declare-blockers]] db)
+          ;; build-blocker-selection fetches eligible blockers: player-1 creature is eligible
+          ;; (untapped, creature type, no flying restriction on attacker)
+          sel (sel-combat/build-blocker-selection db [attacker-id] :player-1 si)
+          app-db (sel-spec/set-pending-selection {:game/db db} sel)
+          result (sub-value app-db [::subs/selection-cards])
           card (first result)]
+      (is (some? card) "Expected at least one creature card in selection")
       (is (= 2 (:effective-power (:creature/display card))))
       (is (= 2 (:effective-toughness (:creature/display card)))))))
 
 
 (deftest test-selection-cards-does-not-enrich-for-non-combat-selection
   (testing "selection-cards does not add :creature/display for non-combat selections"
-    (let [[game-db obj-id] (add-battlefield-creature (make-game-db) :player-1 "Bear" 2 2)
-          selection {:selection/type :ability-targeting
-                     :selection/player-id :player-1
-                     :selection/card-source :valid-targets
-                     :selection/valid-targets [obj-id]}
-          result (sub-value {:game/db game-db
-                             :game/pending-selection selection}
-                            [::subs/selection-cards])
+    ;; Production path: add creature, use :cast-time-targeting (non-combat) selection
+    ;; with the creature in valid-targets. The sub returns the creature but without
+    ;; :creature/display enrichment since it's not a combat selection type.
+    (let [db (th/create-test-db {})
+          [game-db obj-id] (th/add-test-creature db :player-1 2 2)
+          ;; Override minimal cast-time-targeting with real creature UUID in valid-targets
+          sel (assoc (get sel-spec/minimal-valid-selections :cast-time-targeting)
+                     :selection/valid-targets [obj-id]
+                     :selection/card-source :valid-targets)
+          app-db (sel-spec/set-pending-selection {:game/db game-db} sel)
+          result (sub-value app-db [::subs/selection-cards])
           card (first result)]
       (is (nil? (:creature/display card))))))
 
