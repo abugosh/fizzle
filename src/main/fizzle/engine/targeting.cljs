@@ -51,9 +51,9 @@
            (contains? options :self)
            [player-id]
 
-           ;; Only opponent
+           ;; Only opponent — filter nil in case no opponent exists yet
            (contains? options :opponent)
-           [opponent-id]
+           (if opponent-id [opponent-id] [])
 
            :else []))
 

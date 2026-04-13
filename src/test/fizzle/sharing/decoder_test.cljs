@@ -323,12 +323,18 @@
 
 
 (deftest decode-does-not-throw-test
-  (testing "decode-snapshot never throws, always returns map"
+  (testing "decode-snapshot never throws, always returns map with :error for invalid input"
     (doseq [input ["" "abc" "!!" "AAAA" "____"
                    (bits/base64url-encode (js/Uint8Array. #js [0]))]]
       (let [result (decoder/decode-snapshot input)]
         (is (map? result)
-            (str "should return map for input: " input))))))
+            (str "should return map for input: " input))
+        ;; Bug caught: (map? result) passes for {:players {} :game {}} which looks
+        ;; like a successful decode — callers then attempt to restore a garbage snapshot.
+        ;; Invalid inputs must produce {:error ...} so callers can display an error message.
+        (is (contains? result :error)
+            (str "invalid input should produce {:error ...}, got keys: "
+                 (keys result) " for input: " input))))))
 
 
 ;; ---------------------------------------------------------------------------

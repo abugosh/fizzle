@@ -5,9 +5,11 @@
   (:require
     [cljs.test :refer-macros [deftest is testing]]
     [datascript.core :as d]
+    [fizzle.db.queries :as q]
     [fizzle.engine.mana-activation :as mana-activation]
     [fizzle.engine.priority :as priority]
     [fizzle.engine.rules :as rules]
+    [fizzle.engine.stack :as stack]
     [fizzle.events.abilities :as event-abilities]
     [fizzle.test-helpers :as h]))
 
@@ -90,9 +92,13 @@
           [db land-id] (h/add-card-to-zone db :polluted-delta :battlefield :player-1)
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
           db (d/db-with db [[:db/add game-eid :game/phase :upkeep]])
-          result (event-abilities/activate-ability db :player-1 land-id 0)]
-      (is (not= db (:db result))
-          "Database should change when activating during upkeep"))))
+          result (event-abilities/activate-ability db :player-1 land-id 0)
+          top (stack/get-top-stack-item (:db result))]
+      ;; Bug caught: (not= db result-db) passes for ANY db change (e.g. wrong stack-item type
+      ;; or accidentally tapping the land without creating an ability stack-item)
+      ;; Assert the stack contains the activated-ability stack-item from the fetchland
+      (is (= :activated-ability (:stack-item/type top))
+          "Activating fetchland ability should create :activated-ability stack-item on stack"))))
 
 
 ;; === activate-mana-ability during non-priority phases ===
@@ -117,6 +123,10 @@
 
 (deftest activate-mana-ability-works-during-main-phase
   (let [db (h/create-test-db)
-        [db land-id] (h/add-card-to-zone db :swamp :battlefield :player-1)]
-    (is (not= db (mana-activation/activate-mana-ability db :player-1 land-id :black))
-        "Mana ability should work during main phase")))
+        [db land-id] (h/add-card-to-zone db :swamp :battlefield :player-1)
+        result-db (mana-activation/activate-mana-ability db :player-1 land-id :black)]
+    ;; Bug caught: (not= db result-db) passes if mana was added to wrong pool
+    ;; or wrong color was added (e.g. :blue instead of :black)
+    ;; Assert mana pool actually incremented with the correct color
+    (is (= 1 (:black (q/get-mana-pool result-db :player-1)))
+        "Tapping Swamp should add exactly 1 black mana to player-1's pool")))

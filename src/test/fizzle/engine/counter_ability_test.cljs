@@ -53,20 +53,40 @@
 
 
 (deftest execute-effect-counter-ability-no-target
-  (testing "Counter-ability with no target is no-op"
+  (testing "Counter-ability with no target is no-op — existing stack items remain"
     (let [db (init-game-state)
+          ;; Add an ability to stack first — no-target no-op must not touch it
+          source-id (random-uuid)
+          db-with-ability (add-activated-ability-to-stack db :player-1 source-id :activated)
           effect {:effect/type :counter-ability}
-          db-after (fx/execute-effect db :player-1 effect)]
-      (is (= db db-after)))))
+          db-after (fx/execute-effect db-with-ability :player-1 effect)
+          items-after (get-all-stack-items db-after)]
+      ;; Bug caught: (= db db-after) only checks empty-stack no-op; with an item on stack,
+      ;; a buggy counter-ability might remove ALL items when target is missing
+      (is (= 1 (count items-after))
+          "No-target counter-ability must leave existing stack items untouched")
+      (is (= :activated-ability (:stack-item/type (first items-after)))
+          "The untargeted ability should remain on the stack with its type intact"))))
 
 
 (deftest execute-effect-counter-ability-invalid-target
-  (testing "Counter-ability with invalid target is no-op"
+  (testing "Counter-ability with invalid target is no-op — existing stack items remain"
     (let [db (init-game-state)
+          ;; Add an ability to stack first — invalid target must not remove it
+          source-id (random-uuid)
+          db-with-ability (add-activated-ability-to-stack db :player-1 source-id :activated)
+          items-before (get-all-stack-items db-with-ability)
+          valid-eid (:db/id (first items-before))
           effect {:effect/type :counter-ability
-                  :effect/target 99999}  ; Non-existent eid
-          db-after (fx/execute-effect db :player-1 effect)]
-      (is (= db db-after)))))
+                  :effect/target 99999}  ; Non-existent eid — must not match valid-eid
+          db-after (fx/execute-effect db-with-ability :player-1 effect)
+          items-after (get-all-stack-items db-after)]
+      ;; Bug caught: (= db db-after) hides a bug where invalid eid accidentally matches
+      ;; Datascript entity 0 or some other unexpected eid
+      (is (= 1 (count items-after))
+          "Invalid-target counter-ability must leave the existing ability on the stack")
+      (is (= valid-eid (:db/id (first items-after)))
+          "The correct stack-item eid should be preserved after a no-op counter"))))
 
 
 (deftest execute-effect-counter-ability-wrong-type

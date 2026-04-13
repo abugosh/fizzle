@@ -440,16 +440,16 @@
 
 
 (deftest test-find-valid-targets-player-opponent-no-opponent
-  (testing "find-valid-targets with :opponent returns nil when no opponent exists"
+  (testing "find-valid-targets with :opponent returns [] when no opponent exists"
     (let [db (init-game-state)  ; No opponent added
           target-req {:target/id :player
                       :target/type :player
                       :target/options [:opponent]}
           targets (targeting/find-valid-targets db :player-1 target-req)]
-      ;; When no opponent exists, get-opponent-id returns nil
-      ;; find-valid-targets returns [nil] since the option matches
-      (is (= [nil] targets)
-          "Should return [nil] when no opponent exists"))))
+      ;; Bug caught: previously returned [nil] which would let nil into targeting pipeline
+      ;; and cause NullPointerError when resolving; must return [] when no opponent
+      (is (= [] targets)
+          "Should return [] when no opponent exists — [nil] is a latent NPE"))))
 
 
 ;; =====================================================

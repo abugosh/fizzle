@@ -32,12 +32,17 @@
           restored (restore-round-trip game-db)
           _ (is (some? (:game/db restored)) "Restored app-db should have game/db")
 
-          ;; First yield
+          ;; First yield: human at main1, human-yielded? true → director advances to main2 (stop)
           result-1 (director/run-to-decision restored {:yield-all? false :human-yielded? true})
           reason-1 (:reason result-1)
           gdb-1    (:game/db (:app-db result-1))]
 
-      (is (some? reason-1) (str "First yield should return a reason, got: " (pr-str result-1)))
+      ;; Bug caught: (some? reason-1) accepts any non-nil keyword including :safety-limit
+      ;; (which means the director hit a safety limit and did NOT produce a real stop).
+      ;; From main1 with human-yielded?=true and goldfish opponent:
+      ;;   main1 → combat (no creatures, skip) → main2 (stop) → :await-human
+      (is (= :await-human reason-1)
+          (str "First yield from main1 should land at main2 with :await-human, got: " reason-1))
       (is (not (identical? (:game/db restored) gdb-1))
           "First yield should change game-db")
 
@@ -59,8 +64,11 @@
                                                      {:yield-all? false :human-yielded? true})
                   reason-2 (:reason result-2)
                   gdb-2    (:game/db (:app-db result-2))]
-              (is (some? reason-2)
-                  (str "Second yield should return a reason, got: " (pr-str result-2)))
+              ;; Bug caught: (some? reason-2) accepts :safety-limit hiding a stuck director
+              ;; From main2 with human-yielded?=true: advances through turn → main1 of next turn
+              (is (= :await-human reason-2)
+                  (str "Second yield should advance to next turn's main1 with :await-human, got: "
+                       reason-2 " (reason-1 was: " reason-1 ")"))
               (is (not (identical? gdb-1 gdb-2))
                   (str "Second yield should change game-db. "
                        "reason-1: " reason-1

@@ -307,9 +307,11 @@
                         {:game/db db
                          :game/selected-card obj-id})
           result (dispatch-cast-and-yield app-db)]
-      ;; Stack should still have items (copies + spell) — director stops after one resolve
-      (is (pos? (count (queries/get-all-stack-items (:game/db result))))
-          "Stack should still have items (storm copies + spell) — no infinite cascade"))))
+      ;; Bug caught: (pos? count) allows 1 item to pass, hiding partial-cascade bug where
+      ;; cast-and-yield resolves more than just the storm-meta (e.g. resolves a copy too)
+      ;; With storm-count=2: storm-meta resolves → 2 storm copies + 1 spell = exactly 3 items
+      (is (= 3 (count (queries/get-all-stack-items (:game/db result))))
+          "Stack should have exactly 3 items (2 storm copies + original spell) — no cascade"))))
 
 
 (deftest test-cast-and-yield-generic-mana-sets-continuation

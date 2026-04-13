@@ -132,9 +132,18 @@
 (deftest test-nil-damage-treated-as-zero
   (testing "Creature without damage-marked attribute works correctly"
     (let [db (th/create-test-db)
-          [db obj-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)]
-      ;; effective-power should work even if damage-marked isn't set
-      (is (= 1 (creatures/effective-power db obj-id))))))
+          [db obj-id] (add-creature-to-battlefield db :nimble-mongoose :player-1)
+          ;; Explicitly retract damage-marked to guarantee nil path is exercised.
+          ;; Without this retract, the test may not actually hit the nil branch if
+          ;; add-creature-to-battlefield happens to initialize :object/damage-marked 0.
+          obj-eid (d/q '[:find ?e . :in $ ?id :where [?e :object/id ?id]] db obj-id)
+          db (d/db-with db [[:db/retract obj-eid :object/damage-marked]])]
+      ;; Bug caught: without explicit retract, test exercises 0-damage path, not nil path;
+      ;; effective-power must handle nil :object/damage-marked (treat as zero)
+      (is (nil? (:object/damage-marked (d/pull db '[:object/damage-marked] obj-eid)))
+          "Precondition: damage-marked must be nil after retract to exercise nil code path")
+      (is (= 1 (creatures/effective-power db obj-id))
+          "effective-power must treat nil damage-marked as zero (not crash)"))))
 
 
 ;; === creature? ===

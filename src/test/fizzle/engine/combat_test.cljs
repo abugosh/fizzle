@@ -155,7 +155,12 @@
           db-before db
           db-after (combat/begin-combat db :player-1)]
       (is (= db-before db-after)
-          "Should return db unchanged when no creatures"))))
+          "Should return db unchanged when no creatures")
+      ;; Bug caught: (= db-before db-after) is strong but doesn't document the invariant;
+      ;; explicitly assert stack is empty so future refactors cannot accidentally
+      ;; create a declare-attackers stack-item even when no creatures are present
+      (is (true? (q/stack-empty? db-after))
+          "Stack must be empty when begin-combat is a no-op — no declare-attackers item"))))
 
 
 ;; === Phase skipping ===

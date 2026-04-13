@@ -75,9 +75,14 @@
           ;; maybe-continue-cleanup should use active player
           result (cleanup/maybe-continue-cleanup app-db)
           result-db (:game/db result)]
-      ;; Since hand is empty (no cards), no discard needed, grants expired
-      (is (some? result-db)
-          "Should return valid game db after cleanup"))))
+      ;; Bug caught: (some? result-db) is trivially true — never detects wrong player
+      ;; or cleanup being skipped. Real assertions:
+      ;; 1. No discard selection (empty hand → no discard needed for active player)
+      (is (nil? (:game/pending-selection result))
+          "No pending discard selection — active player (player-1) has empty hand")
+      ;; 2. Phase stays at :cleanup (begin-cleanup does not advance phase)
+      (is (= :cleanup (:game/phase (q/get-game-state result-db)))
+          "Phase should remain :cleanup — begin-cleanup does not advance the phase"))))
 
 
 ;; === director opponent lookup uses active player ===

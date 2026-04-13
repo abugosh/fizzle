@@ -3,6 +3,7 @@
     [cljs.test :refer-macros [deftest testing is]]
     [fizzle.history.core :as history]
     [fizzle.views.history :as views]
+    [re-frame.core :as rf]
     [re-frame.db :as rf-db]))
 
 
@@ -85,6 +86,16 @@
     (:on-click (second node))))
 
 
+(defn- capture-dispatched-event
+  "Call on-click-fn with re-frame/dispatch intercepted.
+   Returns the event vector that was dispatched, or nil if nothing dispatched."
+  [on-click-fn]
+  (let [captured (atom nil)]
+    (with-redefs [rf/dispatch (fn [event] (reset! captured event))]
+      (on-click-fn #js {}))
+    @captured))
+
+
 ;; === fork-list branch switching tests ===
 
 (deftest test-fork-list-main-entry-has-click-handler-when-on-fork
@@ -95,10 +106,19 @@
             main-node (find-in-hiccup hiccup
                                       (fn [n]
                                         (and (vector? n)
-                                             (= "main" (node-text n)))))]
+                                             (= "main" (node-text n)))))
+            on-click  (node-on-click main-node)]
         (is (some? main-node) "Should find a 'main' text node")
-        (is (some? (node-on-click main-node))
-            "The 'main' entry should have an on-click handler when on a fork branch")))))
+        (is (some? on-click)
+            "The 'main' entry should have an on-click handler when on a fork branch")
+        ;; Bug caught: (some? on-click) passes for any non-nil fn, including one that
+        ;; dispatches the WRONG event (e.g. delete-fork instead of switch-branch nil)
+        ;; Assert the on-click dispatches [::switch-branch nil] to go back to main
+        (let [dispatched (capture-dispatched-event on-click)]
+          (is (= :fizzle.history.events/switch-branch (first dispatched))
+              "on-click must dispatch ::switch-branch event to switch branches")
+          (is (nil? (second dispatched))
+              "on-click must dispatch switch-branch with nil (main branch id)"))))))
 
 
 (deftest test-fork-list-main-entry-no-click-handler-when-on-main
@@ -117,7 +137,7 @@
 
 (deftest test-fork-list-fork-entries-have-click-handlers
   (testing "Non-active fork entries in fork-list should have on-click handlers"
-    (let [[db _fork-id] (make-db-with-fork)
+    (let [[db fork-id] (make-db-with-fork)
           ;; Switch back to main so the fork entry is non-active
           db-main (history/switch-branch db nil)]
       (reset! rf-db/app-db db-main)
@@ -128,10 +148,18 @@
                            (and (vector? n)
                                 (string? (node-text n))
                                 (not= "main" (node-text n))
-                                (not= "Branches" (node-text n)))))]
+                                (not= "Branches" (node-text n)))))
+            on-click  (node-on-click (first fork-nodes))]
         (is (= 1 (count fork-nodes)) "Should find exactly one fork entry")
-        (is (some? (node-on-click (first fork-nodes)))
-            "Non-active fork entry should have an on-click handler")))))
+        (is (some? on-click)
+            "Non-active fork entry should have an on-click handler")
+        ;; Bug caught: (some? on-click) passes for any fn; the fork on-click must dispatch
+        ;; ::switch-branch with the fork's id (not nil, not a wrong branch id)
+        (let [dispatched (capture-dispatched-event on-click)]
+          (is (= :fizzle.history.events/switch-branch (first dispatched))
+              "Fork on-click must dispatch ::switch-branch to switch to the fork")
+          (is (= fork-id (second dispatched))
+              "Fork on-click must dispatch the correct fork-id (not nil or wrong branch)"))))))
 
 
 (deftest test-fork-list-active-fork-has-no-click-handler

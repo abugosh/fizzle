@@ -417,10 +417,14 @@
           app-db (assoc scenario :game/db game-db)
           result (dispatch-yield-all app-db)
           entries (history/effective-entries result)]
-      ;; Director runs the entire game loop synchronously in one dispatch,
-      ;; so there is one history entry for the yield-all operation.
+      ;; Bug caught: (pos? count) never detects empty entries or wrong event-type
+      ;; The yield-all handler sets :history/pending-entry with ::yield-all event-type;
+      ;; if the interceptor is broken, no entry would be created even if count > 0 from prior state
       (is (pos? (count entries))
-          "Should have at least one history entry for the turn cycle"))))
+          "Should have at least one history entry for the turn cycle")
+      (is (every? #(= :fizzle.events.priority-flow/yield-all (:entry/event-type %))
+                  entries)
+          "All entries produced by yield-all should have ::yield-all event-type"))))
 
 
 (deftest bot-turn-history-includes-phase-advance-entries
@@ -434,10 +438,16 @@
           app-db (assoc scenario :game/db game-db)
           result (dispatch-yield-all app-db)
           entries (history/effective-entries result)]
-      ;; Director runs the entire turn cycle synchronously, creating one history
-      ;; entry that captures the final state after bot phases are processed.
+      ;; Bug caught: (pos? count) allows entries with wrong event-type or no snapshot
+      ;; Entries must have ::yield-all event-type (set by pending-entry mechanism)
+      ;; and contain a non-nil snapshot for replay to work
       (is (pos? (count entries))
-          "Should have history entries covering the turn cycle"))))
+          "Should have history entries covering the turn cycle")
+      (is (every? #(some? (:entry/snapshot %)) entries)
+          "Every entry must have a snapshot (nil snapshot breaks replay)")
+      (is (some #(= :fizzle.events.priority-flow/yield-all (:entry/event-type %))
+                entries)
+          "At least one entry should have ::yield-all event-type"))))
 
 
 (deftest bot-turn-history-replay-works-with-filtered-entries
@@ -457,7 +467,12 @@
       ;; Each entry has a valid snapshot for replay
       (doseq [entry entries]
         (is (some? (:entry/snapshot entry))
-            "Each entry should have a snapshot for replay")))))
+            "Each entry should have a snapshot for replay"))
+      ;; Bug caught: snapshot must be a datascript db (not a plain map or nil);
+      ;; if restorer-bug strips :game/db key, replay steps silently use wrong state
+      (doseq [entry entries]
+        (is (= :fizzle.events.priority-flow/yield-all (:entry/event-type entry))
+            "Each yield-all entry should have the correct event-type keyword")))))
 
 
 (deftest bot-turn-no-actions-produces-entries
@@ -474,10 +489,13 @@
           app-db (merge (history/init-history) {:game/db game-db})
           result (dispatch-yield-all app-db)
           entries (history/effective-entries result)]
-      ;; Director runs the entire turn cycle synchronously, creating at least
-      ;; one history entry that captures the state after bot phases.
+      ;; Bug caught: (pos? count) allows history machinery to return stale entries
+      ;; from prior state; the yield-all event-type must be present in new entries
       (is (pos? (count entries))
-          "Bot turn should have history entries"))))
+          "Bot turn should have history entries")
+      (is (every? #(= :fizzle.events.priority-flow/yield-all (:entry/event-type %))
+                  entries)
+          "All bot-turn entries should have ::yield-all event-type — not stale types"))))
 
 
 ;; === Human stops during opponent (bot) turn ===

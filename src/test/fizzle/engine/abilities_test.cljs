@@ -77,6 +77,20 @@
       (is (true? (abilities/can-activate? db object-id ability-missing))))))
 
 
+(deftest test-nil-cost-ability-actually-executes
+  (testing "nil-cost ability can-activate? true implies pay-all-costs also succeeds (no NPE)"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          ;; pay-all-costs with nil/empty cost must return db unchanged (no cost deducted)
+          result-nil  (abilities/pay-all-costs db object-id nil)
+          result-empty (abilities/pay-all-costs db object-id {})]
+      ;; Bug caught: can-activate? returning true but pay-all-costs throwing NPE on nil cost
+      ;; would mean activation appears valid but explodes at payment time
+      (is (= db result-nil)
+          "pay-all-costs with nil cost should return db unchanged — no cost to pay")
+      (is (= db result-empty)
+          "pay-all-costs with empty cost should return db unchanged — no cost to pay"))))
+
+
 (deftest test-can-activate-invalid-object-id
   (testing "can-activate? returns false for non-existent permanent"
     (let [db (init-game-state)

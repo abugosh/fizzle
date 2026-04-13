@@ -179,9 +179,20 @@
           db (stack/create-stack-item db {:stack-item/type :spell
                                           :stack-item/controller :player-1})
           ;; Next order should be 7 (max of object 5 and stack-item 6 is 6, +1 = 7)
-          next-order (stack/get-next-stack-order db)]
+          next-order (stack/get-next-stack-order db)
+          ;; Collect all current positions to assert invariant
+          all-positions (concat
+                          (d/q '[:find [?pos ...] :where [_ :stack-item/position ?pos]] db)
+                          (d/q '[:find [?pos ...] :where [?e :object/zone :stack]
+                                 [?e :object/position ?pos]] db))]
+      ;; Bug caught: literal (= 7 next-order) is brittle — if starting position changes
+      ;; from 5 to anything else, the test breaks even if the invariant holds.
+      ;; Assert the invariant: next-order must be strictly greater than ALL current positions
+      (is (every? #(< % next-order) all-positions)
+          "get-next-stack-order must exceed every current stack position (strict greater)")
+      ;; Also pin the concrete value for regression: with positions 5 and 6, expect 7
       (is (= 7 next-order)
-          "Should account for both objects on stack and stack-items"))))
+          "Concrete: object@5 + stack-item@6 → next-order = 7"))))
 
 
 ;; === resolve-effect-target tests ===
