@@ -70,15 +70,13 @@
 (defn add-opponent
   "Add an opponent player to the game state."
   [db]
-  (let [conn (d/conn-from-db db)]
-    (d/transact! conn [{:player/id :player-2
-                        :player/name "Opponent"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 0 :black 0 :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 1
-                        :player/is-opponent true}])
-    @conn))
+  (d/db-with db [{:player/id :player-2
+                  :player/name "Opponent"
+                  :player/life 20
+                  :player/mana-pool {:white 0 :blue 0 :black 0 :red 0 :green 0 :colorless 0}
+                  :player/storm-count 0
+                  :player/land-plays-left 1
+                  :player/is-opponent true}]))
 
 
 (defn add-library-cards
@@ -86,14 +84,15 @@
    Takes a vector of card-ids (keywords) and adds them with positions 0, 1, 2...
    Position 0 = top of library."
   [db player-id card-ids]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
+  (let [player-eid (q/get-player-eid db player-id)
         ;; All library cards use Dark Ritual card def (mill tests only care about zone/count)
-        card-eid (d/q '[:find ?e . :where [?e :card/id :dark-ritual]] @conn)
-        card-data (d/pull @conn '[:card/types :card/power :card/toughness] card-eid)]
-    (doseq [idx (range (count card-ids))]
-      (d/transact! conn [(objects/build-object-tx @conn card-eid card-data :library player-eid idx)]))
-    @conn))
+        card-eid (d/q '[:find ?e . :where [?e :card/id :dark-ritual]] db)
+        card-data (d/pull db '[:card/types :card/power :card/toughness] card-eid)]
+    (reduce
+      (fn [acc-db idx]
+        (d/db-with acc-db [(objects/build-object-tx acc-db card-eid card-data :library player-eid idx)]))
+      db
+      (range (count card-ids)))))
 
 
 (defn count-zone
@@ -526,16 +525,14 @@
   ([db player-id]
    (add-permanent db player-id nil))
   ([db player-id initial-counters]
-   (let [conn (d/conn-from-db db)
-         player-eid (q/get-player-eid db player-id)
-         card-eid (d/q '[:find ?e . :where [?e :card/id :dark-ritual]] @conn)
-         card-data (d/pull @conn '[:card/types :card/power :card/toughness] card-eid)
+   (let [player-eid (q/get-player-eid db player-id)
+         card-eid (d/q '[:find ?e . :where [?e :card/id :dark-ritual]] db)
+         card-data (d/pull db '[:card/types :card/power :card/toughness] card-eid)
          object-id (random-uuid)
-         entity (cond-> (objects/build-object-tx @conn card-eid card-data :battlefield player-eid 0
+         entity (cond-> (objects/build-object-tx db card-eid card-data :battlefield player-eid 0
                                                  :id object-id)
                   initial-counters (assoc :object/counters initial-counters))]
-     (d/transact! conn [entity])
-     [@conn object-id])))
+     [(d/db-with db [entity]) object-id])))
 
 
 (defn get-counters
@@ -775,17 +772,17 @@
   "Add a card definition to the database.
    Returns [card-eid db]."
   [db card]
-  (let [conn (d/conn-from-db db)]
-    (when-not (d/q '[:find ?e .
-                     :in $ ?cid
-                     :where [?e :card/id ?cid]]
-                   @conn (:card/id card))
-      (d/transact! conn [card]))
-    (let [card-eid (d/q '[:find ?e .
-                          :in $ ?cid
-                          :where [?e :card/id ?cid]]
-                        @conn (:card/id card))]
-      [card-eid @conn])))
+  (let [db (if (d/q '[:find ?e .
+                      :in $ ?cid
+                      :where [?e :card/id ?cid]]
+                    db (:card/id card))
+             db
+             (d/db-with db [card]))
+        card-eid (d/q '[:find ?e .
+                        :in $ ?cid
+                        :where [?e :card/id ?cid]]
+                      db (:card/id card))]
+    [card-eid db]))
 
 
 (defn add-object-with-card
@@ -793,8 +790,7 @@
    Returns [obj-id db] tuple."
   [db player-id card zone]
   (let [[card-eid db'] (add-card-entity db card)
-        conn (d/conn-from-db db')
-        player-eid (q/get-player-eid @conn player-id)
+        player-eid (q/get-player-eid db' player-id)
         obj-id (random-uuid)
         obj {:object/id obj-id
              :object/card card-eid
@@ -802,8 +798,7 @@
              :object/owner player-eid
              :object/controller player-eid
              :object/tapped false}]
-    (d/transact! conn [obj])
-    [obj-id @conn]))
+    [obj-id (d/db-with db' [obj])]))
 
 
 (def test-target-sorcery
@@ -942,19 +937,20 @@
   "Add cards to a player's hand.
    Takes a count of cards to add (all referencing Dark Ritual card def)."
   [db player-id count]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)]
-    (doseq [_ (range count)]
-      (let [card-eid (d/q '[:find ?e .
-                            :where [?e :card/id :dark-ritual]]
-                          @conn)]
-        (d/transact! conn [{:object/id (random-uuid)
+  (let [player-eid (q/get-player-eid db player-id)
+        card-eid (d/q '[:find ?e .
+                        :where [?e :card/id :dark-ritual]]
+                      db)]
+    (reduce
+      (fn [acc-db _]
+        (d/db-with acc-db [{:object/id (random-uuid)
                             :object/card card-eid
                             :object/zone :hand
                             :object/owner player-eid
                             :object/controller player-eid
-                            :object/tapped false}])))
-    @conn))
+                            :object/tapped false}]))
+      db
+      (range count))))
 
 
 ;; === execute-effect :discard-hand tests ===
@@ -1063,22 +1059,24 @@
    Takes a count of cards to add (all referencing Dark Ritual card def).
    Returns [db added-object-ids] tuple."
   [db player-id count]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
-        object-ids (atom [])]
-    (doseq [_ (range count)]
-      (let [card-eid (d/q '[:find ?e .
-                            :where [?e :card/id :dark-ritual]]
-                          @conn)
-            obj-id (random-uuid)]
-        (d/transact! conn [{:object/id obj-id
-                            :object/card card-eid
-                            :object/zone :graveyard
-                            :object/owner player-eid
-                            :object/controller player-eid
-                            :object/tapped false}])
-        (swap! object-ids conj obj-id)))
-    [@conn @object-ids]))
+  (let [player-eid (q/get-player-eid db player-id)
+        card-eid (d/q '[:find ?e .
+                        :where [?e :card/id :dark-ritual]]
+                      db)
+        [final-db obj-ids]
+        (reduce
+          (fn [[acc-db ids] _]
+            (let [obj-id (random-uuid)]
+              [(d/db-with acc-db [{:object/id obj-id
+                                   :object/card card-eid
+                                   :object/zone :graveyard
+                                   :object/owner player-eid
+                                   :object/controller player-eid
+                                   :object/tapped false}])
+               (conj ids obj-id)]))
+          [db []]
+          (range count))]
+    [final-db obj-ids]))
 
 
 ;; === execute-effect :return-from-graveyard tests ===
@@ -1252,18 +1250,16 @@
    Returns [object-id updated-db]."
   [db controller-id object-id target-player]
   (let [player-eid (q/get-player-eid db controller-id)
-        conn (d/conn-from-db db)
         card-eid (d/q '[:find ?e .
                         :where [?e :card/id :dark-ritual]]
-                      @conn)]
-    (d/transact! conn [{:object/id object-id
-                        :object/card card-eid
-                        :object/zone :stack
-                        :object/owner player-eid
-                        :object/controller player-eid
-                        :object/targets {:player target-player}
-                        :object/tapped false}])
-    [object-id @conn]))
+                      db)]
+    [object-id (d/db-with db [{:object/id object-id
+                               :object/card card-eid
+                               :object/zone :stack
+                               :object/owner player-eid
+                               :object/controller player-eid
+                               :object/targets {:player target-player}
+                               :object/tapped false}])]))
 
 
 ;; === execute-effect :add-restriction tests ===
@@ -1391,9 +1387,7 @@
     (let [base-db (-> (init-game-state)
                       (add-opponent))
           game-eid (d/q '[:find ?g . :where [?g :game/id _]] base-db)
-          conn (d/conn-from-db base-db)
-          _ (d/transact! conn [[:db/retract game-eid :game/turn 1]])
-          db @conn
+          db (d/db-with base-db [[:db/retract game-eid :game/turn 1]])
           source-id (random-uuid)
           [source-id db] (add-spell-with-target db :player-1 source-id :player-2)
           effect {:effect/type :add-restriction
@@ -1413,20 +1407,18 @@
   "Add a spell object on the stack with stored targets.
    Returns [object-id updated-db] tuple."
   [db player-id targets-map]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
+  (let [player-eid (q/get-player-eid db player-id)
         card-eid (d/q '[:find ?e .
                         :where [?e :card/id :dark-ritual]]
-                      @conn)
+                      db)
         object-id (random-uuid)]
-    (d/transact! conn [{:object/id object-id
-                        :object/card card-eid
-                        :object/zone :stack
-                        :object/owner player-eid
-                        :object/controller player-eid
-                        :object/targets targets-map
-                        :object/tapped false}])
-    [object-id @conn]))
+    [object-id (d/db-with db [{:object/id object-id
+                               :object/card card-eid
+                               :object/zone :stack
+                               :object/owner player-eid
+                               :object/controller player-eid
+                               :object/targets targets-map
+                               :object/tapped false}])]))
 
 
 ;; === execute-effect :destroy tests ===
