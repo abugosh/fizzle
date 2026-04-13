@@ -323,23 +323,24 @@
 ;; F. Turn-based triggers in restored DB
 
 (deftest restore-turn-based-triggers-present-test
-  ;; TODO fizzle-evnp: strengthen to 4-trigger count assertion once bug is investigated.
-  ;; The [:find [?type ...]] query deduplicates on type — 2 vs 4 count may reflect query
-  ;; deduplication rather than a production bug. Need to use (count (d/q '[:find ?e ?type :where ...])).
-  (testing "turn-based triggers created for both players"
+  ;; Uses entity-pair query to count unique (entity, type) tuples.
+  ;; 2 players × 2 types (:draw-step + :untap-step) = 4 unique trigger entities.
+  ;; This proves both players' turn-based triggers are registered after restore.
+  ;; Bug caught: if only 1 player's triggers register, count would be 2 not 4
+  ;; (fizzle-evnp: prior weak query [:find [?type ...]] deduplicated on type value).
+  (testing "turn-based triggers created for both players — 4 unique trigger entities"
     (let [db (-> (make-snapshot (-> (th/create-test-db) (th/add-opponent)))
                  restorer/restore-game-state
                  :game/db)
-          triggers (d/q '[:find [?type ...]
-                          :where [?e :trigger/event-type :phase-entered]
-                          [?e :trigger/type ?type]]
-                        db)]
-      (is (seq triggers)
-          "phase-entered triggers should be present in restored DB")
-      (is (some #{:draw-step} triggers)
-          "draw-step trigger should be present")
-      (is (some #{:untap-step} triggers)
-          "untap-step trigger should be present"))))
+          tuples (d/q '[:find ?e ?type
+                        :where [?e :trigger/event-type :phase-entered]
+                        [?e :trigger/type ?type]]
+                      db)]
+      (is (= 4 (count tuples))
+          "Should have 4 unique trigger entities: 2 players × 2 types (:draw-step + :untap-step)")
+      (is (= #{:draw-step :untap-step}
+             (into #{} (map second tuples)))
+          "Both :draw-step and :untap-step trigger types should be present"))))
 
 
 ;; ---------------------------------------------------------------------------

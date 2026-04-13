@@ -7,10 +7,10 @@
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.db.queries :as q]
-    [fizzle.db.schema :refer [schema]]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
-    [fizzle.events.resolution :as resolution]))
+    [fizzle.events.resolution :as resolution]
+    [fizzle.test-helpers :as th]))
 
 
 ;; === Test cards with storm keyword ===
@@ -41,60 +41,37 @@
 
 
 (defn init-storm-test-state
-  "Create game state with storm spell in hand."
+  "Create game state with storm spell in hand.
+   Uses th/create-test-db as base (all registry cards + player-1 with turn-based triggers).
+   Synthetic cards (storm-spell, non-storm-spell) are inserted via d/db-with."
   []
-  (let [conn (d/create-conn schema)]
-    ;; Transact cards
-    (d/transact! conn [storm-spell non-storm-spell])
-
-    ;; Transact player
-    (d/transact! conn [{:player/id :player-1
-                        :player/name "Player"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 10 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 1}])
-
-    ;; Get entity IDs
-    (let [player-eid (d/q '[:find ?e .
-                            :where [?e :player/id :player-1]]
-                          @conn)
-          storm-eid (d/q '[:find ?e .
-                           :where [?e :card/id :storm-spell]]
-                         @conn)
-          non-storm-eid (d/q '[:find ?e .
-                               :where [?e :card/id :non-storm-spell]]
-                             @conn)]
-
-      ;; Create objects in hand
-      (d/transact! conn [{:object/id :storm-obj-1
-                          :object/card storm-eid
-                          :object/zone :hand
-                          :object/owner player-eid
-                          :object/controller player-eid
-                          :object/tapped false}
-                         {:object/id :non-storm-obj-1
-                          :object/card non-storm-eid
-                          :object/zone :hand
-                          :object/owner player-eid
-                          :object/controller player-eid
-                          :object/tapped false}
-                         {:object/id :non-storm-obj-2
-                          :object/card non-storm-eid
-                          :object/zone :hand
-                          :object/owner player-eid
-                          :object/controller player-eid
-                          :object/tapped false}])
-
-      ;; Transact game state
-      (d/transact! conn [{:game/id :game-1
-                          :game/turn 1
-                          :game/phase :main1
-                          :game/active-player player-eid
-                          :game/priority player-eid}]))
-
-    @conn))
+  (let [;; Start from production base (registry cards + player-1 + game entity)
+        db (th/create-test-db {:mana {:blue 10}})
+        ;; Insert synthetic test cards (unique/identity: insert fresh since not in registry)
+        db (d/db-with db [storm-spell non-storm-spell])
+        ;; Query EIDs from the db-with result
+        player-eid (q/get-player-eid db :player-1)
+        storm-eid (d/q '[:find ?e . :where [?e :card/id :storm-spell]] db)
+        non-storm-eid (d/q '[:find ?e . :where [?e :card/id :non-storm-spell]] db)]
+    ;; Create objects in hand
+    (d/db-with db [{:object/id :storm-obj-1
+                    :object/card storm-eid
+                    :object/zone :hand
+                    :object/owner player-eid
+                    :object/controller player-eid
+                    :object/tapped false}
+                   {:object/id :non-storm-obj-1
+                    :object/card non-storm-eid
+                    :object/zone :hand
+                    :object/owner player-eid
+                    :object/controller player-eid
+                    :object/tapped false}
+                   {:object/id :non-storm-obj-2
+                    :object/card non-storm-eid
+                    :object/zone :hand
+                    :object/owner player-eid
+                    :object/controller player-eid
+                    :object/tapped false}])))
 
 
 ;; === Storm trigger creation tests ===
@@ -252,9 +229,11 @@
 ;; === Integration tests: Full storm combo scenarios ===
 
 (def brain-freeze-spell
-  "Brain Freeze for integration testing - storm spell that mills 3."
-  {:card/id :brain-freeze
-   :card/name "Brain Freeze"
+  "Synthetic storm-mill spell for integration testing.
+   Uses :test-brain-freeze id to avoid conflicting with the registry :brain-freeze card
+   (which has :card/targeting that would require a separate targeting step)."
+  {:card/id :test-brain-freeze
+   :card/name "Test Brain Freeze"
    :card/cmc 2
    :card/mana-cost {:colorless 1 :blue 1}
    :card/colors #{:blue}
@@ -287,81 +266,48 @@
    - Player 2 (opponent) with 12 cards in library
    - 2 ritual spells and 1 Brain Freeze in player 1's hand"
   []
-  (let [conn (d/create-conn schema)]
-    ;; Transact cards
-    (d/transact! conn [brain-freeze-spell ritual-spell])
-
-    ;; Transact player 1 (caster)
-    (d/transact! conn [{:player/id :player-1
-                        :player/name "Player"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 10 :black 10
-                                           :red 0 :green 0 :colorless 10}
-                        :player/storm-count 0
-                        :player/land-plays-left 1}])
-
-    ;; Transact player 2 (opponent)
-    (d/transact! conn [{:player/id :player-2
-                        :player/name "Opponent"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 0 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 1
-                        :player/is-opponent true}])
-
-    ;; Get entity IDs
-    (let [player1-eid (d/q '[:find ?e .
-                             :where [?e :player/id :player-1]]
-                           @conn)
-          player2-eid (d/q '[:find ?e .
-                             :where [?e :player/id :player-2]]
-                           @conn)
-          brain-freeze-eid (d/q '[:find ?e .
-                                  :where [?e :card/id :brain-freeze]]
-                                @conn)
-          ritual-eid (d/q '[:find ?e .
-                            :where [?e :card/id :ritual]]
-                          @conn)]
-
-      ;; Create objects in player 1's hand
-      (d/transact! conn [{:object/id :ritual-1
-                          :object/card ritual-eid
-                          :object/zone :hand
-                          :object/owner player1-eid
-                          :object/controller player1-eid
-                          :object/tapped false}
-                         {:object/id :ritual-2
-                          :object/card ritual-eid
-                          :object/zone :hand
-                          :object/owner player1-eid
-                          :object/controller player1-eid
-                          :object/tapped false}
-                         {:object/id :brain-freeze-1
-                          :object/card brain-freeze-eid
-                          :object/zone :hand
-                          :object/owner player1-eid
-                          :object/controller player1-eid
-                          :object/tapped false}])
-
-      ;; Create 12 cards in opponent's library (need buffer above 9)
-      (doseq [i (range 12)]
-        (d/transact! conn [{:object/id (keyword (str "library-card-" i))
-                            :object/card ritual-eid  ; Use ritual as placeholder card
-                            :object/zone :library
-                            :object/owner player2-eid
-                            :object/controller player2-eid
-                            :object/position i
-                            :object/tapped false}]))
-
-      ;; Transact game state
-      (d/transact! conn [{:game/id :game-1
-                          :game/turn 1
-                          :game/phase :main1
-                          :game/active-player player1-eid
-                          :game/priority player1-eid}]))
-
-    @conn))
+  (let [;; Start from production base with player-1 + opponent
+        db (th/create-test-db {:mana {:blue 10 :black 10 :colorless 10}})
+        db (th/add-opponent db)
+        ;; Insert synthetic test cards (unique IDs not in registry — fresh inserts)
+        db (d/db-with db [brain-freeze-spell ritual-spell])
+        ;; Query EIDs
+        player1-eid (q/get-player-eid db :player-1)
+        player2-eid (q/get-player-eid db :player-2)
+        brain-freeze-eid (d/q '[:find ?e . :where [?e :card/id :test-brain-freeze]] db)
+        ritual-eid (d/q '[:find ?e . :where [?e :card/id :ritual]] db)
+        ;; Create objects in player 1's hand
+        db (d/db-with db [{:object/id :ritual-1
+                           :object/card ritual-eid
+                           :object/zone :hand
+                           :object/owner player1-eid
+                           :object/controller player1-eid
+                           :object/tapped false}
+                          {:object/id :ritual-2
+                           :object/card ritual-eid
+                           :object/zone :hand
+                           :object/owner player1-eid
+                           :object/controller player1-eid
+                           :object/tapped false}
+                          {:object/id :brain-freeze-1
+                           :object/card brain-freeze-eid
+                           :object/zone :hand
+                           :object/owner player1-eid
+                           :object/controller player1-eid
+                           :object/tapped false}])
+        ;; Create 12 cards in opponent's library using reduce (avoids doseq+d/db-with pitfall)
+        db (reduce
+             (fn [acc-db i]
+               (d/db-with acc-db [{:object/id (keyword (str "library-card-" i))
+                                   :object/card ritual-eid
+                                   :object/zone :library
+                                   :object/owner player2-eid
+                                   :object/controller player2-eid
+                                   :object/position i
+                                   :object/tapped false}]))
+             db
+             (range 12))]
+    db))
 
 
 (defn count-zone
@@ -537,66 +483,36 @@
    Sets up storm count at 20 (simulating 20 spells already cast).
    Returns db with Brain Freeze in hand ready to cast."
   []
-  (let [conn (d/create-conn schema)]
-    ;; Transact Brain Freeze card
-    (d/transact! conn [brain-freeze-spell])
-
-    ;; Transact player with high storm count already
-    (d/transact! conn [{:player/id :player-1
-                        :player/name "Player"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 10 :black 10
-                                           :red 0 :green 0 :colorless 10}
-                        :player/storm-count 20  ; Already cast 20 spells
-                        :player/land-plays-left 1}])
-
-    ;; Transact opponent with library
-    (d/transact! conn [{:player/id :player-2
-                        :player/name "Opponent"
-                        :player/life 20
-                        :player/mana-pool {:white 0 :blue 0 :black 0
-                                           :red 0 :green 0 :colorless 0}
-                        :player/storm-count 0
-                        :player/land-plays-left 1
-                        :player/is-opponent true}])
-
-    ;; Get entity IDs
-    (let [player1-eid (d/q '[:find ?e .
-                             :where [?e :player/id :player-1]]
-                           @conn)
-          player2-eid (d/q '[:find ?e .
-                             :where [?e :player/id :player-2]]
-                           @conn)
-          brain-freeze-eid (d/q '[:find ?e .
-                                  :where [?e :card/id :brain-freeze]]
-                                @conn)]
-
-      ;; Create Brain Freeze in hand
-      (d/transact! conn [{:object/id :brain-freeze-obj
-                          :object/card brain-freeze-eid
-                          :object/zone :hand
-                          :object/owner player1-eid
-                          :object/controller player1-eid
-                          :object/tapped false}])
-
-      ;; Create 70 cards in opponent's library (enough for 21 x 3 = 63 mills)
-      (doseq [i (range 70)]
-        (d/transact! conn [{:object/id (keyword (str "library-card-" i))
-                            :object/card brain-freeze-eid
-                            :object/zone :library
-                            :object/owner player2-eid
-                            :object/controller player2-eid
-                            :object/position i
-                            :object/tapped false}]))
-
-      ;; Transact game state
-      (d/transact! conn [{:game/id :game-1
-                          :game/turn 1
-                          :game/phase :main1
-                          :game/active-player player1-eid
-                          :game/priority player1-eid}]))
-
-    @conn))
+  (let [;; Start from production base with storm count pre-set
+        db (th/create-test-db {:mana {:blue 10 :black 10 :colorless 10}
+                               :storm-count 20})
+        db (th/add-opponent db)
+        ;; Insert synthetic test card (unique :test-brain-freeze id — not in registry)
+        db (d/db-with db [brain-freeze-spell])
+        ;; Query EIDs
+        player1-eid (q/get-player-eid db :player-1)
+        player2-eid (q/get-player-eid db :player-2)
+        brain-freeze-eid (d/q '[:find ?e . :where [?e :card/id :test-brain-freeze]] db)
+        ;; Create Brain Freeze in hand
+        db (d/db-with db [{:object/id :brain-freeze-obj
+                           :object/card brain-freeze-eid
+                           :object/zone :hand
+                           :object/owner player1-eid
+                           :object/controller player1-eid
+                           :object/tapped false}])
+        ;; Create 70 cards in opponent's library using reduce
+        db (reduce
+             (fn [acc-db i]
+               (d/db-with acc-db [{:object/id (keyword (str "library-card-" i))
+                                   :object/card brain-freeze-eid
+                                   :object/zone :library
+                                   :object/owner player2-eid
+                                   :object/controller player2-eid
+                                   :object/position i
+                                   :object/tapped false}]))
+             db
+             (range 70))]
+    db))
 
 
 (deftest test-storm-high-count

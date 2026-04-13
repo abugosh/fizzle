@@ -19,8 +19,6 @@
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
-    [fizzle.cards.lands.city-of-brass :as city-of-brass]
-    [fizzle.cards.red.lightning-bolt :as lightning-bolt]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana-activation :as mana-activation]
     [fizzle.engine.rules :as rules]
@@ -60,9 +58,7 @@
    Returns app-db."
   []
   (let [db (th/create-test-db {:stops #{:main1 :main2}})
-        conn (d/conn-from-db db)
-        _ (d/transact! conn [lightning-bolt/card])
-        db (th/add-opponent @conn {:bot-archetype :burn})
+        db (th/add-opponent db {:bot-archetype :burn})
         [db _] (th/add-card-to-zone db :mountain :battlefield :player-2)
         [db _] (th/add-card-to-zone db :lightning-bolt :hand :player-2)
         game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
@@ -142,9 +138,7 @@
     ;; After director resolves: bolt deals 3 damage → human at 0 → :life-zero SBA fires.
     ;; Note: 3 damage = bolt (3 dmg) to target at 3 life → life goes to 0 → SBA.
     (let [db (th/create-test-db {:stops #{:main1 :main2} :life 3})
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [lightning-bolt/card])
-          db (th/add-opponent @conn {:bot-archetype :burn})
+          db (th/add-opponent db {:bot-archetype :burn})
           [db _] (th/add-card-to-zone db :mountain :battlefield :player-2)
           [db _] (th/add-card-to-zone db :lightning-bolt :hand :player-2)
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] db)
@@ -180,9 +174,7 @@
     ;; then run director/run-to-decision to resolve the pending trigger on the stack.
     ;; yield-all? true: human auto-passes so stack resolves inline.
     (let [db (th/create-test-db {:stops #{:main1 :main2}})
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [city-of-brass/card])
-          db (th/add-opponent @conn {:bot-archetype :burn})
+          db (th/add-opponent db {:bot-archetype :burn})
           ;; Add CoB to bot's battlefield (trigger-db populated at creation via build-object-tx)
           [db cob-id] (th/add-card-to-zone db :city-of-brass :battlefield :player-2)
           ;; Set active player = bot, phase = main1, priority = bot
