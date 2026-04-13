@@ -31,14 +31,12 @@
                         :where [?e :card/id :dark-ritual]]
                       db)
         obj-id (random-uuid)
-        conn (d/conn-from-db db)
-        _ (d/transact! conn [{:object/id obj-id
-                              :object/card card-eid
-                              :object/zone :battlefield
-                              :object/owner player-eid
-                              :object/controller player-eid
-                              :object/tapped false}])
-        new-db @conn
+        new-db (d/db-with db [{:object/id obj-id
+                               :object/card card-eid
+                               :object/zone :battlefield
+                               :object/owner player-eid
+                               :object/controller player-eid
+                               :object/tapped false}])
         obj-eid (d/q '[:find ?e .
                        :in $ ?oid
                        :where [?e :object/id ?oid]]
@@ -107,9 +105,7 @@
                 :trigger/controller player-eid
                 :trigger/filter {:event/object-id :self}
                 :trigger/effects [{:effect/type :deal-damage :effect/amount 1}]})
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          new-db @conn
+          new-db (d/db-with db tx)
           ;; Filter to the card trigger we just added (not turn-based triggers)
           triggers (filter #(= :permanent-tapped (:trigger/event-type %))
                            (trigger-db/get-all-triggers new-db))]
@@ -131,9 +127,7 @@
           card-triggers [{:trigger/type :becomes-tapped
                           :trigger/effects [{:effect/type :deal-damage :effect/amount 1}]}]
           tx (trigger-db/create-triggers-for-card-tx db obj-eid player-eid card-triggers)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          new-db @conn
+          new-db (d/db-with db tx)
           ;; Filter to card triggers only (not turn-based)
           triggers (filter #(= :permanent-tapped (:trigger/event-type %))
                            (trigger-db/get-all-triggers new-db))]
@@ -151,9 +145,7 @@
           card-triggers [{:trigger/type :becomes-tapped
                           :trigger/effects [{:effect/type :deal-damage :effect/amount 1}]}]
           tx (trigger-db/create-triggers-for-card-tx db obj-eid player-eid card-triggers)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          new-db @conn
+          new-db (d/db-with db tx)
           ;; Filter to card triggers only (not turn-based)
           triggers (filter #(= :permanent-tapped (:trigger/event-type %))
                            (trigger-db/get-all-triggers new-db))]
@@ -169,9 +161,7 @@
                           :trigger/filter {:exclude-self true}
                           :trigger/effects [{:effect/type :sacrifice-self}]}]
           tx (trigger-db/create-triggers-for-card-tx db obj-eid player-eid card-triggers)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          new-db @conn
+          new-db (d/db-with db tx)
           ;; Filter to the card trigger we just added
           triggers (filter #(= :land-entered (:trigger/type %))
                            (trigger-db/get-all-triggers new-db))]
@@ -188,9 +178,7 @@
                           :trigger/filter {}
                           :trigger/effects [{:effect/type :shuffle-from-graveyard-to-library}]}]
           tx (trigger-db/create-triggers-for-card-tx db obj-eid player-eid card-triggers)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          new-db @conn
+          new-db (d/db-with db tx)
           triggers (filter #(= :zone-change (:trigger/event-type %))
                            (trigger-db/get-all-triggers new-db))]
       (is (= 1 (count triggers)))
@@ -207,9 +195,7 @@
           card-triggers [{:trigger/type :becomes-tapped
                           :trigger/effects [{:effect/type :deal-damage :effect/amount 1}]}]
           tx (trigger-db/create-triggers-for-card-tx db obj-eid player-eid card-triggers)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          new-db @conn
+          new-db (d/db-with db tx)
           triggers (filter #(= :permanent-tapped (:trigger/event-type %))
                            (trigger-db/get-all-triggers new-db))]
       (is (= 1 (count triggers)))
@@ -225,9 +211,7 @@
           card-triggers [{:trigger/type :becomes-tapped
                           :trigger/effects [{:effect/type :deal-damage :effect/amount 1}]}]
           tx (trigger-db/create-triggers-for-card-tx db obj-eid player-eid card-triggers)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          new-db @conn
+          new-db (d/db-with db tx)
           obj-triggers (:object/triggers (d/entity new-db obj-eid))]
       (is (= 1 (count obj-triggers))))))
 
@@ -243,9 +227,7 @@
                 :trigger/event-type :phase-entered
                 :trigger/filter {:event/phase :draw}
                 :trigger/controller player-eid})
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          new-db @conn
+          new-db (d/db-with db tx)
           ;; Filter to the game-rule trigger we just added (draw-step with :draw phase filter)
           triggers (filter #(= {:event/phase :draw} (:trigger/filter %))
                            (trigger-db/get-all-triggers new-db))]
@@ -264,9 +246,7 @@
                 :trigger/event-type :phase-entered
                 :trigger/filter {:event/phase :draw}
                 :trigger/controller player-eid})
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          new-db @conn
+          new-db (d/db-with db tx)
           triggers (trigger-db/get-all-triggers new-db)]
       (is (nil? (:trigger/source (first triggers)))))))
 
@@ -293,9 +273,7 @@
                  :trigger/event-type :phase-entered
                  :trigger/source obj-eid
                  :trigger/controller player-eid})
-          conn (d/conn-from-db db)
-          _ (d/transact! conn (vec (concat tx1 tx2 tx3)))
-          new-db @conn
+          new-db (d/db-with db (vec (concat tx1 tx2 tx3)))
           result (trigger-db/get-triggers-for-event new-db {:event/type :phase-entered})]
       (is (= 2 (count result)))
       (is (every? #(= :phase-entered (:trigger/event-type %)) result)))))
@@ -311,9 +289,7 @@
                 :trigger/event-type :permanent-tapped
                 :trigger/source obj-eid
                 :trigger/controller player-eid})
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          new-db @conn
+          new-db (d/db-with db tx)
           result (trigger-db/get-triggers-for-event new-db {:event/type :phase-entered})]
       (is (empty? result)))))
 
@@ -337,9 +313,7 @@
                 :trigger/event-type :permanent-tapped
                 :trigger/source obj-eid
                 :trigger/controller player-eid})
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          new-db @conn
+          new-db (d/db-with db tx)
           result (trigger-db/get-triggers-for-event
                    new-db {:event/type :permanent-tapped :event/object-id 999})]
       (is (= 1 (count result))))))
@@ -356,9 +330,7 @@
                 :trigger/source obj-eid
                 :trigger/controller player-eid
                 :trigger/filter {:event/object-id :self}})
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          new-db @conn]
+          new-db (d/db-with db tx)]
       ;; Matching: event object-id = trigger source
       (is (= 1 (count (trigger-db/get-triggers-for-event
                         new-db {:event/type :permanent-tapped
@@ -380,9 +352,7 @@
                 :trigger/source obj-eid
                 :trigger/controller player-eid
                 :trigger/filter {:exclude-self true}})
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          new-db @conn]
+          new-db (d/db-with db tx)]
       ;; Self: does NOT match
       (is (= 0 (count (trigger-db/get-triggers-for-event
                         new-db {:event/type :land-entered
@@ -402,9 +372,7 @@
                 :trigger/event-type :phase-entered
                 :trigger/filter {:event/phase :draw}
                 :trigger/controller player-eid})
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          new-db @conn]
+          new-db (d/db-with db tx)]
       ;; Matches
       (is (= 1 (count (trigger-db/get-triggers-for-event
                         new-db {:event/type :phase-entered
@@ -424,9 +392,7 @@
                 :trigger/event-type :phase-entered
                 :trigger/filter {:event/phase :draw :event/turn 2}
                 :trigger/controller player-eid})
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          new-db @conn]
+          new-db (d/db-with db tx)]
       ;; Both match
       (is (= 1 (count (trigger-db/get-triggers-for-event
                         new-db {:event/type :phase-entered
@@ -450,9 +416,7 @@
                 :trigger/event-type :phase-entered
                 :trigger/filter {:event/phase :draw}
                 :trigger/controller player-eid})
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          new-db @conn
+          new-db (d/db-with db tx)
           result (trigger-db/get-triggers-for-event
                    new-db {:event/type :phase-entered
                            :event/phase :draw})]
@@ -470,16 +434,13 @@
           card-triggers [{:trigger/type :becomes-tapped
                           :trigger/effects [{:effect/type :deal-damage :effect/amount 1}]}]
           tx (trigger-db/create-triggers-for-card-tx db obj-eid player-eid card-triggers)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          db-with-triggers @conn
+          db-with-triggers (d/db-with db tx)
           ;; Count only card triggers (linked to an object source — not turn-based)
           card-trigger-count (count (filter :trigger/source (trigger-db/get-all-triggers db-with-triggers)))]
       ;; Verify card trigger exists (turn-based triggers are also present but not counted here)
       (is (= 1 card-trigger-count))
       ;; Retract the source object
-      (d/transact! conn [[:db.fn/retractEntity obj-eid]])
-      (let [db-after-retract @conn
+      (let [db-after-retract (d/db-with db-with-triggers [[:db.fn/retractEntity obj-eid]])
             card-trigger-count-after (count (filter :trigger/source (trigger-db/get-all-triggers db-after-retract)))]
         ;; Card trigger should be auto-retracted via component cascade
         (is (= 0 card-trigger-count-after))))))
@@ -494,14 +455,12 @@
                         :where [?e :card/id :dark-ritual]]
                       db)
         obj-id (random-uuid)
-        conn (d/conn-from-db db)
-        _ (d/transact! conn [{:object/id obj-id
-                              :object/card card-eid
-                              :object/zone zone
-                              :object/owner player-eid
-                              :object/controller player-eid
-                              :object/tapped false}])
-        new-db @conn
+        new-db (d/db-with db [{:object/id obj-id
+                               :object/card card-eid
+                               :object/zone zone
+                               :object/owner player-eid
+                               :object/controller player-eid
+                               :object/tapped false}])
         obj-eid (d/q '[:find ?e .
                        :in $ ?oid
                        :where [?e :object/id ?oid]]
@@ -523,9 +482,7 @@
                 :trigger/source obj-eid
                 :trigger/controller player-eid
                 :trigger/filter {:exclude-self true}})
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          new-db @conn
+          new-db (d/db-with db tx)
           ;; Dispatch :land-entered with a different object — observer should NOT fire
           ;; because source is in :hand, not :battlefield
           result (trigger-db/get-triggers-for-event
@@ -555,9 +512,7 @@
                 :trigger/match {:event/from-zone :library
                                 :event/to-zone :graveyard
                                 :event/object-id :self}})
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          new-db @conn
+          new-db (d/db-with db tx)
           ;; Dispatch :zone-change with event/object-id = this object's UUID
           result (trigger-db/get-triggers-for-event
                    new-db {:event/type :zone-change
@@ -581,9 +536,7 @@
                 :trigger/source obj-eid
                 :trigger/controller player-eid
                 :trigger/filter {:exclude-self true}})
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          new-db @conn
+          new-db (d/db-with db tx)
           ;; Dispatch :land-entered with different object — observer SHOULD fire
           result (trigger-db/get-triggers-for-event
                    new-db {:event/type :land-entered
@@ -602,9 +555,7 @@
                 :trigger/event-type :phase-entered
                 :trigger/filter {:event/phase :test-zone-check-phase}
                 :trigger/controller player-eid})
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          new-db @conn
+          new-db (d/db-with db tx)
           result (trigger-db/get-triggers-for-event
                    new-db {:event/type :phase-entered
                            :event/phase :test-zone-check-phase})]
@@ -625,11 +576,9 @@
                           :trigger/effects [{:effect/type :sacrifice
                                              :effect/target :self}]}]
           tx (trigger-db/create-triggers-for-card-tx db obj-eid player-eid card-triggers)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
+          db-with-trigger (d/db-with db tx)
           ;; Retract the source object — cascade-retracts the component trigger
-          _ (d/transact! conn [[:db.fn/retractEntity obj-eid]])
-          db-after-retract @conn
+          db-after-retract (d/db-with db-with-trigger [[:db.fn/retractEntity obj-eid]])
           ;; get-triggers-for-event should return 0 (trigger is gone) and not crash
           result (trigger-db/get-triggers-for-event
                    db-after-retract {:event/type :land-entered
@@ -650,9 +599,7 @@
                 :trigger/source obj-eid
                 :trigger/controller player-eid
                 :trigger/filter {:exclude-self true}})
-          conn (d/conn-from-db db)
-          _ (d/transact! conn tx)
-          new-db @conn
+          new-db (d/db-with db tx)
           ;; Should fire because source is on battlefield (default active-zone)
           result (trigger-db/get-triggers-for-event
                    new-db {:event/type :land-entered
@@ -681,8 +628,6 @@
                  :trigger/event-type :phase-entered
                  :trigger/filter {:event/phase :draw}
                  :trigger/controller player-eid})
-          conn (d/conn-from-db db)
-          _ (d/transact! conn (vec (concat tx1 tx2)))
-          new-db @conn]
+          new-db (d/db-with db (vec (concat tx1 tx2)))]
       ;; get-all-triggers returns all triggers including the 2 we added
       (is (= (+ before-count 2) (count (trigger-db/get-all-triggers new-db)))))))
