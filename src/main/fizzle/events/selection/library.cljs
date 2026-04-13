@@ -9,6 +9,8 @@
     [datascript.core :as d]
     [fizzle.db.queries :as queries]
     [fizzle.engine.effects :as effects]
+    [fizzle.engine.events :as game-events]
+    [fizzle.engine.trigger-dispatch :as trigger-dispatch]
     [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.engine.zones :as zones]
     [fizzle.events.selection.core :as core]
@@ -391,11 +393,15 @@
                                      (zone-change-dispatch/move-to-zone d card-id target-zone))
                                    game-db
                                    selected)
-            ;; If entering battlefield tapped, set tapped state for all moved cards
+            ;; If entering battlefield tapped, set tapped state and dispatch :permanent-tapped
+            ;; for all moved cards. Routes through the chokepoint so :becomes-tapped triggers fire.
             db-after-tapped (if enters-tapped?
                               (reduce (fn [d card-id]
-                                        (let [obj-eid (queries/get-object-eid d card-id)]
-                                          (d/db-with d [[:db/add obj-eid :object/tapped true]])))
+                                        (let [obj-eid (queries/get-object-eid d card-id)
+                                              db-tapped (d/db-with d [[:db/add obj-eid :object/tapped true]])]
+                                          (trigger-dispatch/dispatch-event
+                                            db-tapped
+                                            (game-events/permanent-tapped-event card-id player-id))))
                                       db-after-moves
                                       selected)
                               db-after-moves)]

@@ -1,10 +1,11 @@
 (ns fizzle.engine.tap-chokepoint-test
   "Tests for the tap chokepoint migration.
 
-   Verifies that :permanent-tapped triggers fire from all three game-action tap paths:
+   Verifies that :permanent-tapped triggers fire from all four game-action tap paths:
    1. costs/pay-cost :tap  — tap-as-cost (mana abilities, future non-mana abilities)
    2. combat/tap-and-mark-attackers — attack declaration taps
    3. effects :tap-all — mass tap effect (Twiddle-style)
+   4. events/selection/library execute-tutor-selection :enters-tapped path — fetchland
 
    Also verifies:
    - No double-fire: tapping via mana_activation fires exactly once
@@ -22,6 +23,7 @@
     [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.events.resolution :as resolution]
+    [fizzle.events.selection.library :as sel-library]
     [fizzle.test-helpers :as th]))
 
 
@@ -138,3 +140,31 @@
           "Object should be tapped after th/tap-permanent")
       (is (= 0 (count (q/get-all-stack-items db-after)))
           "th/tap-permanent must NOT fire :permanent-tapped trigger (test setup, not game action)"))))
+
+
+;; === Path 4: execute-tutor-selection enters-tapped path fires :permanent-tapped ===
+
+(deftest test-fetchland-enters-tapped-dispatches-permanent-tapped
+  (testing "execute-tutor-selection with enters-tapped dispatches :permanent-tapped trigger"
+    (let [db (th/create-test-db)
+          ;; Move City of Brass to library — it has a :becomes-tapped trigger registered at creation
+          [db' cob-id] (th/add-card-to-zone db :city-of-brass :library :player-1)
+          _ (is (= 0 (count (q/get-all-stack-items db')))
+                "Precondition: no stack items before tutor resolution")
+          ;; Construct a tutor selection with enters-tapped true
+          ;; This simulates a fetchland or similar effect that puts a land on battlefield tapped
+          selection {:selection/selected #{cob-id}
+                     :selection/target-zone :battlefield
+                     :selection/player-id :player-1
+                     :selection/shuffle? false
+                     :selection/enters-tapped true}
+          db-after (sel-library/execute-tutor-selection db' selection)]
+      ;; City of Brass should now be on the battlefield
+      (is (= :battlefield (th/get-object-zone db-after cob-id))
+          "CoB should be on the battlefield after tutor resolution")
+      ;; CoB should be tapped (because enters-tapped was true)
+      (is (true? (:object/tapped (q/get-object db-after cob-id)))
+          "CoB should be tapped because enters-tapped was true")
+      ;; CoB's :becomes-tapped trigger should have fired via :permanent-tapped dispatch
+      (is (= 1 (count (q/get-all-stack-items db-after)))
+          "CoB :becomes-tapped trigger should be on stack — :permanent-tapped dispatch must fire when entering tapped"))))
