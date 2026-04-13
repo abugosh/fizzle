@@ -496,3 +496,54 @@
           "Non-creature should NOT have :object/power")
       (is (nil? (:object/toughness obj))
           "Non-creature should NOT have :object/toughness"))))
+
+
+;; ---------------------------------------------------------------------------
+;; HIGH corner case: encode→decode→restore→extract identity property
+;; ---------------------------------------------------------------------------
+
+(deftest encode-decode-restore-extract-identity-test
+  (testing "full round-trip identity: extract(restore(decode(encode(extract(db))))) = extract(db)"
+    ;; Bug caught: if extractor omits a field, encoder packs wrong bits, decoder reads
+    ;; wrong offsets, or restorer reconstructs wrong state, the extracted map after
+    ;; the round-trip would diverge from the original. This is the canonical fidelity
+    ;; property for the sharing system.
+    ;; We compare top-level game state fields and card-id lists (not raw EIDs which
+    ;; are DB-internal and will differ between the original and restored DB).
+    (let [db (-> (th/create-test-db {:life 15 :storm-count 3}) (th/add-opponent))
+          ;; Add cards to several zones to exercise the full encoding path
+          [db _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          [db _] (th/add-card-to-zone db :brain-freeze :graveyard :player-1)
+          [db _] (th/add-card-to-zone db :lotus-petal :battlefield :player-1)
+          [db _] (th/add-card-to-zone db :counterspell :hand :player-2)
+          ;; Original extracted state
+          original (extractor/extract db)
+          ;; Full round-trip: extract → encode → decode → restore → extract
+          round-tripped (restore-and-extract db)]
+      ;; Game state top-level fields must be identical
+      (is (= (:game/turn original) (:game/turn round-tripped))
+          "game/turn must survive round-trip")
+      (is (= (:game/phase original) (:game/phase round-tripped))
+          "game/phase must survive round-trip")
+      (is (= (:game/active-player original) (:game/active-player round-tripped))
+          "game/active-player must survive round-trip")
+      (is (= (:game/priority original) (:game/priority round-tripped))
+          "game/priority must survive round-trip")
+      ;; Player-1 card zones must be preserved by card-id
+      (is (= (map :card/id (get-in original [:players :player-1 :hand]))
+             (map :card/id (get-in round-tripped [:players :player-1 :hand])))
+          "player-1 hand card-ids must survive round-trip")
+      (is (= (map :card/id (get-in original [:players :player-1 :graveyard]))
+             (map :card/id (get-in round-tripped [:players :player-1 :graveyard])))
+          "player-1 graveyard card-ids must survive round-trip")
+      (is (= (map :card/id (get-in original [:players :player-1 :battlefield]))
+             (map :card/id (get-in round-tripped [:players :player-1 :battlefield])))
+          "player-1 battlefield card-ids must survive round-trip")
+      ;; Player-2 zones must be preserved
+      (is (= (map :card/id (get-in original [:players :player-2 :hand]))
+             (map :card/id (get-in round-tripped [:players :player-2 :hand])))
+          "player-2 hand card-ids must survive round-trip")
+      ;; Player state: life
+      (is (= (get-in original [:players :player-1 :player/life])
+             (get-in round-tripped [:players :player-1 :player/life]))
+          "player-1 life must survive round-trip"))))
