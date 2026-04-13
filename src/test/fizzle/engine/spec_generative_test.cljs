@@ -110,10 +110,10 @@
 
 (deftest test-selection-chokepoint-accepts-generated
   (testing "generated selection maps are spec-valid and stored by set-pending-selection"
-    ;; set-pending-selection uses console.error (not throw) — binding *throw-on-spec-failure*
-    ;; has no effect here because set-pending-selection does not use validate-at-chokepoint!.
-    ;; This test is non-vacuous: s/valid? assertion fails if generator produces invalid data,
-    ;; and the set-pending-selection call verifies the chokepoint stores without side effects.
+    ;; set-pending-selection calls validate-at-chokepoint! which runs in dev mode.
+    ;; Binding *throw-on-spec-failure* true here would cause this test to throw on any
+    ;; invalid generator output — but we verify validity separately with s/valid? first.
+    ;; The set-pending-selection call verifies the chokepoint stores valid data without error.
     (doseq [[generated _] (s/exercise :fizzle.events.selection.spec/selection 5)]
       (is (s/valid? :fizzle.events.selection.spec/selection generated)
           (str "Generator produced invalid selection (generator/spec divergence): " (pr-str generated)))
@@ -121,6 +121,22 @@
             result (sel-spec/set-pending-selection app-db generated)]
         (is (= generated (:game/pending-selection result))
             (str "set-pending-selection failed to store valid selection: " (pr-str generated)))))))
+
+
+(deftest test-selection-chokepoint-rejects-invalid-when-throw-binding
+  (testing "set-pending-selection throws on invalid selection when *throw-on-spec-failure* true"
+    ;; Bug caught: if validate-at-chokepoint! were no-op'd or removed from
+    ;; set-pending-selection, this test would not throw and would fail.
+    ;; Companion to test-selection-chokepoint-accepts-generated — proves the throw
+    ;; path is shape-specific (valid data passes, invalid data throws).
+    (binding [spec-util/*throw-on-spec-failure* true]
+      (let [app-db {:game/db (th/create-test-db)}
+            ;; Intentionally invalid: :selection/type alone is not a valid :discard
+            ;; — missing required :lifecycle, :player-id, :selected, etc.
+            invalid-sel {:selection/type :discard}]
+        (is (thrown? js/Error
+              (sel-spec/set-pending-selection app-db invalid-sel))
+            "set-pending-selection must throw on invalid selection when binding is true")))))
 
 
 ;; =====================================================
