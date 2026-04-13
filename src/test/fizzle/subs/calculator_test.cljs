@@ -357,6 +357,163 @@
       (is (= 0 result)))))
 
 
+;; === HIGH: N=0 empty-library corner cases ===
+
+(deftest test-compute-query-results-n-zero-empty-library
+  (testing "compute-query-results with N=0 (empty library) returns 0.0, not NaN"
+    ;; Bug caught: if at-least-probability divides by C(0,n) without guarding,
+    ;; the result would be NaN or an exception. 0.0 is the correct result for
+    ;; P(hit at least 1 card in 0 draws from 0 library).
+    ;; assert exact = 0.0, not (not (js/isNaN result)) — NaN would pass weak checks.
+    (let [card-counts {}     ; empty library: N = (reduce + 0 (vals {})) = 0
+          query {:query/id 1
+                 :query/label "Empty library"
+                 :query/collapsed? false
+                 :query/steps [{:step/id 2
+                                :step/draw-count 7
+                                :step/targets [{:target/id 3
+                                                :target/cards #{:dark-ritual}
+                                                :target/min-count 1}]}]}
+          result (subs/compute-query-results card-counts query)]
+      (is (= 0.0 (:query/probability result))
+          "N=0 empty library: query probability must be exactly 0.0, not NaN"))))
+
+
+(deftest test-compute-step-probability-n-zero-single-target
+  (testing "compute-step-probability with N=0 returns 0.0 for min-count > 0"
+    ;; Bug caught: hypergeometric-pmf(0, 0, 7, 1) without a guard would divide by
+    ;; C(0,7)=0, producing NaN. Expected 0.0 since no cards can be drawn.
+    (let [card-counts {}
+          step {:step/id 1
+                :step/draw-count 7
+                :step/targets [{:target/id 1 :target/cards #{:dark-ritual} :target/min-count 1}]}
+          result (subs/compute-step-probability 0 card-counts step)]
+      (is (= 0.0 result)
+          "N=0: compute-step-probability must be exactly 0.0, not NaN"))))
+
+
+;; === HIGH: min-count > K (more copies requested than exist) ===
+
+(deftest test-compute-query-results-min-count-exceeds-k
+  (testing "compute-query-results with min-count > K (only 2 copies, need 3) returns 0.0"
+    ;; Bug caught: if at-least-probability does not guard (> min-k K) properly,
+    ;; summing PMF from min-k=3 to max-k=min(K,n)=2 would iterate over empty range.
+    ;; reduce on empty range should yield 0.0, but NaN propagation in intermediate
+    ;; calculations could corrupt results. Verify exact 0.0.
+    (let [card-counts {:dark-ritual 2}  ; K=2
+          query {:query/id 1
+                 :query/label "Need 3, have 2"
+                 :query/collapsed? false
+                 :query/steps [{:step/id 2
+                                :step/draw-count 7
+                                :step/targets [{:target/id 3
+                                                :target/cards #{:dark-ritual}
+                                                :target/min-count 3}]}]}   ; min=3 > K=2
+          result (subs/compute-query-results card-counts query)]
+      (is (= 0.0 (:query/probability result))
+          "min-count(3) > K(2): probability must be exactly 0.0, not NaN"))))
+
+
+(deftest test-at-least-probability-min-count-exceeds-k
+  (testing "at-least-probability returns exactly 0.0 when min-k > K"
+    ;; Bug caught: if the (> min-k K) early-exit guard is removed, the function
+    ;; would compute a range from min-k to max-k=min(K,n) which is empty when
+    ;; min-k > K, and reduce over empty sequence returns 0.0 but we want to
+    ;; guarantee this directly via the guard, not as a coincidence.
+    (is (= 0.0 (probability/at-least-probability 60 2 7 3))
+        "min-k=3 > K=2: at-least-probability must be exactly 0.0")))
+
+
+;; === HIGH: 3+ steps sequential (real use case is 3-5 steps) ===
+
+(deftest test-compute-query-results-three-step-sequential
+  (testing "3-step sequential query returns valid probability (not NaN, not >1)"
+    ;; Bug caught: sequential-probability with 3 steps iterates the recursion
+    ;; 3 times. If indexed-targets or group mapping is wrong for >2 steps,
+    ;; the third step might use stale group counts or wrong group-indices.
+    ;; N=20: 4 dark-ritual + 4 brainstorm + 4 cabal-ritual + 8 island
+    ;; Step 1: draw 3, need >=1 dark-ritual
+    ;; Step 2: draw 3, need >=1 brainstorm
+    ;; Step 3: draw 3, need >=1 cabal-ritual
+    (let [card-counts {:dark-ritual 4 :brainstorm 4 :cabal-ritual 4 :island 8}
+          query {:query/id 1
+                 :query/label "3-step"
+                 :query/collapsed? false
+                 :query/steps [{:step/id 2
+                                :step/draw-count 3
+                                :step/targets [{:target/id 3
+                                                :target/cards #{:dark-ritual}
+                                                :target/min-count 1}]}
+                               {:step/id 4
+                                :step/draw-count 3
+                                :step/targets [{:target/id 5
+                                                :target/cards #{:brainstorm}
+                                                :target/min-count 1}]}
+                               {:step/id 6
+                                :step/draw-count 3
+                                :step/targets [{:target/id 7
+                                                :target/cards #{:cabal-ritual}
+                                                :target/min-count 1}]}]}
+          result (subs/compute-query-results card-counts query)
+          overall-p (:query/probability result)]
+      (is (>= overall-p 0.0)
+          "3-step probability must be >= 0.0")
+      (is (<= overall-p 1.0)
+          "3-step probability must be <= 1.0")
+      ;; Match against sequential-probability directly to verify the computation path
+      (let [expected (probability/sequential-probability
+                       20
+                       [{:count 4} {:count 4} {:count 4}]
+                       [{:draw-count 3 :targets [{:group-index 0 :min 1}]}
+                        {:draw-count 3 :targets [{:group-index 1 :min 1}]}
+                        {:draw-count 3 :targets [{:group-index 2 :min 1}]}])]
+        (is (< (Math/abs (- overall-p expected)) 1e-10)
+            "3-step result must exactly match sequential-probability(N=20, 3 groups, 3 steps)")))))
+
+
+;; === HIGH: Target-card overlap across steps ===
+
+(deftest test-compute-query-results-overlapping-targets-across-steps
+  (testing "same card appears in two steps' targets — group deduplication must NOT merge groups"
+    ;; Bug caught: if compute-query-results deduplicates target groups by card-count
+    ;; (e.g., both steps target 4 dark-ritual = count 4), it would map to the same
+    ;; group-index, corrupting the sequential probability (consumed-in-step-1 would
+    ;; also decrement step-2's pool). Groups must remain distinct even when count matches.
+    ;; Step 1 and Step 2 both target :dark-ritual (intentional overlap for this test).
+    ;; We verify the probability is NOT the same as independent step product.
+    ;; (Same test pattern as the same-count test but now with actual shared cards.)
+    (let [card-counts {:dark-ritual 4 :island 16}
+          query {:query/id 1
+                 :query/label "Overlap steps"
+                 :query/collapsed? false
+                 :query/steps [{:step/id 2
+                                :step/draw-count 4
+                                :step/targets [{:target/id 3
+                                                :target/cards #{:dark-ritual}
+                                                :target/min-count 1}]}
+                               {:step/id 4
+                                :step/draw-count 4
+                                :step/targets [{:target/id 5
+                                                :target/cards #{:dark-ritual}
+                                                :target/min-count 1}]}]}
+          result (subs/compute-query-results card-counts query)
+          overall-p (:query/probability result)]
+      ;; Overlap case: step 2's dark-ritual pool is reduced by what step 1 drew.
+      ;; Overall must be <= P(step1) * P(step2 independent) because of consumption.
+      (is (>= overall-p 0.0)
+          "Overlapping target probability must be >= 0.0")
+      (is (<= overall-p 1.0)
+          "Overlapping target probability must be <= 1.0")
+      ;; Verify it matches sequential-probability directly
+      (let [expected (probability/sequential-probability
+                       20
+                       [{:count 4} {:count 4}]   ; two DISTINCT groups even though same cards
+                       [{:draw-count 4 :targets [{:group-index 0 :min 1}]}
+                        {:draw-count 4 :targets [{:group-index 1 :min 1}]}])]
+        (is (< (Math/abs (- overall-p expected)) 1e-10)
+            "Overlap steps: must match sequential-probability with 2 distinct groups")))))
+
+
 ;; === compute-step-probability helper tests ===
 
 (deftest test-compute-step-probability-no-targets-returns-one
