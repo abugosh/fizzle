@@ -12,16 +12,21 @@
     [cljs.test :refer-macros [deftest is testing]]
     [clojure.string :as str]
     [datascript.core :as d]
+    [fizzle.cards.red.lightning-bolt]
     [fizzle.db.queries :as q]
+    [fizzle.events.casting :as casting]
+    [fizzle.events.db-effect :as db-effect]
     [fizzle.events.lands :as lands]
+    [fizzle.events.resolution :as resolution]
     [fizzle.history.interceptor :as interceptor]
     [fizzle.test-helpers :as h]
     [re-frame.core :as rf]
     [re-frame.db :as rf-db]))
 
 
-;; Register history interceptor for dispatch-sync tests
+;; Register history interceptor AND SBA dispatch for dispatch-sync tests
 (interceptor/register!)
+(db-effect/register!)
 
 
 (defn- setup-app-db
@@ -211,3 +216,24 @@
           result (lands/untap-permanent db fake-id)]
       (is (= db result)
           "db should be unchanged when object-id does not exist"))))
+
+
+;; === SBA sentinel: proves db-effect/register! is wired ===
+
+(deftest sba-life-zero-fires-in-lands-test
+  (testing "db-effect/register! wired: :life-zero SBA fires after bolt kills 1-life opponent"
+    ;; Bug caught: if db-effect/register! is missing, life reaches -2 but
+    ;; :game/loss-condition is never set — SBAs silently skip.
+    (let [base-app-db (h/create-game-scenario {:bot-archetype :goldfish :mana {:red 1}})
+          game-db (:game/db base-app-db)
+          p2-eid (q/get-player-eid game-db :player-2)
+          game-db' (d/db-with game-db [[:db/add p2-eid :player/life 1]])
+          [game-db'' obj-id] (h/add-card-to-zone game-db' :lightning-bolt :hand :player-1)
+          app-db (assoc base-app-db :game/db game-db'')
+          _ (reset! rf-db/app-db app-db)
+          _ (rf/dispatch-sync [::casting/cast-spell {:object-id obj-id :target :player-2}])
+          _ (rf/dispatch-sync [::resolution/resolve-top])
+          result-db (:game/db @rf-db/app-db)
+          game-state (q/get-game-state result-db)]
+      (is (= :life-zero (:game/loss-condition game-state))
+          ":life-zero SBA must fire when bolt kills 1-life opponent — proves db-effect/register! is wired"))))

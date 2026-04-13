@@ -2,21 +2,26 @@
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
+    [fizzle.cards.red.lightning-bolt]
     [fizzle.db.queries :as queries]
     [fizzle.db.schema :refer [schema]]
     [fizzle.engine.cards :as cards]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
+    [fizzle.events.casting :as casting]
+    [fizzle.events.db-effect :as db-effect]
     [fizzle.events.resolution :as resolution]
     [fizzle.history.core :as history]
     [fizzle.history.interceptor :as interceptor]
+    [fizzle.test-helpers :as th]
     [re-frame.core :as rf]
     [re-frame.db :as rf-db]))
 
 
-;; Register the history interceptor so dispatch-sync creates history entries
+;; Register the history interceptor AND SBA dispatch for dispatch-sync tests
 (interceptor/register!)
+(db-effect/register!)
 
 
 ;; === Test helpers ===
@@ -388,3 +393,26 @@
 
 ;; History entry test for resolve-all moved to priority_test.cljs
 ;; (::yield-all is now the user-facing action that creates history entries)
+
+
+;; === SBA sentinel: proves db-effect/register! is wired ===
+
+(deftest sba-life-zero-fires-in-resolve-all-test
+  (testing "db-effect/register! wired: :life-zero SBA fires after bolt kills 1-life opponent via dispatch-sync"
+    ;; Bug caught: if db-effect/register! is missing, life reaches -2 but
+    ;; :game/loss-condition is never set — SBAs silently skip.
+    ;; NOTE: Uses th/add-card-to-zone (not local add-card-to-zone) so triggers
+    ;; are registered via build-object-tx.
+    (let [base-app-db (th/create-game-scenario {:bot-archetype :goldfish :mana {:red 1}})
+          game-db (:game/db base-app-db)
+          p2-eid (queries/get-player-eid game-db :player-2)
+          game-db' (d/db-with game-db [[:db/add p2-eid :player/life 1]])
+          [game-db'' obj-id] (th/add-card-to-zone game-db' :lightning-bolt :hand :player-1)
+          app-db (assoc base-app-db :game/db game-db'')
+          _ (reset! rf-db/app-db app-db)
+          _ (rf/dispatch-sync [::casting/cast-spell {:object-id obj-id :target :player-2}])
+          _ (rf/dispatch-sync [::resolution/resolve-top])
+          result-db (:game/db @rf-db/app-db)
+          game-state (queries/get-game-state result-db)]
+      (is (= :life-zero (:game/loss-condition game-state))
+          ":life-zero SBA must fire when bolt kills 1-life opponent — proves db-effect/register! is wired"))))
