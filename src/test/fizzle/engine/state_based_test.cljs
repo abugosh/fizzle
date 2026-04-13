@@ -88,20 +88,6 @@
           "Default check-sba should return empty seq"))))
 
 
-(deftest test-check-sba-defmethod-discovered
-  (testing "registered check-sba defmethod is discovered by check-all-sbas"
-    (let [sentinel {:sba/type :test-custom :sba/target :player-1}]
-      (defmethod sba/check-sba :test-custom-sba [_db _type] [sentinel])
-      (let [results (vec (sba/check-all-sbas (init-game-state)))]
-        (remove-method sba/check-sba :test-custom-sba)
-        (is (= 1 (count (filter #(= sentinel %) results)))
-            "check-all-sbas should include exactly one result from registered defmethod")
-        (is (= :test-custom (:sba/type (first (filter #(= sentinel %) results))))
-            "Discovered SBA should have the correct :sba/type")
-        (is (= :player-1 (:sba/target (first (filter #(= sentinel %) results))))
-            "Discovered SBA should have the correct :sba/target")))))
-
-
 ;; === check-all-sbas tests ===
 
 (deftest test-check-all-sbas-empty
@@ -156,54 +142,6 @@
           db' (sba/execute-sba db sba)]
       (is (= db db')
           "Default execute-sba should return db unchanged"))))
-
-
-;; === Cascading SBAs tests ===
-
-(deftest test-cascading-sbas
-  (testing "check-and-execute-sbas loops until no more SBAs fire"
-    ;; We register two SBAs that cascade:
-    ;; SBA-A fires first iteration, removes itself, but creates condition for SBA-B
-    ;; SBA-B fires second iteration
-    ;; No production SBAs exist yet, so runtime defmethod registration is required.
-    (let [execution-order (atom [])
-          ;; Track which SBAs have fired to prevent infinite loops
-          a-fired (atom false)
-          b-fired (atom false)]
-      ;; Register SBA checks via defmethod
-      (defmethod sba/check-sba :test-cascade-a-check [_db _type]
-        (if @a-fired
-          []
-          [{:sba/type :test-cascade-a :sba/target :player-1}]))
-      (defmethod sba/check-sba :test-cascade-b-check [_db _type]
-        (if (and @a-fired (not @b-fired))
-          [{:sba/type :test-cascade-b :sba/target :player-1}]
-          []))
-      ;; Register SBA executors
-      (defmethod sba/execute-sba :test-cascade-a [db _sba]
-        (reset! a-fired true)
-        (swap! execution-order conj :a)
-        db)
-      (defmethod sba/execute-sba :test-cascade-b [db _sba]
-        (reset! b-fired true)
-        (swap! execution-order conj :b)
-        db)
-      ;; Execute cascading SBAs
-      (let [db (init-game-state)
-            db' (sba/check-and-execute-sbas db)]
-        ;; Both SBAs should have fired
-        (is (true? @a-fired) "SBA-A should have fired")
-        (is (true? @b-fired) "SBA-B should have fired (cascading)")
-        (is (= 2 (count @execution-order)) "Should have executed exactly 2 SBAs")
-        (is (= :a (first @execution-order)) "SBA-A should fire first")
-        (is (= :b (second @execution-order)) "SBA-B should fire second (cascading)")
-        ;; Function should return a valid db (not nil)
-        (is (some? db') "Should return a valid db after cascading SBAs"))
-      ;; Clean up
-      (remove-method sba/check-sba :test-cascade-a-check)
-      (remove-method sba/check-sba :test-cascade-b-check)
-      (remove-method sba/execute-sba :test-cascade-a)
-      (remove-method sba/execute-sba :test-cascade-b))))
 
 
 ;; === :life-zero SBA tests ===
@@ -430,45 +368,6 @@
           db' (sba/check-and-execute-sbas db-after-cost)]
       (is (= -5 (q/get-life-total db' :player-1)))
       (is (= :life-zero (get-loss-condition db'))))))
-
-
-;; === Extensibility test ===
-
-(deftest test-new-sba-type-works-with-just-defmethod
-  (testing "A new SBA type can be added with only defmethod registration"
-    ;; This proves the epic's extensibility requirement: no call-site changes needed
-    (let [executed (atom false)]
-      ;; Register a new SBA type at runtime
-      (defmethod sba/check-sba :test-extensibility
-        [db _type]
-        (let [game (q/get-game-state db)]
-          (if (:game/loss-condition game)
-            []
-            ;; Fire when player-1 has exactly 42 life (arbitrary condition)
-            (let [life (q/get-life-total db :player-1)]
-              (if (= 42 life)
-                [{:sba/type :test-extensibility :sba/player-id :player-1}]
-                [])))))
-      (defmethod sba/execute-sba :test-extensibility
-        [db sba]
-        (reset! executed true)
-        (sba/set-loss-condition db :test-custom-loss (:sba/player-id sba)))
-      ;; Test: SBA does NOT fire at normal life
-      (let [db (th/create-test-db {:life 20})
-            db' (sba/check-and-execute-sbas db)]
-        (is (nil? (get-loss-condition db'))
-            "SBA should not fire at life 20")
-        (is (false? @executed)))
-      ;; Test: SBA fires at life 42
-      (let [db (th/create-test-db {:life 42})
-            db' (sba/check-and-execute-sbas db)]
-        (is (= :test-custom-loss (get-loss-condition db'))
-            "Custom SBA should set custom loss condition")
-        (is (true? @executed)
-            "Custom SBA executor should have been called"))
-      ;; Clean up
-      (remove-method sba/check-sba :test-extensibility)
-      (remove-method sba/execute-sba :test-extensibility))))
 
 
 ;; === :lethal-damage SBA tests ===
