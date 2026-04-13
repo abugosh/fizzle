@@ -138,20 +138,18 @@
 (defn init-two-spell-state
   "Create game state with two Dark Rituals in hand for stack ordering tests."
   []
-  (let [conn (d/conn-from-db (init-game-state))
-        db @conn
+  (let [db (init-game-state)
         player-eid (q/get-player-eid db :player-1)
         card-eid (d/q '[:find ?e .
                         :where [?e :card/id :dark-ritual]]
                       db)]
     ;; Add a second Dark Ritual object in hand
-    (d/transact! conn [{:object/id :dr-2
-                        :object/card card-eid
-                        :object/zone :hand
-                        :object/owner player-eid
-                        :object/controller player-eid
-                        :object/tapped false}])
-    @conn))
+    (d/db-with db [{:object/id :dr-2
+                    :object/card card-eid
+                    :object/zone :hand
+                    :object/owner player-eid
+                    :object/controller player-eid
+                    :object/tapped false}])))
 
 
 (deftest cast-spell-sets-stack-position-test
@@ -205,40 +203,39 @@
 (defn add-cards-to-graveyard
   "Add n cards to a player's graveyard."
   [db player-id n]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
+  (let [player-eid (q/get-player-eid db player-id)
         card-eid (d/q '[:find ?e .
                         :where [?e :card/id :dark-ritual]]
                       db)]
-    (doseq [_ (range n)]
-      (d/transact! conn [{:object/id (random-uuid)
-                          :object/card card-eid
-                          :object/zone :graveyard
-                          :object/owner player-eid
-                          :object/controller player-eid
-                          :object/tapped false}]))
-    @conn))
+    (reduce
+      (fn [acc-db _]
+        (d/db-with acc-db [{:object/id (random-uuid)
+                            :object/card card-eid
+                            :object/zone :graveyard
+                            :object/owner player-eid
+                            :object/controller player-eid
+                            :object/tapped false}]))
+      db
+      (range n))))
 
 
 (defn add-cabal-ritual-to-hand
   "Add Cabal Ritual card definition and create an object in hand."
   [db player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)]
-    ;; Add card definition
-    (d/transact! conn [cabal-ritual/card])
-    ;; Create object in hand
-    (let [card-eid (d/q '[:find ?e .
-                          :where [?e :card/id :cabal-ritual]]
-                        @conn)
-          obj-id (random-uuid)]
-      (d/transact! conn [{:object/id obj-id
-                          :object/card card-eid
-                          :object/zone :hand
-                          :object/owner player-eid
-                          :object/controller player-eid
-                          :object/tapped false}])
-      [obj-id @conn])))
+  (let [player-eid (q/get-player-eid db player-id)
+        ;; Add card definition
+        db (d/db-with db [cabal-ritual/card])
+        ;; Create object in hand
+        card-eid (d/q '[:find ?e .
+                        :where [?e :card/id :cabal-ritual]]
+                      db)
+        obj-id (random-uuid)]
+    [obj-id (d/db-with db [{:object/id obj-id
+                            :object/card card-eid
+                            :object/zone :hand
+                            :object/owner player-eid
+                            :object/controller player-eid
+                            :object/tapped false}])]))
 
 
 (deftest test-cabal-ritual-without-threshold
@@ -333,22 +330,20 @@
 (defn add-malformed-card-to-hand
   "Add malformed card to player's hand for testing."
   [db player-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)]
-    ;; Add card definition
-    (d/transact! conn [malformed-negative-cost-card])
-    ;; Create object in hand
-    (let [card-eid (d/q '[:find ?e .
-                          :where [?e :card/id :negative-cost-card]]
-                        @conn)
-          obj-id (random-uuid)]
-      (d/transact! conn [{:object/id obj-id
-                          :object/card card-eid
-                          :object/zone :hand
-                          :object/owner player-eid
-                          :object/controller player-eid
-                          :object/tapped false}])
-      [obj-id @conn])))
+  (let [player-eid (q/get-player-eid db player-id)
+        ;; Add card definition
+        db (d/db-with db [malformed-negative-cost-card])
+        ;; Create object in hand
+        card-eid (d/q '[:find ?e .
+                        :where [?e :card/id :negative-cost-card]]
+                      db)
+        obj-id (random-uuid)]
+    [obj-id (d/db-with db [{:object/id obj-id
+                            :object/card card-eid
+                            :object/zone :hand
+                            :object/owner player-eid
+                            :object/controller player-eid
+                            :object/tapped false}])]))
 
 
 (deftest test-cast-negative-cost
@@ -409,20 +404,18 @@
   "Add an artifact card to player's hand for testing resolution.
    Returns [obj-id db] tuple."
   [db player-id card-id]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
+  (let [player-eid (q/get-player-eid db player-id)
         card-eid (d/q '[:find ?e .
                         :in $ ?cid
                         :where [?e :card/id ?cid]]
-                      @conn card-id)
+                      db card-id)
         obj-id (random-uuid)]
-    (d/transact! conn [{:object/id obj-id
-                        :object/card card-eid
-                        :object/zone :hand
-                        :object/owner player-eid
-                        :object/controller player-eid
-                        :object/tapped false}])
-    [obj-id @conn]))
+    [obj-id (d/db-with db [{:object/id obj-id
+                            :object/card card-eid
+                            :object/zone :hand
+                            :object/owner player-eid
+                            :object/controller player-eid
+                            :object/tapped false}])]))
 
 
 (deftest test-artifact-resolves-to-battlefield
@@ -430,9 +423,7 @@
     (let [db (init-game-state)
           ;; Add Lotus Petal card definition (it's in cards/all-cards via init)
           ;; But init-game-state only loads dark-ritual, so add it
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [lotus-petal/card])
-          db @conn
+          db (d/db-with db [lotus-petal/card])
           [obj-id db] (add-artifact-to-hand db :player-1 :lotus-petal)
           ;; Cast - artifacts have 0 mana cost
           db-cast (rules/cast-spell db :player-1 obj-id)
@@ -481,29 +472,27 @@
 (defn add-sorcery-to-hand
   "Add a sorcery card to player's hand. Returns [obj-id db]."
   [db player-id]
-  (let [conn (d/conn-from-db db)
-        sorcery-card {:card/id :test-sorcery
+  (let [sorcery-card {:card/id :test-sorcery
                       :card/name "Test Sorcery"
                       :card/cmc 0
                       :card/mana-cost {}
                       :card/colors #{}
                       :card/types #{:sorcery}
                       :card/text "Test"
-                      :card/effects []}]
-    (d/transact! conn [sorcery-card])
-    (let [player-eid (q/get-player-eid @conn player-id)
-          card-eid (d/q '[:find ?e .
-                          :in $ ?cid
-                          :where [?e :card/id ?cid]]
-                        @conn :test-sorcery)
-          obj-id (random-uuid)]
-      (d/transact! conn [{:object/id obj-id
-                          :object/card card-eid
-                          :object/zone :hand
-                          :object/owner player-eid
-                          :object/controller player-eid
-                          :object/tapped false}])
-      [obj-id @conn])))
+                      :card/effects []}
+        db (d/db-with db [sorcery-card])
+        player-eid (q/get-player-eid db player-id)
+        card-eid (d/q '[:find ?e .
+                        :in $ ?cid
+                        :where [?e :card/id ?cid]]
+                      db :test-sorcery)
+        obj-id (random-uuid)]
+    [obj-id (d/db-with db [{:object/id obj-id
+                            :object/card card-eid
+                            :object/zone :hand
+                            :object/owner player-eid
+                            :object/controller player-eid
+                            :object/tapped false}])]))
 
 
 (deftest test-sorcery-castable-during-main-phase
@@ -566,18 +555,16 @@
     (let [db (-> (init-game-state)
                  (mana/add-mana :player-1 {:black 2}))
           ;; Add a second instant to hand
-          conn (d/conn-from-db db)
-          player-eid (q/get-player-eid @conn :player-1)
+          player-eid (q/get-player-eid db :player-1)
           card-eid (d/q '[:find ?e .
                           :where [?e :card/id :dark-ritual]]
-                        @conn)
-          _ (d/transact! conn [{:object/id :second-ritual
-                                :object/card card-eid
-                                :object/zone :hand
-                                :object/owner player-eid
-                                :object/controller player-eid
-                                :object/tapped false}])
-          db @conn
+                        db)
+          db (d/db-with db [{:object/id :second-ritual
+                             :object/card card-eid
+                             :object/zone :hand
+                             :object/owner player-eid
+                             :object/controller player-eid
+                             :object/tapped false}])
           ;; Cast first ritual (stack not empty)
           hand (q/get-hand db :player-1)
           first-ritual (first hand)
@@ -592,9 +579,7 @@
 (deftest test-artifact-not-castable-during-combat
   (testing "Artifact cannot be cast during combat phase (requires sorcery speed)"
     (let [db (init-game-state)
-          conn (d/conn-from-db db)
-          _ (d/transact! conn [lotus-petal/card])
-          db @conn
+          db (d/db-with db [lotus-petal/card])
           [obj-id db] (add-artifact-to-hand db :player-1 :lotus-petal)
           db (set-phase db :combat)]
       (is (false? (rules/can-cast? db :player-1 obj-id))
@@ -659,27 +644,26 @@
   "Add a card definition and create an object in specified zone.
    Returns [obj-id db] tuple."
   [db player-id card zone]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)]
-    ;; Add card definition if not already present
-    (when-not (d/q '[:find ?e .
-                     :in $ ?cid
-                     :where [?e :card/id ?cid]]
-                   @conn (:card/id card))
-      (d/transact! conn [card]))
-    ;; Create object in zone
-    (let [card-eid (d/q '[:find ?e .
-                          :in $ ?cid
-                          :where [?e :card/id ?cid]]
-                        @conn (:card/id card))
-          obj-id (random-uuid)]
-      (d/transact! conn [{:object/id obj-id
-                          :object/card card-eid
-                          :object/zone zone
-                          :object/owner player-eid
-                          :object/controller player-eid
-                          :object/tapped false}])
-      [obj-id @conn])))
+  (let [player-eid (q/get-player-eid db player-id)
+        ;; Add card definition if not already present
+        db (if (d/q '[:find ?e .
+                      :in $ ?cid
+                      :where [?e :card/id ?cid]]
+                    db (:card/id card))
+             db
+             (d/db-with db [card]))
+        ;; Create object in zone
+        card-eid (d/q '[:find ?e .
+                        :in $ ?cid
+                        :where [?e :card/id ?cid]]
+                      db (:card/id card))
+        obj-id (random-uuid)]
+    [obj-id (d/db-with db [{:object/id obj-id
+                            :object/card card-eid
+                            :object/zone zone
+                            :object/owner player-eid
+                            :object/controller player-eid
+                            :object/tapped false}])]))
 
 
 ;; === get-casting-modes tests ===
@@ -1059,12 +1043,10 @@
 (defn add-opponent
   "Add a second player to the game state."
   [db]
-  (let [conn (d/conn-from-db db)]
-    (d/transact! conn [{:player/id :player-2
-                        :player/life 20
-                        :player/storm-count 0
-                        :player/mana-pool {}}])
-    @conn))
+  (d/db-with db [{:player/id :player-2
+                  :player/life 20
+                  :player/storm-count 0
+                  :player/mana-pool {}}]))
 
 
 (deftest cannot-cast-with-restriction-test
@@ -1540,10 +1522,8 @@
   "Add end-step-instant card to db and player's hand.
    Returns [obj-id db]."
   [db player-id]
-  (let [conn (d/conn-from-db db)]
-    (d/transact! conn [end-step-instant])
-    (let [db' @conn]
-      (th/add-card-to-zone db' :end-step-instant :hand player-id))))
+  (let [db (d/db-with db [end-step-instant])]
+    (th/add-card-to-zone db :end-step-instant :hand player-id)))
 
 
 (deftest cast-restriction-blocks-during-main-phase
