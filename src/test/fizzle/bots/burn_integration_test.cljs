@@ -138,3 +138,23 @@
           "Lightning Bolt should be in bot's graveyard (exactly 1 card)")
       (is (= :lightning-bolt (get-in (first bot-graveyard) [:object/card :card/id]))
           "The card in bot's graveyard should be Lightning Bolt"))))
+
+
+(deftest burn-bot-accumulates-damage-over-multiple-turns
+  (testing "burn bot resolves all bolts it can cast; 2 mountains + 2 bolts → life drops to 14 (20 - 3 - 3)"
+    ;; Bug caught: if the bot only casts one bolt per mana source and stops,
+    ;; or if the second bolt's damage is not applied, life stays at 17.
+    ;; With 2 mountains untapped, the bot can cast both bolts in a single bot turn.
+    ;; This verifies the full multi-bolt path: tap mountain 1 → cast bolt 1 → resolve
+    ;; → tap mountain 2 → cast bolt 2 → resolve → life = 14.
+    (let [;; Give bot 2 mountains and 2 bolts (both can be cast in one bot turn)
+          app-db (setup-burn-bot-app-db {:mountains 2 :bolts 2 :with-priority? true})
+          ;; Director runs until it returns to human; with 2 resources the bot fires both bolts
+          result (director/run-to-decision app-db {:yield-all? true})
+          result-db (:game/db (:app-db result))
+          human-life (q/get-life-total result-db :player-1)
+          bot-graveyard (q/get-objects-in-zone result-db :player-2 :graveyard)]
+      (is (= 14 human-life)
+          "Human life should be exactly 14 after 2 bolts resolve (20 - 3 - 3)")
+      (is (= 2 (count bot-graveyard))
+          "Both Lightning Bolts should be in bot's graveyard — exactly 2 cards"))))

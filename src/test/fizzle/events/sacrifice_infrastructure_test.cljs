@@ -13,7 +13,19 @@
     [fizzle.engine.stack :as stack]
     [fizzle.events.abilities :as abilities]
     [fizzle.events.casting :as casting]
-    [fizzle.test-helpers :as th]))
+    [fizzle.events.db-effect :as db-effect]
+    [fizzle.events.resolution :as resolution]
+    [fizzle.events.selection :as selection]
+    [fizzle.history.interceptor :as interceptor]
+    [fizzle.test-helpers :as th]
+    [re-frame.core :as rf]
+    [re-frame.db :as rf-db]))
+
+
+;; Register history interceptor and SBA dispatch — required for dispatch-sync tests.
+;; Both are idempotent: safe to call even if other test files registered first.
+(interceptor/register!)
+(db-effect/register!)
 
 
 ;; =====================================================
@@ -268,3 +280,57 @@
       (is (some? stack-item) "Stack item should exist")
       (is (= {:power 1} (:stack-item/sacrifice-info stack-item))
           "Stack item should have sacrifice-info"))))
+
+
+;; =====================================================
+;; End-to-End Dispatch Test (rf/dispatch-sync)
+;; =====================================================
+
+(deftest fling-end-to-end-dispatch-sync-test
+  (testing "Fling sacrifice→targeting chain via rf/dispatch-sync exercises interceptor + SBAs"
+    ;; Bug caught: the handler-fn-direct tests above bypass re-frame pipeline so they never
+    ;; exercise the history interceptor (no :history/main entries) and don't trigger SBAs.
+    ;; This test verifies the full production path:
+    ;;   cast-spell → sacrifice selection → confirm → targeting selection → confirm
+    ;;   → resolve → damage applied → SBAs run → history entry created.
+    (let [base-app-db (th/create-game-scenario {:bot-archetype :goldfish
+                                                :mana {:red 1 :colorless 1}})
+          game-db (:game/db base-app-db)
+          [game-db creature-id] (th/add-card-to-zone game-db :nimble-mongoose :battlefield :player-1)
+          [game-db fling-id] (th/add-card-to-zone game-db :fling :hand :player-1)
+          app-db (assoc base-app-db :game/db game-db)
+          ;; Step 1: cast Fling — triggers sacrifice selection (deferred-entry set)
+          _ (reset! rf-db/app-db app-db)
+          _ (rf/dispatch-sync [::casting/cast-spell {:object-id fling-id}])
+          after-cast @rf-db/app-db
+          _ (is (= :sacrifice-permanent-cost
+                   (:selection/type (:game/pending-selection after-cast)))
+                "Precondition: sacrifice selection pending after cast")
+          ;; Step 2: toggle the creature (select it for sacrifice)
+          _ (rf/dispatch-sync [::selection/toggle-selection creature-id])
+          ;; Step 3: confirm sacrifice — chains to targeting, deferred-entry → pending-entry
+          _ (rf/dispatch-sync [::selection/confirm-selection])
+          after-sac @rf-db/app-db
+          _ (is (= :cast-time-targeting
+                   (:selection/type (:game/pending-selection after-sac)))
+                "Precondition: targeting selection pending after sacrifice")
+          ;; Step 4: toggle target player (auto-confirm kicks in via fx dispatch, need explicit confirm)
+          _ (rf/dispatch-sync [::selection/toggle-selection :player-2])
+          _ (rf/dispatch-sync [::selection/confirm-selection])
+          ;; Step 5: resolve Fling — deals 1 damage (Nimble Mongoose base power = 1)
+          _ (rf/dispatch-sync [::resolution/resolve-top])
+          result @rf-db/app-db
+          result-db (:game/db result)]
+      ;; Deferred-entry processing: history interceptor captured the cast-spell event
+      ;; and converted pending-entry → history/main entry
+      (is (= 1 (count (:history/main result)))
+          "Exactly 1 history entry should be created for Fling cast-spell")
+      ;; Fling deals damage = sacrificed power (Nimble Mongoose = 1)
+      (is (= 19 (q/get-life-total result-db :player-2))
+          "Player-2 life should be exactly 19 after Fling for 1 (20 - 1 from Mongoose power)")
+      ;; Fling should be in graveyard after resolving (along with sacrificed creature = 2 total)
+      (is (= 2 (count (q/get-objects-in-zone result-db :player-1 :graveyard)))
+          "Player-1's graveyard should have exactly 2 cards: Fling + sacrificed Mongoose")
+      ;; Creature was sacrificed (should not be on battlefield)
+      (is (= :graveyard (:object/zone (q/get-object result-db creature-id)))
+          "Sacrificed creature should remain in graveyard after full resolution"))))
