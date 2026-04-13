@@ -99,6 +99,10 @@
 
 (deftest test-resolve-one-item-spell
   (testing "Spell stack-item with object-ref resolves and stack-item is removed"
+    ;; Dark Ritual has no :storm keyword — exactly 1 stack-item is created (the spell).
+    ;; Bug caught: loop-with-escape (> iterations 5) silently passes even if resolution
+    ;; hangs — the (is nil? stack) inside the do branch fires regardless of escape cause.
+    ;; Single-step resolve: the only item is the spell itself.
     (let [db (create-full-db)
           [db object-id] (add-card-to-zone db :dark-ritual :hand :player-1)
           db (mana/add-mana db :player-1 {:black 3})
@@ -108,26 +112,22 @@
                 :mode/additional-costs []
                 :mode/on-resolve :graveyard}
           db' (rules/cast-spell-mode db :player-1 object-id mode)
-          ;; Filter to spell stack-items only (storm also creates a :storm item)
-          spell-items (filter #(:stack-item/object-ref %) (queries/get-all-stack-items db'))]
-      ;; Should have a spell stack-item with object-ref
-      (is (= 1 (count spell-items)) "Should have exactly 1 spell stack-item")
-      ;; Resolve via resolve-one-item (resolves top item which is :storm)
-      ;; Keep resolving until stack is empty (storm meta-item + spell)
-      (loop [db db'
-             iterations 0]
-        (if (or (nil? (stack/get-top-stack-item db))
-                (> iterations 5))
-          (do
-            ;; Stack should be empty after all items resolved
-            (is (nil? (stack/get-top-stack-item db))
-                "Stack should be empty after resolution")
-            ;; Spell should be in graveyard
-            (is (= :graveyard (:object/zone (queries/get-object db object-id)))
-                "Dark Ritual should be in graveyard after resolution"))
-          (let [result (resolution/resolve-one-item db)]
-            (is (nil? (:pending-selection result)) "Dark Ritual should not need selection")
-            (recur (:db result) (inc iterations))))))))
+          ;; Dark Ritual has no :storm keyword — only 1 stack-item (the spell)
+          all-items (queries/get-all-stack-items db')]
+      ;; Should have exactly 1 stack-item (the spell; no storm meta-item)
+      (is (= 1 (count all-items)) "Should have exactly 1 stack-item (Dark Ritual has no :storm)")
+      ;; Resolve the spell — single step
+      (let [result (resolution/resolve-one-item db')]
+        (is (nil? (:pending-selection result)) "Dark Ritual should not need selection")
+        ;; Stack should be empty after the single spell resolved
+        (is (nil? (stack/get-top-stack-item (:db result)))
+            "Stack should be empty after spell resolved")
+        ;; Spell should be in graveyard
+        (is (= :graveyard (:object/zone (queries/get-object (:db result) object-id)))
+            "Dark Ritual should be in graveyard after resolution")
+        ;; Mana accounting: started with 3B, paid 1B to cast → 2B; ritual adds 3B → 5B total
+        (is (= 5 (:black (queries/get-mana-pool (:db result) :player-1)))
+            "Mana pool: 3B initial - 1B cast cost + 3B ritual effect = 5B")))))
 
 
 (deftest test-resolve-one-item-activated-ability

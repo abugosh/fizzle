@@ -323,6 +323,9 @@
 ;; F. Turn-based triggers in restored DB
 
 (deftest restore-turn-based-triggers-present-test
+  ;; TODO fizzle-evnp: strengthen to 4-trigger count assertion once bug is investigated.
+  ;; The [:find [?type ...]] query deduplicates on type — 2 vs 4 count may reflect query
+  ;; deduplication rather than a production bug. Need to use (count (d/q '[:find ?e ?type :where ...])).
   (testing "turn-based triggers created for both players"
     (let [db (-> (make-snapshot (-> (th/create-test-db) (th/add-opponent)))
                  restorer/restore-game-state
@@ -332,11 +335,11 @@
                           [?e :trigger/type ?type]]
                         db)]
       (is (seq triggers)
-          "should have phase-entered triggers")
+          "phase-entered triggers should be present in restored DB")
       (is (some #{:draw-step} triggers)
-          "should have :draw-step trigger")
+          "draw-step trigger should be present")
       (is (some #{:untap-step} triggers)
-          "should have :untap-step trigger"))))
+          "untap-step trigger should be present"))))
 
 
 ;; ---------------------------------------------------------------------------
@@ -349,12 +352,16 @@
           [db' _]  (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
           snapshot (make-snapshot db')
           restored (-> snapshot restorer/restore-game-state :game/db)
-          triggers (d/q '[:find [?type ...]
-                          :where [?e :trigger/event-type _]
-                          [?e :trigger/type ?type]]
-                        restored)]
-      (is (some #{:becomes-tapped} triggers)
-          "city-of-brass :becomes-tapped trigger should be present in restored DB"))))
+          cob-triggers (d/q '[:find [(pull ?e [:trigger/type :trigger/controller]) ...]
+                              :where [?e :trigger/type :becomes-tapped]]
+                            restored)
+          p1-eid (q/get-player-eid restored :player-1)]
+      ;; Bug caught: (some #{:becomes-tapped} triggers) passes even if the trigger has
+      ;; the wrong controller (e.g. player-2 owns the CoB trigger but player-1 plays CoB)
+      (is (= 1 (count cob-triggers))
+          "Should have exactly 1 :becomes-tapped trigger (for the CoB on battlefield)")
+      (is (= p1-eid (:db/id (:trigger/controller (first cob-triggers))))
+          "CoB :becomes-tapped trigger controller must be player-1's EID (the card's owner)"))))
 
 
 ;; ---------------------------------------------------------------------------

@@ -184,11 +184,18 @@
                             [:db/add game-eid :game/priority opp-eid]
                             [:db/add game-eid :game/phase :main1]])
           app-db (make-app-db db)
-          result (director/run-to-decision app-db {:yield-all? false})
+          ;; yield-all? true: human auto-passes even during bot's turn so the stack resolves.
+          ;; This matches burn_integration_test.cljs which proves bolt→damage→graveyard via the same flag.
+          result (director/run-to-decision app-db {:yield-all? true})
           result-db (:game/db (:app-db result))]
-      ;; Bot should have cast and/or the human now has priority
-      ;; Either the bot cast and priority transferred to human, or bot passed
-      (is (some? result-db) "Director should return a result"))))
+      ;; Bug caught: weak (some? result-db) never catches director returning wrong app-db shape
+      ;; or bolt failing to resolve (e.g. targeting bug, mana bug, zone-move bug)
+      ;; Assert bolt resolved: player-1 takes 3 damage → life = 17
+      (is (= 17 (q/get-life-total result-db :player-1))
+          "Bolt should have dealt 3 damage to player-1 (20 → 17)")
+      ;; Bolt should be in graveyard (zone-move on resolution)
+      (is (= 1 (count (q/get-objects-in-zone result-db :player-2 :graveyard)))
+          "Lightning Bolt should have moved to bot's graveyard after resolution"))))
 
 
 (deftest director-no-dispatch-later-in-result
