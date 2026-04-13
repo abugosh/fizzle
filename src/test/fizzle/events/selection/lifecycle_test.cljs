@@ -278,3 +278,48 @@
       ;; Both continuations in the chain must have run
       (is (true? (:test/chain-a-ran result)))
       (is (true? (:test/chain-b-ran result))))))
+
+
+;; =====================================================
+;; HIGH corner case: chain selection on-complete propagates through 2+ steps
+;; =====================================================
+;; :chaining lifecycle copies :selection/on-complete to the chained selection.
+;; When the chained selection is confirmed (with :standard lifecycle), the
+;; continuation must execute. This verifies 2-step propagation:
+;;   step 1: :test-chaining (lifecycle :chaining) → propagates on-complete → step 2
+;;   step 2: :test-standard (lifecycle :standard) → applies on-complete continuation
+;;
+;; Bug caught: if chaining-path forgets to copy on-complete to the chained
+;; selection, the continuation would be silently dropped after step 1,
+;; and confirming step 2 would not fire it.
+
+(deftest test-chaining-on-complete-propagates-through-2-steps
+  (testing ":chaining lifecycle propagates on-complete through 2 confirm steps"
+    ;; Bug caught: if :chaining path drops :selection/on-complete, the continuation
+    ;; registered in step 1 would silently disappear. Step 2's confirm would return
+    ;; without running :test-marker, and (:test/marker result) would be nil.
+    (let [db (th/create-test-db)
+          ;; Step 1: chaining selection with on-complete continuation
+          app-db-step1 (make-app-db db {:selection/type :test-chaining
+                                        :selection/lifecycle :chaining
+                                        :selection/player-id :player-1
+                                        :selection/selected #{}
+                                        :selection/validation :always
+                                        :selection/auto-confirm? false
+                                        :selection/on-complete {:continuation/type :test-marker}})
+          ;; Confirm step 1 — transitions to step 2 (:test-standard with on-complete)
+          result-step1 (core/confirm-selection-impl app-db-step1)
+          chained-sel (:game/pending-selection result-step1)
+          ;; Step 2: confirm the chained selection (standard lifecycle applies continuation)
+          app-db-step2 (assoc result-step1 :game/pending-selection chained-sel)
+          result-step2 (core/confirm-selection-impl app-db-step2)]
+      ;; After step 1: chained selection must exist and have on-complete
+      (is (some? chained-sel)
+          "Step 1: chaining must produce a new pending-selection")
+      (is (= {:continuation/type :test-marker} (:selection/on-complete chained-sel))
+          "Step 1: on-complete must be propagated to the chained selection")
+      ;; After step 2: no pending-selection, continuation must have fired
+      (is (nil? (:game/pending-selection result-step2))
+          "Step 2: after confirming chained selection, pending-selection must be nil")
+      (is (true? (:test/marker result-step2))
+          "Step 2: :test-marker continuation must have fired after 2 confirm steps"))))

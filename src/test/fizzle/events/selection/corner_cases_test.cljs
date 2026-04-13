@@ -9,15 +9,27 @@
    4. Scry executor unit test — top-pile stays on top, bottom-pile goes to bottom
    5. Modal card (REB) with 0 valid modes — cast-spell-handler does NOT crash
    6. Zone-pick builder with nil effect/count — returns selection without crashing
-   7. Mana allocation confirm with generic-remaining > 0 — spell still casts"
+   7. Mana allocation confirm with generic-remaining > 0 — spell still casts
+   8. :selection/exact? false path in toggle-selection-impl (unlimited multi-select)
+   9. :resolve-one-and-stop continuation on non-empty stack"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana :as mana]
     [fizzle.events.casting :as casting]
+    [fizzle.events.db-effect :as db-effect]
     [fizzle.events.selection.core :as core]
     [fizzle.events.selection.costs :as costs]
-    [fizzle.test-helpers :as th]))
+    [fizzle.history.interceptor :as interceptor]
+    [fizzle.test-helpers :as th]
+    [re-frame.core :as rf]
+    [re-frame.db :as rf-db]))
+
+
+;; Register interceptor and db-effect so dispatch-sync tests work correctly.
+;; (Tests 9 use rf/dispatch-sync which requires these for history and SBAs.)
+(interceptor/register!)
+(db-effect/register!)
 
 
 ;; =====================================================
@@ -332,3 +344,109 @@
       ;; without rechecking generic-remaining. Spell is moved from hand to stack.
       (is (= :stack (th/get-object-zone (:game/db result) spell-id))
           "Spell should be on stack after mana-allocation confirm (partial allocation allowed)"))))
+
+
+;; =====================================================
+;; 8. HIGH corner case: :selection/exact? false — unlimited multi-select
+;; =====================================================
+;; toggle-selection-impl has a specific branch for :selection/exact? false:
+;;   (false? (:selection/exact? selection))
+;;   → always add to selected set (no limit check)
+;; This branch is for selections like :exile-cards-cost where the player can
+;; select any number of cards (no upper bound enforced by toggle logic).
+;; Bug caught: if this branch were removed or changed to (false? ...)→ignore,
+;; the player could never select more than select-count items in an unlimited
+;; multi-select, silently capping their selection.
+
+(deftest test-toggle-selection-impl-exact-false-allows-more-than-select-count
+  (testing "toggle-selection-impl with :selection/exact? false allows selecting more items than select-count"
+    ;; Bug caught: if the (false? :selection/exact?) branch is removed from toggle-selection-impl,
+    ;; selecting item 2 when select-count=1 would be ignored (at limit branch fires).
+    ;; With exact?=false, unlimited items can be added regardless of select-count.
+    ;; Note: select-count must NOT be 1. When select-count=1 the single-select branch fires first
+    ;; (cond is ordered). Use select-count=5 so the exact?=false branch is reached.
+    (let [db (th/create-test-db)
+          ;; Create a selection with select-count=5 but exact?=false (unlimited multi-select)
+          sel {:selection/type :test-corner-noop
+               :selection/lifecycle :standard
+               :selection/player-id :player-1
+               :selection/selected #{}
+               :selection/select-count 5       ; >1 so single-select branch doesn't fire
+               :selection/exact? false          ; exact?=false means: bypass the <count limit
+               :selection/validation :always
+               :selection/auto-confirm? false}
+          app-db {:game/db db :game/pending-selection sel}
+          ;; Toggle items — the exact?=false branch fires before "multi-select under limit"
+          result1 (core/toggle-selection-impl app-db :item-a)
+          result2 (core/toggle-selection-impl (:app-db result1) :item-b)
+          result3 (core/toggle-selection-impl (:app-db result2) :item-c)
+          final-selected (get-in (:app-db result3) [:game/pending-selection :selection/selected])]
+      ;; All 3 items must be in selected — exact?=false branch fires (before "under limit" check)
+      (is (= #{:item-a :item-b :item-c} final-selected)
+          ":selection/exact? false must accumulate all toggled items"))))
+
+
+(deftest test-toggle-selection-impl-exact-false-auto-confirm-not-triggered
+  (testing "toggle-selection-impl with :selection/exact? false does not auto-confirm on first selection"
+    ;; auto-confirm? is only true when BOTH selected?=true AND select-count=1 AND auto-confirm?=true.
+    ;; When exact?=false with select-count=5, the exact?=false branch fires (not single-select),
+    ;; so auto-confirm? is false even though the selection has auto-confirm?=true.
+    ;; Bug caught: if exact?=false branch incorrectly triggered auto-confirm via the single-select
+    ;; path, the selection would auto-complete after the first item, preventing multi-select.
+    (let [db (th/create-test-db)
+          sel {:selection/type :test-corner-noop
+               :selection/lifecycle :standard
+               :selection/player-id :player-1
+               :selection/selected #{}
+               :selection/select-count 5        ; >1 so single-select branch doesn't fire
+               :selection/exact? false
+               :selection/validation :always
+               :selection/auto-confirm? true}   ; auto-confirm? true, but exact?=false with count=5
+          app-db {:game/db db :game/pending-selection sel}
+          result (core/toggle-selection-impl app-db :item-a)]
+      ;; auto-confirm? must be false — auto-confirm only triggers when (= select-count 1)
+      ;; The exact?=false branch fires here (select-count=5), and auto-confirm computation
+      ;; requires (= select-count 1) which is false.
+      (is (false? (:auto-confirm? result))
+          "auto-confirm? must be false when select-count != 1 (exact?=false path, count=5)"))))
+
+
+;; =====================================================
+;; 9. HIGH corner case: :resolve-one-and-stop on non-empty stack
+;; =====================================================
+;; The existing test only covers the empty-stack case (apply-continuation no-op).
+;; This test verifies that when the stack has an item (e.g., a resolved spell),
+;; :resolve-one-and-stop actually resolves it and returns a db with empty stack.
+;; Bug caught: if resolve-one-and-stop has an off-by-one in the director call,
+;; the stack item would remain unresolved.
+
+(deftest test-resolve-one-and-stop-resolves-top-item-when-stack-non-empty
+  (testing ":resolve-one-and-stop continuation resolves top stack item when stack is non-empty"
+    ;; Bug caught: if apply-continuation :resolve-one-and-stop returns app-db unchanged
+    ;; when stack is non-empty (missing the director.run-to-decision call), the stack
+    ;; item would remain unresolved. This test verifies the non-empty-stack path.
+    ;;
+    ;; NOTE: Must use th/create-game-scenario (not th/create-test-db) because dispatch-sync
+    ;; requires a full game state with :game/priority set. th/create-test-db only creates
+    ;; the Datascript db without player/priority initialization.
+    (let [base-app-db (th/create-game-scenario {:bot-archetype :goldfish :mana {:black 1}})
+          game-db (:game/db base-app-db)
+          [game-db spell-id] (th/add-card-to-zone game-db :dark-ritual :hand :player-1)
+          app-db (assoc base-app-db :game/db game-db)
+          ;; Cast the spell via production path — puts it on the stack
+          _ (reset! rf-db/app-db app-db)
+          _ (rf/dispatch-sync [::casting/cast-spell {:object-id spell-id}])
+          app-db-after-cast @rf-db/app-db
+          ;; Stack should have 1 item (the cast spell)
+          _ (is (= 1 (count (q/get-all-stack-items (:game/db app-db-after-cast))))
+                "Precondition: spell is on stack after cast")
+          ;; Now apply :resolve-one-and-stop continuation
+          continuation {:continuation/type :resolve-one-and-stop}
+          result (core/apply-continuation continuation app-db-after-cast)
+          result-db (:game/db (:app-db result))]
+      ;; Stack must be empty — the spell was resolved
+      (is (= 0 (count (q/get-all-stack-items result-db)))
+          ":resolve-one-and-stop must resolve the top stack item when stack is non-empty")
+      ;; Spell moved to graveyard (dark-ritual resolves to graveyard)
+      (is (= 1 (count (q/get-objects-in-zone result-db :player-1 :graveyard)))
+          "Dark Ritual must be in graveyard after :resolve-one-and-stop resolves it"))))
