@@ -168,3 +168,59 @@
       ;; CoB's :becomes-tapped trigger should have fired via :permanent-tapped dispatch
       (is (= 1 (count (q/get-all-stack-items db-after)))
           "CoB :becomes-tapped trigger should be on stack — :permanent-tapped dispatch must fire when entering tapped"))))
+
+
+;; === HIGH corner case: controller_eid=nil fallback guard in costs.cljs:86-91 ===
+
+(deftest test-pay-cost-tap-no-controller-eid-is-safe
+  (testing "costs/pay-cost :tap with object that has no controller returns tapped db without crash"
+    ;; Bug caught: if the if-fallback guard at costs.cljs lines 86-91 were removed,
+    ;; pay-cost :tap on an object with nil controller_eid would call dispatch-event
+    ;; with a nil player-id, which would corrupt the :permanent-tapped event map and
+    ;; either crash or dispatch a malformed event.
+    ;; The guard: (if player-id (dispatch...) db-tapped) must return db-tapped safely.
+    (let [db (th/create-test-db)
+          ;; Build an object directly without a :object/controller attribute
+          ;; (simulates an edge case or future card type with no controller)
+          card-eid (d/q '[:find ?e . :where [?e :card/id :dark-ritual]] db)
+          player-eid (q/get-player-eid db :player-1)
+          obj-id (random-uuid)
+          ;; Create object with owner but NO controller
+          db (d/db-with db [{:object/id obj-id
+                             :object/card card-eid
+                             :object/zone :battlefield
+                             :object/owner player-eid
+                             :object/tapped false}])
+          ;; can-pay? :tap checks object exists and is not tapped — should pass
+          ;; pay-cost :tap will find controller_eid=nil → player-id=nil → fallback path
+          db-after (costs/pay-cost db obj-id {:tap true})]
+      ;; The tap must succeed (returns non-nil db)
+      (is (some? db-after)
+          "pay-cost :tap must return a db (not nil) even when controller_eid is nil")
+      ;; The object must be tapped
+      (is (true? (:object/tapped (q/get-object db-after obj-id)))
+          "Object must be tapped even when controller_eid is nil")
+      ;; No trigger dispatch fired (no triggers exist and controller was nil)
+      (is (= 0 (count (q/get-all-stack-items db-after)))
+          "No trigger on stack when controller_eid is nil — dispatch safely skipped"))))
+
+
+;; === HIGH corner case: N combat taps fire N :permanent-tapped events ===
+
+(deftest test-combat-tap-two-attackers-fires-two-events
+  (testing "combat/tap-and-mark-attackers with 2 attackers fires 2 :permanent-tapped events"
+    ;; Bug caught: if tap-and-mark-attackers taps all attackers in one operation
+    ;; and fires only one combined :permanent-tapped event, the second attacker's
+    ;; triggers would be silently skipped. Each attack tap must fire independently.
+    (let [db (th/create-test-db)
+          ;; Add two City of Brass creatures — each has a :becomes-tapped trigger
+          [db cob1-id] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
+          [db cob2-id] (th/add-card-to-zone db :city-of-brass :battlefield :player-1)
+          stack-before (count (q/get-all-stack-items db))
+          ;; Tap both via combat path
+          db-after (combat/tap-and-mark-attackers db [cob1-id cob2-id])
+          stack-after (count (q/get-all-stack-items db-after))]
+      (is (= 0 stack-before) "Precondition: stack starts empty")
+      ;; Both CoB :becomes-tapped triggers must fire (each one fires independently)
+      (is (= 2 (- stack-after stack-before))
+          "2 combat taps of CoB must fire 2 independent :permanent-tapped events (not 1)"))))

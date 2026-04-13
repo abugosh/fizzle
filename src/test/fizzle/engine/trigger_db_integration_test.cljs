@@ -8,6 +8,7 @@
     [fizzle.engine.events :as game-events]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
+    [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.events.init :as game-init]
     [fizzle.events.lands :as lands]
     [fizzle.events.setup :as setup]
@@ -96,3 +97,37 @@
       (when (seq items)
         (is (= :permanent-tapped (:stack-item/type (first items)))
             "Stack item should be :permanent-tapped type")))))
+
+
+;; === HIGH corner case: retractEntity cascade for real card leaving battlefield ===
+
+(deftest test-city-of-brass-triggers-retracted-on-leave-battlefield
+  (testing "City of Brass :object/triggers AND trigger-db entries are retracted when CoB leaves battlefield"
+    ;; Bug caught: if zones/move-to-zone* (the chokepoint for trigger retraction) does not
+    ;; correctly retract triggers via :db.fn/retractEntity, then a CoB that bounces back to
+    ;; hand would retain its :becomes-tapped trigger in Datascript. On re-entry to battlefield
+    ;; a second trigger would be registered, causing double-firing.
+    ;; Test verifies BOTH: :object/triggers on the object AND trigger-db/get-all-triggers count.
+    (let [db (th/create-test-db)
+          [db cob-id] (th/add-card-to-zone db :city-of-brass :hand :player-1)
+          ;; Play CoB — registers :becomes-tapped trigger in Datascript
+          db-on-bf (lands/play-land db :player-1 cob-id)
+          cob-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db-on-bf cob-id)
+          ;; Count trigger-db entries BEFORE leaving battlefield
+          triggers-before (trigger-db/get-all-triggers db-on-bf)
+          obj-triggers-before (:object/triggers (d/entity db-on-bf cob-eid))
+          ;; Move CoB to hand (simulates bounce — retractEntity should fire)
+          db-bounced (zone-change-dispatch/move-to-zone db-on-bf cob-id :hand)
+          ;; Count trigger-db entries AFTER leaving battlefield
+          triggers-after (trigger-db/get-all-triggers db-bounced)
+          obj-triggers-after (:object/triggers (d/entity db-bounced cob-eid))]
+      ;; Preconditions
+      (is (= 1 (count obj-triggers-before))
+          "Precondition: CoB has 1 :object/triggers entry while on battlefield")
+      (is (pos? (count triggers-before))
+          "Precondition: trigger-db has entries while CoB is on battlefield")
+      ;; Post-conditions — cascade must have fired
+      (is (= 0 (count (or obj-triggers-after #{})))
+          "After leaving battlefield: CoB :object/triggers must be retracted (count = 0)")
+      (is (< (count triggers-after) (count triggers-before))
+          "After leaving battlefield: trigger-db/get-all-triggers count must decrease (cascade fired)"))))

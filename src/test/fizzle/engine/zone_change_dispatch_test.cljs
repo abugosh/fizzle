@@ -397,3 +397,57 @@
       ;; Stack should be empty
       (is (= 0 (count (get-stack-items db-resolved)))
           "Stack should be empty after trigger resolves"))))
+
+
+;; =====================================================
+;; HIGH corner case: :land-entered does NOT fire during
+;; init/mulligan (add lands to library/hand)
+;; =====================================================
+
+(deftest land-entered-does-not-fire-when-land-moves-to-library
+  (testing ":land-entered does NOT fire when a land moves to library (init/mulligan path)"
+    ;; Bug caught: if move-to-zone dispatches :land-entered for ANY zone transition
+    ;; (not just :battlefield), init/mulligan would spam spurious :land-entered events.
+    ;; The guard is (= new-zone :battlefield) in zone_change_dispatch.cljs.
+    (let [db (th/create-test-db)
+          [db island-id] (th/add-card-to-zone db :island :hand :player-1)
+          player-eid (q/get-player-eid db :player-1)
+          ;; Register a :land-entered observer trigger so we can detect any firing
+          trigger-tx (trigger-db/create-trigger-tx
+                       {:trigger/event-type :land-entered
+                        :trigger/controller player-eid
+                        :trigger/filter {}
+                        :trigger/uses-stack? true
+                        :trigger/effects [{:effect/type :draw :effect/amount 0}]})
+          db (d/db-with db trigger-tx)
+          stack-before (count (get-stack-items db))
+          ;; Move land to library (simulates init/mulligan returning a card)
+          db-after (zone-change-dispatch/move-to-zone db island-id :library)
+          stack-after (count (get-stack-items db-after))]
+      (is (= 0 stack-before) "Precondition: stack starts empty")
+      (is (= 0 (- stack-after stack-before))
+          ":land-entered must NOT fire when land moves to :library (only :battlefield)"))))
+
+
+(deftest land-entered-does-not-fire-when-land-moves-to-hand
+  (testing ":land-entered does NOT fire when a land is drawn to hand (init/draw path)"
+    ;; Bug caught: a draw (library→hand) during the draw step fires move-to-zone.
+    ;; :land-entered should not trigger during draws; only entering :battlefield matters.
+    (let [db (th/create-test-db)
+          [db island-id] (th/add-card-to-zone db :island :library :player-1)
+          player-eid (q/get-player-eid db :player-1)
+          ;; Register a :land-entered observer trigger
+          trigger-tx (trigger-db/create-trigger-tx
+                       {:trigger/event-type :land-entered
+                        :trigger/controller player-eid
+                        :trigger/filter {}
+                        :trigger/uses-stack? true
+                        :trigger/effects [{:effect/type :draw :effect/amount 0}]})
+          db (d/db-with db trigger-tx)
+          stack-before (count (get-stack-items db))
+          ;; Move land to hand (simulates drawing a land card)
+          db-after (zone-change-dispatch/move-to-zone db island-id :hand)
+          stack-after (count (get-stack-items db-after))]
+      (is (= 0 stack-before) "Precondition: stack starts empty")
+      (is (= 0 (- stack-after stack-before))
+          ":land-entered must NOT fire when land moves to :hand (draw step — not entering battlefield)"))))

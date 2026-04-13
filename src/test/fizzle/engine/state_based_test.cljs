@@ -802,6 +802,28 @@
           "Opponent's creature state trigger should appear on stack"))))
 
 
+;; === HIGH corner case: state-check-trigger duplicate-guard for opponent direction ===
+
+(deftest test-check-sba-state-check-trigger-duplicate-guard-opponent
+  (testing "check-sba :state-check-trigger duplicate-guard works for :player-2 → prevents re-firing"
+    ;; Bug caught: if duplicate guard only checks :player-1's stack items,
+    ;; opponent's trigger could fire multiple times in a single check cycle.
+    ;; The existing duplicate-guard test only covers :player-1 (per audit finding).
+    ;; This test verifies the guard works symmetrically for :player-2.
+    (let [[db _obj-id] (-> (th/create-test-db)
+                           (th/add-opponent)
+                           (add-creature-with-state-trigger :player-2 7 7 7))
+          ;; First: fire and execute the trigger (puts state-check-trigger on stack)
+          sbas        (sba/check-sba db :state-check-trigger)
+          db-with-st  (sba/execute-sba db (first sbas))
+          ;; Now check again — duplicate guard must prevent re-firing for opponent too
+          sbas-2      (sba/check-sba db-with-st :state-check-trigger)]
+      (is (= 1 (count sbas))
+          "Precondition: first check fires exactly one SBA for player-2 creature")
+      (is (empty? sbas-2)
+          "Duplicate guard must prevent re-firing when :state-check-trigger already on stack for :player-2 creature"))))
+
+
 ;; === :life-zero SBA opponent tests ===
 
 (deftest test-check-sba-life-zero-fires-for-opponent
