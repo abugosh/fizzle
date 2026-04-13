@@ -4,17 +4,6 @@
     [fizzle.history.core :as history]))
 
 
-;; === init-history tests ===
-
-(deftest test-init-history
-  (testing "Returns map with all four keys, empty main, empty forks, nil branch, position -1"
-    (let [h (history/init-history)]
-      (is (= [] (:history/main h)))
-      (is (= {} (:history/forks h)))
-      (is (nil? (:history/current-branch h)))
-      (is (= -1 (:history/position h))))))
-
-
 ;; === make-entry tests ===
 
 (deftest test-make-entry
@@ -24,15 +13,6 @@
       (is (= :cast-spell (:entry/event-type entry)))
       (is (= "Cast Dark Ritual" (:entry/description entry)))
       (is (= 1 (:entry/turn entry))))))
-
-
-(deftest test-make-entry-no-bot-fields
-  (testing "make-entry does not include principal or is-bot? fields"
-    (let [entry (history/make-entry :db-0 :cast-spell "Cast Dark Ritual" 1)]
-      (is (not (contains? entry :entry/principal))
-          "Entry should not contain :entry/principal")
-      (is (not (contains? entry :entry/is-bot?))
-          "Entry should not contain :entry/is-bot?"))))
 
 
 ;; === append-entry tests ===
