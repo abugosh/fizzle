@@ -17,11 +17,10 @@
   ([db player-id initial-counters]
    (add-permanent db player-id initial-counters false))
   ([db player-id initial-counters tapped?]
-   (let [conn (d/conn-from-db db)
-         player-eid (q/get-player-eid db player-id)
+   (let [player-eid (q/get-player-eid db player-id)
          card-eid (d/q '[:find ?e .
                          :where [?e :card/id :dark-ritual]]
-                       @conn)
+                       db)
          object-id (random-uuid)
          base-entity {:object/id object-id
                       :object/card card-eid
@@ -32,8 +31,7 @@
          entity (if initial-counters
                   (assoc base-entity :object/counters initial-counters)
                   base-entity)]
-     (d/transact! conn [entity])
-     [@conn object-id])))
+     [(d/db-with db [entity]) object-id])))
 
 
 ;; === :tap cost tests ===
@@ -168,10 +166,9 @@
   (testing "can-pay? :pay-life returns false when controller has < required life"
     (let [db (init-game-state)
           ;; Set player to 0 life
-          conn (d/conn-from-db db)
           player-eid (q/get-player-eid db :player-1)
-          _ (d/transact! conn [[:db/add player-eid :player/life 0]])
-          [db' object-id] (add-permanent @conn :player-1)
+          db (d/db-with db [[:db/add player-eid :player/life 0]])
+          [db' object-id] (add-permanent db :player-1)
           cost {:pay-life 1}]
       (is (false? (costs/can-pay? db' object-id cost))))))
 
@@ -180,10 +177,9 @@
   (testing "can-pay? :pay-life returns true when controller has exactly required life (going to 0 is allowed)"
     (let [db (init-game-state)
           ;; Set player to 1 life
-          conn (d/conn-from-db db)
           player-eid (q/get-player-eid db :player-1)
-          _ (d/transact! conn [[:db/add player-eid :player/life 1]])
-          [db' object-id] (add-permanent @conn :player-1)
+          db (d/db-with db [[:db/add player-eid :player/life 1]])
+          [db' object-id] (add-permanent db :player-1)
           cost {:pay-life 1}]
       (is (true? (costs/can-pay? db' object-id cost))))))
 
@@ -284,11 +280,9 @@
   (testing "can-pay? :mana returns true when controller has sufficient mana"
     (let [[db object-id] (add-permanent (init-game-state) :player-1)
           ;; Player starts with empty pool, add mana
-          conn (d/conn-from-db db)
           player-eid (q/get-player-eid db :player-1)
-          _ (d/transact! conn [[:db/add player-eid :player/mana-pool {:black 2 :white 0 :blue 0
-                                                                      :red 0 :green 0 :colorless 0}]])
-          db @conn
+          db (d/db-with db [[:db/add player-eid :player/mana-pool {:black 2 :white 0 :blue 0
+                                                                   :red 0 :green 0 :colorless 0}]])
           cost {:mana {:black 1}}]
       (is (true? (costs/can-pay? db object-id cost))))))
 
@@ -304,11 +298,9 @@
 (deftest test-pay-mana-deducts-from-pool
   (testing "pay-cost :mana deducts correct amount from controller's pool"
     (let [[db object-id] (add-permanent (init-game-state) :player-1)
-          conn (d/conn-from-db db)
           player-eid (q/get-player-eid db :player-1)
-          _ (d/transact! conn [[:db/add player-eid :player/mana-pool {:black 3 :white 0 :blue 0
-                                                                      :red 0 :green 0 :colorless 0}]])
-          db @conn
+          db (d/db-with db [[:db/add player-eid :player/mana-pool {:black 3 :white 0 :blue 0
+                                                                   :red 0 :green 0 :colorless 0}]])
           cost {:mana {:black 2}}
           db' (costs/pay-cost db object-id cost)
           pool-after (q/get-mana-pool db' :player-1)]
@@ -322,27 +314,25 @@
   "Add a card with a specific color to a player's graveyard.
    Returns updated db."
   [db player-id color]
-  (let [conn (d/conn-from-db db)
-        player-eid (q/get-player-eid db player-id)
+  (let [player-eid (q/get-player-eid db player-id)
         card-id (random-uuid)
-        obj-id (random-uuid)]
-    (d/transact! conn [{:db/id -1
-                        :card/id card-id
-                        :card/name (str (name color) " Test Card")
-                        :card/colors #{color}
-                        :card/types #{:instant}
-                        :card/mana-cost {color 1}}])
-    (let [card-eid (d/q '[:find ?e .
-                          :in $ ?cid
-                          :where [?e :card/id ?cid]]
-                        @conn card-id)]
-      (d/transact! conn [{:object/id obj-id
-                          :object/card card-eid
-                          :object/zone :graveyard
-                          :object/owner player-eid
-                          :object/controller player-eid
-                          :object/tapped false}]))
-    @conn))
+        obj-id (random-uuid)
+        db (d/db-with db [{:db/id -1
+                           :card/id card-id
+                           :card/name (str (name color) " Test Card")
+                           :card/colors #{color}
+                           :card/types #{:instant}
+                           :card/mana-cost {color 1}}])
+        card-eid (d/q '[:find ?e .
+                        :in $ ?cid
+                        :where [?e :card/id ?cid]]
+                      db card-id)]
+    (d/db-with db [{:object/id obj-id
+                    :object/card card-eid
+                    :object/zone :graveyard
+                    :object/owner player-eid
+                    :object/controller player-eid
+                    :object/tapped false}])))
 
 
 (deftest test-can-pay-exile-cards-sufficient-matching
@@ -403,34 +393,32 @@
   (testing "can-pay? :exile-cards excludes the object itself from available cards"
     ;; When casting from graveyard, the spell itself should not count
     (let [db (init-game-state)
-          conn (d/conn-from-db db)
           player-eid (q/get-player-eid db :player-1)
           card-id (random-uuid)
-          obj-id (random-uuid)]
-      ;; Create a blue card in graveyard as our "spell"
-      (d/transact! conn [{:db/id -1
-                          :card/id card-id
-                          :card/name "Blue Spell"
-                          :card/colors #{:blue}
-                          :card/types #{:instant}
-                          :card/mana-cost {:blue 1}}])
-      (let [card-eid (d/q '[:find ?e .
-                            :in $ ?cid
-                            :where [?e :card/id ?cid]]
-                          @conn card-id)]
-        (d/transact! conn [{:object/id obj-id
-                            :object/card card-eid
-                            :object/zone :graveyard
-                            :object/owner player-eid
-                            :object/controller player-eid
-                            :object/tapped false}]))
-      ;; Only the spell itself is blue in graveyard - should not count
-      (let [db @conn
-            cost {:exile-cards {:zone :graveyard
-                                :criteria {:match/colors #{:blue}}
-                                :count :x}}]
-        (is (false? (costs/can-pay? db obj-id cost))
-            "Spell being cast should not count as available exile target")))))
+          obj-id (random-uuid)
+          ;; Create a blue card in graveyard as our "spell"
+          db (d/db-with db [{:db/id -1
+                             :card/id card-id
+                             :card/name "Blue Spell"
+                             :card/colors #{:blue}
+                             :card/types #{:instant}
+                             :card/mana-cost {:blue 1}}])
+          card-eid (d/q '[:find ?e .
+                          :in $ ?cid
+                          :where [?e :card/id ?cid]]
+                        db card-id)
+          db (d/db-with db [{:object/id obj-id
+                             :object/card card-eid
+                             :object/zone :graveyard
+                             :object/owner player-eid
+                             :object/controller player-eid
+                             :object/tapped false}])
+          ;; Only the spell itself is blue in graveyard - should not count
+          cost {:exile-cards {:zone :graveyard
+                              :criteria {:match/colors #{:blue}}
+                              :count :x}}]
+      (is (false? (costs/can-pay? db obj-id cost))
+          "Spell being cast should not count as available exile target"))))
 
 
 (deftest test-pay-exile-cards-returns-db-unchanged
