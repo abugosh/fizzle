@@ -309,9 +309,11 @@
             further-remaining (vec (:remaining-effects remaining-result))
             next-sel (build-selection-for-effect (:db remaining-result) player-id object-id
                                                  next-effect further-remaining)
+            parent-source-type (:selection/source-type selection)
             next-sel (cond-> next-sel
-                       (not (:selection/source-type next-sel))
-                       (assoc :selection/source-type (:selection/source-type selection))
+                       (and (not (:selection/source-type next-sel))
+                            parent-source-type)
+                       (assoc :selection/source-type parent-source-type)
                        on-complete (assoc :selection/on-complete on-complete))]
         (-> app-db
             (assoc :game/db (:db remaining-result))
@@ -349,13 +351,17 @@
 (defn- chaining-path
   "Chaining lifecycle: call build-chain-selection. If it returns a selection,
    chain to it. If nil, fall through to standard path.
-   Propagates :selection/source-type from parent so cleanup uses the correct branch."
+   Propagates :selection/source-type from parent so cleanup uses the correct branch.
+   Only propagates when parent has a non-nil value — avoids writing nil into child
+   when parent (e.g. :cast-time-targeting) does not set source-type."
   [app-db result selection on-complete]
   (let [next-sel (build-chain-selection (:db result) selection)]
     (if next-sel
-      (let [chained-sel (cond-> next-sel
-                          (not (:selection/source-type next-sel))
-                          (assoc :selection/source-type (:selection/source-type selection))
+      (let [parent-source-type (:selection/source-type selection)
+            chained-sel (cond-> next-sel
+                          (and (not (:selection/source-type next-sel))
+                               parent-source-type)
+                          (assoc :selection/source-type parent-source-type)
                           on-complete (assoc :selection/on-complete on-complete))]
         (-> app-db
             (assoc :game/db (:db result))

@@ -5,9 +5,14 @@
    Also covers confirm-selection-impl validation absorption and deferred entry processing."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
+    [fizzle.cards.blue.deep-analysis]
+    [fizzle.engine.spec-util :as spec-util]
     [fizzle.engine.validation :as validation]
+    [fizzle.events.casting :as casting]
     [fizzle.events.priority-flow]
     [fizzle.events.selection.core :as selection-core]
+    ;; Side-effect: registers :cast-time-targeting and :targeting-to-mana-allocation defmethods
+    [fizzle.events.selection.targeting]
     [fizzle.test-helpers :as th]))
 
 
@@ -423,3 +428,55 @@
           result (selection-core/apply-continuation continuation app-db)]
       (is (some? (get-in result [:app-db :history/deferred-entry]))
           ":resolve-one-and-stop must NOT consume :history/deferred-entry — that is confirm-selection-impl's responsibility"))))
+
+
+;; =====================================================
+;; chaining-path: nil :selection/source-type propagation guard (fizzle-jaz4)
+;; =====================================================
+;; Bug: when the parent selection has no :selection/source-type (e.g.
+;; :cast-time-targeting which does not set it), chaining-path propagates
+;; (get parent :selection/source-type) → nil, then assoc-s nil into the child.
+;; The :mana-allocation spec declares :selection/source-type as :opt keyword? —
+;; nil fails keyword?, so set-pending-selection logs a spec error.
+;; Under *throw-on-spec-failure* true the assoc-nil site becomes assertable.
+;;
+;; Production path used:
+;;   cast-spell-handler → :cast-time-targeting selection (chaining lifecycle)
+;;   confirm-selection-impl → chaining-path → :mana-allocation selection
+;;   set-pending-selection validates chained selection
+;;
+;; Real card: Deep Analysis ({3}{U} — targeting required + colorless generic cost)
+
+(deftest test-chaining-path-does-not-propagate-nil-source-type
+  (testing "chaining-path must not write nil :selection/source-type into child selection"
+    ;; Deep Analysis has targeting (produces :cast-time-targeting) + colorless generic
+    ;; mana ({3}{U}). After target selection, chains to :mana-allocation.
+    ;; :cast-time-targeting does not set :selection/source-type.
+    ;; Bug: chaining-path would assoc nil for source-type into the mana-allocation child.
+    (let [db (th/add-opponent (th/create-test-db {:mana {:colorless 3 :blue 1}}))
+          [db spell-id] (th/add-card-to-zone db :deep-analysis :hand :player-1)
+          ;; cast-spell-handler produces the :cast-time-targeting selection (chaining lifecycle)
+          app-db-with-sel (casting/cast-spell-handler {:game/db db}
+                                                      {:player-id :player-1
+                                                       :object-id spell-id})
+          targeting-sel (:game/pending-selection app-db-with-sel)]
+      ;; Precondition: targeting sel was produced with :chaining lifecycle and no source-type
+      (is (= :cast-time-targeting (:selection/type targeting-sel))
+          "Precondition: cast-spell-handler must produce :cast-time-targeting selection")
+      (is (= :chaining (:selection/lifecycle targeting-sel))
+          "Precondition: lifecycle must be :chaining (Deep Analysis has generic cost)")
+      (is (nil? (:selection/source-type targeting-sel))
+          "Precondition: :cast-time-targeting must NOT have :selection/source-type set")
+      ;; Select player-2 as target, then confirm — this triggers chaining-path
+      ;; Under *throw-on-spec-failure* true, the buggy nil propagation throws here
+      (binding [spec-util/*throw-on-spec-failure* true]
+        (let [app-db' (update app-db-with-sel :game/pending-selection
+                              assoc :selection/selected #{:player-2})
+              after-confirm (selection-core/confirm-selection-impl app-db')
+              mana-sel (:game/pending-selection after-confirm)]
+          ;; Should have chained to :mana-allocation without spec error
+          (is (= :mana-allocation (:selection/type mana-sel))
+              "Must chain to :mana-allocation selection after targeting confirm")
+          ;; Key assertion: source-type must be absent (not nil) in the chained selection
+          (is (not (contains? mana-sel :selection/source-type))
+              "chaining-path must NOT propagate nil :selection/source-type into child — key must be absent"))))))
