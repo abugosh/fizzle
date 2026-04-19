@@ -68,7 +68,7 @@
                                  ". Card not found in database.")
                             {:card-id card-id})))
         obj-id (random-uuid)
-        card-data (d/pull db [:card/types :card/power :card/toughness :card/triggers] card-eid)
+        card-data (d/pull db [:card/types :card/power :card/toughness :card/triggers :card/replacement-effects] card-eid)
         creature? (contains? (set (:card/types card-data)) :creature)
         obj (cond-> (objects/build-object-tx db card-eid card-data zone player-eid 0 :id obj-id)
               ;; Helpers place objects directly on battlefield (no zone transition),
@@ -107,7 +107,7 @@
           (let [card-id   (first remaining)
                 obj-id    (random-uuid)
                 card-eid  (lookup-card-eid card-id)
-                card-data (d/pull @conn [:card/types :card/power :card/toughness :card/triggers] card-eid)
+                card-data (d/pull @conn [:card/types :card/power :card/toughness :card/triggers :card/replacement-effects] card-eid)
                 obj       (objects/build-object-tx @conn card-eid card-data :library player-eid position :id obj-id)]
             (d/transact! conn [obj])
             (recur (rest remaining)
@@ -137,7 +137,7 @@
             (when (nil? card-eid)
               (throw (ex-info (str "Unknown card-id: " card-id)
                               {:card-id card-id})))
-            (let [card-data (d/pull @conn [:card/types :card/power :card/toughness :card/triggers] card-eid)
+            (let [card-data (d/pull @conn [:card/types :card/power :card/toughness :card/triggers :card/replacement-effects] card-eid)
                   obj       (objects/build-object-tx @conn card-eid card-data :graveyard player-eid 0 :id obj-id)]
               (d/transact! conn [obj]))
             (recur (rest remaining)

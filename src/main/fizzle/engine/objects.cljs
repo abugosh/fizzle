@@ -8,6 +8,7 @@
    Battlefield-specific fields (summoning-sick, damage-marked) are NOT set here.
    Those are zone-transition concerns owned by engine/zones.cljs:move-to-zone."
   (:require
+    [fizzle.engine.replacement-db :as replacement-db]
     [fizzle.engine.trigger-db :as trigger-db]))
 
 
@@ -49,7 +50,8 @@
   [db card-eid card-data zone owner-eid position & {:keys [id controller]}]
   (let [tempid (next-tempid)
         controller-eid (or controller owner-eid)
-        card-triggers (:card/triggers card-data)]
+        card-triggers (:card/triggers card-data)
+        card-replacements (:card/replacement-effects card-data)]
     (cond-> {:db/id             tempid
              :object/id         (or id (random-uuid))
              :object/card       card-eid
@@ -68,4 +70,12 @@
              ;; Uses tempid as :trigger/source so it resolves in the same transaction.
              (:object/triggers
                (first (trigger-db/create-triggers-for-card-tx
-                        db tempid controller-eid card-triggers)))))))
+                        db tempid controller-eid card-triggers))))
+
+      (seq card-replacements)
+      (assoc :object/replacement-effects
+             ;; Extract replacement entities from create-replacements-for-card-tx.
+             ;; Uses tempid as :replacement/source-object so it resolves in the same transaction.
+             (:object/replacement-effects
+               (first (replacement-db/create-replacements-for-card-tx
+                        db tempid controller-eid card-replacements)))))))

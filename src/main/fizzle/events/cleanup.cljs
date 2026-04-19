@@ -80,7 +80,7 @@
   [db _player-id selected-ids]
   (let [;; Move selected cards to graveyard
         db-after-discard (reduce (fn [d obj-id]
-                                   (zone-change-dispatch/move-to-zone d obj-id :graveyard))
+                                   (zone-change-dispatch/move-to-zone-db d obj-id :graveyard))
                                  db
                                  selected-ids)
         ;; Now expire grants (Rule 514.2 - after discard) and clear damage

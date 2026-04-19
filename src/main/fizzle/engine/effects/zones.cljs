@@ -22,7 +22,7 @@
         amount (effects/resolve-dynamic-value db player-id (get effect :effect/amount 0) object-id)
         cards-to-mill (or (q/get-top-n-library db target-player amount) [])]
     (reduce (fn [db' oid]
-              (zone-change-dispatch/move-to-zone db' oid :graveyard))
+              (zone-change-dispatch/move-to-zone-db db' oid :graveyard))
             db
             cards-to-mill)))
 
@@ -42,7 +42,7 @@
         (if-let [cards-to-draw (q/get-top-n-library db target-player amount)]
           (let [actual-drawn (count cards-to-draw)
                 db-after-draw (reduce (fn [db' oid]
-                                        (zone-change-dispatch/move-to-zone db' oid :hand))
+                                        (zone-change-dispatch/move-to-zone-db db' oid :hand))
                                       db
                                       cards-to-draw)]
             (if (< actual-drawn amount)
@@ -57,7 +57,7 @@
   (if-not object-id
     db
     (if (q/get-object-eid db object-id)
-      (zone-change-dispatch/move-to-zone db object-id :exile)
+      (zone-change-dispatch/move-to-zone-db db object-id :exile)
       db)))
 
 
@@ -71,7 +71,7 @@
                         :else explicit-target)
         hand-cards (q/get-hand db target-player)]
     (reduce (fn [db' obj]
-              (zone-change-dispatch/move-to-zone db' (:object/id obj) :graveyard))
+              (zone-change-dispatch/move-to-zone-db db' (:object/id obj) :graveyard))
             db
             (or hand-cards []))))
 
@@ -90,7 +90,7 @@
       :random (let [gy-cards (or (q/get-objects-in-zone db target-player :graveyard) [])
                     selected (take count-limit (shuffle gy-cards))]
                 (reduce (fn [db' obj]
-                          (zone-change-dispatch/move-to-zone db' (:object/id obj) :hand))
+                          (zone-change-dispatch/move-to-zone-db db' (:object/id obj) :hand))
                         db
                         selected))
       {:db db :needs-selection effect})))
@@ -100,7 +100,7 @@
   [db _player-id effect _object-id]
   (let [target-id (:effect/target effect)]
     (if (q/get-object-eid db target-id)
-      (zone-change-dispatch/move-to-zone db target-id :graveyard)
+      (zone-change-dispatch/move-to-zone-db db target-id :graveyard)
       db)))
 
 
@@ -110,7 +110,7 @@
     (if-not target-id
       db
       (if-let [_target-obj (q/get-object db target-id)]
-        (zone-change-dispatch/move-to-zone db target-id :graveyard)
+        (zone-change-dispatch/move-to-zone-db db target-id :graveyard)
         db))))
 
 
@@ -122,7 +122,7 @@
       db
       (let [zone-objects (or (q/get-objects-in-zone db target-player zone) [])]
         (reduce (fn [db' obj]
-                  (zone-change-dispatch/move-to-zone db' (:object/id obj) :exile))
+                  (zone-change-dispatch/move-to-zone-db db' (:object/id obj) :exile))
                 db
                 zone-objects)))))
 
@@ -133,7 +133,7 @@
     (if-not target-id
       db
       (if (q/get-object-eid db target-id)
-        (zone-change-dispatch/move-to-zone db target-id :hand)
+        (zone-change-dispatch/move-to-zone-db db target-id :hand)
         db))))
 
 
@@ -166,7 +166,7 @@
         bf-objects (or (q/get-objects-in-zone db target-player :battlefield) [])
         matching (filterv #(q/matches-criteria? % criteria) bf-objects)]
     (reduce (fn [db' obj]
-              (zone-change-dispatch/move-to-zone db' (:object/id obj) :hand))
+              (zone-change-dispatch/move-to-zone-db db' (:object/id obj) :hand))
             db
             matching)))
 
@@ -243,8 +243,8 @@
         (if (and bf-legal gy-legal)
           ;; Simultaneously: sacrifice bf artifact, return gy artifact to battlefield
           (-> db
-              (zone-change-dispatch/move-to-zone bf-id :graveyard)
-              (zone-change-dispatch/move-to-zone gy-id :battlefield))
+              (zone-change-dispatch/move-to-zone-db bf-id :graveyard)
+              (zone-change-dispatch/move-to-zone-db gy-id :battlefield))
           ;; Either target is no longer legal — do nothing
           db)))))
 
@@ -272,7 +272,7 @@
             ;; non-battlefield zone changes — no re-registration needed here.
             db-moved (reduce (fn [db' obj]
                                (let [obj-id (:object/id obj)]
-                                 (zone-change-dispatch/move-to-zone db' obj-id :library)))
+                                 (zone-change-dispatch/move-to-zone-db db' obj-id :library)))
                              db
                              gy-cards)]
         (zones/shuffle-library db-moved resolved-player))

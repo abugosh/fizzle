@@ -505,7 +505,7 @@
         mode (:selection/mode selection)
         ;; Discard selected cards to graveyard
         db-after-discard (reduce (fn [d card-id]
-                                   (zone-change-dispatch/move-to-zone d card-id :graveyard))
+                                   (zone-change-dispatch/move-to-zone-db d card-id :graveyard))
                                  game-db
                                  selected)]
     (if (= :chaining (:selection/lifecycle selection))
@@ -522,7 +522,7 @@
         object-id (:selection/spell-id selection)
         mode (:selection/mode selection)
         ;; Return the land to hand (bounce)
-        db-after-return (zone-change-dispatch/move-to-zone game-db selected-land-id :hand)]
+        db-after-return (zone-change-dispatch/move-to-zone-db game-db selected-land-id :hand)]
     (if (= :chaining (:selection/lifecycle selection))
       ;; Chaining: just bounce, chain builder handles targeting
       {:db db-after-return}
@@ -554,7 +554,7 @@
         effective-power (creatures/effective-power game-db selected-permanent-id)
         sacrifice-info {:power effective-power}
         ;; Sacrifice the permanent (move to graveyard)
-        db-after-sacrifice (zone-change-dispatch/move-to-zone game-db selected-permanent-id :graveyard)]
+        db-after-sacrifice (zone-change-dispatch/move-to-zone-db game-db selected-permanent-id :graveyard)]
     (cond
       ;; Chaining lifecycle (spell with targeting): sacrifice permanent, store sacrifice-info
       ;; temporarily on spell object so the targeting executor can transfer it to the stack item.
@@ -597,7 +597,7 @@
         object-id (:selection/spell-id selection)
         mode (:selection/mode selection)
         db-after-exile (reduce (fn [d card-id]
-                                 (zone-change-dispatch/move-to-zone d card-id :exile))
+                                 (zone-change-dispatch/move-to-zone-db d card-id :exile))
                                game-db
                                selected)
         obj-eid (queries/get-object-eid db-after-exile object-id)

@@ -150,7 +150,7 @@
                             mode-destination mode-destination
                             (rules/permanent-type? card-types) :battlefield
                             :else :graveyard)
-              db-after-move (zone-change-dispatch/move-to-zone db object-id destination)]
+              db-after-move (zone-change-dispatch/move-to-zone-db db object-id destination)]
           (if (= destination :battlefield)
             (let [controller-ref (:object/controller obj)
                   controller-eid (if (map? controller-ref) (:db/id controller-ref) controller-ref)

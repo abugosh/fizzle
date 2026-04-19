@@ -446,7 +446,7 @@
                              (q/get-objects-in-zone db :player-1 :library))
           gb-obj (first gb-objects)
           gb-id (:object/id gb-obj)
-          db-after (zone-change-dispatch/move-to-zone db gb-id :graveyard)
+          db-after (zone-change-dispatch/move-to-zone-db db gb-id :graveyard)
           stack-items (d/q '[:find [(pull ?e [:stack-item/type]) ...]
                              :where [?e :stack-item/position _]]
                            db-after)]

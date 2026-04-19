@@ -69,7 +69,7 @@
     (let [db (th/create-test-db)
           [db obj-id] (add-fixture-to-library-with-trigger db :player-1)
           initial-stack (get-stack-items db)
-          db-after (zone-change-dispatch/move-to-zone db obj-id :graveyard)
+          db-after (zone-change-dispatch/move-to-zone-db db obj-id :graveyard)
           stack-after (get-stack-items db-after)]
       (is (= 0 (count initial-stack)) "Precondition: stack starts empty")
       (is (= 1 (count stack-after)) "Trigger fires exactly once on library→graveyard move"))))
@@ -79,7 +79,7 @@
   (testing "zone-change trigger appears exactly once on the stack (not 0, not 2)"
     (let [db (th/create-test-db)
           [db obj-id] (add-fixture-to-library-with-trigger db :player-1)
-          db-after (zone-change-dispatch/move-to-zone db obj-id :graveyard)
+          db-after (zone-change-dispatch/move-to-zone-db db obj-id :graveyard)
           stack (get-stack-items db-after)]
       (is (= 1 (count stack)) "Exactly one stack item created"))))
 
@@ -88,7 +88,7 @@
   (testing "stack item source matches the fixture object's UUID"
     (let [db (th/create-test-db)
           [db obj-id] (add-fixture-to-library-with-trigger db :player-1)
-          db-after (zone-change-dispatch/move-to-zone db obj-id :graveyard)
+          db-after (zone-change-dispatch/move-to-zone-db db obj-id :graveyard)
           stack (get-stack-items db-after)]
       (is (= 1 (count stack)) "Precondition: one stack item exists")
       (when (= 1 (count stack))
@@ -105,11 +105,11 @@
     (let [db (th/create-test-db)
           [db obj-id] (add-fixture-to-library-with-trigger db :player-1)
           ;; First move fixture from library to hand (silently replaces position in library)
-          db-in-hand (zone-change-dispatch/move-to-zone db obj-id :hand)
+          db-in-hand (zone-change-dispatch/move-to-zone-db db obj-id :hand)
           ;; Clear any stack items from that move
           stack-before (count (get-stack-items db-in-hand))
           ;; Now move from hand to graveyard — should NOT fire the library-triggered trigger
-          db-after (zone-change-dispatch/move-to-zone db-in-hand obj-id :graveyard)
+          db-after (zone-change-dispatch/move-to-zone-db db-in-hand obj-id :graveyard)
           new-stack-items (- (count (get-stack-items db-after)) stack-before)]
       (is (= 0 new-stack-items)
           "Trigger should NOT fire: from-zone filter requires :library not :hand"))))
@@ -120,10 +120,10 @@
     (let [db (th/create-test-db)
           [db obj-id] (add-fixture-to-library-with-trigger db :player-1)
           ;; Move fixture to battlefield first (bypasses library step)
-          db-bf (zone-change-dispatch/move-to-zone db obj-id :battlefield)
+          db-bf (zone-change-dispatch/move-to-zone-db db obj-id :battlefield)
           stack-before (count (get-stack-items db-bf))
           ;; Move battlefield→exile — both from/to zones differ from trigger match-map
-          db-after (zone-change-dispatch/move-to-zone db-bf obj-id :exile)
+          db-after (zone-change-dispatch/move-to-zone-db db-bf obj-id :exile)
           new-items (- (count (get-stack-items db-after)) stack-before)]
       (is (= 0 new-items)
           "Trigger does NOT fire: battlefield→exile doesn't match library→graveyard"))))
@@ -142,7 +142,7 @@
           [db plain-id] (th/add-card-to-zone db :dark-ritual :library :player-1)
           stack-before (count (get-stack-items db))
           ;; Mill only the plain card (no trigger)
-          db-after (zone-change-dispatch/move-to-zone db plain-id :graveyard)
+          db-after (zone-change-dispatch/move-to-zone-db db plain-id :graveyard)
           new-items (- (count (get-stack-items db-after)) stack-before)]
       (is (= 0 new-items)
           ":self filter: fixture trigger does NOT fire when a different card moves"))))
@@ -157,8 +157,8 @@
     (let [db (th/create-test-db)
           [db obj-id-1] (add-fixture-to-library-with-trigger db :player-1)
           [db obj-id-2] (add-fixture-to-library-with-trigger db :player-1)
-          db-after-1 (zone-change-dispatch/move-to-zone db obj-id-1 :graveyard)
-          db-after-2 (zone-change-dispatch/move-to-zone db-after-1 obj-id-2 :graveyard)
+          db-after-1 (zone-change-dispatch/move-to-zone-db db obj-id-1 :graveyard)
+          db-after-2 (zone-change-dispatch/move-to-zone-db db-after-1 obj-id-2 :graveyard)
           stack (get-stack-items db-after-2)
           sources (set (map :stack-item/source stack))]
       (is (= 2 (count stack)) "Two mills produce two trigger stack items")
@@ -174,7 +174,7 @@
   (testing "stack item source UUID remains valid (object queryable) after zone transition"
     (let [db (th/create-test-db)
           [db obj-id] (add-fixture-to-library-with-trigger db :player-1)
-          db-after (zone-change-dispatch/move-to-zone db obj-id :graveyard)
+          db-after (zone-change-dispatch/move-to-zone-db db obj-id :graveyard)
           stack (get-stack-items db-after)]
       (is (= 1 (count stack)) "Precondition: trigger fired")
       (when (= 1 (count stack))
@@ -225,7 +225,7 @@
           db (d/db-with db trigger-tx)
           stack-before (count (get-stack-items db))
           ;; Call chokepoint directly — NOT through events/lands/play-land
-          db-after (zone-change-dispatch/move-to-zone db island-id :battlefield)
+          db-after (zone-change-dispatch/move-to-zone-db db island-id :battlefield)
           stack-after (count (get-stack-items db-after))]
       (is (= 0 stack-before) "Precondition: stack starts empty")
       (is (= 1 (- stack-after stack-before))
@@ -247,7 +247,7 @@
           db (d/db-with db trigger-tx)
           stack-before (count (get-stack-items db))
           ;; Move a non-land to battlefield
-          db-after (zone-change-dispatch/move-to-zone db spell-id :battlefield)
+          db-after (zone-change-dispatch/move-to-zone-db db spell-id :battlefield)
           stack-after (count (get-stack-items db-after))]
       (is (= 0 stack-before) "Precondition: stack starts empty")
       (is (= 0 (- stack-after stack-before))
@@ -269,7 +269,7 @@
           db (d/db-with db trigger-tx)
           stack-before (count (get-stack-items db))
           ;; Move land to graveyard — should NOT fire :land-entered
-          db-after (zone-change-dispatch/move-to-zone db island-id :graveyard)
+          db-after (zone-change-dispatch/move-to-zone-db db island-id :graveyard)
           stack-after (count (get-stack-items db-after))]
       (is (= 0 stack-before) "Precondition: stack starts empty")
       (is (= 0 (- stack-after stack-before))
@@ -310,7 +310,7 @@
 
 (deftest land-entered-fires-exactly-once-via-play-land
   (testing "lands/play-land fires :land-entered exactly once (regression guard against double-dispatch)"
-    ;; This test exercises the INTEGRATED path: play-land → zone-change-dispatch/move-to-zone.
+    ;; This test exercises the INTEGRATED path: play-land → zone-change-dispatch/move-to-zone-db.
     ;; It guards against double-firing if someone re-adds an explicit :land-entered dispatch
     ;; to events/lands.cljs while the chokepoint dispatch is also active.
     (let [db (th/create-test-db {:land-plays 1})
@@ -355,7 +355,7 @@
           db (d/db-with db trigger-tx)
           stack-before (count (get-stack-items db))
           ;; Move from graveyard to battlefield — simulates return/reanimate effects
-          db-after (zone-change-dispatch/move-to-zone db island-id :battlefield)
+          db-after (zone-change-dispatch/move-to-zone-db db island-id :battlefield)
           stack-after (count (get-stack-items db-after))]
       (is (= 0 stack-before) "Precondition: stack starts empty")
       (is (= 1 (- stack-after stack-before))
@@ -423,7 +423,7 @@
           db (d/db-with db trigger-tx)
           stack-before (count (get-stack-items db))
           ;; Move land to library (simulates init/mulligan returning a card)
-          db-after (zone-change-dispatch/move-to-zone db island-id :library)
+          db-after (zone-change-dispatch/move-to-zone-db db island-id :library)
           stack-after (count (get-stack-items db-after))]
       (is (= 0 stack-before) "Precondition: stack starts empty")
       (is (= 0 (- stack-after stack-before))
@@ -447,7 +447,7 @@
           db (d/db-with db trigger-tx)
           stack-before (count (get-stack-items db))
           ;; Move land to hand (simulates drawing a land card)
-          db-after (zone-change-dispatch/move-to-zone db island-id :hand)
+          db-after (zone-change-dispatch/move-to-zone-db db island-id :hand)
           stack-after (count (get-stack-items db-after))]
       (is (= 0 stack-before) "Precondition: stack starts empty")
       (is (= 0 (- stack-after stack-before))
@@ -486,7 +486,7 @@
 (deftest counter-spell-effect-routes-through-zone-change-dispatch
   (testing ":counter-spell effect routes zone change through zone_change_dispatch chokepoint"
     ;; Catches: counter-target-spell using zones/move-to-zone* directly (bypassing triggers)
-    ;; After fizzle-tu01 fix: counter-target-spell uses zone-change-dispatch/move-to-zone
+    ;; After fizzle-tu01 fix: counter-target-spell uses zone-change-dispatch/move-to-zone-db
     ;; so :zone-change triggers on the countered spell fire (stack→graveyard).
     (let [db (th/create-test-db)
           [db spell-id] (add-spell-to-stack-with-zone-change-trigger db :player-1)

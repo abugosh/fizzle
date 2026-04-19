@@ -192,7 +192,7 @@
   (let [selected (:selection/selected selection)
         target-zone (:selection/target-zone selection)]
     {:db (reduce (fn [gdb obj-id]
-                   (zone-change-dispatch/move-to-zone gdb obj-id target-zone))
+                   (zone-change-dispatch/move-to-zone-db gdb obj-id target-zone))
                  game-db
                  selected)}))
 

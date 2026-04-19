@@ -43,7 +43,7 @@
                             [?e :player/land-plays-left ?plays]]
                           db player-id)
           db-after-move (-> db
-                            (zone-change-dispatch/move-to-zone object-id :battlefield)
+                            (zone-change-dispatch/move-to-zone-db object-id :battlefield)
                             (d/db-with [[:db/add player-eid :player/land-plays-left (dec land-plays)]]))
           obj-after (queries/get-object db-after-move object-id)
           card (:object/card obj-after)

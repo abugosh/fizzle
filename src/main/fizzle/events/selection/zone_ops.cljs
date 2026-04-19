@@ -68,7 +68,7 @@
   [game-db selection]
   (let [selected (:selection/selected selection)
         db-after-discard (reduce (fn [gdb obj-id]
-                                   (zone-change-dispatch/move-to-zone gdb obj-id :graveyard))
+                                   (zone-change-dispatch/move-to-zone-db gdb obj-id :graveyard))
                                  game-db
                                  selected)]
     (if (:selection/cleanup? selection)
@@ -89,7 +89,7 @@
       {:db game-db}
       ;; Discard the selected card to graveyard
       {:db (reduce (fn [gdb obj-id]
-                     (zone-change-dispatch/move-to-zone gdb obj-id :graveyard))
+                     (zone-change-dispatch/move-to-zone-db gdb obj-id :graveyard))
                    game-db
                    selected)})))
 
@@ -102,7 +102,7 @@
   (let [selected (:selection/selected selection)
         target-player (:selection/player-id selection)
         db-moved (reduce (fn [gdb obj-id]
-                           (zone-change-dispatch/move-to-zone gdb obj-id :library))
+                           (zone-change-dispatch/move-to-zone-db gdb obj-id :library))
                          game-db
                          selected)]
     {:db (zones/shuffle-library db-moved target-player)}))
@@ -210,7 +210,7 @@
       (let [land-id (first selected)
             chain-controller (:selection/chain-controller selection)
             spell-id (:selection/spell-id selection)
-            db-after-sac (zone-change-dispatch/move-to-zone game-db land-id :graveyard)
+            db-after-sac (zone-change-dispatch/move-to-zone-db game-db land-id :graveyard)
             db-with-copy (triggers/create-spell-copy
                            db-after-sac spell-id chain-controller)]
         {:db db-with-copy}))))

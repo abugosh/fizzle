@@ -115,4 +115,16 @@
    :trigger/type           {}              ; Original trigger type keyword from card def (:becomes-tapped, :land-entered, :draw-step)
    :object/triggers        {:db/valueType   :db.type/ref
                             :db/cardinality :db.cardinality/many
-                            :db/isComponent true}})
+                            :db/isComponent true}
+
+   ;; === Replacement-Effect Entities (replacement registry in Datascript) ===
+   ;; Replacement effects intercept zone-change events BEFORE they execute and allow
+   ;; player-choice-driven modification or cancellation (ADR-026 uniform with triggers).
+   ;; Component of source object -- auto-retracted when source is retracted.
+   :replacement/event          {}  ; Keyword: :zone-change (event type this replaces)
+   :replacement/match          {}  ; Plain EDN map: {:match/object :self, :match/to :battlefield}
+   :replacement/choices        {}  ; Plain EDN vector of choice maps (player options)
+   :replacement/source-object  {:db/valueType :db.type/ref}  ; Back-ref to owning object
+   :object/replacement-effects {:db/valueType   :db.type/ref
+                                :db/cardinality :db.cardinality/many
+                                :db/isComponent true}})

@@ -202,7 +202,7 @@
   [db sba]
   (let [object-id (:sba/target sba)]
     (if (q/get-object-eid db object-id)
-      (zone-change-dispatch/move-to-zone db object-id :graveyard)
+      (zone-change-dispatch/move-to-zone-db db object-id :graveyard)
       db)))
 
 
@@ -228,7 +228,7 @@
   [db sba]
   (let [object-id (:sba/target sba)]
     (if (q/get-object-eid db object-id)
-      (zone-change-dispatch/move-to-zone db object-id :graveyard)
+      (zone-change-dispatch/move-to-zone-db db object-id :graveyard)
       db)))
 
 

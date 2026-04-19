@@ -36,10 +36,10 @@
                  (mana/can-pay? game-db player-id cycling-cost))
       {:db game-db}
       (let [db-after-pay (mana/pay-mana game-db player-id cycling-cost)
-            db-after-discard (zone-change-dispatch/move-to-zone db-after-pay object-id :graveyard)
+            db-after-discard (zone-change-dispatch/move-to-zone-db db-after-pay object-id :graveyard)
             top-card (first (queries/get-top-n-library db-after-discard player-id 1))
             db-final (if top-card
-                       (zone-change-dispatch/move-to-zone db-after-discard top-card :hand)
+                       (zone-change-dispatch/move-to-zone-db db-after-discard top-card :hand)
                        db-after-discard)]
         {:db db-final}))))
 

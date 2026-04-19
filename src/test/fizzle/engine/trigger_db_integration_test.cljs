@@ -117,7 +117,7 @@
           triggers-before (trigger-db/get-all-triggers db-on-bf)
           obj-triggers-before (:object/triggers (d/entity db-on-bf cob-eid))
           ;; Move CoB to hand (simulates bounce — retractEntity should fire)
-          db-bounced (zone-change-dispatch/move-to-zone db-on-bf cob-id :hand)
+          db-bounced (zone-change-dispatch/move-to-zone-db db-on-bf cob-id :hand)
           ;; Count trigger-db entries AFTER leaving battlefield
           triggers-after (trigger-db/get-all-triggers db-bounced)
           obj-triggers-after (:object/triggers (d/entity db-bounced cob-eid))]

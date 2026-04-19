@@ -386,7 +386,7 @@
           [db gb-id] (add-gb-to-library-with-trigger db :player-1)
           stack-before (count (get-stack-items db))
           ;; Mill GB from library to graveyard (canonical zone-change path)
-          db-after (zone-change-dispatch/move-to-zone db gb-id :graveyard)
+          db-after (zone-change-dispatch/move-to-zone-db db gb-id :graveyard)
           stack-after (get-stack-items db-after)]
       (is (= 0 stack-before) "Precondition: stack starts empty")
       (is (= 1 (count stack-after))
@@ -400,7 +400,7 @@
           [db gb-id] (th/add-card-to-zone db :gaeas-blessing :hand :player-1)
           stack-before (count (get-stack-items db))
           ;; Discard (hand->graveyard) — should NOT fire library trigger
-          db-after (zone-change-dispatch/move-to-zone db gb-id :graveyard)
+          db-after (zone-change-dispatch/move-to-zone-db db gb-id :graveyard)
           stack-after (count (get-stack-items db-after))]
       (is (= 0 (- stack-after stack-before))
           "No trigger should fire on hand->graveyard (discard)"))))
@@ -415,7 +415,7 @@
           [db plain-id] (th/add-card-to-zone db :dark-ritual :library :player-1)
           stack-before (count (get-stack-items db))
           ;; Mill the dark-ritual (not GB) — GB's :self sigil should exclude it
-          db-after (zone-change-dispatch/move-to-zone db plain-id :graveyard)
+          db-after (zone-change-dispatch/move-to-zone-db db plain-id :graveyard)
           new-items (- (count (get-stack-items db-after)) stack-before)]
       (is (= 0 new-items)
           ":self sigil: GB trigger does NOT fire when a different card is milled"))))
@@ -430,7 +430,7 @@
           [db _id2] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
           gy-count-before (count (q/get-objects-in-zone db :player-1 :graveyard))
           ;; Mill GB — trigger lands on stack
-          db-after-mill (zone-change-dispatch/move-to-zone db gb-id :graveyard)
+          db-after-mill (zone-change-dispatch/move-to-zone-db db gb-id :graveyard)
           stack-items (get-stack-items db-after-mill)
           gy-count-after-mill (count (q/get-objects-in-zone db-after-mill :player-1 :graveyard))]
       ;; Verify preconditions
@@ -474,7 +474,7 @@
           gb-id (:object/id gb-obj)
           stack-before (get-stack-items game-db)
           ;; Mill GB from library to graveyard — trigger should fire
-          db-after-mill (zone-change-dispatch/move-to-zone game-db gb-id :graveyard)
+          db-after-mill (zone-change-dispatch/move-to-zone-db game-db gb-id :graveyard)
           stack-after (get-stack-items db-after-mill)]
       (is (= 0 (count stack-before))
           "Precondition: stack starts empty")

@@ -70,7 +70,7 @@
   [db obj-map zone owner-eid position]
   (let [card-id     (:card/id obj-map)
         card-eid    (get-card-eid db card-id)
-        card-data   (d/pull db [:card/types :card/power :card/toughness :card/triggers] card-eid)
+        card-data   (d/pull db [:card/types :card/power :card/toughness :card/triggers :card/replacement-effects] card-eid)
         creature?   (contains? (set (:card/types card-data)) :creature)
         pos         (if (= zone :library) position 0)
         result      (cond-> (-> (objects/build-object-tx db card-eid card-data zone owner-eid pos)

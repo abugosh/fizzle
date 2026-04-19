@@ -63,7 +63,7 @@
   (vec (map-indexed
          (fn [i [uuid card-id]]
            (let [card-eid (get-card-eid db card-id)
-                 card-data (d/pull db [:card/types :card/power :card/toughness :card/triggers] card-eid)
+                 card-data (d/pull db [:card/types :card/power :card/toughness :card/triggers :card/replacement-effects] card-eid)
                  position (if (= zone :library) i 0)]
              (objects/build-object-tx db card-eid card-data zone owner-eid position :id uuid)))
          (map vector uuids card-ids))))
@@ -84,7 +84,7 @@
         library-ids (drop 7 card-ids)
         make-obj (fn [card-id zone position]
                    (let [card-eid (get-card-eid db card-id)
-                         card-data (d/pull db [:card/types :card/power :card/toughness :card/triggers] card-eid)]
+                         card-data (d/pull db [:card/types :card/power :card/toughness :card/triggers :card/replacement-effects] card-eid)]
                      (objects/build-object-tx db card-eid card-data zone opp-eid position)))]
     (into (vec (map #(make-obj % :hand 0) hand-ids))
           (map-indexed (fn [i card-id] (make-obj card-id :library i)) library-ids))))
