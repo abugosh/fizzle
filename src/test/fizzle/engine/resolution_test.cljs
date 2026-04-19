@@ -239,11 +239,15 @@
 ;; =====================================================
 
 (deftest test-move-resolved-spell-spell-in-exile-is-noop
-  (testing "move-resolved-spell returns db unchanged when spell is already in :exile"
+  (testing "move-resolved-spell returns {:db db} unchanged when spell is already in :exile"
     (let [db (th/create-test-db {:mana {:black 3}})
           [db obj-id] (th/add-card-to-zone db :dark-ritual :exile :player-1)
           obj (queries/get-object db obj-id)
-          result-db (engine-resolution/move-resolved-spell db obj-id obj)]
+          result (engine-resolution/move-resolved-spell db obj-id obj)
+          result-db (:db result)]
+      ;; result should be a map with :db key
+      (is (map? result) "move-resolved-spell should return a map")
+      (is (contains? result :db) "result should have :db key")
       ;; db should be identical — no zone change
       (is (= db result-db)
           "move-resolved-spell should return db unchanged when spell is in :exile")
@@ -253,11 +257,12 @@
 
 
 (deftest test-move-resolved-spell-spell-in-graveyard-is-noop
-  (testing "move-resolved-spell returns db unchanged when spell is already in :graveyard"
+  (testing "move-resolved-spell returns {:db db} unchanged when spell is already in :graveyard"
     (let [db (th/create-test-db {:mana {:black 3}})
           [db obj-id] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
           obj (queries/get-object db obj-id)
-          result-db (engine-resolution/move-resolved-spell db obj-id obj)]
+          result (engine-resolution/move-resolved-spell db obj-id obj)
+          result-db (:db result)]
       ;; db should be identical — no zone change
       (is (= db result-db)
           "move-resolved-spell should return db unchanged when spell is in :graveyard")
@@ -267,14 +272,15 @@
 
 
 (deftest test-move-resolved-spell-copy-in-exile-is-noop
-  (testing "move-resolved-spell returns db unchanged when a copy is already in :exile"
+  (testing "move-resolved-spell returns {:db db} unchanged when a copy is already in :exile"
     (let [db (th/create-test-db {:mana {:black 3}})
           [db src-id] (th/add-card-to-zone db :dark-ritual :exile :player-1)
           ;; Mark the object as a copy
           obj-eid (queries/get-object-eid db src-id)
           db (d/db-with db [[:db/add obj-eid :object/is-copy true]])
           obj (queries/get-object db src-id)
-          result-db (engine-resolution/move-resolved-spell db src-id obj)]
+          result (engine-resolution/move-resolved-spell db src-id obj)
+          result-db (:db result)]
       ;; Copy already off stack — should be a no-op (copy removal only happens from :stack)
       (is (= db result-db)
           "move-resolved-spell should return db unchanged for copy already in :exile")
@@ -284,7 +290,7 @@
 
 
 (deftest test-move-resolved-spell-unexpected-zone-emits-warn-and-is-noop
-  (testing "move-resolved-spell returns db unchanged + console.warn for unexpected zone :hand"
+  (testing "move-resolved-spell returns {:db db} unchanged + console.warn for unexpected zone :hand"
     (let [db (th/create-test-db {:mana {:black 3}})
           [db obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           obj (queries/get-object db obj-id)
@@ -293,7 +299,8 @@
       ;; Capture console.warn
       (set! js/console.warn (fn [& _] (reset! warned? true)))
       (try
-        (let [result-db (engine-resolution/move-resolved-spell db obj-id obj)]
+        (let [result (engine-resolution/move-resolved-spell db obj-id obj)
+              result-db (:db result)]
           ;; db unchanged
           (is (= db result-db)
               "move-resolved-spell should return db unchanged for :hand zone")
@@ -314,7 +321,8 @@
           ;; Create a STALE obj that claims zone :stack — but db has :exile
           fresh-obj (queries/get-object db obj-id)
           stale-obj (assoc fresh-obj :object/zone :stack)
-          result-db (engine-resolution/move-resolved-spell db obj-id stale-obj)]
+          result (engine-resolution/move-resolved-spell db obj-id stale-obj)
+          result-db (:db result)]
       ;; Should be a no-op because db says :exile, not :stack
       (is (= db result-db)
           "move-resolved-spell should ignore stale obj zone and use db-fetched zone")

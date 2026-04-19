@@ -706,6 +706,36 @@
 
 
 ;; =====================================================
+;; Group 10: Replacement Types
+;; =====================================================
+
+;; :replacement-choice — built by build-selection-for-replacement in replacement.cljs.
+;; Pauses a zone-change event for player input. The player selects one of the
+;; :selection/choices, each with :choice/action (:proceed or :redirect).
+;; Required keys:
+;;   :selection/choices           — vector of choice maps from the replacement entity
+;;   :selection/replacement-event — in-flight event map (zone-change details for resume)
+;;   :selection/replacement-entity-id — Datascript EID of the replacement entity (for retraction)
+;;   :selection/object-id         — UUID of the paused object (for marker clearing)
+(s/def :selection/choices (s/coll-of map?))
+(s/def :selection/replacement-event map?)
+(s/def :selection/replacement-entity-id int?)
+
+
+(defmethod selection-type-spec :replacement-choice [_]
+  (s/keys :req [:selection/type
+                :selection/player-id
+                :selection/object-id
+                :selection/replacement-entity-id
+                :selection/replacement-event
+                :selection/choices
+                :selection/validation
+                :selection/auto-confirm?]
+          :opt [:selection/selected
+                :selection/lifecycle]))
+
+
+;; =====================================================
 ;; ::selection Multi-Spec
 ;; =====================================================
 

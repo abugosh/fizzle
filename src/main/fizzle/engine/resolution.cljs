@@ -112,18 +112,27 @@
    When a permanent enters the battlefield and has card triggers, registers
    those triggers in Datascript so they fire on future events.
 
+   Pre-event check: calls move-to-zone (full) which checks for applicable
+   replacement effects before committing the zone change. If a replacement
+   matches, returns {:db db :needs-selection {:input/type :replacement ...}}
+   for the events layer to handle.
+
    This is the SINGLE SOURCE OF TRUTH for spell-off-stack zone transitions.
    Both direct resolution (resolve-spell-type) and selection cleanup
    (cleanup-selection-source) must use this function.
 
    Idempotent: if the spell's CURRENT zone (re-fetched from db) is not :stack,
-   returns db unchanged. This handles :exile-self and double-move cases.
+   returns {:db db} unchanged. This handles :exile-self and double-move cases.
    The obj parameter zone field is NOT trusted — it may be stale.
 
    Arguments:
      db        - Datascript database value
      object-id - Object ID of the spell
-     obj       - Object entity map (pre-fetched, zone field may be stale)"
+     obj       - Object entity map (pre-fetched, zone field may be stale)
+
+   Returns:
+     {:db db'}                             — zone change committed (no replacement)
+     {:db db :needs-selection {:input/type :replacement ...}} — replacement paused"
   [db object-id obj]
   ;; Re-fetch the current zone from db — the obj parameter may be stale (e.g.
   ;; resolve-spell-type pre-fetches obj BEFORE running effects, so if :exile-self
@@ -139,10 +148,10 @@
             (str "move-resolved-spell: spell " object-id
                  " is in zone " current-zone " (not :stack). "
                  "If this is not expected, check spell disposition routing.")))
-        db)
+        {:db db})
       ;; Spell is on stack — proceed with normal zone transition
       (if (:object/is-copy obj)
-        (zones/remove-object db object-id)
+        {:db (zones/remove-object db object-id)}
         (let [cast-mode (:object/cast-mode obj)
               mode-destination (:mode/on-resolve cast-mode)
               card-types (:card/types (:object/card obj))
@@ -150,19 +159,26 @@
                             mode-destination mode-destination
                             (rules/permanent-type? card-types) :battlefield
                             :else :graveyard)
-              db-after-move (zone-change-dispatch/move-to-zone-db db object-id destination)]
-          (if (= destination :battlefield)
-            (let [controller-ref (:object/controller obj)
-                  controller-eid (if (map? controller-ref) (:db/id controller-ref) controller-ref)
-                  controller-id (d/q '[:find ?pid .
-                                       :in $ ?e
-                                       :where [?e :player/id ?pid]]
-                                     db-after-move controller-eid)]
-              ;; Triggers are embedded in the object at creation (build-object-tx) — no ETB registration needed.
-              ;; Dispatch permanent-entered event for ETB triggers.
-              (dispatch/dispatch-event db-after-move
-                                       (game-events/permanent-entered-event object-id controller-id)))
-            db-after-move))))))
+              ;; Use move-to-zone (full) to check for replacement effects pre-event.
+              ;; Returns {:db db'} or {:db db :needs-selection {:input/type :replacement ...}}.
+              move-result (zone-change-dispatch/move-to-zone db object-id destination)]
+          (if (:needs-selection move-result)
+            ;; Replacement effect intercepted — return signal for events layer to handle.
+            move-result
+            ;; No replacement — zone change committed, dispatch ETB triggers if needed.
+            (let [db-after-move (:db move-result)]
+              (if (= destination :battlefield)
+                (let [controller-ref (:object/controller obj)
+                      controller-eid (if (map? controller-ref) (:db/id controller-ref) controller-ref)
+                      controller-id (d/q '[:find ?pid .
+                                           :in $ ?e
+                                           :where [?e :player/id ?pid]]
+                                         db-after-move controller-eid)]
+                  ;; Triggers are embedded in the object at creation (build-object-tx) — no ETB registration needed.
+                  ;; Dispatch permanent-entered event for ETB triggers.
+                  {:db (dispatch/dispatch-event db-after-move
+                                                (game-events/permanent-entered-event object-id controller-id))})
+                {:db db-after-move}))))))))
 
 
 (defn- resolve-spell-effects
@@ -230,7 +246,8 @@
           (let [result (resolve-spell-effects db stack-item object-id obj)]
             (if (:needs-selection result)
               result
-              {:db (move-resolved-spell (:db result) object-id obj)})))))))
+              ;; move-resolved-spell now returns {:db...} or {:db... :needs-selection...}
+              (move-resolved-spell (:db result) object-id obj))))))))
 
 
 (defmethod resolve-stack-item :spell

@@ -44,9 +44,14 @@
       (if (nil? spell-id)
         ;; Guard: routing bug produced :spell source-type with no spell-id
         game-db
-        (-> game-db
-            (remove-spell-stack-item spell-id)
-            (resolution/move-resolved-spell spell-id (queries/get-object game-db spell-id)))))
+        (let [db-after-cleanup (remove-spell-stack-item game-db spell-id)
+              ;; move-resolved-spell returns {:db db'} or {:db db :needs-selection {...}}
+              ;; cleanup-selection-source callers expect a plain db, so extract :db.
+              ;; If a replacement fires during post-selection cleanup, the signal is
+              ;; discarded here (replacement already handled during initial resolution).
+              move-result (resolution/move-resolved-spell db-after-cleanup spell-id
+                                                          (queries/get-object game-db spell-id))]
+          (:db move-result))))
 
     ;; default: nil/unknown source-type — no-op
     game-db))

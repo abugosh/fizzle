@@ -16,6 +16,7 @@
     [fizzle.events.selection]
     [fizzle.events.selection.land-types]
     [fizzle.events.selection.library]
+    [fizzle.events.selection.replacement]
     [fizzle.events.selection.untap]
     [fizzle.events.selection.zone-ops]
     [fizzle.events.setup :as setup]

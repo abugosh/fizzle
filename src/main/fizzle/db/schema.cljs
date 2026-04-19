@@ -127,4 +127,8 @@
    :replacement/source-object  {:db/valueType :db.type/ref}  ; Back-ref to owning object
    :object/replacement-effects {:db/valueType   :db.type/ref
                                 :db/cardinality :db.cardinality/many
-                                :db/isComponent true}})
+                                :db/isComponent true}
+   ;; === Object Replacement State ===
+   ;; Marker set during replacement-effect pause (player is making a choice).
+   ;; Cleared when execute-confirmed-selection resolves the replacement.
+   :object/replacement-pending  {}}) ; boolean — true while replacement-choice is pending

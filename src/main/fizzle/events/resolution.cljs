@@ -8,6 +8,7 @@
     [fizzle.events.cleanup :as cleanup]
     [fizzle.events.selection.combat :as sel-combat]
     [fizzle.events.selection.core :as sel-core]
+    [fizzle.events.selection.replacement :as sel-replacement]
     [fizzle.events.selection.spec :as sel-spec]
     [fizzle.events.selection.storm :as sel-storm]
     [re-frame.core :as rf]))
@@ -25,34 +26,45 @@
 
 (defn- build-selection-from-result
   "Build pending-selection from a multimethod result that has :needs-selection.
+   Dispatches on :input/type of the :needs-selection value:
+     :replacement → build-selection-for-replacement (replacement-choice pipeline)
+     default      → build-selection-for-effect (existing effect selection pipeline)
+
    Handles stored-player for targeted abilities (Cephalid Coliseum) and
    adjusts selection fields for abilities vs spells."
   [game-db player-id stack-item result]
-  (let [stack-item-eid (:db/id stack-item)
-        source-id (get-source-id game-db stack-item)
-        stored-player (:stored-player result)
-        sel-effect (:needs-selection result)
-        use-stored-player (and stored-player
-                               (= :player (:effect/selection sel-effect)))
-        sel-player-id (if use-stored-player stored-player player-id)
-        sel (sel-core/build-selection-for-effect
-              (:db result) sel-player-id source-id
-              sel-effect
-              (vec (:remaining-effects result)))
-        ;; Non-spell stack items (activated abilities, triggered abilities)
-        ;; don't have an object-ref — use :stack-item source type so
-        ;; cleanup-selection-source removes the stack-item directly.
-        ;; Spell stack items get :spell source type so cleanup knows to
-        ;; call move-resolved-spell after removing the stack-item.
-        ;; Guard: sel can be nil when builder returns nil (e.g., empty library).
-        sel (when sel
-              (if (not (:stack-item/object-ref stack-item))
-                (-> sel
-                    (dissoc :selection/spell-id)
-                    (assoc :selection/stack-item-eid stack-item-eid
-                           :selection/source-type :stack-item))
-                (assoc sel :selection/source-type :spell)))]
-    {:db (:db result) :pending-selection sel}))
+  (let [needs-sel    (:needs-selection result)
+        input-type   (:input/type needs-sel)]
+    (if (= input-type :replacement)
+      ;; Replacement-effect path: build :replacement-choice selection
+      (let [build-result (sel-replacement/build-selection-for-replacement (:db result) needs-sel)]
+        {:db (:db build-result) :pending-selection (:selection build-result)})
+      ;; Existing effect-selection path
+      (let [stack-item-eid (:db/id stack-item)
+            source-id      (get-source-id game-db stack-item)
+            stored-player  (:stored-player result)
+            sel-effect     needs-sel
+            use-stored-player (and stored-player
+                                   (= :player (:effect/selection sel-effect)))
+            sel-player-id  (if use-stored-player stored-player player-id)
+            sel (sel-core/build-selection-for-effect
+                  (:db result) sel-player-id source-id
+                  sel-effect
+                  (vec (:remaining-effects result)))
+            ;; Non-spell stack items (activated abilities, triggered abilities)
+            ;; don't have an object-ref — use :stack-item source type so
+            ;; cleanup-selection-source removes the stack-item directly.
+            ;; Spell stack items get :spell source type so cleanup knows to
+            ;; call move-resolved-spell after removing the stack-item.
+            ;; Guard: sel can be nil when builder returns nil (e.g., empty library).
+            sel (when sel
+                  (if (not (:stack-item/object-ref stack-item))
+                    (-> sel
+                        (dissoc :selection/spell-id)
+                        (assoc :selection/stack-item-eid stack-item-eid
+                               :selection/source-type :stack-item))
+                    (assoc sel :selection/source-type :spell)))]
+        {:db (:db result) :pending-selection sel}))))
 
 
 (defn- clear-peek-result
