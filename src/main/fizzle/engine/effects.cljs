@@ -14,8 +14,7 @@
   (:require
     [datascript.core :as d]
     [fizzle.db.queries :as q]
-    [fizzle.engine.conditions :as conditions]
-    [fizzle.engine.zones :as zones]))
+    [fizzle.engine.conditions :as conditions]))
 
 
 ;; === Dynamic Amount Resolution ===
@@ -216,33 +215,6 @@
            (recur (:db result) remaining)))))))
 
 
-(defn counter-target-spell
-  "Counter a spell on the stack — move it to the appropriate zone.
-
-   Zone transitions:
-   - Copies cease to exist (removed from db)
-   - Flashback spells go to exile (MTG rule)
-   - All other spells go to graveyard (including permanents)
-
-   Stack-item cleanup is handled automatically by zones/move-to-zone
-   and zones/remove-object when the object leaves the :stack zone.
-
-   Returns db. No-op if target is nil, doesn't exist, or not on stack."
-  [db target-id]
-  (if-not target-id
-    db
-    (if-let [obj (q/get-object db target-id)]
-      (if (not= :stack (:object/zone obj))
-        db
-        (if (:object/is-copy obj)
-          (zones/remove-object db target-id)
-          (let [cast-mode (:object/cast-mode obj)
-                mode-destination (:mode/on-resolve cast-mode)
-                destination (if (= :exile mode-destination) :exile :graveyard)]
-            (zones/move-to-zone* db target-id destination))))
-      db)))
-
-
 ;; === Domain Module Registration ===
 ;; Domain-specific defmethods are in effects/ subdirectory modules:
 ;;   effects/zones.cljs    - mill, draw, exile-self, discard-hand, return-from-graveyard,
@@ -250,7 +222,8 @@
 ;;   effects/life.cljs     - lose-life, gain-life, deal-damage, gain-life-equal-to-cmc
 ;;   effects/grants.cljs   - grant-flashback, grant-delayed-draw, add-restriction,
 ;;                           grant-mana-ability, add-counters
-;;   effects/stack.cljs    - counter-spell, counter-ability, chain-bounce
+;;   effects/stack.cljs    - counter-spell, counter-ability, chain-bounce;
+;;                           also defines counter-target-spell public fn
 ;;   effects/selection.cljs - discard, tutor, scry, peek-and-select, peek-and-reorder,
 ;;                            discard-from-revealed-hand
 ;;   effects/simple.cljs   - add-mana, peek-random-hand

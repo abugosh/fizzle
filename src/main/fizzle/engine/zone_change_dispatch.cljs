@@ -3,13 +3,13 @@
    and :land-entered trigger events when a land enters the battlefield.
 
    Lives outside the zones→trigger-dispatch→triggers→effects→zones cycle.
-   All callers should use this namespace's move-to-zone instead of zones/move-to-zone*
-   to ensure zone-change triggered abilities fire.
+   All callers must use this namespace's move-to-zone instead of zones/move-to-zone*
+   to ensure zone-change triggered abilities fire (including future replacement effects).
 
-   Exception: engine/effects.cljs cannot use this namespace (would create a cycle
-   through triggers→effects) and therefore uses zones/move-to-zone* directly.
-   That path (counter-spell zone changes) is acceptable — countered spells moving
-   to graveyard from stack do not trigger zone-change abilities in Premodern combo.
+   Counter-spell zone changes route through this namespace via effects/stack.cljs,
+   which can safely require zone-change-dispatch (no cycle: effects/stack →
+   zone-change-dispatch → trigger-dispatch → triggers → effects, and effects does
+   not require effects/stack).
 
    NOTE: Cannot require engine/rules here — rules requires zone-change-dispatch
    (circular). Land type check is inlined."

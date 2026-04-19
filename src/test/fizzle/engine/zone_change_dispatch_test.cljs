@@ -9,6 +9,7 @@
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
     [fizzle.db.queries :as q]
+    [fizzle.engine.effects :as fx]
     [fizzle.engine.events :as game-events]
     [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.engine.trigger-dispatch :as dispatch]
@@ -451,3 +452,53 @@
       (is (= 0 stack-before) "Precondition: stack starts empty")
       (is (= 0 (- stack-after stack-before))
           ":land-entered must NOT fire when land moves to :hand (draw step — not entering battlefield)"))))
+
+
+;; =====================================================
+;; Counter-spell routes through zone_change_dispatch
+;; chokepoint (fizzle-tu01)
+;; =====================================================
+
+(defn- add-spell-to-stack-with-zone-change-trigger
+  "Add a dark-ritual card to the :stack zone with a zone-change trigger that matches
+   :stack→:graveyard moves of :self. Returns [db obj-id].
+
+   This fixture proves that :counter-spell routes through zone_change_dispatch/move-to-zone
+   so that zone-change triggers fire on countered spells."
+  [db owner]
+  (let [[db obj-id] (th/add-card-to-zone db :dark-ritual :stack owner)
+        obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
+        player-eid (q/get-player-eid db owner)
+        trigger-tx (trigger-db/create-trigger-tx
+                     {:trigger/type :zone-change
+                      :trigger/event-type :zone-change
+                      :trigger/source obj-eid
+                      :trigger/controller player-eid
+                      :trigger/match {:event/from-zone :stack
+                                      :event/to-zone :graveyard
+                                      :event/object-id :self}
+                      :trigger/effects [{:effect/type :draw :effect/amount 0}]
+                      :trigger/uses-stack? true})
+        db (d/db-with db trigger-tx)]
+    [db obj-id]))
+
+
+(deftest counter-spell-effect-routes-through-zone-change-dispatch
+  (testing ":counter-spell effect routes zone change through zone_change_dispatch chokepoint"
+    ;; Catches: counter-target-spell using zones/move-to-zone* directly (bypassing triggers)
+    ;; After fizzle-tu01 fix: counter-target-spell uses zone-change-dispatch/move-to-zone
+    ;; so :zone-change triggers on the countered spell fire (stack→graveyard).
+    (let [db (th/create-test-db)
+          [db spell-id] (add-spell-to-stack-with-zone-change-trigger db :player-1)
+          stack-before (count (get-stack-items db))
+          effect {:effect/type :counter-spell
+                  :effect/target spell-id}
+          db-after (fx/execute-effect db :player-1 effect)
+          stack-after (get-stack-items db-after)
+          ;; Count zone-change trigger items (excluding any items from the spell itself)
+          zone-change-triggers (filter #(= :zone-change (:stack-item/type %)) stack-after)]
+      (is (= 0 stack-before) "Precondition: no stack-items initially (spell object in :stack zone, not a stack-item)")
+      (is (= :graveyard (:object/zone (q/get-object db-after spell-id)))
+          "Countered spell moves to :graveyard")
+      (is (= 1 (count zone-change-triggers))
+          "Zone-change trigger fires when spell is countered (routes through chokepoint)"))))

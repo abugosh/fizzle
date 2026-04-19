@@ -10,7 +10,7 @@
   (:require
     [datascript.core :as d]
     [fizzle.db.queries :as queries]
-    [fizzle.engine.effects :as effects]
+    [fizzle.engine.effects.stack :as effects-stack]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.stack :as stack]
@@ -280,4 +280,4 @@
       ;; Player chose to pay — spend mana, spell survives
       {:db (mana/pay-mana game-db controller-id unless-pay-cost)}
       ;; Player declined (or couldn't pay) — counter the spell
-      {:db (effects/counter-target-spell game-db target-id)})))
+      {:db (effects-stack/counter-target-spell game-db target-id)})))
