@@ -562,6 +562,200 @@
 ;; G. build-selection-for-replacement integration
 ;; =====================================================
 
+;; =====================================================
+;; H. :resume-replacement-zone-change continuation
+;; =====================================================
+
+(deftest test-resume-replacement-zone-change-commits-zone-change
+  (testing ":resume-replacement-zone-change continuation moves object to original destination"
+    (let [db (th/create-test-db)
+          [db obj-id replacement-eid] (add-synthetic-object-to-hand db :player-1)
+          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
+          db (d/db-with db [[:db/add obj-eid :object/replacement-pending true]])
+          ;; In real flow, execute-confirmed-selection retracts the replacement entity first.
+          ;; The continuation fires AFTER retraction — simulate that here.
+          db (d/db-with db [[:db/retractEntity replacement-eid]])
+          continuation {:continuation/type         :resume-replacement-zone-change
+                        :continuation/object-id    obj-id
+                        :continuation/destination  :battlefield}
+          app-db {:game/db db}
+          result (sel-core/apply-continuation continuation app-db)
+          result-db (:game/db (:app-db result))]
+      (is (map? result)
+          "apply-continuation should return a map")
+      (is (contains? result :app-db)
+          "result should have :app-db key (ADR-020 shape)")
+      (is (= :battlefield (:object/zone (q/get-object result-db obj-id)))
+          "object should be on battlefield after :resume-replacement-zone-change"))))
+
+
+(deftest test-resume-replacement-zone-change-clears-pending-marker
+  (testing ":resume-replacement-zone-change clears :object/replacement-pending marker"
+    (let [db (th/create-test-db)
+          [db obj-id replacement-eid] (add-synthetic-object-to-hand db :player-1)
+          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
+          db (d/db-with db [[:db/add obj-eid :object/replacement-pending true]])
+          ;; Simulate real flow: entity retracted before continuation fires
+          db (d/db-with db [[:db/retractEntity replacement-eid]])
+          continuation {:continuation/type         :resume-replacement-zone-change
+                        :continuation/object-id    obj-id
+                        :continuation/destination  :battlefield}
+          app-db {:game/db db}
+          result (sel-core/apply-continuation continuation app-db)
+          result-db (:game/db (:app-db result))
+          obj-after (q/get-object result-db obj-id)]
+      (is (not (:object/replacement-pending obj-after))
+          ":object/replacement-pending should be cleared after :resume-replacement-zone-change"))))
+
+
+;; =====================================================
+;; I. :proceed with interactive cost chains to discard selection
+;; =====================================================
+
+(defn- make-card-with-discard-land-replacement
+  "Register a synthetic card with a :proceed replacement cost requiring discard-specific.
+   Simulates Mox Diamond style: proceed = discard a land (interactive), redirect = go to graveyard."
+  [db]
+  (let [card-id (random-uuid)
+        card-tx {:card/id   card-id
+                 :card/name "Synthetic Interactive Replacement Artifact"
+                 :card/types [:artifact]
+                 :card/replacement-effects
+                 [{:replacement/event :zone-change
+                   :replacement/match {:match/object :self
+                                       :match/to     :battlefield}
+                   :replacement/choices
+                   [{:choice/label  "Discard a land"
+                     :choice/action :proceed
+                     :choice/cost   {:effect/type     :discard-specific
+                                     :effect/criteria {:match/types #{:land}}
+                                     :effect/count    1
+                                     :effect/from     :hand}}
+                    {:choice/label       "Go to graveyard"
+                     :choice/action      :redirect
+                     :choice/redirect-to :graveyard}]}]}
+        db-with (d/db-with db [card-tx])
+        card-eid (d/q '[:find ?e .
+                        :in $ ?cid
+                        :where [?e :card/id ?cid]]
+                      db-with card-id)]
+    [db-with card-eid card-id]))
+
+
+(defn- add-interactive-replacement-object-to-hand
+  "Add a synthetic interactive replacement artifact to player's hand.
+   Returns [db obj-id replacement-entity-id]."
+  [db owner]
+  (let [[db card-eid _] (make-card-with-discard-land-replacement db)
+        card-data (d/pull db
+                          [:card/types :card/power :card/toughness :card/triggers :card/replacement-effects]
+                          card-eid)
+        player-eid (q/get-player-eid db owner)
+        obj-id (random-uuid)
+        obj-tx (objects/build-object-tx db card-eid card-data :hand player-eid 0 :id obj-id)
+        db (d/db-with db [obj-tx])
+        obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
+        replacement-eid (d/q '[:find ?r .
+                               :in $ ?o
+                               :where [?o :object/replacement-effects ?r]]
+                             db obj-eid)]
+    [db obj-id replacement-eid]))
+
+
+(deftest test-proceed-with-interactive-cost-opens-discard-selection
+  (testing ":proceed with interactive :discard-specific cost builds a land-discard pending selection"
+    (let [db (th/create-test-db)
+          [db obj-id replacement-eid] (add-interactive-replacement-object-to-hand db :player-1)
+          ;; Add a land to hand so there's something to discard (not asserted on directly)
+          [db _land-id] (th/add-card-to-zone db :forest :hand :player-1)
+          proceed-choice {:choice/label  "Discard a land"
+                          :choice/action :proceed
+                          :choice/cost   {:effect/type     :discard-specific
+                                          :effect/criteria {:match/types #{:land}}
+                                          :effect/count    1
+                                          :effect/from     :hand}}
+          ;; The on-complete continuation is set by build-selection-for-replacement when
+          ;; an interactive :proceed cost is detected. We simulate it here directly.
+          on-complete {:continuation/type        :build-discard-for-replacement-proceed
+                       :continuation/object-id   obj-id
+                       :continuation/destination :battlefield
+                       :continuation/cost        (:choice/cost proceed-choice)
+                       :continuation/player-id   :player-1}
+          sel {:selection/type :replacement-choice
+               :selection/player-id :player-1
+               :selection/object-id obj-id
+               :selection/replacement-entity-id replacement-eid
+               :selection/replacement-event {:event/type  :zone-change
+                                             :event/object obj-id
+                                             :event/from  :hand
+                                             :event/to    :battlefield}
+               :selection/choices [proceed-choice]
+               :selection/selected proceed-choice
+               :selection/on-complete on-complete
+               :selection/validation :always
+               :selection/lifecycle :finalized
+               :selection/auto-confirm? false}
+          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
+          db (d/db-with db [[:db/add obj-eid :object/replacement-pending true]])
+          app-db {:game/db db}
+          sel-placed (sel-spec/set-pending-selection app-db sel)
+          ;; confirm-selection-impl routes through finalized-path, drains on-complete continuation
+          result (sel-core/confirm-selection-impl sel-placed)
+          pending-sel (:game/pending-selection result)]
+      (is (some? pending-sel)
+          "after confirming :proceed with interactive cost, a new pending-selection should appear")
+      (is (some? (:selection/on-complete pending-sel))
+          "the new discard selection should have :selection/on-complete continuation for zone-change resume"))))
+
+
+(deftest test-proceed-interactive-cost-then-discard-moves-object-to-destination
+  (testing "full chain: :proceed (interactive cost) → land discard → :resume-replacement-zone-change → object enters battlefield"
+    (let [db (th/create-test-db)
+          [db obj-id replacement-eid] (add-interactive-replacement-object-to-hand db :player-1)
+          ;; Add a land to hand so there's something to discard
+          [db land-id] (th/add-card-to-zone db :forest :hand :player-1)
+          proceed-choice {:choice/label  "Discard a land"
+                          :choice/action :proceed
+                          :choice/cost   {:effect/type     :discard-specific
+                                          :effect/criteria {:match/types #{:land}}
+                                          :effect/count    1
+                                          :effect/from     :hand}}
+          ;; The on-complete continuation is set by build-selection-for-replacement
+          on-complete {:continuation/type        :build-discard-for-replacement-proceed
+                       :continuation/object-id   obj-id
+                       :continuation/destination :battlefield
+                       :continuation/cost        (:choice/cost proceed-choice)
+                       :continuation/player-id   :player-1}
+          sel {:selection/type :replacement-choice
+               :selection/player-id :player-1
+               :selection/object-id obj-id
+               :selection/replacement-entity-id replacement-eid
+               :selection/replacement-event {:event/type  :zone-change
+                                             :event/object obj-id
+                                             :event/from  :hand
+                                             :event/to    :battlefield}
+               :selection/choices [proceed-choice]
+               :selection/selected proceed-choice
+               :selection/on-complete on-complete
+               :selection/validation :always
+               :selection/lifecycle :finalized
+               :selection/auto-confirm? false}
+          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
+          db (d/db-with db [[:db/add obj-eid :object/replacement-pending true]])
+          app-db {:game/db db}
+          sel-placed (sel-spec/set-pending-selection app-db sel)
+          ;; Step 1: Confirm replacement-choice with :proceed → drains on-complete → builds discard selection
+          after-replace (sel-core/confirm-selection-impl sel-placed)
+          ;; Step 2: Toggle + confirm land in the discard selection
+          after-toggle (sel-core/toggle-selection-impl after-replace land-id)
+          after-confirm (sel-core/confirm-selection-impl (:app-db after-toggle))
+          final-db (:game/db after-confirm)]
+      (is (= :battlefield (:object/zone (q/get-object final-db obj-id)))
+          "artifact should be on battlefield after full interactive :proceed chain")
+      (is (= :graveyard (:object/zone (q/get-object final-db land-id)))
+          "land should be in graveyard after being discarded as cost"))))
+
+
 (deftest test-build-then-confirm-selection-full-cycle
   (testing "full cycle: build-selection-for-replacement → set-pending-selection → confirm-selection-impl"
     (let [db (th/create-test-db)

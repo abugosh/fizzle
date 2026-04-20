@@ -10,6 +10,7 @@
     [fizzle.cards.artifacts.lions-eye-diamond :as lions-eye-diamond]
     [fizzle.cards.artifacts.lotus-petal :as lotus-petal]
     [fizzle.cards.artifacts.medallions :as medallions]
+    [fizzle.cards.artifacts.mox-diamond :as mox-diamond]
     [fizzle.cards.artifacts.phyrexian-devourer :as phyrexian-devourer]
     [fizzle.cards.artifacts.sphere-of-resistance :as sphere-of-resistance]
     [fizzle.cards.artifacts.tormods-crypt :as tormods-crypt]
@@ -136,6 +137,7 @@
        cephalid-coliseum/card
        lotus-petal/card
        lions-eye-diamond/card
+       mox-diamond/card
        altar-of-dementia/card
        defense-grid/card
        phyrexian-devourer/card
