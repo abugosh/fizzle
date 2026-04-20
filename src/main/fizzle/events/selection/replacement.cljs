@@ -161,7 +161,8 @@
                          :selection/replacement-entity-id replacement-eid
                          :selection/replacement-event    in-flight-event
                          :selection/choices              valid-choices
-                         :selection/selected             nil
+                         :selection/select-count         1
+                         :selection/selected             #{}
                          :selection/validation           :always
                          :selection/auto-confirm?        false
                          :selection/lifecycle            :finalized}
@@ -175,7 +176,7 @@
 
 (defmethod core/execute-confirmed-selection :replacement-choice
   [game-db selection]
-  (let [choice          (:selection/selected selection)
+  (let [choice          (first (:selection/selected selection))
         object-id       (:selection/object-id selection)
         replacement-eid (:selection/replacement-entity-id selection)
         in-flight-event (:selection/replacement-event selection)

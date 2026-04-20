@@ -29,7 +29,7 @@
   {:selection/type    :replacement-choice
    :selection/choices [{:choice/action :proceed   :choice/label "Discard a land"}
                        {:choice/action :redirect  :choice/label "Sacrifice (go to graveyard)"}]
-   :selection/selected nil})
+   :selection/selected #{}})
 
 
 (deftest replacement-choice-modal-returns-hiccup-test
@@ -59,7 +59,7 @@
                             :selection/choices [{:choice/action :proceed  :choice/label "Option A"}
                                                 {:choice/action :redirect :choice/label "Option B"}
                                                 {:choice/action :redirect :choice/label "Option C"}]
-                            :selection/selected nil}
+                            :selection/selected #{}}
           result (str (replacement-view/replacement-choice-modal custom-selection))]
       (is (re-find #"Option A" result) "should contain 'Option A'")
       (is (re-find #"Option B" result) "should contain 'Option B'")

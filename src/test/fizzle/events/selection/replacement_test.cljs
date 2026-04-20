@@ -165,7 +165,8 @@
                  :selection/replacement-entity-id 42
                  :selection/replacement-event {:event/type :zone-change}
                  :selection/choices choices
-                 :selection/selected nil
+                 :selection/select-count 1
+                 :selection/selected #{}
                  :selection/validation :always
                  :selection/auto-confirm? false}
             result (sel-spec/set-pending-selection {:game/db nil} sel)]
@@ -181,7 +182,8 @@
                  :selection/object-id (random-uuid)
                  :selection/replacement-entity-id 42
                  :selection/replacement-event {:event/type :zone-change}
-                 :selection/selected nil
+                 :selection/select-count 1
+                 :selection/selected #{}
                  :selection/validation :always
                  :selection/auto-confirm? false}]
         (is (thrown? js/Error
@@ -198,7 +200,8 @@
                  :selection/object-id (random-uuid)
                  :selection/replacement-entity-id 42
                  :selection/choices choices
-                 :selection/selected nil
+                 :selection/select-count 1
+                 :selection/selected #{}
                  :selection/validation :always
                  :selection/auto-confirm? false}]
         (is (thrown? js/Error
@@ -299,7 +302,8 @@
                                              :event/from  :hand
                                              :event/to    :battlefield}
                :selection/choices [proceed-choice]
-               :selection/selected proceed-choice
+               :selection/select-count 1
+               :selection/selected #{proceed-choice}
                :selection/validation :always
                :selection/auto-confirm? false}
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
@@ -329,7 +333,8 @@
                                              :event/from  :hand
                                              :event/to    :battlefield}
                :selection/choices [proceed-choice]
-               :selection/selected proceed-choice
+               :selection/select-count 1
+               :selection/selected #{proceed-choice}
                :selection/validation :always
                :selection/auto-confirm? false}
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
@@ -355,7 +360,8 @@
                                              :event/from  :hand
                                              :event/to    :battlefield}
                :selection/choices [proceed-choice]
-               :selection/selected proceed-choice
+               :selection/select-count 1
+               :selection/selected #{proceed-choice}
                :selection/validation :always
                :selection/auto-confirm? false}
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
@@ -382,7 +388,8 @@
                                              :event/from  :hand
                                              :event/to    :battlefield}
                :selection/choices [proceed-choice]
-               :selection/selected proceed-choice
+               :selection/select-count 1
+               :selection/selected #{proceed-choice}
                :selection/validation :always
                :selection/auto-confirm? false}
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
@@ -412,7 +419,8 @@
                                              :event/from  :hand
                                              :event/to    :battlefield}
                :selection/choices [proceed-choice]
-               :selection/selected proceed-choice
+               :selection/select-count 1
+               :selection/selected #{proceed-choice}
                :selection/validation :always
                :selection/auto-confirm? false}
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
@@ -443,7 +451,8 @@
                                              :event/from  :hand
                                              :event/to    :battlefield}
                :selection/choices [redirect-choice]
-               :selection/selected redirect-choice
+               :selection/select-count 1
+               :selection/selected #{redirect-choice}
                :selection/validation :always
                :selection/auto-confirm? false}
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
@@ -484,7 +493,8 @@
                                              :event/from  :hand
                                              :event/to    :battlefield}
                :selection/choices choices
-               :selection/selected redirect-choice
+               :selection/select-count 1
+               :selection/selected #{redirect-choice}
                :selection/validation :always
                :selection/auto-confirm? false}
           db (d/db-with db [[:db/add obj-eid :object/replacement-pending true]])
@@ -510,7 +520,8 @@
                                              :event/from  :hand
                                              :event/to    :battlefield}
                :selection/choices [redirect-choice]
-               :selection/selected redirect-choice
+               :selection/select-count 1
+               :selection/selected #{redirect-choice}
                :selection/validation :always
                :selection/auto-confirm? false}
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
@@ -540,7 +551,8 @@
                                              :event/from  :hand
                                              :event/to    :battlefield}
                :selection/choices [redirect-choice]
-               :selection/selected redirect-choice
+               :selection/select-count 1
+               :selection/selected #{redirect-choice}
                :selection/validation :always
                :selection/auto-confirm? false}
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
@@ -573,7 +585,8 @@
                                              :event/from  :hand
                                              :event/to    :battlefield}
                :selection/choices [proceed-choice]
-               :selection/selected proceed-choice
+               :selection/select-count 1
+               :selection/selected #{proceed-choice}
                :selection/validation :always
                :selection/auto-confirm? false}
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
@@ -606,7 +619,8 @@
                                              :event/from  :hand
                                              :event/to    :battlefield}
                :selection/choices [proceed-choice]
-               :selection/selected proceed-choice
+               :selection/select-count 1
+               :selection/selected #{proceed-choice}
                :selection/validation :always
                :selection/auto-confirm? false}
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
@@ -702,7 +716,8 @@
                                              :event/from  :hand
                                              :event/to    :battlefield}
                :selection/choices [proceed-choice]
-               :selection/selected proceed-choice
+               :selection/select-count 1
+               :selection/selected #{proceed-choice}
                :selection/on-complete on-complete
                :selection/validation :always
                :selection/lifecycle :finalized
@@ -747,7 +762,8 @@
                                              :event/from  :hand
                                              :event/to    :battlefield}
                :selection/choices [proceed-choice]
-               :selection/selected proceed-choice
+               :selection/select-count 1
+               :selection/selected #{proceed-choice}
                :selection/on-complete on-complete
                :selection/validation :always
                :selection/lifecycle :finalized
@@ -789,7 +805,8 @@
                                              :event/from  :hand
                                              :event/to    :battlefield}
                :selection/choices [proceed-choice]
-               :selection/selected proceed-choice
+               :selection/select-count 1
+               :selection/selected #{proceed-choice}
                :selection/validation :always
                :selection/auto-confirm? false}
           ;; Should NOT throw even though the object is gone
@@ -816,7 +833,7 @@
           sel (:selection build-result)
           ;; Choose the :proceed action (no cost needed for free proceed)
           proceed-choice (first (filter #(= :proceed (:choice/action %)) (:selection/choices sel)))
-          sel-with-choice (assoc sel :selection/selected proceed-choice)
+          sel-with-choice (assoc sel :selection/selected #{proceed-choice})
           app-db (-> {:game/db updated-db}
                      (sel-spec/set-pending-selection sel-with-choice))
           final-app-db (sel-core/confirm-selection-impl app-db)

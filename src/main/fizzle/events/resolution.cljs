@@ -53,7 +53,8 @@
                           :selection/replacement-entity-id replacement-eid
                           :selection/replacement-event (get-in needs-sel [:replacement/event])
                           :selection/choices [redirect-choice]
-                          :selection/selected redirect-choice
+                          :selection/select-count 1
+                          :selection/selected #{redirect-choice}
                           :selection/validation :always
                           :selection/auto-confirm? false}
                 execute-result (sel-core/execute-confirmed-selection (:db build-result) auto-sel)]

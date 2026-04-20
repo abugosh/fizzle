@@ -730,7 +730,8 @@
                 :selection/replacement-event
                 :selection/choices
                 :selection/validation
-                :selection/auto-confirm?]
+                :selection/auto-confirm?
+                :selection/select-count]
           :opt [:selection/selected
                 :selection/lifecycle]))
 

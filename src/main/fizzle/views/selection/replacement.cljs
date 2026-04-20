@@ -26,7 +26,7 @@
    (:selection/selected is non-nil)."
   [selection]
   (let [choices  (:selection/choices selection)
-        selected (:selection/selected selection)
+        selected (first (:selection/selected selection))
         valid?   (some? selected)]
     [common/modal-wrapper {:title "Replace event?" :max-width "400px" :text-align "center"}
      [:div {:class "flex flex-col gap-3 mb-5"}

@@ -117,7 +117,7 @@
           proceed-choice (first (filter #(= :proceed (:choice/action %))
                                         (:selection/choices replacement-sel)))
           _ (is (some? proceed-choice) "Should have a :proceed choice available")
-          sel-with-proceed (assoc replacement-sel :selection/selected proceed-choice)
+          sel-with-proceed (assoc replacement-sel :selection/selected #{proceed-choice})
           app-db-after-cast {:game/db (:db resolve-result) :game/pending-selection sel-with-proceed}
           after-proceed (sel-core/confirm-selection-impl app-db-after-cast)
           discard-sel (:game/pending-selection after-proceed)
@@ -225,7 +225,7 @@
           _ (is (some? sel) "Precondition: replacement-choice selection should appear when land is in hand")
           redirect-choice (first (filter #(= :redirect (:choice/action %))
                                          (:selection/choices sel)))
-          sel-with-redirect (assoc sel :selection/selected redirect-choice)
+          sel-with-redirect (assoc sel :selection/selected #{redirect-choice})
           app-db {:game/db (:db resolve-result) :game/pending-selection sel-with-redirect}
           after-confirm (sel-core/confirm-selection-impl app-db)
           final-db (:game/db after-confirm)]
@@ -261,7 +261,7 @@
                           ;; selection appeared — only :redirect should be there, auto-confirm it
                           (let [redirect-choice (first (filter #(= :redirect (:choice/action %))
                                                                (:selection/choices sel)))
-                                sel-confirmed (assoc sel :selection/selected redirect-choice)
+                                sel-confirmed (assoc sel :selection/selected #{redirect-choice})
                                 app-db {:game/db final-db :game/pending-selection sel-confirmed}
                                 after (sel-core/confirm-selection-impl app-db)]
                             (:game/db after))
@@ -283,7 +283,7 @@
           sel (:selection resolve-result)
           redirect-choice (first (filter #(= :redirect (:choice/action %))
                                          (:selection/choices sel)))
-          sel-confirmed (assoc sel :selection/selected redirect-choice)
+          sel-confirmed (assoc sel :selection/selected #{redirect-choice})
           app-db {:game/db (:db resolve-result) :game/pending-selection sel-confirmed}
           after-confirm (sel-core/confirm-selection-impl app-db)
           final-db (:game/db after-confirm)
@@ -321,7 +321,7 @@
             resolve-result (th/resolve-top db-cast)
             sel (:selection resolve-result)
             proceed-choice (first (filter #(= :proceed (:choice/action %)) (:selection/choices sel)))
-            sel-with-proceed (assoc sel :selection/selected proceed-choice)
+            sel-with-proceed (assoc sel :selection/selected #{proceed-choice})
             app-db-after-cast {:game/db (:db resolve-result) :game/pending-selection sel-with-proceed}
             after-proceed (sel-core/confirm-selection-impl app-db-after-cast)
             discard-sel (:game/pending-selection after-proceed)
@@ -354,7 +354,7 @@
             resolve-result (th/resolve-top db-cast)
             sel (:selection resolve-result)
             redirect-choice (first (filter #(= :redirect (:choice/action %)) (:selection/choices sel)))
-            sel-with-redirect (assoc sel :selection/selected redirect-choice)
+            sel-with-redirect (assoc sel :selection/selected #{redirect-choice})
             app-db {:game/db (:db resolve-result) :game/pending-selection sel-with-redirect}
             after-confirm (sel-core/confirm-selection-impl app-db)
             final-db (:game/db after-confirm)
@@ -376,7 +376,7 @@
           sel (:selection resolve-result)
           proceed-choice (first (filter #(= :proceed (:choice/action %))
                                         (:selection/choices sel)))
-          sel-with-proceed (assoc sel :selection/selected proceed-choice)
+          sel-with-proceed (assoc sel :selection/selected #{proceed-choice})
           app-db {:game/db (:db resolve-result) :game/pending-selection sel-with-proceed}
           after-proceed (sel-core/confirm-selection-impl app-db)
           discard-sel (:game/pending-selection after-proceed)]
