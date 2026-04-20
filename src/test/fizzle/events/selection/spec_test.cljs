@@ -155,3 +155,71 @@
 (deftest test-minimal-valid-selection-returns-nil-for-unknown
   (testing "minimal-valid-selection returns nil for unknown type"
     (is (nil? (sel-spec/minimal-valid-selection :no-such-type)))))
+
+
+;; ============================================================
+;; F. :selection/select-count :req migration (epic fizzle-75qq, task fizzle-3hym)
+;;
+;; These 7 types have builders that ALWAYS set :selection/select-count.
+;; After migration from :opt to :req, dissoc'ing the key must fail spec.
+;;
+;; 3 zone-pick types (:discard, :graveyard-return, :shuffle-from-graveyard-to-library)
+;; are SKIPPED: their zone-pick builder uses (or :effect/count :effect/select-count)
+;; which CAN be nil. Migrating would cause false-positive spec failures for legitimate
+;; effects without a count. Documented in task fizzle-3hym close-note.
+;; ============================================================
+
+(deftest test-select-count-req-migration-tutor
+  (testing ":tutor without :selection/select-count fails spec after :req migration"
+    (let [sel (dissoc (get sel-spec/minimal-valid-selections :tutor)
+                      :selection/select-count)]
+      (is (not (s/valid? ::sel-spec/selection sel))
+          ":tutor must require :selection/select-count after :opt -> :req migration"))))
+
+
+(deftest test-select-count-req-migration-peek-and-select
+  (testing ":peek-and-select without :selection/select-count fails spec after :req migration"
+    (let [sel (dissoc (get sel-spec/minimal-valid-selections :peek-and-select)
+                      :selection/select-count)]
+      (is (not (s/valid? ::sel-spec/selection sel))
+          ":peek-and-select must require :selection/select-count after :opt -> :req migration"))))
+
+
+(deftest test-select-count-req-migration-pile-choice
+  (testing ":pile-choice without :selection/select-count fails spec after :req migration"
+    (let [sel (dissoc (get sel-spec/minimal-valid-selections :pile-choice)
+                      :selection/select-count)]
+      (is (not (s/valid? ::sel-spec/selection sel))
+          ":pile-choice must require :selection/select-count after :opt -> :req migration"))))
+
+
+(deftest test-select-count-req-migration-chain-bounce
+  (testing ":chain-bounce without :selection/select-count fails spec after :req migration"
+    (let [sel (dissoc (get sel-spec/minimal-valid-selections :chain-bounce)
+                      :selection/select-count)]
+      (is (not (s/valid? ::sel-spec/selection sel))
+          ":chain-bounce must require :selection/select-count after :opt -> :req migration"))))
+
+
+(deftest test-select-count-req-migration-chain-bounce-target
+  (testing ":chain-bounce-target without :selection/select-count fails spec after :req migration"
+    (let [sel (dissoc (get sel-spec/minimal-valid-selections :chain-bounce-target)
+                      :selection/select-count)]
+      (is (not (s/valid? ::sel-spec/selection sel))
+          ":chain-bounce-target must require :selection/select-count after :opt -> :req migration"))))
+
+
+(deftest test-select-count-req-migration-select-attackers
+  (testing ":select-attackers without :selection/select-count fails spec after :req migration"
+    (let [sel (dissoc (get sel-spec/minimal-valid-selections :select-attackers)
+                      :selection/select-count)]
+      (is (not (s/valid? ::sel-spec/selection sel))
+          ":select-attackers must require :selection/select-count after :opt -> :req migration"))))
+
+
+(deftest test-select-count-req-migration-assign-blockers
+  (testing ":assign-blockers without :selection/select-count fails spec after :req migration"
+    (let [sel (dissoc (get sel-spec/minimal-valid-selections :assign-blockers)
+                      :selection/select-count)]
+      (is (not (s/valid? ::sel-spec/selection sel))
+          ":assign-blockers must require :selection/select-count after :opt -> :req migration"))))

@@ -151,6 +151,7 @@
 
 ;; :chain-bounce — built by build-chain-bounce-selection in zone_ops.cljs.
 ;; Always :chaining lifecycle. Has :selection/chain-controller and :selection/chain-target-id.
+;; :selection/select-count migrated :opt -> :req (fizzle-3hym): builder hardcodes 1.
 (defmethod selection-type-spec :chain-bounce [_]
   (s/keys :req [:selection/type
                 :selection/lifecycle
@@ -158,10 +159,10 @@
                 :selection/selected
                 :selection/validation
                 :selection/auto-confirm?
-                :selection/valid-targets]
+                :selection/valid-targets
+                :selection/select-count]
           :opt [:selection/zone
                 :selection/card-source
-                :selection/select-count
                 :selection/spell-id
                 :selection/remaining-effects
                 :selection/chain-controller
@@ -170,16 +171,17 @@
 
 ;; :chain-bounce-target — built by build-chain-bounce-target-selection in zone_ops.cljs.
 ;; Has :selection/chain-copy-object-id and :selection/chain-copy-stack-item-eid.
+;; :selection/select-count migrated :opt -> :req (fizzle-3hym): builder hardcodes 1.
 (defmethod selection-type-spec :chain-bounce-target [_]
   (s/keys :req [:selection/type
                 :selection/player-id
                 :selection/selected
                 :selection/validation
                 :selection/auto-confirm?
-                :selection/valid-targets]
+                :selection/valid-targets
+                :selection/select-count]
           :opt [:selection/zone
                 :selection/card-source
-                :selection/select-count
                 :selection/spell-id
                 :selection/chain-copy-object-id
                 :selection/chain-copy-stack-item-eid
@@ -364,6 +366,8 @@
 
 ;; :tutor — built by build-tutor-selection in library.cljs.
 ;; Has :selection/target-zone, :selection/candidates (set of candidate-ids).
+;; :selection/select-count migrated :opt -> :req (fizzle-3hym): builder always sets it
+;; via (min effect-select-count (count candidate-ids)) — always an integer.
 (defmethod selection-type-spec :tutor [_]
   (s/keys :req [:selection/type
                 :selection/lifecycle
@@ -372,10 +376,10 @@
                 :selection/validation
                 :selection/auto-confirm?
                 :selection/target-zone
-                :selection/candidates]
+                :selection/candidates
+                :selection/select-count]
           :opt [:selection/zone
                 :selection/card-source
-                :selection/select-count
                 :selection/exact?
                 :selection/allow-fail-to-find?
                 :selection/shuffle?
@@ -388,6 +392,8 @@
 
 ;; :peek-and-select — built by build-peek-selection in library.cljs.
 ;; Has :selection/candidates (set), :selection/selected-zone, :selection/remainder-zone.
+;; :selection/select-count migrated :opt -> :req (fizzle-3hym): builder always sets it
+;; via (min select-count (count candidate-ids)) — always positive when selection is built.
 (defmethod selection-type-spec :peek-and-select [_]
   (s/keys :req [:selection/type
                 :selection/lifecycle
@@ -397,10 +403,10 @@
                 :selection/auto-confirm?
                 :selection/candidates
                 :selection/selected-zone
-                :selection/remainder-zone]
+                :selection/remainder-zone
+                :selection/select-count]
           :opt [:selection/zone
                 :selection/card-source
-                :selection/select-count
                 :selection/exact?
                 :selection/allow-fail-to-find?
                 :selection/spell-id
@@ -412,6 +418,8 @@
 
 ;; :pile-choice — built by build-pile-choice-selection in library.cljs.
 ;; Has :selection/candidates, :selection/hand-count, :selection/allow-random.
+;; :selection/select-count migrated :opt -> :req (fizzle-3hym): builder always sets it
+;; via hand-count from pile-choice config (always an integer).
 (defmethod selection-type-spec :pile-choice [_]
   (s/keys :req [:selection/type
                 :selection/lifecycle
@@ -420,9 +428,9 @@
                 :selection/validation
                 :selection/auto-confirm?
                 :selection/candidates
-                :selection/hand-count]
+                :selection/hand-count
+                :selection/select-count]
           :opt [:selection/card-source
-                :selection/select-count
                 :selection/allow-random
                 :selection/spell-id
                 :selection/remaining-effects]))
@@ -635,6 +643,8 @@
 
 ;; :select-attackers — built by build-attacker-selection in combat.cljs.
 ;; Has :selection/stack-item-eid (cleanup source), :selection/valid-targets.
+;; :selection/select-count migrated :opt -> :req (fizzle-3hym): builder always sets it
+;; via (count eligible-attackers) — always an integer.
 (defmethod selection-type-spec :select-attackers [_]
   (s/keys :req [:selection/type
                 :selection/lifecycle
@@ -643,14 +653,16 @@
                 :selection/validation
                 :selection/auto-confirm?
                 :selection/stack-item-eid
-                :selection/valid-targets]
+                :selection/valid-targets
+                :selection/select-count]
           :opt [:selection/card-source
-                :selection/select-count
                 :selection/source-type]))
 
 
 ;; :assign-blockers — built by build-blocker-selection in combat.cljs.
 ;; Has :selection/stack-item-eid, :selection/current-attacker, :selection/remaining-attackers.
+;; :selection/select-count migrated :opt -> :req (fizzle-3hym): builder always sets it
+;; via (count eligible) — always an integer.
 (defmethod selection-type-spec :assign-blockers [_]
   (s/keys :req [:selection/type
                 :selection/lifecycle
@@ -661,9 +673,9 @@
                 :selection/stack-item-eid
                 :selection/valid-targets
                 :selection/current-attacker
-                :selection/remaining-attackers]
+                :selection/remaining-attackers
+                :selection/select-count]
           :opt [:selection/card-source
-                :selection/select-count
                 :selection/source-type]))
 
 
@@ -783,7 +795,8 @@
     :selection/selected #{}
     :selection/validation :exact-or-zero
     :selection/auto-confirm? false
-    :selection/valid-targets []}
+    :selection/valid-targets []
+    :selection/select-count 1}
 
    :chain-bounce-target
    {:selection/type :chain-bounce-target
@@ -791,7 +804,8 @@
     :selection/selected #{}
     :selection/validation :exact-or-zero
     :selection/auto-confirm? false
-    :selection/valid-targets []}
+    :selection/valid-targets []
+    :selection/select-count 1}
 
    :unless-pay
    {:selection/type :unless-pay
@@ -882,7 +896,8 @@
     :selection/validation :exact-or-zero
     :selection/auto-confirm? true
     :selection/target-zone :hand
-    :selection/candidates #{}}
+    :selection/candidates #{}
+    :selection/select-count 1}
 
    :peek-and-select
    {:selection/type :peek-and-select
@@ -893,7 +908,8 @@
     :selection/auto-confirm? false
     :selection/candidates #{:obj-1 :obj-2}
     :selection/selected-zone :hand
-    :selection/remainder-zone :bottom-of-library}
+    :selection/remainder-zone :bottom-of-library
+    :selection/select-count 1}
 
    :pile-choice
    {:selection/type :pile-choice
@@ -903,7 +919,8 @@
     :selection/validation :exact
     :selection/auto-confirm? false
     :selection/candidates #{:obj-1 :obj-2 :obj-3}
-    :selection/hand-count 1}
+    :selection/hand-count 1
+    :selection/select-count 1}
 
    :player-target
    {:selection/type :player-target
@@ -1019,7 +1036,8 @@
     :selection/validation :at-most
     :selection/auto-confirm? false
     :selection/stack-item-eid 42
-    :selection/valid-targets [:creature-1]}
+    :selection/valid-targets [:creature-1]
+    :selection/select-count 1}
 
    :assign-blockers
    {:selection/type :assign-blockers
@@ -1031,7 +1049,8 @@
     :selection/stack-item-eid 42
     :selection/valid-targets []
     :selection/current-attacker :attacker-1
-    :selection/remaining-attackers []}
+    :selection/remaining-attackers []
+    :selection/select-count 1}
 
    :spell-mode
    {:selection/type :spell-mode
