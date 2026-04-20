@@ -28,7 +28,7 @@
    :peek-and-select     {:effect/type :peek-and-select}
    :peek-and-reorder    {:effect/type :peek-and-reorder :effect/count 3}
    :discard             {:effect/type :discard :effect/selection :player}
-   :return-from-graveyard {:effect/type :return-from-graveyard :effect/selection :player}
+   :return-from-graveyard {:effect/type :return-from-graveyard :effect/selection :player :effect/count 1}
    :discard-from-revealed-hand {:effect/type :discard-from-revealed-hand :effect/target :player-1}
    :chain-bounce {:effect/type :chain-bounce :effect/target :player-1}
    :untap-lands  {:effect/type :untap-lands :effect/count 3}

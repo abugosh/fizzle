@@ -84,16 +84,34 @@
                         (= explicit-target :opponent) (q/get-opponent-id db player-id)
                         (= explicit-target :self) player-id
                         :else explicit-target)
-        selection (get effect :effect/selection :player)
-        count-limit (get effect :effect/count 0)]
-    (case selection
-      :random (let [gy-cards (or (q/get-objects-in-zone db target-player :graveyard) [])
-                    selected (take count-limit (shuffle gy-cards))]
-                (reduce (fn [db' obj]
-                          (zone-change-dispatch/move-to-zone-db db' (:object/id obj) :hand))
-                        db
-                        selected))
-      {:db db :needs-selection effect})))
+        selection (:effect/selection effect)
+        count-value (:effect/count effect)]
+    ;; Contract guard: :effect/count must be a positive integer.
+    ;; Checked before dispatch so a missing or zero count surfaces loudly in
+    ;; all build modes (not just dev) — per epic fizzle-75qq anti-pattern on
+    ;; "NO dev-only throw".
+    (when-not (pos-int? count-value)
+      (throw (ex-info "return-from-graveyard: :effect/count must be a positive integer"
+                      {:effect-type  :return-from-graveyard
+                       :effect/count count-value
+                       :effect       effect})))
+    (cond
+      (= selection :random)
+      (let [gy-cards (or (q/get-objects-in-zone db target-player :graveyard) [])
+            selected (take count-value (shuffle gy-cards))]
+        (reduce (fn [db' obj]
+                  (zone-change-dispatch/move-to-zone-db db' (:object/id obj) :hand))
+                db
+                selected))
+
+      (= selection :player)
+      {:db db :needs-selection effect}
+
+      :else
+      (throw (ex-info "return-from-graveyard: unmatched :effect/selection value"
+                      {:effect-type :return-from-graveyard
+                       :selection   selection
+                       :effect      effect})))))
 
 
 (defmethod effects/execute-effect-impl :sacrifice
