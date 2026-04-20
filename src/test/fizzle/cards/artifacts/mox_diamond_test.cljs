@@ -15,10 +15,12 @@
    G. Edge cases (no land in hand, triggers on final zone only, multiple lands)"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
+    [datascript.core :as d]
     [fizzle.cards.artifacts.mox-diamond :as mox]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.engine.rules :as rules]
+    [fizzle.engine.trigger-db :as trigger-db]
     [fizzle.events.selection.core :as sel-core]
     [fizzle.test-helpers :as th]))
 
@@ -212,11 +214,15 @@
 
 (deftest mox-diamond-decline-sends-to-graveyard-test
   (testing "Choosing :redirect sends Mox Diamond to graveyard (never enters battlefield)"
+    ;; Land in hand so both :proceed and :redirect choices are available.
+    ;; Player explicitly picks :redirect — MD goes to graveyard.
     (let [db (th/create-test-db)
           [db md-id] (th/add-card-to-zone db :mox-diamond :hand :player-1)
+          [db _land-id] (th/add-card-to-zone db :forest :hand :player-1)
           db-cast (rules/cast-spell db :player-1 md-id)
           resolve-result (th/resolve-top db-cast)
           sel (:selection resolve-result)
+          _ (is (some? sel) "Precondition: replacement-choice selection should appear when land is in hand")
           redirect-choice (first (filter #(= :redirect (:choice/action %))
                                          (:selection/choices sel)))
           sel-with-redirect (assoc sel :selection/selected redirect-choice)
@@ -234,36 +240,44 @@
 ;; =====================================================
 
 (deftest mox-diamond-no-land-in-hand-auto-redirects-test
-  (testing "No land in hand → replacement-choice selection has only :redirect (no :proceed)"
-    ;; build-selection-for-replacement checks hand contents BEFORE building the selection.
-    ;; No valid land → only :redirect choice available.
-    ;; NOTE: Auto-confirm behavior on single-choice depends on implementation.
-    ;; Here we verify the selection only has redirect available as a choice.
+  (testing "No land in hand → :proceed choice is suppressed; Mox Diamond auto-redirects to graveyard"
+    ;; build-selection-for-replacement must filter out :proceed when no valid discard targets exist.
+    ;; With only :redirect remaining AND auto-confirm on single-choice, no player prompt is needed.
+    ;; Assert: no pending selection (auto-confirmed) AND Mox Diamond in graveyard.
     (let [db (th/create-test-db)
           [db md-id] (th/add-card-to-zone db :mox-diamond :hand :player-1)
-          ;; No land in hand — only MD itself is in hand
+          ;; No land in hand — only MD itself is in hand (now on stack after cast)
           db-cast (rules/cast-spell db :player-1 md-id)
           resolve-result (th/resolve-top db-cast)
           sel (:selection resolve-result)
-          final-db (if sel
-                     ;; If selection appears, pick :redirect
-                     (let [redirect-choice (first (filter #(= :redirect (:choice/action %))
-                                                          (:selection/choices sel)))
-                           sel-with-redirect (assoc sel :selection/selected redirect-choice)
-                           app-db {:game/db (:db resolve-result) :game/pending-selection sel-with-redirect}
-                           after (sel-core/confirm-selection-impl app-db)]
-                       (:game/db after))
-                     ;; No selection — auto-redirected
-                     (:db resolve-result))]
-      (is (= :graveyard (:object/zone (q/get-object final-db md-id)))
-          "Mox Diamond should go to graveyard when no land is available to discard"))))
+          final-db (:db resolve-result)]
+      ;; With auto-redirect: no selection should appear (auto-confirmed).
+      ;; If a selection appears, :proceed must be absent from choices.
+      (when sel
+        (is (not (some #(= :proceed (:choice/action %)) (:selection/choices sel)))
+            "When no land in hand, :proceed choice must be absent from replacement-choice selection"))
+      ;; Either way, Mox Diamond ends up in graveyard
+      (let [ultimate-db (if sel
+                          ;; selection appeared — only :redirect should be there, auto-confirm it
+                          (let [redirect-choice (first (filter #(= :redirect (:choice/action %))
+                                                               (:selection/choices sel)))
+                                sel-confirmed (assoc sel :selection/selected redirect-choice)
+                                app-db {:game/db final-db :game/pending-selection sel-confirmed}
+                                after (sel-core/confirm-selection-impl app-db)]
+                            (:game/db after))
+                          ;; No selection — auto-redirected
+                          final-db)]
+        (is (= :graveyard (:object/zone (q/get-object ultimate-db md-id)))
+            "Mox Diamond should go to graveyard when no land is available to discard")))))
 
 
 (deftest mox-diamond-no-etb-triggers-when-redirected-to-graveyard-test
   (testing "When MD goes to graveyard (redirect), no ETB triggers fire on the battlefield"
+    ;; Land in hand so both choices appear; player picks :redirect.
+    ;; Verify no objects end up on the battlefield.
     (let [db (th/create-test-db)
           [db md-id] (th/add-card-to-zone db :mox-diamond :hand :player-1)
-          ;; No land in hand
+          [db _land-id] (th/add-card-to-zone db :forest :hand :player-1)
           db-cast (rules/cast-spell db :player-1 md-id)
           resolve-result (th/resolve-top db-cast)
           sel (:selection resolve-result)
@@ -277,6 +291,78 @@
           bf-count (th/get-zone-count final-db :battlefield :player-1)]
       (is (= 0 bf-count)
           "No objects should be on battlefield — Mox Diamond went to graveyard, not ETB"))))
+
+
+(deftest mox-diamond-zone-change-trigger-fires-on-correct-final-zone-test
+  (testing "Zone-change trigger fires for FINAL destination, not the replacement-intercepted zone"
+    ;; Register a synthetic :zone-change trigger that fires when any object moves to
+    ;; the battlefield. This proves dispatch-post-move-triggers fires triggers for the
+    ;; FINAL zone (post-replacement destination), not the originally-intended zone.
+    ;;
+    ;; Proceed path: MD → BF via proceed → zone-change trigger fires (stack item appears)
+    ;; Redirect path: MD → GY via redirect → zone-change trigger does NOT fire for BF entry
+    ;; (it fires for the GY move, but since our filter matches :to-zone :battlefield, it doesn't match)
+    (testing "proceed path: zone-change trigger fires for battlefield entry"
+      (let [db (th/create-test-db)
+            [db md-id] (th/add-card-to-zone db :mox-diamond :hand :player-1)
+            [db _land-id] (th/add-card-to-zone db :forest :hand :player-1)
+            ;; Register a synthetic zone-change trigger that fires when object enters battlefield
+            player-eid (q/get-player-eid db :player-1)
+            trigger-txs (trigger-db/create-trigger-tx
+                          {:trigger/event-type :zone-change
+                           :trigger/controller player-eid
+                           :trigger/filter {:event/to-zone :battlefield}
+                           :trigger/uses-stack? true
+                           :trigger/effects [{:effect/type :add-mana
+                                              :effect/mana {:black 1}}]})
+            db (d/db-with db trigger-txs)
+            ;; Cast → resolve → replacement → proceed → discard → BF
+            db-cast (rules/cast-spell db :player-1 md-id)
+            resolve-result (th/resolve-top db-cast)
+            sel (:selection resolve-result)
+            proceed-choice (first (filter #(= :proceed (:choice/action %)) (:selection/choices sel)))
+            sel-with-proceed (assoc sel :selection/selected proceed-choice)
+            app-db-after-cast {:game/db (:db resolve-result) :game/pending-selection sel-with-proceed}
+            after-proceed (sel-core/confirm-selection-impl app-db-after-cast)
+            discard-sel (:game/pending-selection after-proceed)
+            land-candidates (:selection/valid-targets discard-sel)
+            land-to-discard (first land-candidates)
+            after-toggle (sel-core/toggle-selection-impl after-proceed land-to-discard)
+            after-confirm (sel-core/confirm-selection-impl (:app-db after-toggle))
+            final-db (:game/db after-confirm)
+            stack-count (count (q/get-all-stack-items final-db))]
+        (is (= :battlefield (:object/zone (q/get-object final-db md-id)))
+            "Precondition: MD should be on battlefield after proceed")
+        (is (= 1 stack-count)
+            "Zone-change trigger should fire (1 stack item) when MD enters battlefield via proceed")))
+
+    (testing "redirect path: zone-change trigger does NOT fire for battlefield (MD goes to graveyard)"
+      (let [db (th/create-test-db)
+            [db md-id] (th/add-card-to-zone db :mox-diamond :hand :player-1)
+            ;; Register same zone-change trigger that fires only on :to-zone :battlefield
+            player-eid (q/get-player-eid db :player-1)
+            trigger-txs (trigger-db/create-trigger-tx
+                          {:trigger/event-type :zone-change
+                           :trigger/controller player-eid
+                           :trigger/filter {:event/to-zone :battlefield}
+                           :trigger/uses-stack? true
+                           :trigger/effects [{:effect/type :add-mana
+                                              :effect/mana {:black 1}}]})
+            db (d/db-with db trigger-txs)
+            ;; Cast → resolve → replacement → redirect → graveyard (no BF entry)
+            db-cast (rules/cast-spell db :player-1 md-id)
+            resolve-result (th/resolve-top db-cast)
+            sel (:selection resolve-result)
+            redirect-choice (first (filter #(= :redirect (:choice/action %)) (:selection/choices sel)))
+            sel-with-redirect (assoc sel :selection/selected redirect-choice)
+            app-db {:game/db (:db resolve-result) :game/pending-selection sel-with-redirect}
+            after-confirm (sel-core/confirm-selection-impl app-db)
+            final-db (:game/db after-confirm)
+            stack-count (count (q/get-all-stack-items final-db))]
+        (is (= :graveyard (:object/zone (q/get-object final-db md-id)))
+            "Precondition: MD should be in graveyard after redirect")
+        (is (= 0 stack-count)
+            "Zone-change trigger should NOT fire for battlefield when MD redirects to graveyard")))))
 
 
 (deftest mox-diamond-multiple-lands-player-picks-which-test

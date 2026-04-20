@@ -38,7 +38,28 @@
     (if (= input-type :replacement)
       ;; Replacement-effect path: build :replacement-choice selection
       (let [build-result (sel-replacement/build-selection-for-replacement (:db result) needs-sel)]
-        {:db (:db build-result) :pending-selection (:selection build-result)})
+        (if-let [redirect-choice (:auto-redirect build-result)]
+          ;; Auto-redirect: no valid proceed targets — commit redirect immediately without player prompt.
+          ;; Execute the redirect choice directly by calling execute-confirmed-selection with a
+          ;; pre-filled :replacement-choice selection so the caller sees no :pending-selection.
+          (let [object-id    (:replacement/object-id needs-sel)
+                replacement-entity (:replacement/entity needs-sel)
+                replacement-eid (:db/id replacement-entity)
+                player-id    (queries/get-player-id (:db build-result)
+                                                    (:db/id (:object/controller (queries/get-object (:db result) object-id))))
+                auto-sel {:selection/type :replacement-choice
+                          :selection/player-id player-id
+                          :selection/object-id object-id
+                          :selection/replacement-entity-id replacement-eid
+                          :selection/replacement-event (get-in needs-sel [:replacement/event])
+                          :selection/choices [redirect-choice]
+                          :selection/selected redirect-choice
+                          :selection/validation :always
+                          :selection/auto-confirm? false}
+                execute-result (sel-core/execute-confirmed-selection (:db build-result) auto-sel)]
+            {:db (:db execute-result) :pending-selection nil})
+          ;; Normal path: player must choose
+          {:db (:db build-result) :pending-selection (:selection build-result)}))
       ;; Existing effect-selection path
       (let [stack-item-eid (:db/id stack-item)
             source-id      (get-source-id game-db stack-item)

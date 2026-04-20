@@ -64,6 +64,26 @@
 ;; Builder
 ;; =====================================================
 
+(defn- has-valid-targets-for-discard-cost?
+  "Returns true if the player has valid discard targets in hand for a :discard-specific cost.
+   The moving object (on :stack) is excluded since it cannot be discarded from hand.
+
+   Arguments:
+     db        - Datascript database value
+     player-id - The player whose hand to search
+     object-id - UUID of the moving object (excluded from candidates)
+     cost      - :discard-specific effect map with :effect/criteria
+
+   Returns:
+     Boolean - true if at least one valid discard target exists in hand"
+  [db player-id object-id cost]
+  (let [criteria   (or (:effect/criteria cost) {})
+        candidates (q/query-zone-by-criteria db player-id :hand criteria)
+        ;; Exclude the moving object itself (it is on :stack, not :hand, but be safe)
+        filtered   (filterv #(not= object-id (:object/id %)) candidates)]
+    (seq filtered)))
+
+
 (defn build-selection-for-replacement
   "Convert a :needs-selection signal into a :replacement-choice selection.
 
@@ -72,6 +92,13 @@
    When any :proceed choice has an interactive cost (e.g. :discard-specific),
    sets :selection/on-complete to :build-discard-for-replacement-proceed so the
    continuation chain handles the interactive cost after the player chooses :proceed.
+
+   No-valid-targets filtering:
+   If a :proceed choice has an interactive :discard-specific cost but no valid
+   discard targets exist in the player's hand, the :proceed choice is suppressed.
+   If only one choice remains after suppression (e.g. only :redirect), returns
+   {:db updated-db :selection nil :auto-redirect redirect-choice} so the events
+   layer can auto-confirm without presenting a player prompt.
 
    Arguments:
      db         - Datascript database value
@@ -82,7 +109,9 @@
                    :replacement/object-id <UUID>}
 
    Returns:
-     {:db updated-db :selection replacement-choice-sel-map}"
+     {:db updated-db :selection replacement-choice-sel-map}
+     or {:db updated-db :selection nil :auto-redirect redirect-choice} when only
+     one choice remains after filtering invalid proceed choices (auto-confirm path)"
   [db needs-sel]
   (let [replacement-entity (:replacement/entity needs-sel)
         in-flight-event    (:replacement/event needs-sel)
@@ -97,8 +126,20 @@
         ;; Set :object/replacement-pending on the object
         obj-eid    (q/get-object-eid db object-id)
         updated-db (d/db-with db [[:db/add obj-eid :object/replacement-pending true]])
-        ;; Check if any :proceed choice has an interactive cost
-        proceed-choice (first (filter #(= :proceed (:choice/action %)) choices))
+        ;; Filter out :proceed choices with interactive costs when no valid targets exist.
+        ;; A :proceed choice with :discard-specific cost is only valid if at least one
+        ;; matching card exists in the player's hand.
+        valid-choices
+        (filterv (fn [choice]
+                   (if (and (= :proceed (:choice/action choice))
+                            (interactive-cost? (:choice/cost choice)))
+                     (has-valid-targets-for-discard-cost? updated-db player-id object-id
+                                                          (:choice/cost choice))
+                     ;; Non-interactive proceed costs and all redirect choices are always valid
+                     true))
+                 choices)
+        ;; Check if we can auto-confirm (only one choice available after filtering)
+        proceed-choice (first (filter #(= :proceed (:choice/action %)) valid-choices))
         proceed-cost   (when proceed-choice (:choice/cost proceed-choice))
         destination    (:event/to in-flight-event)
         ;; When interactive proceed cost exists, set on-complete continuation
@@ -107,20 +148,25 @@
                           :continuation/object-id   object-id
                           :continuation/destination destination
                           :continuation/cost        proceed-cost
-                          :continuation/player-id   player-id})
-        ;; Build the selection map
-        sel (cond-> {:selection/type                 :replacement-choice
-                     :selection/player-id            player-id
-                     :selection/object-id            object-id
-                     :selection/replacement-entity-id replacement-eid
-                     :selection/replacement-event    in-flight-event
-                     :selection/choices              choices
-                     :selection/selected             nil
-                     :selection/validation           :always
-                     :selection/auto-confirm?        false
-                     :selection/lifecycle            :finalized}
-              on-complete (assoc :selection/on-complete on-complete))]
-    {:db updated-db :selection sel}))
+                          :continuation/player-id   player-id})]
+    (if (and (= 1 (count valid-choices))
+             (= :redirect (:choice/action (first valid-choices))))
+      ;; Single :redirect choice — auto-confirm path; no player prompt needed.
+      ;; Return :auto-redirect so the events layer can commit the redirect immediately.
+      {:db updated-db :selection nil :auto-redirect (first valid-choices)}
+      ;; Multiple valid choices — build the selection map for player input
+      (let [sel (cond-> {:selection/type                 :replacement-choice
+                         :selection/player-id            player-id
+                         :selection/object-id            object-id
+                         :selection/replacement-entity-id replacement-eid
+                         :selection/replacement-event    in-flight-event
+                         :selection/choices              valid-choices
+                         :selection/selected             nil
+                         :selection/validation           :always
+                         :selection/auto-confirm?        false
+                         :selection/lifecycle            :finalized}
+                  on-complete (assoc :selection/on-complete on-complete))]
+        {:db updated-db :selection sel}))))
 
 
 ;; =====================================================
@@ -171,7 +217,10 @@
                                                    [[:db/retract obj-eid :object/replacement-pending true]])
                                         db-after-cost)
                     destination (get in-flight-event :event/to)]
-                (zone-change-dispatch/move-to-zone-db db-marker-cleared object-id destination))))
+                ;; Guard: only move if the object still exists (not retracted by cost execution)
+                (if (q/get-object-eid db-marker-cleared object-id)
+                  (zone-change-dispatch/move-to-zone-db db-marker-cleared object-id destination)
+                  db-marker-cleared))))
 
           :redirect
           ;; Move to redirect zone — no cost execution.

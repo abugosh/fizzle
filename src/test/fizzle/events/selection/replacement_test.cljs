@@ -100,6 +100,56 @@
    :replacement/object-id obj-id})
 
 
+(defn- make-card-with-discard-land-replacement
+  "Register a synthetic card with a :proceed replacement cost requiring discard-specific.
+   Simulates Mox Diamond style: proceed = discard a land (interactive), redirect = go to graveyard."
+  [db]
+  (let [card-id (random-uuid)
+        card-tx {:card/id   card-id
+                 :card/name "Synthetic Interactive Replacement Artifact"
+                 :card/types [:artifact]
+                 :card/replacement-effects
+                 [{:replacement/event :zone-change
+                   :replacement/match {:match/object :self
+                                       :match/to     :battlefield}
+                   :replacement/choices
+                   [{:choice/label  "Discard a land"
+                     :choice/action :proceed
+                     :choice/cost   {:effect/type     :discard-specific
+                                     :effect/criteria {:match/types #{:land}}
+                                     :effect/count    1
+                                     :effect/from     :hand}}
+                    {:choice/label       "Go to graveyard"
+                     :choice/action      :redirect
+                     :choice/redirect-to :graveyard}]}]}
+        db-with (d/db-with db [card-tx])
+        card-eid (d/q '[:find ?e .
+                        :in $ ?cid
+                        :where [?e :card/id ?cid]]
+                      db-with card-id)]
+    [db-with card-eid card-id]))
+
+
+(defn- add-interactive-replacement-object-to-hand
+  "Add a synthetic interactive replacement artifact to player's hand.
+   Returns [db obj-id replacement-entity-id]."
+  [db owner]
+  (let [[db card-eid _] (make-card-with-discard-land-replacement db)
+        card-data (d/pull db
+                          [:card/types :card/power :card/toughness :card/triggers :card/replacement-effects]
+                          card-eid)
+        player-eid (q/get-player-eid db owner)
+        obj-id (random-uuid)
+        obj-tx (objects/build-object-tx db card-eid card-data :hand player-eid 0 :id obj-id)
+        db (d/db-with db [obj-tx])
+        obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
+        replacement-eid (d/q '[:find ?r .
+                               :in $ ?o
+                               :where [?o :object/replacement-effects ?r]]
+                             db obj-eid)]
+    [db obj-id replacement-eid]))
+
+
 ;; =====================================================
 ;; A. sel-spec :replacement-choice Validation
 ;; =====================================================
@@ -405,13 +455,26 @@
 
 
 (deftest test-redirect-does-not-execute-cost
-  (testing ":redirect path does NOT execute :choice/cost even if the proceed choice had a cost"
+  (testing ":redirect path does NOT execute :choice/cost — land stays in hand when :redirect chosen over :proceed with discard cost"
+    ;; Set up BOTH choices: proceed (with :discard-specific cost) and redirect.
+    ;; Select :redirect. Assert the land was NOT discarded.
+    ;; This is a meaningful test: the proceed cost is real (would discard the land),
+    ;; but choosing redirect must not trigger it.
     (let [db (th/create-test-db)
-          [db obj-id replacement-eid] (add-synthetic-object-to-hand db :player-1)
+          [db obj-id replacement-eid] (add-interactive-replacement-object-to-hand db :player-1)
           [db land-id] (th/add-card-to-zone db :forest :hand :player-1)
-          redirect-choice {:choice/label       "Decline: Go to graveyard"
-                           :choice/action      :redirect
-                           :choice/redirect-to :graveyard}
+          ;; The interactive-replacement card has BOTH :proceed (discard land) and :redirect choices.
+          ;; We fetch both from the replacement entity.
+          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
+          rep-entity (d/pull db [:db/id :replacement/choices] replacement-eid)
+          choices (:replacement/choices rep-entity)
+          proceed-choice (first (filter #(= :proceed (:choice/action %)) choices))
+          redirect-choice (first (filter #(= :redirect (:choice/action %)) choices))
+          _ (is (some? proceed-choice) "Precondition: proceed choice with discard cost must exist")
+          _ (is (some? redirect-choice) "Precondition: redirect choice must exist")
+          _ (is (= :discard-specific (get-in proceed-choice [:choice/cost :effect/type]))
+                "Precondition: proceed cost is :discard-specific (would discard the land if chosen)")
+          ;; Build selection with BOTH choices present; player selects :redirect
           sel {:selection/type :replacement-choice
                :selection/player-id :player-1
                :selection/object-id obj-id
@@ -420,16 +483,15 @@
                                              :event/object obj-id
                                              :event/from  :hand
                                              :event/to    :battlefield}
-               :selection/choices [redirect-choice]
+               :selection/choices choices
                :selection/selected redirect-choice
                :selection/validation :always
                :selection/auto-confirm? false}
-          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
           db (d/db-with db [[:db/add obj-eid :object/replacement-pending true]])
           result (sel-core/execute-confirmed-selection db sel)
           result-db (:db result)]
       (is (= :hand (:object/zone (q/get-object result-db land-id)))
-          "land card should still be in hand after :redirect (no cost executed)"))))
+          "land card should still be in hand — :redirect choice must not execute proceed's discard cost"))))
 
 
 (deftest test-redirect-no-infinite-replacement-loop
@@ -612,56 +674,6 @@
 ;; I. :proceed with interactive cost chains to discard selection
 ;; =====================================================
 
-(defn- make-card-with-discard-land-replacement
-  "Register a synthetic card with a :proceed replacement cost requiring discard-specific.
-   Simulates Mox Diamond style: proceed = discard a land (interactive), redirect = go to graveyard."
-  [db]
-  (let [card-id (random-uuid)
-        card-tx {:card/id   card-id
-                 :card/name "Synthetic Interactive Replacement Artifact"
-                 :card/types [:artifact]
-                 :card/replacement-effects
-                 [{:replacement/event :zone-change
-                   :replacement/match {:match/object :self
-                                       :match/to     :battlefield}
-                   :replacement/choices
-                   [{:choice/label  "Discard a land"
-                     :choice/action :proceed
-                     :choice/cost   {:effect/type     :discard-specific
-                                     :effect/criteria {:match/types #{:land}}
-                                     :effect/count    1
-                                     :effect/from     :hand}}
-                    {:choice/label       "Go to graveyard"
-                     :choice/action      :redirect
-                     :choice/redirect-to :graveyard}]}]}
-        db-with (d/db-with db [card-tx])
-        card-eid (d/q '[:find ?e .
-                        :in $ ?cid
-                        :where [?e :card/id ?cid]]
-                      db-with card-id)]
-    [db-with card-eid card-id]))
-
-
-(defn- add-interactive-replacement-object-to-hand
-  "Add a synthetic interactive replacement artifact to player's hand.
-   Returns [db obj-id replacement-entity-id]."
-  [db owner]
-  (let [[db card-eid _] (make-card-with-discard-land-replacement db)
-        card-data (d/pull db
-                          [:card/types :card/power :card/toughness :card/triggers :card/replacement-effects]
-                          card-eid)
-        player-eid (q/get-player-eid db owner)
-        obj-id (random-uuid)
-        obj-tx (objects/build-object-tx db card-eid card-data :hand player-eid 0 :id obj-id)
-        db (d/db-with db [obj-tx])
-        obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
-        replacement-eid (d/q '[:find ?r .
-                               :in $ ?o
-                               :where [?o :object/replacement-effects ?r]]
-                             db obj-eid)]
-    [db obj-id replacement-eid]))
-
-
 (deftest test-proceed-with-interactive-cost-opens-discard-selection
   (testing ":proceed with interactive :discard-specific cost builds a land-discard pending selection"
     (let [db (th/create-test-db)
@@ -754,6 +766,42 @@
           "artifact should be on battlefield after full interactive :proceed chain")
       (is (= :graveyard (:object/zone (q/get-object final-db land-id)))
           "land should be in graveyard after being discarded as cost"))))
+
+
+(deftest test-proceed-with-dead-object-is-noop
+  (testing ":proceed with retracted (dead) object does not crash — returns db cleanly"
+    ;; Guard: if obj-eid is nil (object retracted), replacement.cljs checks (if obj-eid ...)
+    ;; This test verifies that guard is exercised and no exception is thrown.
+    (let [db (th/create-test-db)
+          [db obj-id replacement-eid] (add-synthetic-object-to-hand db :player-1)
+          proceed-choice {:choice/label  "Proceed: Free"
+                          :choice/action :proceed}
+          obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db obj-id)
+          ;; Set replacement-pending THEN retract the object entirely
+          db-with-pending (d/db-with db [[:db/add obj-eid :object/replacement-pending true]])
+          db-dead (d/db-with db-with-pending [[:db/retractEntity obj-eid]])
+          sel {:selection/type :replacement-choice
+               :selection/player-id :player-1
+               :selection/object-id obj-id
+               :selection/replacement-entity-id replacement-eid
+               :selection/replacement-event {:event/type  :zone-change
+                                             :event/object obj-id
+                                             :event/from  :hand
+                                             :event/to    :battlefield}
+               :selection/choices [proceed-choice]
+               :selection/selected proceed-choice
+               :selection/validation :always
+               :selection/auto-confirm? false}
+          ;; Should NOT throw even though the object is gone
+          result (sel-core/execute-confirmed-selection db-dead sel)
+          result-db (:db result)]
+      (is (map? result)
+          "execute-confirmed-selection should return a map even when object is dead (retracted)")
+      (is (contains? result :db)
+          "result should have :db key")
+      ;; Object is gone — get-object returns nil
+      (is (nil? (q/get-object result-db obj-id))
+          "dead object should remain nil in result db"))))
 
 
 (deftest test-build-then-confirm-selection-full-cycle
