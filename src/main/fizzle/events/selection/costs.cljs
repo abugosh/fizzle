@@ -749,24 +749,41 @@
      app-db - Full re-frame app-db with :game/pending-selection
      color - Keyword like :black, :blue, :colorless
 
-   Returns updated app-db."
+   Returns updated app-db.
+
+   Contract: :selection/generic-remaining and :selection/remaining-pool must be
+   present (non-nil) in pending-selection. Missing or nil means malformed selection.
+   Note: generic-remaining=0 is LEGITIMATE (at-limit). remaining-pool={} is LEGITIMATE.
+   The violation is specifically key-absence or nil — use contains? not pos-int?."
   [app-db color]
-  (let [selection (:game/pending-selection app-db)
-        remaining (get selection :selection/generic-remaining 0)
-        pool (get selection :selection/remaining-pool {})
-        available (get pool color 0)]
-    (if (or (zero? remaining) (zero? available))
-      app-db
-      (let [new-remaining (dec remaining)
-            new-allocation (update (:selection/allocation selection) color (fnil inc 0))
-            new-pool (update pool color dec)
-            updated-db (-> app-db
-                           (assoc-in [:game/pending-selection :selection/generic-remaining] new-remaining)
-                           (assoc-in [:game/pending-selection :selection/allocation] new-allocation)
-                           (assoc-in [:game/pending-selection :selection/remaining-pool] new-pool))]
-        (if (zero? new-remaining)
-          (core/confirm-selection-impl updated-db)
-          updated-db)))))
+  (let [selection (:game/pending-selection app-db)]
+    (when-not (and (contains? selection :selection/generic-remaining)
+                   (some? (:selection/generic-remaining selection)))
+      (throw (ex-info "allocate-mana-color-impl: :selection/generic-remaining missing from pending-selection"
+                      {:effect-type :mana-allocation
+                       :color color
+                       :selection selection})))
+    (when-not (and (contains? selection :selection/remaining-pool)
+                   (some? (:selection/remaining-pool selection)))
+      (throw (ex-info "allocate-mana-color-impl: :selection/remaining-pool missing from pending-selection"
+                      {:effect-type :mana-allocation
+                       :color color
+                       :selection selection})))
+    (let [remaining (:selection/generic-remaining selection)
+          pool (:selection/remaining-pool selection)
+          available (get pool color 0)]
+      (if (or (zero? remaining) (zero? available))
+        app-db
+        (let [new-remaining (dec remaining)
+              new-allocation (update (:selection/allocation selection) color (fnil inc 0))
+              new-pool (update pool color dec)
+              updated-db (-> app-db
+                             (assoc-in [:game/pending-selection :selection/generic-remaining] new-remaining)
+                             (assoc-in [:game/pending-selection :selection/allocation] new-allocation)
+                             (assoc-in [:game/pending-selection :selection/remaining-pool] new-pool))]
+          (if (zero? new-remaining)
+            (core/confirm-selection-impl updated-db)
+            updated-db))))))
 
 
 (defn reset-mana-allocation-impl

@@ -257,6 +257,119 @@
 
 
 ;; =====================================================
+;; Contract guard tests (fizzle-hxbe)
+;; =====================================================
+
+(deftest test-allocate-mana-color-throws-on-missing-generic-remaining
+  (testing "Missing :selection/generic-remaining key throws ex-info"
+    (let [app-db {:game/pending-selection
+                  {:selection/type :mana-allocation
+                   ;; :selection/generic-remaining deliberately absent
+                   :selection/generic-total 2
+                   :selection/allocation {}
+                   :selection/remaining-pool {:black 3 :blue 0 :white 0
+                                              :red 0 :green 0 :colorless 0}}}]
+      (is (thrown-with-msg? js/Error
+                            #"generic-remaining missing"
+            (costs/allocate-mana-color-impl app-db :black))))))
+
+
+(deftest test-allocate-mana-color-throws-on-nil-generic-remaining
+  (testing "Nil :selection/generic-remaining key throws ex-info"
+    (let [app-db {:game/pending-selection
+                  {:selection/type :mana-allocation
+                   :selection/generic-remaining nil
+                   :selection/generic-total 2
+                   :selection/allocation {}
+                   :selection/remaining-pool {:black 3 :blue 0 :white 0
+                                              :red 0 :green 0 :colorless 0}}}]
+      (is (thrown-with-msg? js/Error
+                            #"generic-remaining missing"
+            (costs/allocate-mana-color-impl app-db :black))))))
+
+
+(deftest test-allocate-mana-color-throws-on-missing-remaining-pool
+  (testing "Missing :selection/remaining-pool key throws ex-info"
+    (let [app-db {:game/pending-selection
+                  {:selection/type :mana-allocation
+                   :selection/generic-remaining 2
+                   :selection/generic-total 2
+                   :selection/allocation {}
+                   ;; :selection/remaining-pool deliberately absent
+                   }}]
+      (is (thrown-with-msg? js/Error
+                            #"remaining-pool missing"
+            (costs/allocate-mana-color-impl app-db :black))))))
+
+
+(deftest test-allocate-mana-color-throws-on-nil-remaining-pool
+  (testing "Nil :selection/remaining-pool key throws ex-info"
+    (let [app-db {:game/pending-selection
+                  {:selection/type :mana-allocation
+                   :selection/generic-remaining 2
+                   :selection/generic-total 2
+                   :selection/allocation {}
+                   :selection/remaining-pool nil}}]
+      (is (thrown-with-msg? js/Error
+                            #"remaining-pool missing"
+            (costs/allocate-mana-color-impl app-db :black))))))
+
+
+(deftest test-allocate-mana-color-zero-generic-remaining-is-noop
+  (testing "generic-remaining=0 (at-limit) is a legitimate no-op — does NOT throw"
+    ;; This tests that the contains? guard passes for key-present-with-value-0.
+    ;; The (zero? remaining) arm handles the no-op itself.
+    (let [app-db {:game/pending-selection
+                  {:selection/type :mana-allocation
+                   :selection/generic-remaining 0
+                   :selection/generic-total 2
+                   :selection/allocation {:black 2}
+                   :selection/remaining-pool {:black 0 :blue 1 :white 0
+                                              :red 0 :green 0 :colorless 0}}}
+          result (costs/allocate-mana-color-impl app-db :blue)]
+      (is (= app-db result)))))
+
+
+(deftest test-allocate-mana-color-missing-color-in-pool-is-noop
+  (testing "Color absent from pool (per-color missing) is a legitimate no-op — does NOT throw"
+    ;; pool has only :black; clicking :red uses (get pool :red 0) = 0 → no-op
+    (let [app-db {:game/pending-selection
+                  {:selection/type :mana-allocation
+                   :selection/generic-remaining 2
+                   :selection/generic-total 2
+                   :selection/allocation {}
+                   :selection/remaining-pool {:black 2}}}
+          result (costs/allocate-mana-color-impl app-db :red)]
+      (is (= app-db result)))))
+
+
+(deftest test-allocate-mana-color-zero-color-in-pool-is-noop
+  (testing "Color with value 0 in pool is a legitimate no-op — does NOT throw"
+    ;; pool has {:black 0 :blue 1}; clicking :black uses (get pool :black 0) = 0 → no-op
+    (let [app-db {:game/pending-selection
+                  {:selection/type :mana-allocation
+                   :selection/generic-remaining 2
+                   :selection/generic-total 2
+                   :selection/allocation {}
+                   :selection/remaining-pool {:black 0 :blue 1}}}
+          result (costs/allocate-mana-color-impl app-db :black)]
+      (is (= app-db result)))))
+
+
+(deftest test-allocate-mana-color-ex-data-includes-effect-type
+  (testing "Thrown ex-info has :effect-type :mana-allocation in ex-data"
+    (let [app-db {:game/pending-selection
+                  {:selection/type :mana-allocation
+                   ;; missing both keys to trigger first guard
+                   :selection/allocation {}}}]
+      (try
+        (costs/allocate-mana-color-impl app-db :black)
+        (is false "Expected exception was not thrown")
+        (catch js/Error e
+          (is (= :mana-allocation (:effect-type (ex-data e)))))))))
+
+
+;; =====================================================
 ;; Edge case tests
 ;; =====================================================
 
