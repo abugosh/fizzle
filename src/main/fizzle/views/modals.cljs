@@ -8,6 +8,7 @@
     [fizzle.views.selection.common :as common]
     [fizzle.views.selection.custom :as custom]
     [fizzle.views.selection.reorder :as reorder]
+    [fizzle.views.selection.replacement :as replacement-view]
     [fizzle.views.selection.zone-pick :as zone-pick]
     [re-frame.core :as rf]))
 
@@ -102,6 +103,10 @@
 (defmethod render-selection-modal :spell-mode [s c] [custom/spell-mode-selection-modal s c])
 (defmethod render-selection-modal :discard-specific-cost [s c] [zone-pick/zone-pick-modal s c])
 (defmethod render-selection-modal :unless-pay [_ _] nil)
+
+
+(defmethod render-selection-modal :replacement-choice [s _]
+  [replacement-view/replacement-choice-modal s])
 
 
 ;; Combat

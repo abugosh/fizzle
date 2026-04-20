@@ -70,7 +70,8 @@
                    :else                              (:object/controller obj))]
     (-> obj
         (dissoc :db/id :object/card :object/owner :object/controller)
-        (dissoc :object/triggers)        ; trigger refs not portable
+        (dissoc :object/triggers)             ; trigger refs not portable
+        (dissoc :object/replacement-effects)  ; replacement-effect refs not portable
         (assoc :card/id card-id
                :object/owner owner-id
                :object/controller ctrl-id)
