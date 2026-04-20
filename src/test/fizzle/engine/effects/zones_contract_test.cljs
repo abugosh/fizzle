@@ -28,7 +28,7 @@
                   :effect/selection :bogus
                   :effect/count 3}]
       (is (thrown-with-msg? js/Error #"return-from-graveyard"
-                            (fx/execute-effect-checked db :player-1 effect)))
+            (fx/execute-effect-checked db :player-1 effect)))
       (try
         (fx/execute-effect-checked db :player-1 effect)
         (is false "Should have thrown")
@@ -43,9 +43,9 @@
   (testing ":return-from-graveyard throws ex-info when :effect/count is absent"
     (let [db (init-game-state)
           effect {:effect/type :return-from-graveyard
-                  :effect/selection :random}]  ;; no :effect/count key
+                  :effect/selection :random}]  ; no :effect/count key
       (is (thrown-with-msg? js/Error #"return-from-graveyard"
-                            (fx/execute-effect-checked db :player-1 effect)))
+            (fx/execute-effect-checked db :player-1 effect)))
       (try
         (fx/execute-effect-checked db :player-1 effect)
         (is false "Should have thrown")
@@ -63,7 +63,7 @@
                   :effect/selection :random
                   :effect/count nil}]
       (is (thrown-with-msg? js/Error #"return-from-graveyard"
-                            (fx/execute-effect-checked db :player-1 effect)))
+            (fx/execute-effect-checked db :player-1 effect)))
       (try
         (fx/execute-effect-checked db :player-1 effect)
         (is false "Should have thrown")
@@ -81,7 +81,7 @@
                   :effect/selection :random
                   :effect/count 0}]
       (is (thrown-with-msg? js/Error #"return-from-graveyard"
-                            (fx/execute-effect-checked db :player-1 effect)))
+            (fx/execute-effect-checked db :player-1 effect)))
       (try
         (fx/execute-effect-checked db :player-1 effect)
         (is false "Should have thrown")
@@ -99,7 +99,7 @@
                   :effect/selection :random
                   :effect/count -1}]
       (is (thrown-with-msg? js/Error #"return-from-graveyard"
-                            (fx/execute-effect-checked db :player-1 effect)))
+            (fx/execute-effect-checked db :player-1 effect)))
       (try
         (fx/execute-effect-checked db :player-1 effect)
         (is false "Should have thrown")
@@ -160,7 +160,7 @@
           effect {:effect/type :shuffle-from-graveyard-to-library
                   :effect/selection :bogus}]
       (is (thrown-with-msg? js/Error #"shuffle-from-graveyard-to-library"
-                            (fx/execute-effect-checked db :player-1 effect)))
+            (fx/execute-effect-checked db :player-1 effect)))
       (try
         (fx/execute-effect-checked db :player-1 effect)
         (is false "Should have thrown")

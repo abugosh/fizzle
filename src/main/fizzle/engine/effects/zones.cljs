@@ -282,8 +282,8 @@
                           (or (nil? raw-target) (= raw-target :self-controller))
                           player-id
                           :else raw-target)]
-    (case selection
-      :auto
+    (cond
+      (= selection :auto)
       (let [gy-cards (or (q/get-objects-in-zone db resolved-player :graveyard) [])
             ;; Move all graveyard cards to library (each move dispatches zone-change triggers).
             ;; Triggers are embedded in objects at creation (build-object-tx) and persist through
@@ -294,5 +294,13 @@
                              db
                              gy-cards)]
         (zones/shuffle-library db-moved resolved-player))
-      ;; :player (interactive) — zone-pick builder handles UI, we just signal
-      {:db db :needs-selection effect})))
+
+      (= selection :player)
+      ;; Interactive — zone-pick builder handles UI, we just signal
+      {:db db :needs-selection effect}
+
+      :else
+      (throw (ex-info "shuffle-from-graveyard-to-library: unmatched :effect/selection value"
+                      {:effect-type :shuffle-from-graveyard-to-library
+                       :selection   selection
+                       :effect      effect})))))
