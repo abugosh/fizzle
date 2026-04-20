@@ -6,14 +6,14 @@
 
 
 ;; ============================================================
-;; A. All 31 minimal-valid-selections pass ::selection
+;; A. All 32 minimal-valid-selections pass ::selection
 ;; ============================================================
 
 (deftest test-exercise-generates-valid-selections
-  (testing "spec can generate valid selection maps for all 31 types (s/exercise substitute)"
+  (testing "spec can generate valid selection maps for all 32 types (s/exercise substitute)"
     ;; cljs.spec.gen.alpha requires test.check which is not in this project's deps.
     ;; minimal-valid-selections covers the same guarantee with full type coverage:
-    ;; one known-valid instance per type, all 31 conforming to ::selection.
+    ;; one known-valid instance per type, all 32 conforming to ::selection.
     (doseq [[sel-type minimal] sel-spec/minimal-valid-selections]
       (is (s/valid? ::sel-spec/selection minimal)
           (str "Failed for type " sel-type ": "
@@ -21,8 +21,8 @@
 
 
 (deftest test-minimal-selections-count
-  (testing "exactly 31 selection types covered"
-    (is (= 31 (count sel-spec/minimal-valid-selections)))))
+  (testing "exactly 32 selection types covered"
+    (is (= 32 (count sel-spec/minimal-valid-selections)))))
 
 
 ;; ============================================================

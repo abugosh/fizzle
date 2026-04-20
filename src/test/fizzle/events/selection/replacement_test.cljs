@@ -209,6 +209,25 @@
             "selection without :selection/replacement-event should throw spec failure")))))
 
 
+(deftest test-replacement-choice-spec-rejects-missing-selected
+  (testing ":replacement-choice selection without :selection/selected fails spec"
+    (binding [spec-util/*throw-on-spec-failure* true]
+      (let [choices [{:choice/label "Proceed" :choice/action :proceed}
+                     {:choice/label "Decline" :choice/action :redirect :choice/redirect-to :graveyard}]
+            sel {:selection/type :replacement-choice
+                 :selection/player-id :player-1
+                 :selection/object-id (random-uuid)
+                 :selection/replacement-entity-id 42
+                 :selection/replacement-event {:event/type :zone-change}
+                 :selection/choices choices
+                 :selection/select-count 1
+                 :selection/validation :always
+                 :selection/auto-confirm? false}]
+        (is (thrown? js/Error
+              (sel-spec/set-pending-selection {:game/db nil} sel))
+            "selection without :selection/selected should throw spec failure")))))
+
+
 ;; =====================================================
 ;; B. build-selection-for-replacement
 ;; =====================================================

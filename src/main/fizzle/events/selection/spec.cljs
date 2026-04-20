@@ -743,9 +743,9 @@
                 :selection/choices
                 :selection/validation
                 :selection/auto-confirm?
-                :selection/select-count]
-          :opt [:selection/selected
-                :selection/lifecycle]))
+                :selection/select-count
+                :selection/selected]
+          :opt [:selection/lifecycle]))
 
 
 ;; =====================================================
@@ -1071,7 +1071,19 @@
     :selection/validation :at-most
     :selection/auto-confirm? false
     :selection/candidates #{:land-1}
-    :selection/candidate-ids #{:land-1}}})
+    :selection/candidate-ids #{:land-1}}
+
+   :replacement-choice
+   {:selection/type :replacement-choice
+    :selection/player-id :player-1
+    :selection/object-id #uuid "00000000-0000-0000-0000-000000000001"
+    :selection/replacement-entity-id 42
+    :selection/replacement-event {:event/type :zone-change}
+    :selection/choices [{:choice/label "Proceed" :choice/action :proceed}]
+    :selection/validation :always
+    :selection/auto-confirm? false
+    :selection/select-count 1
+    :selection/selected #{}}})
 
 
 (defn minimal-valid-selection
