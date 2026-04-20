@@ -142,43 +142,28 @@
 ;; =====================================================
 
 (deftest test-toggle-selection-impl-with-nil-pending-selection
-  (testing "toggle-selection-impl does not crash when :game/pending-selection is absent"
-    ;; When toggle-selection-impl is called with no pending-selection,
-    ;; (:game/pending-selection app-db) returns nil.
-    ;; The function reads nil as the selection, then:
-    ;;   selected  = (get nil :selection/selected #{}) = #{}
-    ;;   valid-targets = nil (no filter applied)
-    ;;   select-count  = (get nil :selection/select-count 0) = 0
-    ;;   currently-selected? = (contains? #{} id) = false
-    ;; Falls to the :else branch (at limit with 0 select-count): returns [app-db false].
-    ;; So the result is {:app-db app-db :auto-confirm? false} — no crash.
+  (testing "toggle-selection-impl throws when :game/pending-selection is absent (no select-count)"
+    ;; With no pending-selection, select-count is nil.
+    ;; The pos-int? entry guard fires and throws ex-info.
+    ;; This replaces the old silent-noop behavior that was the dx7b bug class.
     (let [db (th/create-test-db)
           app-db {:game/db db}   ; no :game/pending-selection key
-          result (core/toggle-selection-impl app-db :some-id)]
-
-      (is (map? result)
-          "toggle-selection-impl must return a map even when pending-selection is absent")
-      (is (contains? result :app-db)
-          "Result must have :app-db key")
-      (is (contains? result :auto-confirm?)
-          "Result must have :auto-confirm? key")
-      (is (= app-db (:app-db result))
-          "app-db must be unchanged — no pending-selection to modify")
-      (is (false? (:auto-confirm? result))
-          "auto-confirm? must be false when no selection exists"))))
+          ]
+      (is (thrown?
+            js/Error
+            (core/toggle-selection-impl app-db :some-id))
+          "toggle-selection-impl must throw when pending-selection is absent — no silent noop"))))
 
 
 (deftest test-toggle-selection-impl-with-nil-key-present
-  (testing "toggle-selection-impl handles explicit nil :game/pending-selection"
-    ;; Same nil-safety contract as above, but the key is present with nil value.
+  (testing "toggle-selection-impl throws when :game/pending-selection is nil (no select-count)"
+    ;; Same contract: nil selection means nil select-count; pos-int? guard fires and throws.
     (let [db (th/create-test-db)
-          app-db {:game/db db :game/pending-selection nil}
-          result (core/toggle-selection-impl app-db :some-id)]
-
-      (is (false? (:auto-confirm? result))
-          "auto-confirm? must be false when pending-selection is nil")
-      (is (= app-db (:app-db result))
-          "app-db must be unchanged when pending-selection is nil"))))
+          app-db {:game/db db :game/pending-selection nil}]
+      (is (thrown?
+            js/Error
+            (core/toggle-selection-impl app-db :some-id))
+          "toggle-selection-impl must throw when pending-selection is nil — no silent noop"))))
 
 
 ;; =====================================================

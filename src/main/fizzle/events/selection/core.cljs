@@ -13,6 +13,7 @@
   (:require
     [fizzle.db.queries :as queries]
     [fizzle.engine.effects :as effects]
+    [fizzle.engine.spec-util :as spec-util]
     [fizzle.engine.validation :as validation]
     [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.events.selection.spec :as sel-spec]
@@ -420,50 +421,81 @@
    The caller (re-frame handler) reads :auto-confirm? and dispatches
    ::confirm-selection as an fx effect when true. This ensures the confirmation
    goes through the event system and hits the :db effect handler chokepoint
-   (for SBA + bot checks)."
+   (for SBA + bot checks).
+
+   Contract: :selection/select-count MUST be a positive int.
+   Throws ex-info with :selection-type in ex-data if violated.
+   This is a production guard — not dev-only — because fizzle-dx7b proved
+   silent-noop on missing select-count reaches users."
   [app-db id]
-  (let [selection (get app-db :game/pending-selection)
-        selected (get selection :selection/selected #{})
-        valid-targets (:selection/valid-targets selection)
-        select-count (get selection :selection/select-count 0)
-        currently-selected? (contains? selected id)
-        [new-db selected?]
-        (cond
-          ;; Reject invalid targets when valid-targets set exists
-          (and valid-targets (not (contains? (set valid-targets) id)))
-          [app-db false]
+  (let [selection (get app-db :game/pending-selection)]
+    ;; Layer 3: validate full selection shape at entry (dev-only via goog.DEBUG).
+    ;; Catches any writer that bypasses set-pending-selection.
+    (spec-util/validate-at-chokepoint! ::sel-spec/selection selection "toggle-selection-impl")
+    (let [selected (get selection :selection/selected #{})
+          valid-targets (:selection/valid-targets selection)
+          select-count (:selection/select-count selection)
+          currently-selected? (contains? selected id)]
+      ;; Layer 1a: production guard — select-count MUST be a positive int.
+      ;; pos-int? excludes nil, 0, negative, and non-integer in one predicate.
+      (when-not (pos-int? select-count)
+        (throw (ex-info "toggle-selection-impl: :selection/select-count must be a positive int"
+                        {:selection-type (:selection/type selection)
+                         :select-count select-count
+                         :selection selection})))
+      (let [[new-db selected?]
+            (cond
+              ;; Reject invalid targets when valid-targets set exists
+              (and valid-targets (not (contains? (set valid-targets) id)))
+              [app-db false]
 
-          ;; Deselect: remove from set
-          currently-selected?
-          [(assoc-in app-db [:game/pending-selection :selection/selected]
-                     (disj selected id))
-           false]
+              ;; Deselect: remove from set
+              currently-selected?
+              [(assoc-in app-db [:game/pending-selection :selection/selected]
+                         (disj selected id))
+               false]
 
-          ;; Single-select (select-count=1): replace current selection
-          (= select-count 1)
-          [(assoc-in app-db [:game/pending-selection :selection/selected]
-                     #{id})
-           true]
+              ;; Single-select (select-count=1): replace current selection
+              (= select-count 1)
+              [(assoc-in app-db [:game/pending-selection :selection/selected]
+                         #{id})
+               true]
 
-          ;; Unlimited select (exact?=false, e.g. exile-cards): always add
-          (false? (:selection/exact? selection))
-          [(assoc-in app-db [:game/pending-selection :selection/selected]
-                     (conj selected id))
-           true]
+              ;; Unlimited select (exact?=false, e.g. exile-cards): always add
+              (false? (:selection/exact? selection))
+              [(assoc-in app-db [:game/pending-selection :selection/selected]
+                         (conj selected id))
+               true]
 
-          ;; Multi-select under limit: add
-          (< (count selected) select-count)
-          [(assoc-in app-db [:game/pending-selection :selection/selected]
-                     (conj selected id))
-           true]
+              ;; Multi-select under limit: add
+              (< (count selected) select-count)
+              [(assoc-in app-db [:game/pending-selection :selection/selected]
+                         (conj selected id))
+               true]
 
-          ;; At limit: ignore
-          :else [app-db false])
-        auto-confirm? (and selected?
-                           (= select-count 1)
-                           (:selection/auto-confirm? selection))]
-    {:app-db new-db
-     :auto-confirm? (boolean auto-confirm?)}))
+              ;; Layer 1b: explicit at-limit arm — legitimate UX no-op.
+              ;; A user clicked when already at/above the selection limit.
+              ;; Returns unchanged app-db (click is ignored cleanly).
+              ;; This arm MUST precede :else to preserve this intended behavior.
+              (>= (count selected) select-count)
+              [app-db false]
+
+              ;; Layer 1b: terminal :else — exhaustiveness safety net.
+              ;; This branch is structurally unreachable given valid inputs
+              ;; (every state above is covered). If reached, it signals a
+              ;; contract violation (invariant broken upstream).
+              :else
+              (throw (ex-info "toggle-selection-impl: cond fell through to :else — contract violation, no arm matched"
+                              {:selection-type (:selection/type selection)
+                               :selected selected
+                               :select-count select-count
+                               :id id
+                               :selection selection})))
+            auto-confirm? (and selected?
+                               (= select-count 1)
+                               (:selection/auto-confirm? selection))]
+        {:app-db new-db
+         :auto-confirm? (boolean auto-confirm?)}))))
 
 
 ;; =====================================================
