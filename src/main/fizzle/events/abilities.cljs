@@ -11,6 +11,7 @@
     [fizzle.engine.targeting :as targeting]
     [fizzle.events.selection.core :as selection-core]
     [fizzle.events.selection.costs :as sel-costs]
+    [fizzle.events.selection.mana-ability :as mana-ability]
     [fizzle.events.selection.spec :as sel-spec]
     [fizzle.history.descriptions :as descriptions]
     [re-frame.core :as rf]))
@@ -29,12 +30,20 @@
   (fn [db [_ object-id mana-color player-id ability-index]]
     (let [game-db (:game/db db)
           pid (or player-id (queries/get-human-player-id game-db))
+          result (mana-ability/activate-mana-ability-with-generic-mana
+                   game-db pid object-id mana-color ability-index)
+          game-db-after (:db result)
+          pending-sel (:pending-selection result)
           description (descriptions/describe-activate-mana object-id mana-color game-db)
-          game-db-after (activate-mana-ability game-db pid object-id mana-color ability-index)]
-      (-> db
-          (assoc :game/db game-db-after)
-          (assoc :history/pending-entry
-                 (descriptions/build-pending-entry game-db-after ::activate-mana-ability description pid))))))
+          base (-> db
+                   (assoc :game/db game-db-after)
+                   (assoc :history/pending-entry
+                          (descriptions/build-pending-entry game-db-after ::activate-mana-ability description pid)))]
+      ;; Critical: use set-pending-selection (synchronous) — do NOT rf/dispatch inside handler.
+      ;; Async dispatch races with :history/pending-entry assoc (ADR-020 prohibition).
+      (if pending-sel
+        (sel-spec/set-pending-selection base pending-sel)
+        base))))
 
 
 ;; === Activate Non-Mana Ability ===

@@ -13,6 +13,7 @@
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.events.selection.core :as core]
+    [fizzle.events.selection.mana-ability :as mana-ability]
     [re-frame.core :as rf]))
 
 
@@ -694,8 +695,10 @@
 (defmethod core/execute-confirmed-selection :mana-allocation
   [game-db selection]
   (let [source-type (:selection/source-type selection)]
-    (if (= source-type :ability)
-      (confirm-ability-mana-allocation game-db selection)
+    (case source-type
+      :ability     (confirm-ability-mana-allocation game-db selection)
+      :mana-ability (mana-ability/confirm-mana-ability-mana-allocation game-db selection)
+      ;; default: spell path (no source-type set, or :spell)
       (confirm-spell-mana-allocation game-db selection))))
 
 
