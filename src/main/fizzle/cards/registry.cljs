@@ -5,6 +5,7 @@
    Consumers access cards through engine/cards.cljs, not this namespace directly."
   (:require
     [fizzle.cards.artifacts.altar-of-dementia :as altar-of-dementia]
+    [fizzle.cards.artifacts.chromatic-sphere :as chromatic-sphere]
     [fizzle.cards.artifacts.defense-grid :as defense-grid]
     [fizzle.cards.artifacts.helm-of-awakening :as helm-of-awakening]
     [fizzle.cards.artifacts.lions-eye-diamond :as lions-eye-diamond]
@@ -143,6 +144,7 @@
        mind-stone/card
        mox-diamond/card
        altar-of-dementia/card
+       chromatic-sphere/card
        defense-grid/card
        phyrexian-devourer/card
        helm-of-awakening/card
