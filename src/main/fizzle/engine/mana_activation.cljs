@@ -14,13 +14,17 @@
 
 (defn activate-mana-ability
   "Activate a mana ability on a land.
-   Pure function: (db, player-id, object-id, mana-color) -> db
+   Pure function: (db, player-id, object-id, mana-color[, ability-index]) -> db
 
    Arguments:
      db - Datascript database value
      player-id - The player activating the ability
      object-id - The land to tap
      mana-color - The color of mana to produce (:white :blue :black :red :green)
+     ability-index - (optional) Index into :card/abilities of the mana ability to
+                     activate. Required when a permanent has multiple mana abilities
+                     producing the same color (e.g. Crystal Vein). When omitted,
+                     falls back to color-based lookup.
 
    Flow:
      1. Find mana ability from card data
@@ -33,98 +37,113 @@
    called by abilities/pay-all-costs in step 3. This is the tap chokepoint.
 
    Returns unchanged db if any step fails."
-  [db player-id object-id mana-color]
-  (if-not (priority/in-priority-phase? (:game/phase (q/get-game-state db)))
-    db
-    (let [obj (q/get-object db object-id)
-          player-eid (q/get-player-eid db player-id)]
-      ;; Basic validation
-      (if (and obj
-               player-eid
-               (= (:object/zone obj) :battlefield)
-               (= (:db/id (:object/controller obj)) player-eid))
-        ;; Find mana ability from card data (with override grant support)
-        (let [card (:object/card obj)
-              card-abilities (:card/abilities card)
-              ;; Check for :land-type-override grants — applies when Vision Charm
-              ;; or similar effects change what a land produces until EOT.
-              ;; If present, replace each mana ability's :ability/produces with
-              ;; the grant's :new-produces value.
-              override-grants (filterv #(= :land-type-override (:grant/type %))
-                                       (or (:object/grants obj) []))
-              effective-abilities (if (seq override-grants)
-                                    (let [override (first override-grants)
-                                          new-produces (get-in override [:grant/data :new-produces])]
-                                      (mapv (fn [ability]
-                                              (if (= :mana (:ability/type ability))
-                                                (assoc ability :ability/produces new-produces)
-                                                ability))
-                                            card-abilities))
-                                    card-abilities)
-              all-mana-abilities (filter #(= :mana (:ability/type %)) effective-abilities)
-              ;; Find mana ability that produces the requested color
-              ;; Handles multiple patterns:
-              ;; 1. :ability/produces {:blue 1} - direct match
-              ;; 2. :ability/produces {:any 1} - any color (Gemstone Mine, Lotus Petal)
-              ;; 3. :ability/effects with :add-mana {:any N} - City of Brass, LED
-              ;; If mana-color is nil or no match found, fall back to first mana ability
-              matching-ability (when mana-color
-                                 (first (filter
-                                          (fn [ability]
-                                            (let [produces (:ability/produces ability)
-                                                  effects (:ability/effects ability)
-                                                  ;; Check if any effect adds {:any N} mana
-                                                  has-any-mana-effect? (some #(and (= :add-mana (:effect/type %))
-                                                                                   (contains? (:effect/mana %) :any))
-                                                                             effects)]
-                                              (or
-                                                ;; Direct produces match
-                                                (and produces (contains? produces mana-color))
-                                                ;; Produces any color
-                                                (and produces (contains? produces :any))
-                                                ;; Effect adds any color
-                                                has-any-mana-effect?)))
-                                          all-mana-abilities)))
-              ;; Fall back to first mana ability if no match or nil color
-              mana-ability (or matching-ability (first all-mana-abilities))]
-          (if (and mana-ability
-                   (abilities/can-activate? db object-id mana-ability))
-            ;; Execute ability
-            (let [;; Step 1: Pay costs (tap, remove counters, etc.)
-                  db-after-costs (abilities/pay-all-costs db object-id (:ability/cost mana-ability))]
-              (if db-after-costs
-                (let [;; Step 2a: Handle :ability/produces (direct mana production)
-                      ;; Resolve {:any N} to chosen color
-                      produces (:ability/produces mana-ability)
-                      db-after-produces (if produces
-                                          (let [resolved-mana (if-let [any-count (:any produces)]
-                                                                {mana-color any-count}
-                                                                produces)]
-                                            (effects/execute-effect db-after-costs player-id
-                                                                    {:effect/type :add-mana
-                                                                     :effect/mana resolved-mana}))
-                                          db-after-costs)
-                      ;; Step 2b: Execute ability effects (mana and other effects)
-                      ;; Resolve :self targets to object-id before execution
-                      ;; Resolve :controller targets to player-id before execution
-                      ;; Resolve {:any N} mana effects to chosen color
-                      db-after-effects (reduce (fn [db' effect]
-                                                 (let [;; Resolve symbolic targets
-                                                       resolved-effect (stack/resolve-effect-target effect object-id player-id nil)
-                                                       ;; Resolve {:any N} mana to chosen color
-                                                       resolved-effect (if (= :add-mana (:effect/type resolved-effect))
-                                                                         (let [mana (:effect/mana resolved-effect)]
-                                                                           (if-let [any-count (:any mana)]
-                                                                             (assoc resolved-effect :effect/mana {mana-color any-count})
-                                                                             resolved-effect))
-                                                                         resolved-effect)]
-                                                   (effects/execute-effect db' player-id resolved-effect)))
-                                               db-after-produces
-                                               (:ability/effects mana-ability []))
-                      ;; Step 3: :permanent-tapped is now dispatched at the tap chokepoint
-                      ;; (costs/pay-cost :tap) — no longer dispatched here to prevent double-fire.
-                      ]
-                  db-after-effects)
-                db))
-            db))
-        db))))
+  ([db player-id object-id mana-color]
+   (activate-mana-ability db player-id object-id mana-color nil))
+  ([db player-id object-id mana-color ability-index]
+   (if-not (priority/in-priority-phase? (:game/phase (q/get-game-state db)))
+     db
+     (let [obj (q/get-object db object-id)
+           player-eid (q/get-player-eid db player-id)]
+       ;; Basic validation
+       (if (and obj
+                player-eid
+                (= (:object/zone obj) :battlefield)
+                (= (:db/id (:object/controller obj)) player-eid))
+         ;; Find mana ability from card data (with override grant support)
+         (let [card (:object/card obj)
+               card-abilities (:card/abilities card)
+               ;; Check for :land-type-override grants — applies when Vision Charm
+               ;; or similar effects change what a land produces until EOT.
+               ;; If present, replace each mana ability's :ability/produces with
+               ;; the grant's :new-produces value.
+               override-grants (filterv #(= :land-type-override (:grant/type %))
+                                        (or (:object/grants obj) []))
+               effective-abilities (if (seq override-grants)
+                                     (let [override (first override-grants)
+                                           new-produces (get-in override [:grant/data :new-produces])]
+                                       (mapv (fn [ability]
+                                               (if (= :mana (:ability/type ability))
+                                                 (assoc ability :ability/produces new-produces)
+                                                 ability))
+                                             card-abilities))
+                                     card-abilities)
+               ;; When ability-index is provided, resolve it against :card/abilities
+               ;; and verify the entry is a mana ability. Otherwise fall back to
+               ;; color-based lookup over the mana-ability-only subset.
+               indexed-ability (when ability-index
+                                 (let [candidate (nth effective-abilities ability-index nil)]
+                                   (when (= :mana (:ability/type candidate))
+                                     candidate)))
+               all-mana-abilities (filter #(= :mana (:ability/type %)) effective-abilities)
+               ;; Find mana ability that produces the requested color
+               ;; Handles multiple patterns:
+               ;; 1. :ability/produces {:blue 1} - direct match
+               ;; 2. :ability/produces {:any 1} - any color (Gemstone Mine, Lotus Petal)
+               ;; 3. :ability/effects with :add-mana {:any N} - City of Brass, LED
+               ;; If mana-color is nil or no match found, fall back to first mana ability
+               matching-ability (when (and (nil? indexed-ability) mana-color)
+                                  (first (filter
+                                           (fn [ability]
+                                             (let [produces (:ability/produces ability)
+                                                   effects (:ability/effects ability)
+                                                   ;; Check if any effect adds {:any N} mana
+                                                   has-any-mana-effect? (some #(and (= :add-mana (:effect/type %))
+                                                                                    (contains? (:effect/mana %) :any))
+                                                                              effects)]
+                                               (or
+                                                 ;; Direct produces match
+                                                 (and produces (contains? produces mana-color))
+                                                 ;; Produces any color
+                                                 (and produces (contains? produces :any))
+                                                 ;; Effect adds any color
+                                                 has-any-mana-effect?)))
+                                           all-mana-abilities)))
+               ;; Priority: explicit index > color match > first mana ability.
+               ;; If ability-index was provided but didn't resolve to a mana
+               ;; ability, leave mana-ability nil so the call becomes a no-op
+               ;; rather than silently firing the wrong ability.
+               mana-ability (cond
+                              indexed-ability indexed-ability
+                              ability-index nil
+                              :else (or matching-ability (first all-mana-abilities)))]
+           (if (and mana-ability
+                    (abilities/can-activate? db object-id mana-ability))
+             ;; Execute ability
+             (let [;; Step 1: Pay costs (tap, remove counters, etc.)
+                   db-after-costs (abilities/pay-all-costs db object-id (:ability/cost mana-ability))]
+               (if db-after-costs
+                 (let [;; Step 2a: Handle :ability/produces (direct mana production)
+                       ;; Resolve {:any N} to chosen color
+                       produces (:ability/produces mana-ability)
+                       db-after-produces (if produces
+                                           (let [resolved-mana (if-let [any-count (:any produces)]
+                                                                 {mana-color any-count}
+                                                                 produces)]
+                                             (effects/execute-effect db-after-costs player-id
+                                                                     {:effect/type :add-mana
+                                                                      :effect/mana resolved-mana}))
+                                           db-after-costs)
+                       ;; Step 2b: Execute ability effects (mana and other effects)
+                       ;; Resolve :self targets to object-id before execution
+                       ;; Resolve :controller targets to player-id before execution
+                       ;; Resolve {:any N} mana effects to chosen color
+                       db-after-effects (reduce (fn [db' effect]
+                                                  (let [;; Resolve symbolic targets
+                                                        resolved-effect (stack/resolve-effect-target effect object-id player-id nil)
+                                                        ;; Resolve {:any N} mana to chosen color
+                                                        resolved-effect (if (= :add-mana (:effect/type resolved-effect))
+                                                                          (let [mana (:effect/mana resolved-effect)]
+                                                                            (if-let [any-count (:any mana)]
+                                                                              (assoc resolved-effect :effect/mana {mana-color any-count})
+                                                                              resolved-effect))
+                                                                          resolved-effect)]
+                                                    (effects/execute-effect db' player-id resolved-effect)))
+                                                db-after-produces
+                                                (:ability/effects mana-ability []))
+                       ;; Step 3: :permanent-tapped is now dispatched at the tap chokepoint
+                       ;; (costs/pay-cost :tap) — no longer dispatched here to prevent double-fire.
+                       ]
+                   db-after-effects)
+                 db))
+             db))
+         db)))))

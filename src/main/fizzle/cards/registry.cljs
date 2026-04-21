@@ -63,6 +63,7 @@
     [fizzle.cards.lands.cephalid-coliseum :as cephalid-coliseum]
     [fizzle.cards.lands.city-of-brass :as city-of-brass]
     [fizzle.cards.lands.city-of-traitors :as city-of-traitors]
+    [fizzle.cards.lands.crystal-vein :as crystal-vein]
     [fizzle.cards.lands.fetch-lands :as fetch-lands]
     [fizzle.cards.lands.gemstone-mine :as gemstone-mine]
     [fizzle.cards.lands.pain-lands :as pain-lands]
@@ -133,6 +134,7 @@
        red-elemental-blast/card
        city-of-brass/card
        city-of-traitors/card
+       crystal-vein/card
        gemstone-mine/card
        cephalid-coliseum/card
        lotus-petal/card
