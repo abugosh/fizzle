@@ -26,11 +26,11 @@
 
 (rf/reg-event-db
   ::activate-mana-ability
-  (fn [db [_ object-id mana-color player-id]]
+  (fn [db [_ object-id mana-color player-id ability-index]]
     (let [game-db (:game/db db)
           pid (or player-id (queries/get-human-player-id game-db))
           description (descriptions/describe-activate-mana object-id mana-color game-db)
-          game-db-after (activate-mana-ability game-db pid object-id mana-color)]
+          game-db-after (activate-mana-ability game-db pid object-id mana-color ability-index)]
       (-> db
           (assoc :game/db game-db-after)
           (assoc :history/pending-entry

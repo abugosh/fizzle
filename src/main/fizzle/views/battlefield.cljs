@@ -25,23 +25,43 @@
     "bg-surface-dim text-mana-colorless"))
 
 
-(defn get-producible-colors
-  "Get the mana colors a permanent can produce from its abilities."
+(def ^:private all-colors [:white :blue :black :red :green])
+
+
+(defn get-mana-ability-buttons
+  "Return one button spec per distinct mana ability activation path.
+
+   Each entry is a map {:ability-index :color :amount :sac?}. Multiple mana
+   abilities that produce the same color get separate entries (e.g. Crystal
+   Vein's tap-for-{C} and tap+sac-for-{C}{C}). Abilities that produce
+   {:any N} — whether via :ability/produces or an :add-mana effect — expand
+   into one entry per color (W/U/B/R/G).
+
+   The UI uses these to render distinguishable buttons and to dispatch
+   activation with an explicit ability-index, which is required when two
+   mana abilities on the same permanent produce the same color."
   [obj]
   (let [abilities (get-in obj [:object/card :card/abilities])
-        mana-abilities (filter #(= :mana (:ability/type %)) abilities)]
-    (if (seq mana-abilities)
-      (let [produces-maps (keep :ability/produces mana-abilities)
-            effect-mana-maps (->> mana-abilities
-                                  (mapcat :ability/effects)
-                                  (filter #(= :add-mana (:effect/type %)))
-                                  (keep :effect/mana))
-            all-mana-maps (concat produces-maps effect-mana-maps)
-            has-any? (some :any all-mana-maps)]
-        (if has-any?
-          [:white :blue :black :red :green]
-          (distinct (mapcat keys all-mana-maps))))
-      [])))
+        mana-abilities (->> abilities
+                            (map-indexed vector)
+                            (filter (fn [[_ a]] (= :mana (:ability/type a)))))]
+    (vec
+      (mapcat
+        (fn [[idx ability]]
+          (let [produces (:ability/produces ability)
+                effect-mana (->> (:ability/effects ability)
+                                 (filter #(= :add-mana (:effect/type %)))
+                                 first
+                                 :effect/mana)
+                mana-map (or produces effect-mana {})
+                sac? (boolean (get-in ability [:ability/cost :sacrifice-self]))]
+            (if (contains? mana-map :any)
+              (let [amount (:any mana-map)]
+                (for [color all-colors]
+                  {:ability-index idx :color color :amount amount :sac? sac?}))
+              (for [[color amount] mana-map]
+                {:ability-index idx :color color :amount amount :sac? sac?}))))
+        mana-abilities))))
 
 
 (defn get-granted-mana-abilities
@@ -65,15 +85,21 @@
 
 
 (defn- mana-button
-  [object-id mana-color tapped?]
-  (let [symbol (get mana-symbols mana-color (name mana-color))]
-    [:button {:class (str "py-0.5 px-1.5 mx-0.5 border border-border rounded text-[11px] font-bold "
+  [object-id {:keys [ability-index color amount sac?]} tapped?]
+  (let [symbol (get mana-symbols color (name color))
+        symbols (apply str (repeat amount symbol))
+        label (if sac? (str "Sac: " symbols) symbols)]
+    [:button {:class (str "py-0.5 px-1.5 mx-0.5 border rounded text-[11px] font-bold "
                           (if tapped?
-                            "cursor-default bg-surface-dim text-border"
-                            (str "cursor-pointer " (mana-bg-class mana-color))))
+                            "cursor-default border-border bg-surface-dim text-border"
+                            (str "cursor-pointer "
+                                 (if sac?
+                                   "border-amber-500 bg-amber-100 text-amber-800"
+                                   (str "border-border " (mana-bg-class color))))))
               :disabled tapped?
-              :on-click #(rf/dispatch [::ability-events/activate-mana-ability object-id mana-color])}
-     symbol]))
+              :on-click #(rf/dispatch [::ability-events/activate-mana-ability
+                                       object-id color nil ability-index])}
+     label]))
 
 
 (defn- granted-ability-button
@@ -116,7 +142,7 @@
          object-id (:object/id obj)
          tapped? (:object/tapped obj)
          counters (:object/counters obj)
-         producible-colors (get-producible-colors obj)
+         mana-buttons (get-mana-ability-buttons obj)
          activated-abilities (get-activated-abilities obj)
          granted-abilities (get-granted-mana-abilities obj)
          card-types (get-in obj [:object/card :card/types])
@@ -157,11 +183,11 @@
          (when (:blocking creature-display)
            [:span {:class "ml-1 px-1 rounded bg-blue-600 text-white text-[10px] font-bold"
                    :title "Blocking"} "BLK"])])
-      (when (and show-buttons? (seq producible-colors))
+      (when (and show-buttons? (seq mana-buttons))
         [:div {:class "flex justify-center flex-wrap"}
-         (for [color producible-colors]
-           ^{:key color}
-           [mana-button object-id color tapped?])])
+         (for [[i spec] (map-indexed vector mana-buttons)]
+           ^{:key i}
+           [mana-button object-id spec tapped?])])
       (when (and show-buttons? (seq activated-abilities))
         [:div {:class "flex justify-center flex-wrap mt-1"}
          (for [[idx ability] activated-abilities]

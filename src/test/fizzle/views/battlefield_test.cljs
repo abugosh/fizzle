@@ -23,54 +23,91 @@
     (is (= "bg-surface-dim text-mana-colorless" (battlefield/mana-bg-class :phyrexian)))))
 
 
-;; === get-producible-colors ===
+;; === get-mana-ability-buttons ===
 
-(deftest get-producible-colors-single-produces
-  (testing "permanent with :ability/produces {:black 1} returns [:black]"
+(deftest get-mana-ability-buttons-single-produces
+  (testing "permanent with :ability/produces {:black 1} returns one button at index 0"
     (let [obj {:object/card
                {:card/abilities [{:ability/type :mana
+                                  :ability/cost {:tap true}
                                   :ability/produces {:black 1}}]}}]
-      (is (= [:black] (battlefield/get-producible-colors obj))))))
+      (is (= [{:ability-index 0 :color :black :amount 1 :sac? false}]
+             (battlefield/get-mana-ability-buttons obj))))))
 
 
-(deftest get-producible-colors-any-mana
-  (testing "permanent with :any produces all 5 colors"
+(deftest get-mana-ability-buttons-any-mana
+  (testing "permanent with :any 1 expands into five buttons sharing the same index"
     (let [obj {:object/card
                {:card/abilities [{:ability/type :mana
+                                  :ability/cost {:tap true :sacrifice-self true}
                                   :ability/produces {:any 1}}]}}]
-      (is (= [:white :blue :black :red :green]
-             (battlefield/get-producible-colors obj))))))
+      (is (= [{:ability-index 0 :color :white :amount 1 :sac? true}
+              {:ability-index 0 :color :blue :amount 1 :sac? true}
+              {:ability-index 0 :color :black :amount 1 :sac? true}
+              {:ability-index 0 :color :red :amount 1 :sac? true}
+              {:ability-index 0 :color :green :amount 1 :sac? true}]
+             (battlefield/get-mana-ability-buttons obj))))))
 
 
-(deftest get-producible-colors-from-effect
-  (testing "permanent with :add-mana effect extracts color"
+(deftest get-mana-ability-buttons-from-effect
+  (testing "permanent with :add-mana effect extracts color and amount"
     (let [obj {:object/card
                {:card/abilities [{:ability/type :mana
+                                  :ability/cost {:tap true}
                                   :ability/effects [{:effect/type :add-mana
                                                      :effect/mana {:red 3}}]}]}}]
-      (is (= [:red] (vec (battlefield/get-producible-colors obj)))))))
+      (is (= [{:ability-index 0 :color :red :amount 3 :sac? false}]
+             (battlefield/get-mana-ability-buttons obj))))))
 
 
-(deftest get-producible-colors-no-mana-abilities
-  (testing "permanent with no mana abilities returns empty"
+(deftest get-mana-ability-buttons-no-mana-abilities
+  (testing "permanent with only activated (non-mana) ability returns empty"
     (let [obj {:object/card
                {:card/abilities [{:ability/type :activated
                                   :ability/name "Sacrifice"}]}}]
-      (is (= [] (vec (battlefield/get-producible-colors obj)))))))
+      (is (= [] (battlefield/get-mana-ability-buttons obj))))))
 
 
-(deftest get-producible-colors-no-abilities
-  (testing "permanent with no abilities at all returns empty"
+(deftest get-mana-ability-buttons-no-abilities
+  (testing "permanent with no abilities returns empty"
     (let [obj {:object/card {:card/abilities []}}]
-      (is (= [] (vec (battlefield/get-producible-colors obj)))))))
+      (is (= [] (battlefield/get-mana-ability-buttons obj))))))
 
 
-(deftest get-producible-colors-multiple-colors
-  (testing "permanent producing multiple colors lists all distinct"
+(deftest get-mana-ability-buttons-multi-ability-same-color
+  ;; Crystal Vein shape: two :mana abilities, both producing :colorless.
+  ;; Each gets its own button with distinct ability-index so the UI can
+  ;; dispatch activation unambiguously (tap-for-1 vs tap+sac-for-2).
+  (testing "two mana abilities producing the same color get distinct entries"
     (let [obj {:object/card
                {:card/abilities [{:ability/type :mana
-                                  :ability/produces {:blue 1 :red 1}}]}}]
-      (is (= #{:blue :red} (set (battlefield/get-producible-colors obj)))))))
+                                  :ability/cost {:tap true}
+                                  :ability/produces {:colorless 1}}
+                                 {:ability/type :mana
+                                  :ability/cost {:tap true :sacrifice-self true}
+                                  :ability/produces {:colorless 2}}]}}]
+      (is (= [{:ability-index 0 :color :colorless :amount 1 :sac? false}
+              {:ability-index 1 :color :colorless :amount 2 :sac? true}]
+             (battlefield/get-mana-ability-buttons obj))))))
+
+
+(deftest get-mana-ability-buttons-multi-ability-different-colors
+  ;; Pain-land shape: colorless + two colored abilities (Adarkar Wastes).
+  (testing "multi-ability permanents render one button per ability, preserving index order"
+    (let [obj {:object/card
+               {:card/abilities [{:ability/type :mana
+                                  :ability/cost {:tap true}
+                                  :ability/produces {:colorless 1}}
+                                 {:ability/type :mana
+                                  :ability/cost {:tap true}
+                                  :ability/produces {:white 1}}
+                                 {:ability/type :mana
+                                  :ability/cost {:tap true}
+                                  :ability/produces {:blue 1}}]}}]
+      (is (= [{:ability-index 0 :color :colorless :amount 1 :sac? false}
+              {:ability-index 1 :color :white :amount 1 :sac? false}
+              {:ability-index 2 :color :blue :amount 1 :sac? false}]
+             (battlefield/get-mana-ability-buttons obj))))))
 
 
 ;; === get-activated-abilities ===
