@@ -69,24 +69,6 @@
           (dispatch/dispatch-event (game-events/phase-entered-event new-phase turn player-id))))))
 
 
-(defn untap-all-permanents
-  "Untap all permanents controlled by a player on the battlefield.
-   Pure function: (db, player-id) -> db"
-  [db player-id]
-  (let [player-eid (queries/get-player-eid db player-id)
-        ;; Find all tapped permanents controlled by player on battlefield
-        tapped-permanents (d/q '[:find ?e
-                                 :in $ ?controller
-                                 :where [?e :object/controller ?controller]
-                                 [?e :object/zone :battlefield]
-                                 [?e :object/tapped true]]
-                               db player-eid)]
-    (if (seq tapped-permanents)
-      (d/db-with db (mapv (fn [[eid]] [:db/add eid :object/tapped false])
-                          tapped-permanents))
-      db)))
-
-
 (defn start-turn
   "Start a new turn: switch active player, increment turn counter,
    set phase to untap, reset storm count and land plays, clear mana pool.

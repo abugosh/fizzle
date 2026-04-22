@@ -92,7 +92,7 @@
 
 ;; === Turn-Based Action Triggers ===
 
-(defn- untap-all-permanents
+(defn untap-all-permanents
   "Untap all permanents controlled by a player on the battlefield.
    Pure function: (db, player-id) -> db"
   [db player-id]

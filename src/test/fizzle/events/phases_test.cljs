@@ -11,6 +11,7 @@
     [fizzle.cards.red.lightning-bolt]
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
+    [fizzle.engine.triggers :as triggers]
     [fizzle.events.casting :as casting]
     [fizzle.events.db-effect :as db-effect]
     [fizzle.events.phases :as phases]
@@ -283,7 +284,7 @@
           _ (is (= 3 (count (filter #(:object/tapped %)
                                     (map #(d/entity tapped-db %) obj-eids))))
                 "all 3 should be tapped before untap")
-          result (phases/untap-all-permanents tapped-db :player-1)]
+          result (triggers/untap-all-permanents tapped-db :player-1)]
       (is (every? #(false? (:object/tapped (d/entity result %))) obj-eids)
           "all permanents should be untapped after untap-all-permanents"))))
 
@@ -292,7 +293,7 @@
 (deftest untap-all-permanents-no-tapped
   (testing "untap-all-permanents returns unchanged db when no tapped permanents exist"
     (let [db (:game/db (setup-app-db))
-          result (phases/untap-all-permanents db :player-1)]
+          result (triggers/untap-all-permanents db :player-1)]
       (is (= db result)
           "db should be unchanged when no tapped permanents exist"))))
 
@@ -310,7 +311,7 @@
                            db2)
           tapped-db (d/db-with db2 (mapv (fn [eid] [:db/add eid :object/tapped true]) all-bf-eids))
           ;; Untap only player-1's permanents
-          result (phases/untap-all-permanents tapped-db :player-1)
+          result (triggers/untap-all-permanents tapped-db :player-1)
           p2-bf-eids (d/q '[:find [?e ...]
                             :in $ ?controller
                             :where [?e :object/controller ?controller]
