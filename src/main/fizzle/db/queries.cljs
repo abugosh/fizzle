@@ -305,7 +305,14 @@
       ;; Exclusion: object must NOT have any supertype in the not-supertypes set
       (let [not-supertypes (get criteria :match/not-supertypes #{})]
         (or (empty? not-supertypes)
-            (empty? (set/intersection card-supertypes not-supertypes)))))))
+            (empty? (set/intersection card-supertypes not-supertypes))))
+      ;; Object's card must have at least one ability matching the required type
+      ;; :card/abilities is plain EDN (not Datascript components); use get-in + some.
+      ;; Absent criterion (nil) = no constraint.
+      (if-let [req-ability-type (:match/has-ability-type criteria)]
+        (boolean (some #(= req-ability-type (:ability/type %))
+                       (get-in obj [:object/card :card/abilities])))
+        true))))
 
 
 (defn query-zone-by-criteria

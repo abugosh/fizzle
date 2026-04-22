@@ -484,3 +484,29 @@
     (is (nil? (s/get-spec :effect/counter-type)))
     (is (nil? (s/get-spec :effect/destination)))
     (is (nil? (s/get-spec :effect/x)))))
+
+
+;; === :untap-restriction static-type tests ===
+
+(deftest valid-static-types-includes-untap-restriction-test
+  (testing "valid-static-types set contains :untap-restriction"
+    ;; Catches: missing the set addition entirely
+    (is (contains? card-spec/valid-static-types :untap-restriction)
+        "valid-static-types must include :untap-restriction")))
+
+
+(deftest untap-restriction-with-criteria-passes-validator-test
+  (testing "{:static/type :untap-restriction :modifier/criteria {...}} passes valid-static-ability?"
+    ;; Catches: missing validator case for :untap-restriction
+    (let [sa {:static/type :untap-restriction
+              :modifier/criteria {:match/types #{:land}}}]
+      (is (s/valid? ::card-spec/static-ability sa)
+          "untap-restriction with :modifier/criteria must pass the spec"))))
+
+
+(deftest untap-restriction-missing-criteria-fails-validator-test
+  (testing "{:static/type :untap-restriction} without :modifier/criteria fails validator"
+    ;; Catches: default-true fallthrough in case dispatch (would pass wrongly)
+    (let [sa {:static/type :untap-restriction}]
+      (is (not (s/valid? ::card-spec/static-ability sa))
+          "untap-restriction without :modifier/criteria must fail the spec"))))

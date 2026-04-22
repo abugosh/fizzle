@@ -940,3 +940,82 @@
           "Only pure blue card should match")
       (is (= "Brain Freeze" (get-in (first result) [:object/card :card/name]))
           "Brain Freeze (blue, not black) should match"))))
+
+
+;; === :match/has-ability-type tests ===
+
+(deftest matches-criteria-has-ability-type-activated-matches-land-with-activated-ability-test
+  (testing ":match/has-ability-type :activated matches object whose card has :ability/type :activated"
+    ;; Catches: absent conjunct — without the new axis both Wasteland and Island match,
+    ;; but only Wasteland has :activated ability; Island has only :mana.
+    (let [db (th/create-test-db)
+          ;; Wasteland has both :mana and :activated abilities
+          [db' _] (th/add-card-to-zone db :wasteland :hand :player-1)
+          ;; Island has only :mana ability — must NOT match :activated criterion
+          [db'' _] (th/add-card-to-zone db' :island :hand :player-1)
+          result (q/query-zone-by-criteria db'' :player-1 :hand {:match/has-ability-type :activated})]
+      (is (= 1 (count result))
+          "Only Wasteland (has :activated ability) should match; Island (mana-only) should not")
+      (is (= "Wasteland" (get-in (first result) [:object/card :card/name]))
+          "Wasteland should be returned"))))
+
+
+(deftest matches-criteria-has-ability-type-activated-does-not-match-mana-only-land-test
+  (testing ":match/has-ability-type :activated returns false for object with only :mana ability"
+    ;; Catches: wrong-direction logic — Island has only :mana, not :activated
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :island :hand :player-1)
+          result (q/query-zone-by-criteria db' :player-1 :hand {:match/has-ability-type :activated})]
+      (is (= 0 (count result))
+          "Island (mana-only) should NOT match :activated criterion"))))
+
+
+(deftest matches-criteria-has-ability-type-nil-card-abilities-returns-false-test
+  (testing "object with no :card/abilities returns false, does not throw"
+    ;; Catches: nil-path bugs — Dark Ritual has no :card/abilities key
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          result (q/query-zone-by-criteria db' :player-1 :hand {:match/has-ability-type :activated})]
+      (is (= 0 (count result))
+          "Dark Ritual (no :card/abilities) should NOT match and not throw"))))
+
+
+(deftest matches-criteria-has-ability-type-and-types-both-applied-test
+  (testing "combined :match/types and :match/has-ability-type requires BOTH (AND semantics)"
+    ;; Catches: accidental OR semantics — Island is a land but has no :activated ability
+    ;; Wasteland is a land WITH :activated ability — only Wasteland should match
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :island :hand :player-1)
+          [db'' _] (th/add-card-to-zone db' :wasteland :hand :player-1)
+          [db''' _] (th/add-card-to-zone db'' :dark-ritual :hand :player-1)
+          result (q/query-zone-by-criteria db''' :player-1 :hand
+                                           {:match/types #{:land}
+                                            :match/has-ability-type :activated})]
+      (is (= 1 (count result))
+          "Only Wasteland (land + :activated ability) should match both criteria")
+      (is (= "Wasteland" (get-in (first result) [:object/card :card/name]))
+          "Wasteland should be returned"))))
+
+
+(deftest matches-criteria-existing-types-axis-unaffected-regression-test
+  (testing ":match/types #{:land} alone on a land still matches (regression for additive change)"
+    ;; Catches: the new conjunct breaking existing callers that don't pass :match/has-ability-type
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :island :hand :player-1)
+          [db'' _] (th/add-card-to-zone db' :dark-ritual :hand :player-1)
+          result (q/query-zone-by-criteria db'' :player-1 :hand {:match/types #{:land}})]
+      (is (= 1 (count result))
+          "Island (land) should match :match/types #{:land} as before")
+      (is (= "Island" (get-in (first result) [:object/card :card/name]))
+          "Island should be returned"))))
+
+
+(deftest matches-criteria-absent-has-ability-type-criterion-does-not-restrict-test
+  (testing "criteria without :match/has-ability-type does not spuriously filter"
+    ;; Catches: nil-criterion branch missing — all objects match when criterion absent
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :island :hand :player-1)
+          [db'' _] (th/add-card-to-zone db' :dark-ritual :hand :player-1)
+          result (q/query-zone-by-criteria db'' :player-1 :hand {})]
+      (is (= 2 (count result))
+          "Empty criteria (no :match/has-ability-type) should match all objects"))))

@@ -531,7 +531,7 @@
 ;; === Static Ability Spec ===
 
 (def valid-static-types
-  #{:cost-modifier :pt-modifier})
+  #{:cost-modifier :pt-modifier :untap-restriction})
 
 
 (def valid-modifier-directions
@@ -560,6 +560,7 @@
                         (contains? sa :modifier/direction))
     :pt-modifier (and (contains? sa :modifier/power)
                       (contains? sa :modifier/toughness))
+    :untap-restriction (contains? sa :modifier/criteria)
     true))
 
 
