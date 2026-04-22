@@ -24,6 +24,50 @@ Prevent rule hallucination and attribute errors by:
 
 ---
 
+## Consultation Checkpoint (Available From Any Phase)
+
+Whenever oracle text describes behavior the DSL cannot express, stop and consult the user. Do not silently simplify, reinterpret, or invent DSL extensions.
+
+**Triggers:**
+- Phase 1: oracle text references a mechanic not in docs/card-dsl.md
+- Phase 2: no clean mapping for a type/supertype/subtype
+- Phase 3: effect or trigger cannot be expressed with existing `:effect/type` or `:trigger/*` values
+- Phase 5: verification reveals behavior the tests cover but the implementation does not
+
+**Template:**
+
+```markdown
+## Consultation Checkpoint
+
+**Card:** [Name]
+**Oracle Text:** "[exact text from Scryfall]"
+
+**Behavior requiring simplification:**
+[What the oracle text says should happen]
+
+**Current DSL support:**
+[What the DSL can currently express - reference docs/card-dsl.md]
+
+**Gap:**
+[What behavior cannot be implemented]
+
+**Proposed simplifications:**
+- Option A: [description and trade-off]
+- Option B: [description and trade-off]
+
+**What is lost:**
+[Behavior that won't be modeled]
+
+**Why acceptable for practice tool:**
+[Justification - e.g., "rarely relevant in goldfish testing"]
+
+**User decision required:** Which approach to take?
+```
+
+**Do not proceed past the checkpoint without explicit user approval.**
+
+---
+
 ## Phase 1: Scryfall Lookup
 
 **Goal:** Fetch canonical card data before any implementation work.
@@ -208,7 +252,13 @@ Add the new card to `src/main/fizzle/cards/registry.cljs`:
 Create test file mirroring the card file path:
 `src/test/fizzle/cards/{color}/{card_name}_test.cljs`
 
-Use existing test files as reference for structure.
+**Follow CLAUDE.md's Card Testing Requirements.** That section is authoritative for:
+- Mandatory test categories A–D (card definition, cast-resolve happy path, cannot-cast guards, storm count) and conditional categories E–I (selection, targeting, edge cases, flashback, triggers)
+- Minimum test counts per card type (simple spell: 5, targeted: 8, selection: 8, land w/ ability: 8, flashback/storm: 12)
+- **Gold-standard reference files** — copy the structure from the reference file matching your card type (Cabal Ritual for simple, Lightning Bolt for targeted, Vision Charm for modal, Duress for selection, etc.)
+- Top anti-patterns to avoid (reimplementing production handlers, tautological `some?`/`string?` assertions, copy-pasted test variants)
+
+Pick the gold-standard reference that matches your card type before writing the first test. Do not invent a new test structure.
 
 ### Step 3.1a: Use Production Path Helpers
 
@@ -281,39 +331,7 @@ All tests should pass. If not, iterate on implementation.
 
 Clean up implementation while keeping tests green.
 
-### Consultation Checkpoint
-
-When oracle text describes behavior the DSL cannot express, stop and consult:
-
-```markdown
-## Consultation Checkpoint
-
-**Card:** [Name]
-**Oracle Text:** "[exact text from Scryfall]"
-
-**Behavior requiring simplification:**
-[What the oracle text says should happen]
-
-**Current DSL support:**
-[What the DSL can currently express - reference docs/card-dsl.md]
-
-**Gap:**
-[What behavior cannot be implemented]
-
-**Proposed simplifications:**
-- Option A: [description and trade-off]
-- Option B: [description and trade-off]
-
-**What is lost:**
-[Behavior that won't be modeled]
-
-**Why acceptable for practice tool:**
-[Justification - e.g., "rarely relevant in goldfish testing"]
-
-**User decision required:** Which approach to take?
-```
-
-**Do not proceed without user approval for simplifications.**
+If oracle text describes behavior the DSL cannot express, stop and invoke the **Consultation Checkpoint** (see top of this skill).
 
 ---
 
@@ -393,7 +411,6 @@ Before marking implementation complete, verify:
 - [ ] **All oracle behaviors have effects:** Each sentence/ability in oracle text has corresponding effect implementation
 - [ ] **All tests cite sources:** No tests without oracle/ruling citations
 - [ ] **No hallucinated rules:** No tests for behavior not in oracle/rulings
-- [ ] **Validation passes:** `make validate` succeeds
 - [ ] **Production path tested:** Happy-path test uses `th/cast-and-resolve`, `th/cast-with-target`, `th/cast-mode-with-target`, or equivalent — no manual selection construction
 
 ### View-Layer Verification (when card introduces new selection type)
@@ -413,17 +430,23 @@ This section applies when a card's effects use a `:selection/type` value not alr
 | Hand/discard/tutor operations | `card-selection-modal` (default) | views/modals.cljs |
 | Specialized UX (scry, peek, storm-split) | Dedicated modal component | views/modals.cljs |
 
-### Final Validation
+### Final Validation (hard gate before commit)
 
 ```bash
 make validate
 ```
 
-This runs lint, format check, and tests. All must pass.
+This runs lint, format check, and tests. **All three must be green before you stage or commit anything.** If validate fails:
+
+- Diagnose and fix the underlying issue (do not weaken assertions or disable lint rules to make it pass)
+- Re-run `make validate`
+- Only proceed to commit once the output is clean
+
+Do not commit a red tree. Do not commit alongside a "will fix next" note.
 
 ### Commit
 
-Once verification complete:
+Only after `make validate` is green. Stage only the files this skill created or modified — do not sweep in unrelated WIP:
 
 ```bash
 git add src/main/fizzle/cards/{color}/{card_name}.cljs \
@@ -435,6 +458,16 @@ git commit -m "Add [Card Name] implementation with tests
 - Tests derived from oracle text and rulings
 - [Brief description of effects implemented]"
 ```
+
+**If a pre-commit hook fails:** the commit did not happen. Fix the underlying issue, re-stage, and create a **new** commit. Do not use `--amend` — the previous commit (if any) is a different one and amending it may destroy earlier work.
+
+### Hand Back to User
+
+After the commit succeeds:
+
+- Report the commit SHA and subject line to the user
+- **Do not push.** The user validates the card (smoke test in the UI, diff review, or otherwise) before deciding when to push
+- Wait for an explicit instruction from the user before running `git push`
 
 ---
 
