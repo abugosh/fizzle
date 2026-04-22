@@ -42,6 +42,7 @@
     [fizzle.cards.blue.flash-of-insight :as flash-of-insight]
     [fizzle.cards.blue.foil :as foil]
     [fizzle.cards.blue.frantic-search :as frantic-search]
+    [fizzle.cards.blue.hoodwink :as hoodwink]
     [fizzle.cards.blue.hurkyls-recall :as hurkyls-recall]
     [fizzle.cards.blue.hydroblast :as hydroblast]
     [fizzle.cards.blue.impulse :as impulse]
@@ -164,7 +165,8 @@
        hurkyls-recall/card
        vendetta/card
        vision-charm/card
-       infernal-contract/card]
+       infernal-contract/card
+       hoodwink/card]
       ;; Cycle cards
       basic-lands/cards
       pain-lands/cards
