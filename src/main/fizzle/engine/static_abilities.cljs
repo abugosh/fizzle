@@ -41,6 +41,33 @@
        (vec)))
 
 
+(defn get-untap-restrictions
+  "Get all :untap-restriction static abilities currently active on the battlefield.
+   Returns vector of maps: {:static-ability ability :source/controller pid :source/object-id oid}
+   Used by permanent-untap-restricted? and the untap-step filter."
+  [db]
+  (->> (get-static-abilities-from-battlefield db)
+       (filter #(= :untap-restriction (:static/type (:static-ability %))))
+       (vec)))
+
+
+(defn permanent-untap-restricted?
+  "True if any active :untap-restriction on the battlefield matches the given permanent.
+   Takes Datascript EID (integer), not :object/id UUID.
+   Returns false when no restrictions are active (short-circuit) or no criteria match.
+   Multiple restrictions: OR semantics — any match returns true."
+  [db obj-eid]
+  (let [restrictions (get-untap-restrictions db)]
+    (if (empty? restrictions)
+      false
+      (let [obj (d/pull db '[:object/id
+                             {:object/card [:card/types :card/subtypes :card/supertypes
+                                            :card/colors :card/abilities]}]
+                        obj-eid)]
+        (boolean (some #(q/matches-criteria? obj (:modifier/criteria (:static-ability %)))
+                       restrictions))))))
+
+
 (defn modifier-applies?
   "Check if a cost modifier applies to a given spell being cast.
    Evaluates :modifier/applies-to (ownership), :modifier/criteria (spell matching),
