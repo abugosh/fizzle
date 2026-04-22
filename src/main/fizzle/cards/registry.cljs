@@ -16,6 +16,7 @@
     [fizzle.cards.artifacts.phyrexian-devourer :as phyrexian-devourer]
     [fizzle.cards.artifacts.sphere-of-resistance :as sphere-of-resistance]
     [fizzle.cards.artifacts.tormods-crypt :as tormods-crypt]
+    [fizzle.cards.artifacts.tsabos-web :as tsabos-web]
     [fizzle.cards.artifacts.urzas-bauble :as urzas-bauble]
     [fizzle.cards.black.cabal-ritual :as cabal-ritual]
     [fizzle.cards.black.crippling-fatigue :as crippling-fatigue]
@@ -152,6 +153,7 @@
        helm-of-awakening/card
        sphere-of-resistance/card
        tormods-crypt/card
+       tsabos-web/card
        urzas-bauble/card
        crumble/card
        gaeas-blessing/card
