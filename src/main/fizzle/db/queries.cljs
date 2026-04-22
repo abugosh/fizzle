@@ -268,16 +268,19 @@
   "Check if an object's card matches the given criteria.
    All fields use OR logic within their category, AND logic between categories.
    Criteria map supports:
-     :match/types      - Set of types, object must have ANY (OR - artifact OR enchantment)
-     :match/not-types  - Set of types, object must NOT have ANY (exclusion filter)
-     :match/colors     - Set of colors, object must have ANY (OR - blue OR white)
-     :match/not-colors - Set of colors, object must NOT have ANY (exclusion filter)
-     :match/subtypes   - Set of subtypes, object must have ANY (OR - island OR swamp)"
+     :match/types           - Set of types, object must have ANY (OR - artifact OR enchantment)
+     :match/not-types       - Set of types, object must NOT have ANY (exclusion filter)
+     :match/colors          - Set of colors, object must have ANY (OR - blue OR white)
+     :match/not-colors      - Set of colors, object must NOT have ANY (exclusion filter)
+     :match/subtypes        - Set of subtypes, object must have ANY (OR - island OR swamp)
+     :match/supertypes      - Set of supertypes, object must have ANY (OR - basic OR legendary)
+     :match/not-supertypes  - Set of supertypes, object must NOT have ANY (exclusion filter)"
   [obj criteria]
   (let [card (:object/card obj)
         card-types (set (or (:card/types card) #{}))
         card-colors (set (or (:card/colors card) #{}))
-        card-subtypes (set (or (:card/subtypes card) #{}))]
+        card-subtypes (set (or (:card/subtypes card) #{}))
+        card-supertypes (set (or (:card/supertypes card) #{}))]
     (and
       ;; At least one required type (OR logic) - empty criteria = matches all
       (or (empty? (get criteria :match/types #{}))
@@ -295,7 +298,14 @@
             (empty? (set/intersection card-colors not-colors))))
       ;; At least one required subtype (OR logic)
       (or (empty? (get criteria :match/subtypes #{}))
-          (some card-subtypes (get criteria :match/subtypes #{}))))))
+          (some card-subtypes (get criteria :match/subtypes #{})))
+      ;; At least one required supertype (OR logic)
+      (or (empty? (get criteria :match/supertypes #{}))
+          (some card-supertypes (get criteria :match/supertypes #{})))
+      ;; Exclusion: object must NOT have any supertype in the not-supertypes set
+      (let [not-supertypes (get criteria :match/not-supertypes #{})]
+        (or (empty? not-supertypes)
+            (empty? (set/intersection card-supertypes not-supertypes)))))))
 
 
 (defn query-zone-by-criteria

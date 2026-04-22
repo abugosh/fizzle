@@ -69,6 +69,7 @@
     [fizzle.cards.lands.fetch-lands :as fetch-lands]
     [fizzle.cards.lands.gemstone-mine :as gemstone-mine]
     [fizzle.cards.lands.pain-lands :as pain-lands]
+    [fizzle.cards.lands.wasteland :as wasteland]
     [fizzle.cards.multicolor.diabolic-vision :as diabolic-vision]
     [fizzle.cards.red.burning-wish :as burning-wish]
     [fizzle.cards.red.fling :as fling]
@@ -139,6 +140,7 @@
        crystal-vein/card
        gemstone-mine/card
        cephalid-coliseum/card
+       wasteland/card
        lotus-petal/card
        lions-eye-diamond/card
        mind-stone/card
