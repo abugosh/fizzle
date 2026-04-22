@@ -9,7 +9,8 @@
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.effects :as effects]
-    [fizzle.engine.stack :as stack]))
+    [fizzle.engine.stack :as stack]
+    [fizzle.engine.static-abilities :as sa]))
 
 
 (defmulti resolve-trigger
@@ -93,7 +94,8 @@
 ;; === Turn-Based Action Triggers ===
 
 (defn untap-all-permanents
-  "Untap all permanents controlled by a player on the battlefield.
+  "Untap all permanents controlled by a player on the battlefield,
+   excluding those restricted by an active :untap-restriction static ability.
    Pure function: (db, player-id) -> db"
   [db player-id]
   (let [player-eid (q/get-player-eid db player-id)
@@ -103,10 +105,13 @@
                                  :where [?e :object/controller ?controller]
                                  [?e :object/zone :battlefield]
                                  [?e :object/tapped true]]
-                               db player-eid)]
-    (if (seq tapped-permanents)
+                               db player-eid)
+        ;; Filter out permanents restricted by any active :untap-restriction
+        untappable (remove (fn [[eid]] (sa/permanent-untap-restricted? db eid))
+                           tapped-permanents)]
+    (if (seq untappable)
       (d/db-with db (mapv (fn [[eid]] [:db/add eid :object/tapped false])
-                          tapped-permanents))
+                          untappable))
       db)))
 
 

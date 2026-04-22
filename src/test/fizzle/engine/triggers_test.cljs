@@ -8,7 +8,8 @@
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.trigger-db :as trigger-db]
-    [fizzle.engine.triggers :as triggers]))
+    [fizzle.engine.triggers :as triggers]
+    [fizzle.test-helpers :as th]))
 
 
 ;; =====================================================
@@ -491,3 +492,99 @@
                         db' {:event/type :permanent-tapped
                              :event/object-id obj-eid})))
           "Sacrifice trigger should not fire for tapped events"))))
+
+
+;; =====================================================
+;; Integration: untap-all-permanents restriction filter
+;; =====================================================
+
+(defn- add-restriction-card
+  "Mirror of static_abilities_test/add-restriction-card.
+   Adds a synthetic :untap-restriction permanent to the battlefield.
+   Returns [db object-id]."
+  [db player-id criteria]
+  (let [conn (d/conn-from-db db)
+        player-eid (q/get-player-eid db player-id)
+        card-id (keyword (str "test-restriction-triggers-" (random-uuid)))
+        ability {:static/type :untap-restriction
+                 :modifier/criteria criteria}
+        _ (d/transact! conn [{:card/id card-id
+                              :card/name "Test Restriction Card"
+                              :card/cmc 2
+                              :card/mana-cost {:colorless 2}
+                              :card/colors #{}
+                              :card/types #{:artifact}
+                              :card/text "Test"
+                              :card/static-abilities [ability]}])
+        card-eid (d/q '[:find ?e .
+                        :in $ ?cid
+                        :where [?e :card/id ?cid]]
+                      @conn card-id)
+        object-id (random-uuid)
+        _ (d/transact! conn [{:object/id object-id
+                              :object/card card-eid
+                              :object/zone :battlefield
+                              :object/owner player-eid
+                              :object/controller player-eid
+                              :object/tapped false}])]
+    [@conn object-id]))
+
+
+(deftest untap-step-skips-restricted-land-integration
+  (testing "Restriction card on battlefield: Wasteland stays tapped, Island untaps"
+    (let [db (th/create-test-db)
+          ;; Tsabo's Web-style restriction: land with :activated ability
+          criteria {:match/types #{:land} :match/has-ability-type :activated}
+          [db _restriction-id] (add-restriction-card db :player-1 criteria)
+          ;; Add tapped Wasteland (land + :activated) — should stay tapped
+          [db wasteland-id] (th/add-card-to-zone db :wasteland :battlefield :player-1)
+          db (d/db-with db [[:db/add (q/get-object-eid db wasteland-id)
+                             :object/tapped true]])
+          ;; Add tapped Island (land, only :mana) — should untap
+          [db island-id] (th/add-card-to-zone db :island :battlefield :player-1)
+          db (d/db-with db [[:db/add (q/get-object-eid db island-id)
+                             :object/tapped true]])
+          ;; Drive through untap-all-permanents directly
+          db' (triggers/untap-all-permanents db :player-1)]
+      ;; Wasteland must remain tapped (restricted)
+      (is (= true (:object/tapped (q/get-object db' wasteland-id)))
+          "Wasteland (land with :activated) must remain tapped — restricted")
+      ;; Island must be untapped (not restricted — only :mana ability)
+      (is (= false (:object/tapped (q/get-object db' island-id)))
+          "Island (only :mana ability) must untap — not restricted"))))
+
+
+(deftest untap-step-without-restriction-untaps-both-regression
+  (testing "No restriction card on battlefield: both Wasteland and Island untap"
+    (let [db (th/create-test-db)
+          ;; No restriction card — baseline parity test
+          [db wasteland-id] (th/add-card-to-zone db :wasteland :battlefield :player-1)
+          db (d/db-with db [[:db/add (q/get-object-eid db wasteland-id)
+                             :object/tapped true]])
+          [db island-id] (th/add-card-to-zone db :island :battlefield :player-1)
+          db (d/db-with db [[:db/add (q/get-object-eid db island-id)
+                             :object/tapped true]])
+          db' (triggers/untap-all-permanents db :player-1)]
+      ;; Both must untap when no restriction is active
+      (is (= false (:object/tapped (q/get-object db' wasteland-id)))
+          "Wasteland must untap when no restriction active")
+      (is (= false (:object/tapped (q/get-object db' island-id)))
+          "Island must untap when no restriction active"))))
+
+
+(deftest untap-step-cross-player-restriction-applies-integration
+  (testing "Restriction card on opponent's battlefield restricts player-1's Wasteland"
+    (let [db (-> (th/create-test-db)
+                 (th/add-opponent))
+          ;; Restriction card is on player-2's battlefield
+          criteria {:match/types #{:land} :match/has-ability-type :activated}
+          [db _restriction-id] (add-restriction-card db :player-2 criteria)
+          ;; Tapped Wasteland on player-1's battlefield
+          [db wasteland-id] (th/add-card-to-zone db :wasteland :battlefield :player-1)
+          db (d/db-with db [[:db/add (q/get-object-eid db wasteland-id)
+                             :object/tapped true]])
+          ;; Untap player-1's permanents
+          db' (triggers/untap-all-permanents db :player-1)]
+      ;; Wasteland must remain tapped — restriction applies globally (opponent's card too)
+      (is (= true (:object/tapped (q/get-object db' wasteland-id)))
+          "Wasteland must remain tapped — opponent's restriction applies globally"))))
