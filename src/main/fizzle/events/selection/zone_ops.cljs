@@ -61,10 +61,13 @@
 
 
 ;; =====================================================
-;; Confirm Selection Multimethod
+;; Confirm Selection Multimethods
 ;; =====================================================
 
-(defmethod core/execute-confirmed-selection :discard
+;; apply-domain-policy defmethods (ADR-030): these contain the per-domain
+;; policy logic called by execute-confirmed-selection mechanism defmethods.
+
+(defmethod core/apply-domain-policy :discard
   [game-db selection]
   (let [selected (:selection/selected selection)
         db-after-discard (reduce (fn [gdb obj-id]
@@ -81,7 +84,7 @@
       {:db db-after-discard})))
 
 
-(defmethod core/execute-confirmed-selection :hand-reveal-discard
+(defmethod core/apply-domain-policy :revealed-hand-discard
   [game-db selection]
   (let [selected (:selection/selected selection)]
     (if (empty? selected)
@@ -94,10 +97,21 @@
                    selected)})))
 
 
-(defmethod core/execute-confirmed-selection :shuffle-from-graveyard-to-library
+(defmethod core/apply-domain-policy :graveyard-return
+  [game-db selection]
+  ;; Move selected graveyard cards to hand (or :selection/target-zone).
+  ;; 0 selected is valid ("up to N" — can choose none).
+  (let [selected (:selection/selected selection)
+        target-zone (or (:selection/target-zone selection) :hand)]
+    {:db (reduce (fn [gdb obj-id]
+                   (zone-change-dispatch/move-to-zone-db gdb obj-id target-zone))
+                 game-db
+                 selected)}))
+
+
+(defmethod core/apply-domain-policy :shuffle-to-library
   [game-db selection]
   ;; Custom executor: moves selected graveyard cards to library, then shuffles.
-  ;; The generic zone-pick executor only moves cards without shuffling.
   ;; 0 selected is valid ("up to N" — can choose none).
   (let [selected (:selection/selected selection)
         target-player (:selection/player-id selection)
@@ -200,7 +214,7 @@
               copy-object-id (:db/id copy-stack-item))))))))
 
 
-(defmethod core/execute-confirmed-selection :chain-bounce
+(defmethod core/apply-domain-policy :chain-bounce
   [game-db selection]
   (let [selected (:selection/selected selection)]
     (if (empty? selected)
@@ -216,7 +230,7 @@
         {:db db-with-copy}))))
 
 
-(defmethod core/execute-confirmed-selection :chain-bounce-target
+(defmethod core/apply-domain-policy :chain-bounce-target
   [game-db selection]
   (let [selected (:selection/selected selection)
         copy-si-eid (:selection/chain-copy-stack-item-eid selection)]
@@ -270,7 +284,7 @@
   (build-unless-pay-selection db player-id object-id effect remaining))
 
 
-(defmethod core/execute-confirmed-selection :unless-pay
+(defmethod core/apply-domain-policy :unless-pay
   [game-db selection]
   (let [selected (first (:selection/selected selection))
         target-id (:selection/counter-target-id selection)

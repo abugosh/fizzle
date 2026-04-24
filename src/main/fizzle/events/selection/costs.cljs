@@ -421,6 +421,143 @@
 ;; Confirm Selection Defmethods
 ;; =====================================================
 
+;; apply-domain-policy defmethods (ADR-030): these contain the per-domain
+;; policy logic called by execute-confirmed-selection mechanism defmethods.
+
+(declare confirm-spell-mana-allocation)
+(declare confirm-ability-mana-allocation)
+(declare find-stack-item-eid-for-object)
+
+
+(defmethod core/apply-domain-policy :discard-cost
+  [game-db selection]
+  (let [selected (:selection/selected selection)
+        player-id (:selection/player-id selection)
+        object-id (:selection/spell-id selection)
+        mode (:selection/mode selection)
+        db-after-discard (reduce (fn [d card-id]
+                                   (zone-change-dispatch/move-to-zone-db d card-id :graveyard))
+                                 game-db
+                                 selected)]
+    (if (= :chaining (:selection/lifecycle selection))
+      {:db db-after-discard}
+      {:db (rules/cast-spell-mode db-after-discard player-id object-id mode)})))
+
+
+(defmethod core/apply-domain-policy :return-land-cost
+  [game-db selection]
+  (let [selected-land-id (first (:selection/selected selection))
+        player-id (:selection/player-id selection)
+        object-id (:selection/spell-id selection)
+        mode (:selection/mode selection)
+        db-after-return (zone-change-dispatch/move-to-zone-db game-db selected-land-id :hand)]
+    (if (= :chaining (:selection/lifecycle selection))
+      {:db db-after-return}
+      {:db (rules/cast-spell-mode db-after-return player-id object-id mode)})))
+
+
+(defmethod core/apply-domain-policy :sacrifice-cost
+  [game-db selection]
+  (let [selected-permanent-id (first (:selection/selected selection))
+        player-id (:selection/player-id selection)
+        object-id (:selection/spell-id selection)
+        mode (:selection/mode selection)
+        source-type (:selection/source-type selection)
+        ability (:selection/ability selection)
+        effective-power (creatures/effective-power game-db selected-permanent-id)
+        sacrifice-info {:power effective-power}
+        db-after-sacrifice (zone-change-dispatch/move-to-zone-db game-db selected-permanent-id :graveyard)]
+    (cond
+      (= :chaining (:selection/lifecycle selection))
+      (let [obj-eid (queries/get-object-eid db-after-sacrifice object-id)
+            db-with-pending (if obj-eid
+                              (d/db-with db-after-sacrifice
+                                         [[:db/add obj-eid :object/pending-sacrifice-info sacrifice-info]])
+                              db-after-sacrifice)]
+        {:db db-with-pending})
+
+      (= source-type :ability)
+      (let [effects-list (:ability/effects ability [])
+            db-with-item (stack/create-stack-item db-after-sacrifice
+                                                  {:stack-item/type :activated-ability
+                                                   :stack-item/controller player-id
+                                                   :stack-item/source object-id
+                                                   :stack-item/effects effects-list
+                                                   :stack-item/sacrifice-info sacrifice-info
+                                                   :stack-item/description (:ability/description ability)})]
+        {:db db-with-item})
+
+      :else
+      (let [db-after-cast (rules/cast-spell-mode db-after-sacrifice player-id object-id mode)
+            stack-item-eid (find-stack-item-eid-for-object db-after-cast object-id)
+            db-final (if stack-item-eid
+                       (d/db-with db-after-cast
+                                  [[:db/add stack-item-eid :stack-item/sacrifice-info sacrifice-info]])
+                       db-after-cast)]
+        {:db db-final}))))
+
+
+(defmethod core/apply-domain-policy :exile-cost
+  [game-db selection]
+  (let [selected (:selection/selected selection)
+        selected-count (count selected)
+        player-id (:selection/player-id selection)
+        object-id (:selection/spell-id selection)
+        mode (:selection/mode selection)
+        db-after-exile (reduce (fn [d card-id]
+                                 (zone-change-dispatch/move-to-zone-db d card-id :exile))
+                               game-db
+                               selected)
+        obj-eid (queries/get-object-eid db-after-exile object-id)
+        db-with-x (d/db-with db-after-exile
+                             [[:db/add obj-eid :object/x-value selected-count]])
+        db-after-cast (rules/cast-spell-mode db-with-x player-id object-id mode)]
+    {:db db-after-cast}))
+
+
+(defmethod core/apply-domain-policy :pay-x-life
+  [game-db selection]
+  (let [x-value (:selection/selected-x selection)
+        player-id (:selection/player-id selection)
+        object-id (:selection/spell-id selection)
+        mode (:selection/mode selection)
+        player-eid (queries/get-player-eid game-db player-id)
+        current-life (queries/get-life-total game-db player-id)
+        new-life (- current-life x-value)
+        db-after-life (d/db-with game-db [[:db/add player-eid :player/life new-life]])
+        db-after-cast (rules/cast-spell-mode db-after-life player-id object-id mode)
+        obj-eid (queries/get-object-eid db-after-cast object-id)
+        stack-item-eid (when obj-eid
+                         (d/q '[:find ?e .
+                                :in $ ?obj-eid
+                                :where [?e :stack-item/object-ref ?obj-eid]]
+                              db-after-cast obj-eid))
+        db-final (if stack-item-eid
+                   (d/db-with db-after-cast
+                              [[:db/add stack-item-eid :stack-item/chosen-x x-value]])
+                   db-after-cast)]
+    {:db db-final}))
+
+
+(defmethod core/apply-domain-policy :x-mana-cost
+  [game-db selection]
+  (let [x-value (:selection/selected-x selection)
+        object-id (:selection/spell-id selection)
+        obj-eid (queries/get-object-eid game-db object-id)
+        db-with-x (d/db-with game-db
+                             [[:db/add obj-eid :object/x-value x-value]])]
+    {:db db-with-x}))
+
+
+(defmethod core/apply-domain-policy :mana-allocation
+  [game-db selection]
+  (let [source-type (:selection/source-type selection)]
+    (case source-type
+      :ability     (confirm-ability-mana-allocation game-db selection)
+      :mana-ability (mana-ability/confirm-mana-ability-mana-allocation game-db selection)
+      (confirm-spell-mana-allocation game-db selection))))
+
+
 ;; Generic chain: pre-cast cost selections that may chain to targeting.
 ;; Dispatches for :discard-specific-cost and :return-land-cost via hierarchy.
 (defmethod core/build-chain-selection :pre-cast-cost-to-targeting

@@ -75,11 +75,14 @@
 ;; =====================================================
 
 (deftest test-zone-pick-executor-moves-cards-to-target-zone
-  (testing "Generic zone-pick executor moves selected cards to :selection/target-zone"
+  (testing ":pick-from-zone mechanism routes :discard domain to graveyard via :selection/target-zone"
     (let [db (th/create-test-db)
           [db id1] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           [db id2] (th/add-card-to-zone db :cabal-ritual :hand :player-1)
-          selection {:selection/type :zone-pick
+          ;; Use explicit mechanism+domain (ADR-030): :pick-from-zone mechanism, :discard domain
+          selection {:selection/type :discard
+                     :selection/mechanism :pick-from-zone
+                     :selection/domain :discard
                      :selection/selected #{id1 id2}
                      :selection/target-zone :graveyard}
           result (core/execute-confirmed-selection db selection)]
@@ -90,10 +93,13 @@
 
 
 (deftest test-zone-pick-executor-respects-target-zone
-  (testing "Generic zone-pick executor uses :selection/target-zone (not hardcoded graveyard)"
+  (testing ":graveyard-return domain moves card to :selection/target-zone (hand)"
     (let [db (th/create-test-db)
           [db id1] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
-          selection {:selection/type :zone-pick
+          ;; :graveyard-return domain moves to :selection/target-zone (defaults to :hand)
+          selection {:selection/type :graveyard-return
+                     :selection/mechanism :pick-from-zone
+                     :selection/domain :graveyard-return
                      :selection/selected #{id1}
                      :selection/target-zone :hand}
           result (core/execute-confirmed-selection db selection)]

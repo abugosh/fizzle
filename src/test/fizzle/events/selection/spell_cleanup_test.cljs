@@ -197,8 +197,8 @@
 ;; Test G — source-type propagates through standard-path chain
 ;; =====================================================
 
-;; Test executor for test G: returns {:db game-db} (no side effects)
-(defmethod sel-core/execute-confirmed-selection :test-spell-chain-g
+;; Test domain policy for test G: returns {:db game-db} (no side effects)
+(defmethod sel-core/apply-domain-policy :test-spell-chain-g
   [game-db _selection]
   {:db game-db})
 
@@ -215,6 +215,8 @@
           ;; When confirmed, standard-path will process the remaining discard effect,
           ;; find it interactive, and create a chained selection — which should inherit source-type.
           selection {:selection/type :test-spell-chain-g
+                     :selection/mechanism :pick-from-zone
+                     :selection/domain :test-spell-chain-g
                      :selection/source-type :spell
                      :selection/spell-id obj-id
                      :selection/player-id :player-1

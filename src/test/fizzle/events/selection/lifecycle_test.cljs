@@ -8,29 +8,31 @@
 
 
 ;; =====================================================
-;; Test executor defmethods
+;; Test executor / domain defmethods (ADR-030)
 ;; =====================================================
-;; These register selection types used ONLY by tests in this file.
-;; Each returns only {:db db} — the lifecycle test verifies that
-;; confirm-selection-impl routes correctly based on :selection/lifecycle.
+;; These register apply-domain-policy entries for :selection/domain values used
+;; ONLY by tests in this file. Each returns {:db db} — the lifecycle test verifies
+;; that confirm-selection-impl routes correctly based on :selection/lifecycle.
+;; execute-confirmed-selection now dispatches on :selection/mechanism; the domain
+;; methods are invoked by the mechanism defmethod in core.cljs.
 
-(defmethod core/execute-confirmed-selection :test-standard
+(defmethod core/apply-domain-policy :test-standard
   [game-db _selection]
   {:db game-db})
 
 
-(defmethod core/execute-confirmed-selection :test-finalized
+(defmethod core/apply-domain-policy :test-finalized
   [game-db _selection]
   {:db game-db})
 
 
-(defmethod core/execute-confirmed-selection :test-chaining
+(defmethod core/apply-domain-policy :test-chaining
   [game-db _selection]
   {:db game-db})
 
 
 ;; No-lifecycle executor: used to test that missing lifecycle defaults to :standard
-(defmethod core/execute-confirmed-selection :test-no-lifecycle
+(defmethod core/apply-domain-policy :test-no-lifecycle
   [game-db _selection]
   {:db game-db})
 
@@ -42,6 +44,8 @@
 (defmethod core/build-chain-selection :test-chaining
   [_db _selection]
   {:selection/type :test-standard
+   :selection/mechanism :pick-from-zone
+   :selection/domain :test-standard
    :selection/selected #{}
    :selection/validation :always
    :selection/auto-confirm? false
@@ -49,7 +53,7 @@
 
 
 ;; A chaining type whose chain builder returns nil (conditional chaining)
-(defmethod core/execute-confirmed-selection :test-chaining-nil
+(defmethod core/apply-domain-policy :test-chaining-nil
   [game-db _selection]
   {:db game-db})
 
@@ -78,6 +82,8 @@
   (testing ":selection/lifecycle :standard dissocs pending-selection"
     (let [db (th/create-test-db)
           app-db (make-app-db db {:selection/type :test-standard
+                                  :selection/mechanism :pick-from-zone
+                                  :selection/domain :test-standard
                                   :selection/lifecycle :standard
                                   :selection/player-id :player-1
                                   :selection/selected #{}
@@ -95,6 +101,8 @@
               [_continuation app-db]
               {:app-db (assoc app-db :test/marker true)})
           app-db (make-app-db db {:selection/type :test-standard
+                                  :selection/mechanism :pick-from-zone
+                                  :selection/domain :test-standard
                                   :selection/lifecycle :standard
                                   :selection/player-id :player-1
                                   :selection/selected #{}
@@ -110,6 +118,8 @@
   (testing "selection WITHOUT :selection/lifecycle defaults to :standard behavior"
     (let [db (th/create-test-db)
           app-db (make-app-db db {:selection/type :test-no-lifecycle
+                                  :selection/mechanism :pick-from-zone
+                                  :selection/domain :test-no-lifecycle
                                   :selection/player-id :player-1
                                   :selection/selected #{}
                                   :selection/validation :always
@@ -126,6 +136,8 @@
   (testing ":selection/lifecycle :finalized dissocs pending-selection"
     (let [db (th/create-test-db)
           app-db (make-app-db db {:selection/type :test-finalized
+                                  :selection/mechanism :pick-from-zone
+                                  :selection/domain :test-finalized
                                   :selection/lifecycle :finalized
                                   :selection/player-id :player-1
                                   :selection/selected #{}
@@ -139,6 +151,8 @@
   (testing ":finalized with :selection/clear-selected-card? true dissocs :game/selected-card"
     (let [db (th/create-test-db)
           app-db (assoc (make-app-db db {:selection/type :test-finalized
+                                         :selection/mechanism :pick-from-zone
+                                         :selection/domain :test-finalized
                                          :selection/lifecycle :finalized
                                          :selection/clear-selected-card? true
                                          :selection/player-id :player-1
@@ -155,6 +169,8 @@
   (testing ":finalized without :selection/clear-selected-card? preserves :game/selected-card"
     (let [db (th/create-test-db)
           app-db (assoc (make-app-db db {:selection/type :test-finalized
+                                         :selection/mechanism :pick-from-zone
+                                         :selection/domain :test-finalized
                                          :selection/lifecycle :finalized
                                          :selection/player-id :player-1
                                          :selection/selected #{}
@@ -170,6 +186,8 @@
   (testing ":finalized lifecycle applies :selection/on-complete continuation"
     (let [db (th/create-test-db)
           app-db (make-app-db db {:selection/type :test-finalized
+                                  :selection/mechanism :pick-from-zone
+                                  :selection/domain :test-finalized
                                   :selection/lifecycle :finalized
                                   :selection/player-id :player-1
                                   :selection/selected #{}
@@ -189,6 +207,8 @@
   (testing ":selection/lifecycle :chaining sets next selection from build-chain-selection"
     (let [db (th/create-test-db)
           app-db (make-app-db db {:selection/type :test-chaining
+                                  :selection/mechanism :pick-from-zone
+                                  :selection/domain :test-chaining
                                   :selection/lifecycle :chaining
                                   :selection/player-id :player-1
                                   :selection/selected #{}
@@ -203,6 +223,8 @@
   (testing ":chaining lifecycle propagates :selection/on-complete to chained selection"
     (let [db (th/create-test-db)
           app-db (make-app-db db {:selection/type :test-chaining
+                                  :selection/mechanism :pick-from-zone
+                                  :selection/domain :test-chaining
                                   :selection/lifecycle :chaining
                                   :selection/player-id :player-1
                                   :selection/selected #{}
@@ -220,6 +242,8 @@
   (testing ":chaining with nil from build-chain-selection falls through to standard"
     (let [db (th/create-test-db)
           app-db (make-app-db db {:selection/type :test-chaining-nil
+                                  :selection/mechanism :pick-from-zone
+                                  :selection/domain :test-chaining-nil
                                   :selection/lifecycle :chaining
                                   :selection/player-id :player-1
                                   :selection/selected #{}
@@ -267,6 +291,8 @@
               [_cont app-db]
               {:app-db (assoc app-db :test/chain-b-ran true)})
           app-db (make-app-db db {:selection/type :test-finalized
+                                  :selection/mechanism :pick-from-zone
+                                  :selection/domain :test-finalized
                                   :selection/lifecycle :finalized
                                   :selection/player-id :player-1
                                   :selection/selected #{}
@@ -301,6 +327,8 @@
     (let [db (th/create-test-db)
           ;; Step 1: chaining selection with on-complete continuation
           app-db-step1 (make-app-db db {:selection/type :test-chaining
+                                        :selection/mechanism :pick-from-zone
+                                        :selection/domain :test-chaining
                                         :selection/lifecycle :chaining
                                         :selection/player-id :player-1
                                         :selection/selected #{}

@@ -54,3 +54,9 @@
   [game-db selection]
   (let [selected (:selection/selected selection)]
     {:db (reduce lands/untap-permanent game-db selected)}))
+
+
+(defmethod core/apply-domain-policy :untap-lands
+  [game-db selection]
+  (let [selected (:selection/selected selection)]
+    {:db (reduce lands/untap-permanent game-db selected)}))

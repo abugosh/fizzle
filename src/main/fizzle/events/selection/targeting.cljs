@@ -182,6 +182,36 @@
 
 
 ;; =====================================================
+;; Apply Domain Policy Defmethods (ADR-030)
+;; =====================================================
+
+(defmethod core/apply-domain-policy :player-target
+  [game-db selection]
+  (let [selected-target (first (:selection/selected selection))
+        target-effect (:selection/target-effect selection)
+        remaining-effects (vec (or (:selection/remaining-effects selection) []))
+        player-id (:selection/player-id selection)
+        resolved-effect (assoc target-effect :effect/target selected-target)
+        db-after-effect (effects/execute-effect game-db player-id resolved-effect)
+        result (effects/reduce-effects db-after-effect player-id remaining-effects)]
+    {:db (:db result)}))
+
+
+(defmethod core/apply-domain-policy :cast-time-targeting
+  [game-db selection]
+  (if (= :chaining (:selection/lifecycle selection))
+    {:db game-db}
+    {:db (confirm-cast-time-target game-db selection)}))
+
+
+(defmethod core/apply-domain-policy :ability-cast-targeting
+  [game-db selection]
+  (if (= :chaining (:selection/lifecycle selection))
+    {:db game-db}
+    {:db (confirm-cast-time-target game-db selection)}))
+
+
+;; =====================================================
 ;; Confirm Selection Multimethod
 ;; =====================================================
 

@@ -171,8 +171,64 @@
 
 
 ;; =====================================================
-;; Executor
+;; Apply Domain Policy (ADR-030) + Executor
 ;; =====================================================
+
+(defmethod core/apply-domain-policy :replacement-choice
+  [game-db selection]
+  (let [choice          (first (:selection/selected selection))
+        object-id       (:selection/object-id selection)
+        replacement-eid (:selection/replacement-entity-id selection)
+        in-flight-event (:selection/replacement-event selection)
+        player-id       (:selection/player-id selection)
+        action          (:choice/action choice)
+        db-no-replacement (d/db-with game-db [[:db/retractEntity replacement-eid]])
+        db-final
+        (case action
+          :proceed
+          (let [cost-effect (:choice/cost choice)]
+            (if (interactive-cost? cost-effect)
+              (let [obj-eid (q/get-object-eid db-no-replacement object-id)
+                    db-marker-cleared (if obj-eid
+                                        (d/db-with db-no-replacement
+                                                   [[:db/retract obj-eid :object/replacement-pending true]])
+                                        db-no-replacement)]
+                db-marker-cleared)
+              (let [db-after-cost (if cost-effect
+                                    (let [cost-result (effects/execute-effect-checked
+                                                        db-no-replacement player-id
+                                                        cost-effect object-id)]
+                                      (:db cost-result))
+                                    db-no-replacement)
+                    obj-eid (q/get-object-eid db-after-cost object-id)
+                    db-marker-cleared (if obj-eid
+                                        (d/db-with db-after-cost
+                                                   [[:db/retract obj-eid :object/replacement-pending true]])
+                                        db-after-cost)
+                    destination (get in-flight-event :event/to)]
+                (if (q/get-object-eid db-marker-cleared object-id)
+                  (zone-change-dispatch/move-to-zone-db db-marker-cleared object-id destination)
+                  db-marker-cleared))))
+
+          :redirect
+          (let [redirect-to (:choice/redirect-to choice)
+                obj-eid (q/get-object-eid db-no-replacement object-id)
+                db-marker-cleared (if obj-eid
+                                    (d/db-with db-no-replacement
+                                               [[:db/retract obj-eid :object/replacement-pending true]])
+                                    db-no-replacement)]
+            (zone-change-dispatch/move-to-zone-db db-marker-cleared object-id redirect-to))
+
+          (do
+            (js/console.warn
+              (str "apply-domain-policy :replacement-choice: unknown action " action))
+            (let [obj-eid (q/get-object-eid db-no-replacement object-id)]
+              (if obj-eid
+                (d/db-with db-no-replacement
+                           [[:db/retract obj-eid :object/replacement-pending true]])
+                db-no-replacement))))]
+    {:db db-final}))
+
 
 (defmethod core/execute-confirmed-selection :replacement-choice
   [game-db selection]

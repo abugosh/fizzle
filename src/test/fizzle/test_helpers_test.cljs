@@ -9,10 +9,10 @@
     [fizzle.test-helpers :as th]))
 
 
-;; Register a no-op executor for confirm-selection validation tests.
-;; Tests that verify validation pass/throw need a real :selection/type
-;; so execute-confirmed-selection can dispatch.
-(defmethod sel-core/execute-confirmed-selection :test-helpers-noop
+;; Register a no-op domain policy for confirm-selection validation tests.
+;; Tests that verify validation pass/throw need :selection/mechanism and
+;; :selection/domain so execute-confirmed-selection can dispatch to apply-domain-policy.
+(defmethod sel-core/apply-domain-policy :test-helpers-noop
   [game-db _selection]
   {:db game-db})
 
@@ -270,6 +270,8 @@
   (testing "confirm-selection works for valid :exact selection with correct count and candidates"
     (let [db (th/create-test-db)
           sel {:selection/type :test-helpers-noop
+               :selection/mechanism :pick-from-zone
+               :selection/domain :test-helpers-noop
                :selection/validation :exact
                :selection/select-count 1
                :selection/candidates #{:a :b}
@@ -283,6 +285,8 @@
   (testing "confirm-selection works for :always validation type (no candidate/count check)"
     (let [db (th/create-test-db)
           sel {:selection/type :test-helpers-noop
+               :selection/mechanism :pick-from-zone
+               :selection/domain :test-helpers-noop
                :selection/validation :always
                :selection/lifecycle :finalized}]
       ;; :always validation never fails — verify {:db ...} shape returned (no throw)

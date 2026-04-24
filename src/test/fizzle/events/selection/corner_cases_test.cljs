@@ -36,8 +36,8 @@
 ;; Test executor defmethods — used only by corner case tests
 ;; =====================================================
 
-;; A minimal executor that returns db unchanged, for routing tests.
-(defmethod core/execute-confirmed-selection :test-corner-noop
+;; A minimal domain policy that returns db unchanged, for routing tests.
+(defmethod core/apply-domain-policy :test-corner-noop
   [game-db _selection]
   {:db game-db})
 
@@ -57,6 +57,8 @@
     ;; probing what happens if malformed data reaches confirm-selection-impl.
     (let [db (th/create-test-db)
           sel {:selection/type :test-corner-noop
+               :selection/mechanism :pick-from-zone
+               :selection/domain :test-corner-noop
                :selection/lifecycle :bogus   ; invalid — no case match
                :selection/player-id :player-1
                :selection/selected #{}
@@ -86,6 +88,8 @@
           ;; First selection: a no-op executor with :standard lifecycle.
           ;; remaining-effects contains a :discard effect that requires player selection.
           sel {:selection/type :test-corner-noop
+               :selection/mechanism :pick-from-zone
+               :selection/domain :test-corner-noop
                :selection/lifecycle :standard
                :selection/player-id :player-1
                :selection/spell-id (random-uuid)
@@ -120,6 +124,8 @@
           ;; Add a card to the library so :draw can pull from it
           [db _card-id] (th/add-card-to-zone db :cabal-ritual :library :player-1)
           sel {:selection/type :test-corner-noop
+               :selection/mechanism :pick-from-zone
+               :selection/domain :test-corner-noop
                :selection/lifecycle :standard
                :selection/player-id :player-1
                :selection/spell-id (random-uuid)

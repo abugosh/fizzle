@@ -15,7 +15,7 @@
     [fizzle.engine.effects :as effects]
     [fizzle.engine.spec-util :as spec-util]
     [fizzle.engine.validation :as validation]
-    [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
+    [fizzle.events.selection.mechanism-domain :as mechanism-domain]
     [fizzle.events.selection.spec :as sel-spec]
     [fizzle.events.selection.spell-cleanup :as spell-cleanup]
     [fizzle.history.descriptions :as descriptions]))
@@ -71,8 +71,12 @@
 ;; =====================================================
 
 (defmulti execute-confirmed-selection
-  "Execute the type-specific logic for a confirmed selection.
-   Dispatches on :selection/type using the selection hierarchy.
+  "Execute the mechanism-specific logic for a confirmed selection.
+   Dispatches on :selection/mechanism (ADR-030).
+
+   Falls back to type->mechanism-domain lookup when :selection/mechanism is
+   absent (compat shim for selections built outside set-pending-selection,
+   e.g. direct test construction or legacy code paths).
 
    Arguments:
      game-db - Datascript database
@@ -81,8 +85,10 @@
    Returns {:db game-db}. Lifecycle behavior (standard, finalized, chaining)
    is declared by builders via :selection/lifecycle on the selection map, not
    signaled by executor return shape."
-  (fn [_game-db selection] (:selection/type selection))
-  :hierarchy #'selection-hierarchy)
+  (fn [_game-db selection]
+    (or (:selection/mechanism selection)
+        (:mechanism (get mechanism-domain/type->mechanism-domain
+                         (:selection/type selection))))))
 
 
 (defmulti apply-domain-policy
@@ -92,9 +98,16 @@
    fizzle-xx4u) after the mechanism's shared work completes. Each domain
    registers its tail policy via (defmethod apply-domain-policy <domain> ...).
 
+   Falls back to type->mechanism-domain lookup when :selection/domain is
+   absent (compat shim for selections built outside set-pending-selection,
+   e.g. direct test construction or legacy code paths).
+
    Contract: receives [game-db selection] and returns a tagged map per
    ADR-020 (typically {:db ...} or {:db ... :selection <next>})."
-  (fn [_game-db selection] (:selection/domain selection)))
+  (fn [_game-db selection]
+    (or (:selection/domain selection)
+        (:domain (get mechanism-domain/type->mechanism-domain
+                      (:selection/type selection))))))
 
 
 (defmethod apply-domain-policy :default
@@ -204,17 +217,56 @@
 
 
 ;; =====================================================
-;; Generic Zone-Pick Executor
+;; Mechanism Defmethods (ADR-030 Task 4)
 ;; =====================================================
+;; Each defmethod handles the structural work shared by all domains of that
+;; mechanism, then delegates per-type policy to apply-domain-policy.
+;;
+;; These replace the old :zone-pick / :accumulator / :reorder generics
+;; and the old type-keyed defmethods (which are now registered in domain
+;; files as apply-domain-policy defmethods instead).
 
-(defmethod execute-confirmed-selection :zone-pick
+(defmethod execute-confirmed-selection :pick-from-zone
   [game-db selection]
-  (let [selected (:selection/selected selection)
-        target-zone (:selection/target-zone selection)]
-    {:db (reduce (fn [gdb obj-id]
-                   (zone-change-dispatch/move-to-zone-db gdb obj-id target-zone))
-                 game-db
-                 selected)}))
+  (apply-domain-policy game-db selection))
+
+
+(defmethod execute-confirmed-selection :reorder
+  [game-db selection]
+  (apply-domain-policy game-db selection))
+
+
+(defmethod execute-confirmed-selection :accumulate
+  [game-db selection]
+  (apply-domain-policy game-db selection))
+
+
+(defmethod execute-confirmed-selection :allocate-resource
+  [game-db selection]
+  (apply-domain-policy game-db selection))
+
+
+(defmethod execute-confirmed-selection :n-slot-targeting
+  [game-db selection]
+  (apply-domain-policy game-db selection))
+
+
+(defmethod execute-confirmed-selection :pick-mode
+  [game-db selection]
+  (apply-domain-policy game-db selection))
+
+
+(defmethod execute-confirmed-selection :binary-choice
+  [game-db selection]
+  (apply-domain-policy game-db selection))
+
+
+(defmethod execute-confirmed-selection :default
+  [_game-db selection]
+  (throw (ex-info "execute-confirmed-selection has no mechanism defmethod (ADR-030)"
+                  {:selection/mechanism (:selection/mechanism selection)
+                   :selection/type (:selection/type selection)
+                   :selection selection})))
 
 
 ;; =====================================================

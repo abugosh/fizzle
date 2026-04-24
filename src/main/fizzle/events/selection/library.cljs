@@ -688,6 +688,102 @@
 
 
 ;; =====================================================
+;; Apply Domain Policy Defmethods (ADR-030)
+;; =====================================================
+
+(defmethod core/apply-domain-policy :tutor
+  [game-db selection]
+  (let [pile-choice (:selection/pile-choice selection)
+        selected (:selection/selected selection)]
+    (if (and pile-choice (seq selected))
+      {:db game-db}
+      {:db (execute-tutor-selection game-db selection)})))
+
+
+(defmethod core/apply-domain-policy :peek-and-select
+  [game-db selection]
+  (let [order-remainder? (:selection/order-remainder? selection)
+        selected (:selection/selected selection)
+        candidates (:selection/candidates selection)
+        remainder (set/difference candidates selected)]
+    (if (and order-remainder? (>= (count remainder) 2))
+      (let [selected-zone (or (:selection/selected-zone selection) :hand)]
+        {:db (reduce (fn [d card-id]
+                       (zone-change-dispatch/move-to-zone-db d card-id selected-zone))
+                     game-db
+                     selected)})
+      {:db (execute-peek-selection game-db selection)})))
+
+
+(defmethod core/apply-domain-policy :order-bottom
+  [game-db selection]
+  {:db (execute-order-bottom-selection game-db selection)})
+
+
+(defmethod core/apply-domain-policy :order-top
+  [game-db selection]
+  {:db (execute-order-top-selection game-db selection)})
+
+
+(defmethod core/apply-domain-policy :peek-and-reorder
+  [game-db selection]
+  (let [spell-id (:selection/spell-id selection)
+        player-id (:selection/player-id selection)
+        remaining-effects (:selection/remaining-effects selection)
+        target-player (or (:selection/target-player selection) player-id)
+        db-after-reorder (if (:selection/shuffle? selection)
+                           (zones/shuffle-library game-db target-player)
+                           (execute-peek-and-reorder-selection game-db selection))
+        db-after-remaining (reduce (fn [d effect]
+                                     (effects/execute-effect d player-id effect))
+                                   db-after-reorder
+                                   (or remaining-effects []))
+        spell-obj (queries/get-object db-after-remaining spell-id)
+        db-after-move (if spell-obj
+                        (zone-change-dispatch/move-to-zone-db db-after-remaining spell-id :graveyard)
+                        db-after-remaining)
+        db-final (spell-cleanup/remove-spell-stack-item db-after-move spell-id)]
+    {:db db-final}))
+
+
+(defmethod core/apply-domain-policy :pile-choice
+  [game-db selection]
+  (let [player-id (:selection/player-id selection)
+        spell-id (:selection/spell-id selection)
+        db-after-pile (execute-pile-choice game-db selection)
+        db-after-shuffle (zones/shuffle-library db-after-pile player-id)
+        remaining-effects (:selection/remaining-effects selection)
+        db-after-effects (reduce (fn [d effect]
+                                   (effects/execute-effect d player-id effect))
+                                 db-after-shuffle
+                                 (or remaining-effects []))
+        spell-obj (queries/get-object db-after-effects spell-id)
+        current-zone (:object/zone spell-obj)
+        db-after-move (if (= current-zone :stack)
+                        (let [cast-mode (:object/cast-mode spell-obj)
+                              destination (or (:mode/on-resolve cast-mode) :graveyard)]
+                          (zone-change-dispatch/move-to-zone-db db-after-effects spell-id destination))
+                        db-after-effects)
+        db-final (spell-cleanup/remove-spell-stack-item db-after-move spell-id)]
+    {:db db-final}))
+
+
+(defmethod core/apply-domain-policy :scry
+  [game-db selection]
+  (let [spell-id (:selection/spell-id selection)
+        remaining-effects (:selection/remaining-effects selection)
+        player-id (:selection/player-id selection)
+        db-after-reorder (reorder-library-for-scry game-db player-id selection)
+        db-after-remaining (reduce (fn [d effect]
+                                     (effects/execute-effect d player-id effect))
+                                   db-after-reorder
+                                   (or remaining-effects []))
+        db-after-move (zone-change-dispatch/move-to-zone-db db-after-remaining spell-id :graveyard)
+        db-final (spell-cleanup/remove-spell-stack-item db-after-move spell-id)]
+    {:db db-final}))
+
+
+;; =====================================================
 ;; Execute Confirmed Selection Defmethods
 ;; =====================================================
 

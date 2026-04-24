@@ -2,7 +2,8 @@
   "Tests for the selection mechanism in events/selection/core.cljs.
    Covers validate-selection (5 validation types + nil-reject + candidate membership)
    and auto-confirm behavior (data-driven via :selection/auto-confirm? flag).
-   Also covers confirm-selection-impl validation absorption and deferred entry processing."
+   Also covers confirm-selection-impl validation absorption and deferred entry processing.
+   Also covers ADR-030 mechanism dispatch integration tests (task 4, fizzle-xx4u)."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [fizzle.cards.blue.deep-analysis]
@@ -13,6 +14,8 @@
     [fizzle.events.selection.core :as selection-core]
     ;; Side-effect: registers :cast-time-targeting and :targeting-to-mana-allocation defmethods
     [fizzle.events.selection.targeting]
+    ;; Side-effect: registers execute-confirmed-selection defmethods for zone-ops domains
+    [fizzle.events.selection.zone-ops]
     [fizzle.test-helpers :as th]))
 
 
@@ -165,17 +168,17 @@
 ;; (ADR-019: validation moves from handler into impl)
 ;; =====================================================
 
-;; Test executor: returns db unchanged — purely for routing tests.
+;; Test domain policy: returns db unchanged — purely for routing tests.
 ;; The lifecycle tests in lifecycle_test.cljs cover routing; these
 ;; tests focus on the validation gate added to confirm-selection-impl.
-(defmethod selection-core/execute-confirmed-selection :test-impl-validation
+(defmethod selection-core/apply-domain-policy :test-impl-validation
   [game-db _selection]
   {:db game-db})
 
 
-;; Test chaining executor + chain builder: used to verify deferred entry
+;; Test chaining domain policy + chain builder: used to verify deferred entry
 ;; is NOT processed when chaining continues (chain not complete).
-(defmethod selection-core/execute-confirmed-selection :test-chaining-for-deferred
+(defmethod selection-core/apply-domain-policy :test-chaining-for-deferred
   [game-db _selection]
   {:db game-db})
 
@@ -183,6 +186,8 @@
 (defmethod selection-core/build-chain-selection :test-chaining-for-deferred
   [_db _selection]
   {:selection/type :test-impl-validation
+   :selection/mechanism :pick-from-zone
+   :selection/domain :test-impl-validation
    :selection/selected #{}
    :selection/validation :always
    :selection/auto-confirm? false
@@ -232,6 +237,8 @@
           candidates [mode-a mode-b]
           ;; Select mode-a which IS in the vector — must pass membership check
           sel {:selection/type :test-impl-validation
+               :selection/mechanism :pick-from-zone
+               :selection/domain :test-impl-validation
                :selection/lifecycle :finalized
                :selection/player-id :player-1
                :selection/selected #{mode-a}
@@ -250,6 +257,8 @@
     (let [db (th/create-test-db)
           ;; Valid finalized selection — no chaining, chain will be complete after confirm
           sel {:selection/type :test-impl-validation
+               :selection/mechanism :pick-from-zone
+               :selection/domain :test-impl-validation
                :selection/lifecycle :finalized
                :selection/player-id :player-1
                :selection/selected #{}
@@ -274,6 +283,8 @@
     (let [db (th/create-test-db)
           ;; Chaining selection — confirm-selection-impl will set a new pending-selection
           sel {:selection/type :test-chaining-for-deferred
+               :selection/mechanism :pick-from-zone
+               :selection/domain :test-chaining-for-deferred
                :selection/lifecycle :chaining
                :selection/player-id :player-1
                :selection/selected #{}
@@ -298,6 +309,8 @@
   (testing "confirm-selection-impl processes valid finalized selection correctly"
     (let [db (th/create-test-db)
           sel {:selection/type :test-impl-validation
+               :selection/mechanism :pick-from-zone
+               :selection/domain :test-impl-validation
                :selection/lifecycle :finalized
                :selection/player-id :player-1
                :selection/selected #{:a}
@@ -442,7 +455,8 @@
 
 (deftest test-apply-domain-policy-unknown-domain-throws-with-ex-info
   (testing ":default method throws ex-info for unknown :selection/domain"
-    (let [sel {:selection/domain :discard
+    ;; Use a domain keyword that is genuinely unregistered (not in any defmethod)
+    (let [sel {:selection/domain :nonexistent-domain-addzz9912
                :selection/type :discard
                :selection/selected #{}}]
       (is (thrown? js/Error
@@ -452,17 +466,19 @@
                      (selection-core/apply-domain-policy nil sel)
                      nil
                      (catch :default e e))]
-        (is (= :discard (:selection/domain (ex-data caught)))
+        (is (= :nonexistent-domain-addzz9912 (:selection/domain (ex-data caught)))
             ":selection/domain must be present in ex-data")))))
 
 
 (deftest test-apply-domain-policy-nil-domain-throws-with-ex-info
-  (testing ":default method throws ex-info when :selection/domain is nil"
-    (let [sel {:selection/type :discard
+  (testing ":default method throws ex-info when :selection/domain is nil and type has no mapping"
+    ;; A selection with no :selection/domain AND a :selection/type not in mechanism-domain
+    ;; must hit :default and throw. Using a clearly fabricated type to avoid ambiguity.
+    (let [sel {:selection/type :nonexistent-type-for-nil-domain-test
                :selection/selected #{}}]
       (is (thrown? js/Error
             (selection-core/apply-domain-policy nil sel))
-          "apply-domain-policy must throw when :selection/domain is absent"))))
+          "apply-domain-policy must throw when :selection/domain is absent and type has no mapping"))))
 
 
 ;; =====================================================
@@ -515,3 +531,52 @@
           ;; Key assertion: source-type must be absent (not nil) in the chained selection
           (is (not (contains? mana-sel :selection/source-type))
               "chaining-path must NOT propagate nil :selection/source-type into child — key must be absent"))))))
+
+
+;; =====================================================
+;; ADR-030 Mechanism Dispatch Integration Tests (task 4, fizzle-xx4u)
+;; =====================================================
+
+(deftest test-mechanism-dispatch-routes-by-selection-mechanism
+  (testing "execute-confirmed-selection dispatches on :selection/mechanism, not :selection/type (ADR-030)"
+    (let [db (th/create-test-db)
+          [db id1] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          ;; Selection has :selection/mechanism :pick-from-zone but a BOGUS :selection/type
+          ;; (not in the mechanism-domain map). After task 4, dispatch uses :mechanism, so
+          ;; it should still route to :pick-from-zone and call apply-domain-policy :discard.
+          selection {:selection/mechanism :pick-from-zone
+                     :selection/domain :discard
+                     :selection/type :bogus-type-that-has-no-defmethod
+                     :selection/selected #{id1}
+                     :selection/target-zone :graveyard}
+          result (selection-core/execute-confirmed-selection db selection)]
+      (is (map? result) "execute-confirmed-selection must return a map")
+      (is (contains? result :db) "result must contain :db key"))))
+
+
+(deftest test-unknown-mechanism-hits-default
+  (testing "Unknown :selection/mechanism hits :default on execute-confirmed-selection"
+    (let [db (th/create-test-db)]
+      (is (thrown? js/Error
+            (selection-core/execute-confirmed-selection
+              db
+              {:selection/mechanism :nonexistent-mechanism-12345
+               :selection/domain :discard
+               :selection/selected #{}}))
+          "Unknown mechanism must throw via :default"))))
+
+
+(deftest test-discard-domain-policy-moves-to-graveyard
+  (testing ":discard apply-domain-policy moves selected cards to graveyard (ADR-030 dispatch)"
+    (let [db (th/create-test-db)
+          [db id1] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          ;; Drive through execute-confirmed-selection with explicit mechanism+domain
+          selection {:selection/mechanism :pick-from-zone
+                     :selection/domain :discard
+                     :selection/type :discard
+                     :selection/selected #{id1}
+                     :selection/target-zone :graveyard}
+          result (selection-core/execute-confirmed-selection db selection)
+          db-after (:db result)]
+      (is (= :graveyard (th/get-object-zone db-after id1))
+          ":discard domain policy must move card to graveyard"))))
