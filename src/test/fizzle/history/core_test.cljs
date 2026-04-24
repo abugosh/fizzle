@@ -98,7 +98,7 @@
 (deftest test-step-to-clears-pending-selection
   (testing "step-to clears stale :game/pending-selection"
     (let [db (-> (build-3-entry-db)
-                 (assoc :game/pending-selection {:selection/type :mana-allocation}))
+                 (assoc :game/pending-selection {:selection/mechanism :allocate-resource}))
           db' (history/step-to db 0)]
       (is (nil? (:game/pending-selection db'))
           "Pending selection should be cleared after step-to"))))

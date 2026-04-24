@@ -56,8 +56,7 @@
     ;; the spec rejects :bogus at the chokepoint — this test is specifically
     ;; probing what happens if malformed data reaches confirm-selection-impl.
     (let [db (th/create-test-db)
-          sel {:selection/type :test-corner-noop
-               :selection/mechanism :pick-from-zone
+          sel {:selection/mechanism :pick-from-zone
                :selection/domain :test-corner-noop
                :selection/lifecycle :bogus   ; invalid — no case match
                :selection/player-id :player-1
@@ -87,8 +86,7 @@
           [db card-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           ;; First selection: a no-op executor with :standard lifecycle.
           ;; remaining-effects contains a :discard effect that requires player selection.
-          sel {:selection/type :test-corner-noop
-               :selection/mechanism :pick-from-zone
+          sel {:selection/mechanism :pick-from-zone
                :selection/domain :test-corner-noop
                :selection/lifecycle :standard
                :selection/player-id :player-1
@@ -123,8 +121,7 @@
     (let [db (th/create-test-db)
           ;; Add a card to the library so :draw can pull from it
           [db _card-id] (th/add-card-to-zone db :cabal-ritual :library :player-1)
-          sel {:selection/type :test-corner-noop
-               :selection/mechanism :pick-from-zone
+          sel {:selection/mechanism :pick-from-zone
                :selection/domain :test-corner-noop
                :selection/lifecycle :standard
                :selection/player-id :player-1
@@ -189,8 +186,7 @@
           [db spell-id] (th/add-card-to-zone db :opt :stack :player-1)
           ;; Build scry selection: scry 3 — put top-id and mid-id on top,
           ;; bot-id on bottom
-          selection {:selection/type :scry
-                     :selection/mechanism :reorder
+          selection {:selection/mechanism :reorder
                      :selection/domain :scry
                      :selection/lifecycle :finalized
                      :selection/player-id :player-1
@@ -225,8 +221,7 @@
           [a-id b-id c-id] lib-ids
           [db spell-id] (th/add-card-to-zone db :opt :stack :player-1)
           ;; Put all cards on bottom — player scryed 3, chose to put all on bottom
-          selection {:selection/type :scry
-                     :selection/mechanism :reorder
+          selection {:selection/mechanism :reorder
                      :selection/domain :scry
                      :selection/lifecycle :finalized
                      :selection/player-id :player-1
@@ -360,8 +355,7 @@
     ;; (cond is ordered). Use select-count=5 so the exact?=false branch is reached.
     (let [db (th/create-test-db)
           ;; Create a selection with select-count=5 but exact?=false (unlimited multi-select)
-          sel {:selection/type :test-corner-noop
-               :selection/lifecycle :standard
+          sel {:selection/lifecycle :standard
                :selection/player-id :player-1
                :selection/selected #{}
                :selection/select-count 5       ; >1 so single-select branch doesn't fire
@@ -387,8 +381,7 @@
     ;; Bug caught: if exact?=false branch incorrectly triggered auto-confirm via the single-select
     ;; path, the selection would auto-complete after the first item, preventing multi-select.
     (let [db (th/create-test-db)
-          sel {:selection/type :test-corner-noop
-               :selection/lifecycle :standard
+          sel {:selection/lifecycle :standard
                :selection/player-id :player-1
                :selection/selected #{}
                :selection/select-count 5        ; >1 so single-select branch doesn't fire

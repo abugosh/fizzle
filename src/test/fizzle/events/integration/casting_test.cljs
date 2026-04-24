@@ -528,7 +528,7 @@
       (is (some? pending-sel)
           "Multi-mode spell must use :game/pending-selection (standard pipeline)")
       (is (= :spell-mode (:selection/domain pending-sel))
-          ":selection/type must be :spell-mode for casting mode selection")
+          ":selection/domain must be :spell-mode for casting mode selection")
       ;; Mechanism check: :pick-mode is the mechanism for mode selection (per ADR-030)
       (is (= :pick-mode (:selection/mechanism pending-sel))
           ":selection/mechanism must be :pick-mode for casting mode selection")

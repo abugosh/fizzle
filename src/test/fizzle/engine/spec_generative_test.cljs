@@ -137,9 +137,9 @@
     ;; path is shape-specific (valid data passes, invalid data throws).
     (binding [spec-util/*throw-on-spec-failure* true]
       (let [app-db {:game/db (th/create-test-db)}
-            ;; Intentionally invalid: :selection/type alone is not a valid :discard
-            ;; — missing required :lifecycle, :player-id, :selected, etc.
-            invalid-sel {:selection/type :discard}]
+            ;; Intentionally invalid: :selection/mechanism alone is not enough for a valid
+            ;; :discard selection — missing required :domain, :lifecycle, :player-id, :selected, etc.
+            invalid-sel {:selection/mechanism :pick-from-zone}]
         (is (thrown? js/Error
               (sel-spec/set-pending-selection app-db invalid-sel))
             "set-pending-selection must throw on invalid selection when binding is true")))))

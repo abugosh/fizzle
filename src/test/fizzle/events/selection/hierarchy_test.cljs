@@ -78,8 +78,7 @@
           [db id1] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           [db id2] (th/add-card-to-zone db :cabal-ritual :hand :player-1)
           ;; Use explicit mechanism+domain (ADR-030): :pick-from-zone mechanism, :discard domain
-          selection {:selection/type :discard
-                     :selection/mechanism :pick-from-zone
+          selection {:selection/mechanism :pick-from-zone
                      :selection/domain :discard
                      :selection/selected #{id1 id2}
                      :selection/target-zone :graveyard}
@@ -95,8 +94,7 @@
     (let [db (th/create-test-db)
           [db id1] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
           ;; :graveyard-return domain moves to :selection/target-zone (defaults to :hand)
-          selection {:selection/type :graveyard-return
-                     :selection/mechanism :pick-from-zone
+          selection {:selection/mechanism :pick-from-zone
                      :selection/domain :graveyard-return
                      :selection/selected #{id1}
                      :selection/target-zone :hand}
@@ -135,8 +133,7 @@
           [db id1] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           ;; Execute with :discard domain — should use custom :discard executor
           ;; (which does NOT check :selection/target-zone)
-          selection {:selection/type      :discard
-                     :selection/mechanism :pick-from-zone
+          selection {:selection/mechanism :pick-from-zone
                      :selection/domain    :discard
                      :selection/selected #{id1}}
           result (core/execute-confirmed-selection db selection)]
@@ -309,8 +306,7 @@
           [db id1] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
           [db id2] (th/add-card-to-zone db :cabal-ritual :graveyard :player-1)
           ;; :graveyard-return should dispatch to :pick-from-zone mechanism, :graveyard-return domain
-          selection {:selection/type      :graveyard-return
-                     :selection/mechanism :pick-from-zone
+          selection {:selection/mechanism :pick-from-zone
                      :selection/domain    :graveyard-return
                      :selection/selected #{id1 id2}
                      :selection/target-zone :hand}
@@ -458,8 +454,7 @@
                                                                         :effect/count 2}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
                                   (q/get-all-stack-items db-with-storm)))
-          selection {:selection/type      :storm-split
-                     :selection/mechanism :accumulate
+          selection {:selection/mechanism :accumulate
                      :selection/domain    :storm-split
                      :selection/copy-count 2
                      :selection/valid-targets [:player-2 :player-1]
@@ -563,8 +558,7 @@
     ;; returns nil (no chain needed), which falls through to standard path
     (let [db (th/create-test-db)
           [db spell-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
-          selection {:selection/type :discard-specific-cost
-                     :selection/lifecycle :chaining
+          selection {:selection/lifecycle :chaining
                      :selection/player-id :player-1
                      :selection/spell-id spell-id
                      :selection/mode {:mode/id :primary
@@ -580,8 +574,7 @@
   (testing ":chain-bounce returns nil when selection has no selected items"
     ;; :chain-bounce only chains when (seq selected) — empty selection = no chain
     (let [db (th/create-test-db)
-          selection {:selection/type :chain-bounce
-                     :selection/lifecycle :chaining
+          selection {:selection/lifecycle :chaining
                      :selection/player-id :player-1
                      :selection/spell-id (random-uuid)
                      :selection/selected #{}}
@@ -596,8 +589,7 @@
     ;; on the selection (e.g., for :tutor which derives from :builder-declared-chain),
     ;; it returns nil — the lifecycle falls through to standard path.
     (let [db (th/create-test-db)
-          selection {:selection/type :tutor
-                     :selection/lifecycle :chaining
+          selection {:selection/lifecycle :chaining
                      :selection/player-id :player-1
                      :selection/spell-id (random-uuid)}
           result (core/build-chain-selection db selection)]

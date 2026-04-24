@@ -269,8 +269,7 @@
 (deftest confirm-selection-passes-valid-exact-selection-test
   (testing "confirm-selection works for valid :exact selection with correct count and candidates"
     (let [db (th/create-test-db)
-          sel {:selection/type :test-helpers-noop
-               :selection/mechanism :pick-from-zone
+          sel {:selection/mechanism :pick-from-zone
                :selection/domain :test-helpers-noop
                :selection/validation :exact
                :selection/select-count 1
@@ -284,8 +283,7 @@
 (deftest confirm-selection-passes-always-validation-test
   (testing "confirm-selection works for :always validation type (no candidate/count check)"
     (let [db (th/create-test-db)
-          sel {:selection/type :test-helpers-noop
-               :selection/mechanism :pick-from-zone
+          sel {:selection/mechanism :pick-from-zone
                :selection/domain :test-helpers-noop
                :selection/validation :always
                :selection/lifecycle :finalized}]

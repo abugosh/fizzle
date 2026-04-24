@@ -72,8 +72,7 @@
           [game-db' [bf-id _dr-id]] (th/add-cards-to-library game-db
                                                              [:brain-freeze :dark-ritual]
                                                              :player-1)
-          pending {:selection/type          :tutor
-                   :selection/mechanism     :pick-from-zone
+          pending {:selection/mechanism     :pick-from-zone
                    :selection/domain        :tutor
                    :selection/player-id :player-1
                    :selection/selected #{}
@@ -103,8 +102,7 @@
           [game-db' [obj1 obj2 obj3]] (th/add-cards-to-library game-db
                                                                [:dark-ritual :cabal-ritual :brain-freeze]
                                                                :player-1)
-          pending {:selection/type :tutor
-                   :selection/player-id :player-1
+          pending {:selection/player-id :player-1
                    :selection/selected #{}
                    :selection/select-count 3
                    :selection/exact? true
@@ -129,8 +127,7 @@
           [game-db' [bf-id _dr-id]] (th/add-cards-to-library game-db
                                                              [:brain-freeze :dark-ritual]
                                                              :player-1)
-          pending {:selection/type :tutor
-                   :selection/player-id :player-1
+          pending {:selection/player-id :player-1
                    :selection/selected #{bf-id}
                    :selection/select-count 1
                    :selection/exact? true
@@ -154,8 +151,7 @@
 (deftest test-player-target-auto-confirms
   (testing "Player target auto-confirms on player selection"
     (let [game-db (create-game-db)
-          pending {:selection/type      :player-target
-                   :selection/mechanism :n-slot-targeting
+          pending {:selection/mechanism :n-slot-targeting
                    :selection/domain    :player-target
                    :selection/player-id :player-1
                    :selection/selected #{}
@@ -179,8 +175,7 @@
 (deftest test-player-target-deselect-does-not-auto-confirm
   (testing "Deselecting player target does NOT auto-confirm"
     (let [game-db (create-game-db)
-          pending {:selection/type :player-target
-                   :selection/player-id :player-1
+          pending {:selection/player-id :player-1
                    :selection/selected #{:player-2}
                    :selection/select-count 1
                    :selection/valid-targets #{:player-1 :player-2}
@@ -202,8 +197,7 @@
 (deftest test-invalid-target-rejected
   (testing "Toggling an invalid target is rejected (no selection change)"
     (let [game-db (create-game-db)
-          pending {:selection/type :player-target
-                   :selection/player-id :player-1
+          pending {:selection/player-id :player-1
                    :selection/selected #{}
                    :selection/select-count 1
                    :selection/valid-targets #{:player-1 :player-2}
@@ -228,8 +222,7 @@
   (testing "Discard selection does NOT auto-confirm even with select-count=1"
     (let [game-db (create-game-db)
           [game-db' card-id] (th/add-card-to-zone game-db :dark-ritual :hand :player-1)
-          pending {:selection/type :discard
-                   :selection/player-id :player-1
+          pending {:selection/player-id :player-1
                    :selection/selected #{}
                    :selection/select-count 1
                    :selection/validation :exact
@@ -246,8 +239,7 @@
   (testing "Pile choice does NOT auto-confirm even with hand-count=1"
     (let [game-db (create-game-db)
           card-id (random-uuid)
-          pending {:selection/type :pile-choice
-                   :selection/player-id :player-1
+          pending {:selection/player-id :player-1
                    :selection/selected #{}
                    :selection/hand-count 1
                    :selection/select-count 1
@@ -267,8 +259,7 @@
   (testing "Graveyard return does NOT auto-confirm even with select-count=1"
     (let [game-db (create-game-db)
           [game-db' card-id] (th/add-card-to-zone game-db :dark-ritual :graveyard :player-1)
-          pending {:selection/type :graveyard-return
-                   :selection/player-id :player-1
+          pending {:selection/player-id :player-1
                    :selection/selected #{}
                    :selection/select-count 1
                    :selection/min-count 0
@@ -290,8 +281,7 @@
   (testing "Find Nothing (empty selection confirm) still works for tutor"
     (let [game-db (create-game-db)
           [game-db' [bf-id]] (th/add-cards-to-library game-db [:brain-freeze] :player-1)
-          pending {:selection/type      :tutor
-                   :selection/mechanism :pick-from-zone
+          pending {:selection/mechanism :pick-from-zone
                    :selection/domain    :tutor
                    :selection/player-id :player-1
                    :selection/selected #{}
@@ -324,8 +314,7 @@
           [game-db' [bf-id dr-id]] (th/add-cards-to-library game-db
                                                             [:brain-freeze :dark-ritual]
                                                             :player-1)
-          pending {:selection/type      :tutor
-                   :selection/mechanism :pick-from-zone
+          pending {:selection/mechanism :pick-from-zone
                    :selection/domain    :tutor
                    :selection/player-id :player-1
                    :selection/selected #{bf-id}

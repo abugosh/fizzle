@@ -80,8 +80,7 @@
   (testing "confirm returns db unchanged when required context keys are missing"
     (let [db (th/create-test-db {:mana {:black 1}})
           ;; Build a selection with only chosen-color — missing object-id, ability-index, generic-count
-          incomplete-selection {:selection/type :mana-allocation
-                                :selection/player-id :player-1
+          incomplete-selection {:selection/player-id :player-1
                                 :selection/allocation {:black 1}
                                 :selection/original-cost {:colorless 1}
                                 :selection/context {:mana-ability/chosen-color :blue}}

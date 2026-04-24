@@ -97,13 +97,6 @@
     (:selection/domain selection)))
 
 
-(defmethod apply-domain-policy :default
-  [_game-db selection]
-  (throw (ex-info "apply-domain-policy has no method for :selection/domain (task 4, ADR-030)"
-                  {:selection/domain (:selection/domain selection)
-                   :selection selection})))
-
-
 (defmulti build-selection-for-effect
   "Build selection state for an effect requiring player interaction.
    Dispatches on effect type or :player-target for :any-player targeting.

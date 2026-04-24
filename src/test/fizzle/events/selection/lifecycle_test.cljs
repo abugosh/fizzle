@@ -43,8 +43,7 @@
 
 (defmethod core/build-chain-selection :test-chaining
   [_db _selection]
-  {:selection/type :test-standard
-   :selection/mechanism :pick-from-zone
+  {:selection/mechanism :pick-from-zone
    :selection/domain :test-standard
    :selection/selected #{}
    :selection/validation :always
@@ -81,8 +80,7 @@
 (deftest test-standard-lifecycle-clears-selection
   (testing ":selection/lifecycle :standard dissocs pending-selection"
     (let [db (th/create-test-db)
-          app-db (make-app-db db {:selection/type :test-standard
-                                  :selection/mechanism :pick-from-zone
+          app-db (make-app-db db {:selection/mechanism :pick-from-zone
                                   :selection/domain :test-standard
                                   :selection/lifecycle :standard
                                   :selection/player-id :player-1
@@ -100,8 +98,7 @@
           _ (defmethod core/apply-continuation :test-marker
               [_continuation app-db]
               {:app-db (assoc app-db :test/marker true)})
-          app-db (make-app-db db {:selection/type :test-standard
-                                  :selection/mechanism :pick-from-zone
+          app-db (make-app-db db {:selection/mechanism :pick-from-zone
                                   :selection/domain :test-standard
                                   :selection/lifecycle :standard
                                   :selection/player-id :player-1
@@ -117,8 +114,7 @@
 (deftest test-no-lifecycle-defaults-to-standard
   (testing "selection WITHOUT :selection/lifecycle defaults to :standard behavior"
     (let [db (th/create-test-db)
-          app-db (make-app-db db {:selection/type :test-no-lifecycle
-                                  :selection/mechanism :pick-from-zone
+          app-db (make-app-db db {:selection/mechanism :pick-from-zone
                                   :selection/domain :test-no-lifecycle
                                   :selection/player-id :player-1
                                   :selection/selected #{}
@@ -135,8 +131,7 @@
 (deftest test-finalized-lifecycle-clears-selection
   (testing ":selection/lifecycle :finalized dissocs pending-selection"
     (let [db (th/create-test-db)
-          app-db (make-app-db db {:selection/type :test-finalized
-                                  :selection/mechanism :pick-from-zone
+          app-db (make-app-db db {:selection/mechanism :pick-from-zone
                                   :selection/domain :test-finalized
                                   :selection/lifecycle :finalized
                                   :selection/player-id :player-1
@@ -150,8 +145,7 @@
 (deftest test-finalized-lifecycle-clears-selected-card
   (testing ":finalized with :selection/clear-selected-card? true dissocs :game/selected-card"
     (let [db (th/create-test-db)
-          app-db (assoc (make-app-db db {:selection/type :test-finalized
-                                         :selection/mechanism :pick-from-zone
+          app-db (assoc (make-app-db db {:selection/mechanism :pick-from-zone
                                          :selection/domain :test-finalized
                                          :selection/lifecycle :finalized
                                          :selection/clear-selected-card? true
@@ -168,8 +162,7 @@
 (deftest test-finalized-lifecycle-without-clear-selected-card
   (testing ":finalized without :selection/clear-selected-card? preserves :game/selected-card"
     (let [db (th/create-test-db)
-          app-db (assoc (make-app-db db {:selection/type :test-finalized
-                                         :selection/mechanism :pick-from-zone
+          app-db (assoc (make-app-db db {:selection/mechanism :pick-from-zone
                                          :selection/domain :test-finalized
                                          :selection/lifecycle :finalized
                                          :selection/player-id :player-1
@@ -185,8 +178,7 @@
 (deftest test-finalized-lifecycle-applies-continuation
   (testing ":finalized lifecycle applies :selection/on-complete continuation"
     (let [db (th/create-test-db)
-          app-db (make-app-db db {:selection/type :test-finalized
-                                  :selection/mechanism :pick-from-zone
+          app-db (make-app-db db {:selection/mechanism :pick-from-zone
                                   :selection/domain :test-finalized
                                   :selection/lifecycle :finalized
                                   :selection/player-id :player-1
@@ -206,8 +198,7 @@
 (deftest test-chaining-lifecycle-chains-to-next-selection
   (testing ":selection/lifecycle :chaining sets next selection from build-chain-selection"
     (let [db (th/create-test-db)
-          app-db (make-app-db db {:selection/type :test-chaining
-                                  :selection/mechanism :pick-from-zone
+          app-db (make-app-db db {:selection/mechanism :pick-from-zone
                                   :selection/domain :test-chaining
                                   :selection/lifecycle :chaining
                                   :selection/player-id :player-1
@@ -222,8 +213,7 @@
 (deftest test-chaining-lifecycle-propagates-on-complete
   (testing ":chaining lifecycle propagates :selection/on-complete to chained selection"
     (let [db (th/create-test-db)
-          app-db (make-app-db db {:selection/type :test-chaining
-                                  :selection/mechanism :pick-from-zone
+          app-db (make-app-db db {:selection/mechanism :pick-from-zone
                                   :selection/domain :test-chaining
                                   :selection/lifecycle :chaining
                                   :selection/player-id :player-1
@@ -241,8 +231,7 @@
 (deftest test-chaining-lifecycle-nil-falls-through-to-standard
   (testing ":chaining with nil from build-chain-selection falls through to standard"
     (let [db (th/create-test-db)
-          app-db (make-app-db db {:selection/type :test-chaining-nil
-                                  :selection/mechanism :pick-from-zone
+          app-db (make-app-db db {:selection/mechanism :pick-from-zone
                                   :selection/domain :test-chaining-nil
                                   :selection/lifecycle :chaining
                                   :selection/player-id :player-1
@@ -261,7 +250,7 @@
 (deftest test-build-chain-selection-default-returns-nil
   (testing "build-chain-selection :default method returns nil"
     (let [db (th/create-test-db)]
-      (is (nil? (core/build-chain-selection db {:selection/type :unknown-type}))))))
+      (is (nil? (core/build-chain-selection db {:selection/domain :unknown-domain}))))))
 
 
 ;; =====================================================
@@ -290,8 +279,7 @@
           _ (defmethod core/apply-continuation :test-chain-b
               [_cont app-db]
               {:app-db (assoc app-db :test/chain-b-ran true)})
-          app-db (make-app-db db {:selection/type :test-finalized
-                                  :selection/mechanism :pick-from-zone
+          app-db (make-app-db db {:selection/mechanism :pick-from-zone
                                   :selection/domain :test-finalized
                                   :selection/lifecycle :finalized
                                   :selection/player-id :player-1
@@ -326,8 +314,7 @@
     ;; without running :test-marker, and (:test/marker result) would be nil.
     (let [db (th/create-test-db)
           ;; Step 1: chaining selection with on-complete continuation
-          app-db-step1 (make-app-db db {:selection/type :test-chaining
-                                        :selection/mechanism :pick-from-zone
+          app-db-step1 (make-app-db db {:selection/mechanism :pick-from-zone
                                         :selection/domain :test-chaining
                                         :selection/lifecycle :chaining
                                         :selection/player-id :player-1

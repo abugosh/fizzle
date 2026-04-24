@@ -299,8 +299,7 @@
     ;; Selection built with all required fields per :mana-allocation spec.
     ;; Tests that the sub passes through the real production shape with correct field values.
     (let [game-db (make-game-db)
-          selection {:selection/type      :mana-allocation
-                     :selection/mechanism :allocate-resource
+          selection {:selection/mechanism :allocate-resource
                      :selection/domain    :mana-allocation
                      :selection/lifecycle :finalized
                      :selection/player-id :player-1
@@ -326,8 +325,7 @@
     ;; Drive through sel-spec/set-pending-selection (spec-validated chokepoint).
     ;; Partial allocation: 2 black spent, 1 generic remains from 3-generic total.
     (let [game-db (make-game-db)
-          selection {:selection/type      :mana-allocation
-                     :selection/mechanism :allocate-resource
+          selection {:selection/mechanism :allocate-resource
                      :selection/domain    :mana-allocation
                      :selection/lifecycle :finalized
                      :selection/player-id :player-1

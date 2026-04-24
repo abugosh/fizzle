@@ -20,10 +20,10 @@
     ;; this call would succeed silently, letting an invalid selection corrupt game state.
     (binding [spec-util/*throw-on-spec-failure* true]
       (let [app-db {:game/db (th/create-test-db)}
-            ;; :selection/type alone is not a valid :discard — missing
-            ;; :selection/lifecycle, :selection/player-id, :selection/selected,
+            ;; :selection/mechanism alone is not a valid :discard — missing
+            ;; :selection/domain, :selection/lifecycle, :selection/player-id, :selection/selected,
             ;; :selection/validation, :selection/auto-confirm?
-            invalid-sel {:selection/type :discard}]
+            invalid-sel {:selection/mechanism :pick-from-zone}]
         (is (thrown? js/Error
               (sel-spec/set-pending-selection app-db invalid-sel))
             "set-pending-selection with invalid :discard should throw")))))
@@ -49,8 +49,8 @@
     ;; this test verifies the full spec path rejects maps missing required fields.
     (binding [spec-util/*throw-on-spec-failure* true]
       (let [app-db {:game/db (th/create-test-db)}
-            ;; :mana-allocation requires lifecycle, player-id, generic-remaining, etc.
-            invalid-sel {:selection/type :mana-allocation}]
+            ;; :allocate-resource requires domain, lifecycle, player-id, generic-remaining, etc.
+            invalid-sel {:selection/mechanism :allocate-resource}]
         (is (thrown? js/Error
               (sel-spec/set-pending-selection app-db invalid-sel))
             "set-pending-selection with bare :mana-allocation map should throw")))))
@@ -93,6 +93,6 @@
       (is (thrown? js/Error
             (spec-util/validate-at-chokepoint!
               :fizzle.events.selection.spec/selection
-              {:selection/type :discard}
+              {:selection/mechanism :pick-from-zone}
               "test-label"))
           "validate-at-chokepoint! should throw on invalid data when binding is true"))))

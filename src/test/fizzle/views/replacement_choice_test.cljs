@@ -26,8 +26,7 @@
 ;; B. Pure component: choice labels rendered from :selection/choices
 
 (def ^:private sample-selection
-  {:selection/type    :replacement-choice
-   :selection/choices [{:choice/action :proceed   :choice/label "Discard a land"}
+  {:selection/choices [{:choice/action :proceed   :choice/label "Discard a land"}
                        {:choice/action :redirect  :choice/label "Sacrifice (go to graveyard)"}]
    :selection/selected #{}})
 
@@ -55,8 +54,7 @@
 
 (deftest replacement-choice-modal-data-driven-test
   (testing "replacement-choice-modal renders all choices from :selection/choices"
-    (let [custom-selection {:selection/type    :replacement-choice
-                            :selection/choices [{:choice/action :proceed  :choice/label "Option A"}
+    (let [custom-selection {:selection/choices [{:choice/action :proceed  :choice/label "Option A"}
                                                 {:choice/action :redirect :choice/label "Option B"}
                                                 {:choice/action :redirect :choice/label "Option C"}]
                             :selection/selected #{}}

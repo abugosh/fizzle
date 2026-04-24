@@ -85,8 +85,7 @@
           ;; This verifies SBAs run through the :db effect handler, not just the selection
           game-db (drain-player game-db :player-2 0)
           ;; Build a :discard selection (mirrors generic zone-pick builder output)
-          pending-sel {:selection/type      :discard
-                       :selection/mechanism :pick-from-zone
+          pending-sel {:selection/mechanism :pick-from-zone
                        :selection/domain    :discard
                        :selection/lifecycle :finalized
                        :selection/card-source :hand
@@ -150,8 +149,7 @@
           mode {:mode/id :primary
                 :mode/mana-cost {:black 1}
                 :mode/effects [{:effect/type :add-mana :effect/mana {:black 3}}]}
-          pending-sel {:selection/type      :mana-allocation
-                       :selection/mechanism :allocate-resource
+          pending-sel {:selection/mechanism :allocate-resource
                        :selection/domain    :mana-allocation
                        :selection/lifecycle :finalized
                        :selection/clear-selected-card? true
@@ -261,8 +259,7 @@
           ;; Build scry selection manually (mirrors build-scry-selection output)
           ;; Scry 2: show top-id and mid-id, player puts both on top
           library-cards [top-id mid-id]
-          pending-sel {:selection/type      :scry
-                       :selection/mechanism :reorder
+          pending-sel {:selection/mechanism :reorder
                        :selection/domain    :scry
                        :selection/lifecycle :finalized
                        :selection/player-id :player-1
@@ -311,8 +308,7 @@
           ;; Also add a regular card to discard
           [game-db card-id] (th/add-card-to-zone game-db :cabal-ritual :hand :player-1)
           ;; Build discard selection targeting the regular card (not the token)
-          pending-sel {:selection/type      :discard
-                       :selection/mechanism :pick-from-zone
+          pending-sel {:selection/mechanism :pick-from-zone
                        :selection/domain    :discard
                        :selection/lifecycle :finalized
                        :selection/card-source :hand

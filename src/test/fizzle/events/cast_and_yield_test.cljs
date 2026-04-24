@@ -145,7 +145,7 @@
                         {:game/db db
                          :game/selected-card obj-id})
           result (dispatch-cast-and-yield app-db)]
-      ;; After ADR-023: multi-mode spells use :game/pending-selection with :selection/type :spell-mode
+      ;; After ADR-023/ADR-030: multi-mode spells use :game/pending-selection with :selection/domain :spell-mode
       (let [pending (:game/pending-selection result)]
         (is (some? pending)
             "Should have pending-selection for multi-mode spell (ADR-023: standard pipeline)")

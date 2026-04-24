@@ -66,8 +66,7 @@
         target-req (first (:card/targeting card))
         modes (rules/get-casting-modes db player-id object-id)
         mode (first (filter #(= :primary (:mode/id %)) modes))
-        selection {:selection/type :cast-time-targeting
-                   :selection/player-id player-id
+        selection {:selection/player-id player-id
                    :selection/object-id object-id
                    :selection/mode mode
                    :selection/target-requirement target-req
@@ -223,8 +222,7 @@
   (testing "Incrementing a target allocation when total < copy-count"
     (let [app-db {:game/db {}
                   :game/pending-selection
-                  {:selection/type :storm-split
-                   :selection/copy-count 3
+                  {:selection/copy-count 3
                    :selection/valid-targets [:player-2 :player-1]
                    :selection/allocation {:player-2 2 :player-1 0}
                    :selection/auto-confirm? false}}
@@ -237,8 +235,7 @@
   (testing "Decrementing a target allocation"
     (let [app-db {:game/db {}
                   :game/pending-selection
-                  {:selection/type :storm-split
-                   :selection/copy-count 3
+                  {:selection/copy-count 3
                    :selection/valid-targets [:player-2 :player-1]
                    :selection/allocation {:player-2 3 :player-1 0}
                    :selection/auto-confirm? false}}
@@ -251,8 +248,7 @@
   (testing "Cannot decrement below 0"
     (let [app-db {:game/db {}
                   :game/pending-selection
-                  {:selection/type :storm-split
-                   :selection/copy-count 3
+                  {:selection/copy-count 3
                    :selection/valid-targets [:player-2 :player-1]
                    :selection/allocation {:player-2 3 :player-1 0}
                    :selection/auto-confirm? false}}
@@ -265,8 +261,7 @@
   (testing "Cannot exceed copy count total"
     (let [app-db {:game/db {}
                   :game/pending-selection
-                  {:selection/type :storm-split
-                   :selection/copy-count 3
+                  {:selection/copy-count 3
                    :selection/valid-targets [:player-2 :player-1]
                    :selection/allocation {:player-2 3 :player-1 0}
                    :selection/auto-confirm? false}}

@@ -185,8 +185,7 @@
 
 (defmethod selection-core/build-chain-selection :test-chaining-for-deferred
   [_db _selection]
-  {:selection/type :test-impl-validation
-   :selection/mechanism :pick-from-zone
+  {:selection/mechanism :pick-from-zone
    :selection/domain :test-impl-validation
    :selection/selected #{}
    :selection/validation :always
@@ -198,8 +197,7 @@
   (testing "confirm-selection-impl returns app-db unchanged when count is invalid"
     (let [db (th/create-test-db)
           ;; Two items selected but select-count is 1 — exact validation fails
-          sel {:selection/type :test-impl-validation
-               :selection/lifecycle :finalized
+          sel {:selection/lifecycle :finalized
                :selection/player-id :player-1
                :selection/selected #{:a :b}
                :selection/select-count 1
@@ -214,8 +212,7 @@
   (testing "confirm-selection-impl returns app-db unchanged when selected item not in candidates"
     (let [db (th/create-test-db)
           ;; :mountain not in candidates [:island :forest]
-          sel {:selection/type :test-impl-validation
-               :selection/lifecycle :finalized
+          sel {:selection/lifecycle :finalized
                :selection/player-id :player-1
                :selection/selected #{:mountain}
                :selection/candidates [:island :forest]
@@ -236,8 +233,7 @@
           mode-b {:mode/id :mode-b :mode/name "Mode B"}
           candidates [mode-a mode-b]
           ;; Select mode-a which IS in the vector — must pass membership check
-          sel {:selection/type :test-impl-validation
-               :selection/mechanism :pick-from-zone
+          sel {:selection/mechanism :pick-from-zone
                :selection/domain :test-impl-validation
                :selection/lifecycle :finalized
                :selection/player-id :player-1
@@ -256,8 +252,7 @@
   (testing "confirm-selection-impl processes deferred entry when selection chain is complete"
     (let [db (th/create-test-db)
           ;; Valid finalized selection — no chaining, chain will be complete after confirm
-          sel {:selection/type :test-impl-validation
-               :selection/mechanism :pick-from-zone
+          sel {:selection/mechanism :pick-from-zone
                :selection/domain :test-impl-validation
                :selection/lifecycle :finalized
                :selection/player-id :player-1
@@ -282,8 +277,7 @@
   (testing "confirm-selection-impl does NOT process deferred entry when chaining continues"
     (let [db (th/create-test-db)
           ;; Chaining selection — confirm-selection-impl will set a new pending-selection
-          sel {:selection/type :test-chaining-for-deferred
-               :selection/mechanism :pick-from-zone
+          sel {:selection/mechanism :pick-from-zone
                :selection/domain :test-chaining-for-deferred
                :selection/lifecycle :chaining
                :selection/player-id :player-1
@@ -308,8 +302,7 @@
 (deftest test-confirm-impl-valid-finalized-selection-works
   (testing "confirm-selection-impl processes valid finalized selection correctly"
     (let [db (th/create-test-db)
-          sel {:selection/type :test-impl-validation
-               :selection/mechanism :pick-from-zone
+          sel {:selection/mechanism :pick-from-zone
                :selection/domain :test-impl-validation
                :selection/lifecycle :finalized
                :selection/player-id :player-1
@@ -330,8 +323,7 @@
 (deftest test-toggle-impl-auto-confirm-true-on-single-select
   (testing "toggle with select-count 1 and auto-confirm? true signals auto-confirm"
     (let [db (th/create-test-db)
-          sel {:selection/type :test-impl-validation
-               :selection/lifecycle :finalized
+          sel {:selection/lifecycle :finalized
                :selection/player-id :player-1
                :selection/selected #{}
                :selection/candidates #{:a :b}
@@ -349,8 +341,7 @@
 (deftest test-toggle-impl-auto-confirm-false-on-deselect
   (testing "deselecting an already-selected item does not signal auto-confirm"
     (let [db (th/create-test-db)
-          sel {:selection/type :test-impl-validation
-               :selection/lifecycle :finalized
+          sel {:selection/lifecycle :finalized
                :selection/player-id :player-1
                :selection/selected #{:a}
                :selection/candidates #{:a :b}
@@ -366,8 +357,7 @@
 (deftest test-toggle-impl-auto-confirm-false-on-multi-select
   (testing "toggle with select-count 3 does not signal auto-confirm even after adding item"
     (let [db (th/create-test-db)
-          sel {:selection/type :test-impl-validation
-               :selection/lifecycle :finalized
+          sel {:selection/lifecycle :finalized
                :selection/player-id :player-1
                :selection/selected #{}
                :selection/candidates #{:a :b :c}
@@ -383,8 +373,7 @@
 (deftest test-toggle-impl-auto-confirm-false-when-at-limit-rejected
   (testing "toggling a new item when at limit is rejected and does not signal auto-confirm"
     (let [db (th/create-test-db)
-          sel {:selection/type :test-impl-validation
-               :selection/lifecycle :finalized
+          sel {:selection/lifecycle :finalized
                :selection/player-id :player-1
                :selection/selected #{:a :b}
                :selection/candidates #{:a :b :c}
@@ -402,8 +391,7 @@
 (deftest test-toggle-impl-rejects-invalid-target
   (testing "toggling an id not in valid-targets does not change app-db and returns false auto-confirm"
     (let [db (th/create-test-db)
-          sel {:selection/type :test-impl-validation
-               :selection/lifecycle :finalized
+          sel {:selection/lifecycle :finalized
                :selection/player-id :player-1
                :selection/selected #{}
                :selection/valid-targets [:a :b]
@@ -453,31 +441,26 @@
         "apply-domain-policy must be a defmulti (MultiFn instance)")))
 
 
-(deftest test-apply-domain-policy-unknown-domain-throws-with-ex-info
-  (testing ":default method throws ex-info for unknown :selection/domain"
-    ;; Use a domain keyword that is genuinely unregistered (not in any defmethod)
+(deftest test-apply-domain-policy-unknown-domain-throws
+  (testing "apply-domain-policy throws for unknown :selection/domain (CLJS built-in no-method error)"
+    ;; Use a domain keyword that is genuinely unregistered (not in any defmethod).
+    ;; With the :default fallback removed, CLJS dispatches to no registered method
+    ;; and throws the built-in "no method" error. No custom ex-info — just an error.
     (let [sel {:selection/domain :nonexistent-domain-addzz9912
                :selection/selected #{}}]
       (is (thrown? js/Error
             (selection-core/apply-domain-policy nil sel))
-          "apply-domain-policy must throw for unregistered domain")
-      (let [caught (try
-                     (selection-core/apply-domain-policy nil sel)
-                     nil
-                     (catch :default e e))]
-        (is (= :nonexistent-domain-addzz9912 (:selection/domain (ex-data caught)))
-            ":selection/domain must be present in ex-data")))))
+          "apply-domain-policy must throw for unregistered domain"))))
 
 
-(deftest test-apply-domain-policy-nil-domain-throws-with-ex-info
-  (testing ":default method throws ex-info when :selection/domain is nil and type has no mapping"
-    ;; A selection with no :selection/domain AND a :selection/type not in mechanism-domain
-    ;; must hit :default and throw. Using a clearly fabricated type to avoid ambiguity.
-    (let [sel {:selection/type :nonexistent-type-for-nil-domain-test
-               :selection/selected #{}}]
+(deftest test-apply-domain-policy-nil-domain-throws
+  (testing "apply-domain-policy throws when :selection/domain is nil (CLJS built-in no-method error)"
+    ;; A selection with no :selection/domain dispatches on nil.
+    ;; With :default removed, nil has no registered method and CLJS throws.
+    (let [sel {:selection/selected #{}}]
       (is (thrown? js/Error
             (selection-core/apply-domain-policy nil sel))
-          "apply-domain-policy must throw when :selection/domain is absent and type has no mapping"))))
+          "apply-domain-policy must throw when :selection/domain is absent"))))
 
 
 ;; =====================================================

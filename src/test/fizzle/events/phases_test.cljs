@@ -177,8 +177,7 @@
           ;; Inject a fake pending selection
           app-db-with-sel (assoc app-db
                                  :game/pending-selection
-                                 {:selection/type :discard
-                                  :selection/player-id :player-1})
+                                 {:selection/player-id :player-1})
           result (dispatch-event app-db-with-sel [::phases/advance-phase])]
       (is (= initial-phase (:game/phase (q/get-game-state (:game/db result))))
           "phase should not change when pending-selection blocks advance"))))
@@ -228,8 +227,7 @@
     (let [app-db (setup-app-db)
           app-db-with-sel (assoc app-db
                                  :game/pending-selection
-                                 {:selection/type :discard
-                                  :selection/player-id :player-1})
+                                 {:selection/player-id :player-1})
           initial-turn (:game/turn (q/get-game-state (:game/db app-db-with-sel)))
           result (dispatch-event app-db-with-sel [::phases/start-turn])
           result-turn (:game/turn (q/get-game-state (:game/db result)))]

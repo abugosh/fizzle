@@ -214,8 +214,7 @@
           ;; Build a selection with :spell source-type and a remaining discard effect
           ;; When confirmed, standard-path will process the remaining discard effect,
           ;; find it interactive, and create a chained selection — which should inherit source-type.
-          selection {:selection/type :test-spell-chain-g
-                     :selection/mechanism :pick-from-zone
+          selection {:selection/mechanism :pick-from-zone
                      :selection/domain :test-spell-chain-g
                      :selection/source-type :spell
                      :selection/spell-id obj-id

@@ -68,10 +68,11 @@
       (is (not (s/valid? ::sel-spec/selection sel))))))
 
 
-(deftest test-unknown-type-fails
-  (testing "selection with :selection/type not in any defmethod fails"
+(deftest test-unknown-mechanism-fails
+  (testing "selection with unknown :selection/mechanism not in any defmethod fails"
     (is (not (s/valid? ::sel-spec/selection
-                       {:selection/type :completely-unknown-type
+                       {:selection/mechanism :completely-unknown-mechanism
+                        :selection/domain :discard
                         :selection/lifecycle :standard
                         :selection/selected #{}
                         :selection/validation :exact

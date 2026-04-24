@@ -109,8 +109,7 @@
 
 (deftest test-toggle-impl-at-limit-returns-unchanged-app-db
   (testing "at-limit click (selecting beyond select-count) returns [app-db false] — NOT a throw"
-    (let [sel {:selection/type :discard
-               :selection/lifecycle :standard
+    (let [sel {:selection/lifecycle :standard
                :selection/player-id :player-1
                :selection/selected #{:card-a :card-b}
                :selection/valid-targets [:card-a :card-b :card-c]
@@ -127,8 +126,7 @@
 
 (deftest test-toggle-impl-deselect-branch-preserved
   (testing "deselecting an already-selected item works correctly with pos-int? guard in place"
-    (let [sel {:selection/type :discard
-               :selection/lifecycle :standard
+    (let [sel {:selection/lifecycle :standard
                :selection/player-id :player-1
                :selection/selected #{:card-a :card-b}
                :selection/valid-targets [:card-a :card-b :card-c]
@@ -145,8 +143,7 @@
 
 (deftest test-toggle-impl-single-select-replace-preserved
   (testing "single-select (select-count=1) replaces current selection with new id"
-    (let [sel {:selection/type :discard
-               :selection/lifecycle :standard
+    (let [sel {:selection/lifecycle :standard
                :selection/player-id :player-1
                :selection/selected #{:card-a}
                :selection/valid-targets [:card-a :card-b]
@@ -161,8 +158,7 @@
 
 (deftest test-toggle-impl-unlimited-exact-false-preserved
   (testing "exact?=false (unlimited select) always adds new id beyond select-count"
-    (let [sel {:selection/type :discard
-               :selection/lifecycle :standard
+    (let [sel {:selection/lifecycle :standard
                :selection/player-id :player-1
                :selection/selected #{:card-a :card-b :card-c}
                :selection/valid-targets [:card-a :card-b :card-c :card-d]
@@ -196,8 +192,7 @@
   (testing "explicit at-limit arm catches overshoot case (selected count > select-count)"
     ;; This state should not occur in practice but tests the at-limit arm handles
     ;; the (>= count select-count) condition generally — not just ==.
-    (let [sel {:selection/type :discard
-               :selection/lifecycle :standard
+    (let [sel {:selection/lifecycle :standard
                :selection/player-id :player-1
                :selection/selected #{:card-a :card-b :card-c}  ; 3 selected
                :selection/select-count 2  ; limit is 2
@@ -222,8 +217,7 @@
     ;; fires for lifecycle absence (a pre-existing :req field).
     (let [db (th/create-test-db)
           ;; Malformed: missing :selection/lifecycle (required for :discard)
-          malformed-sel {:selection/type :discard
-                         :selection/player-id :player-1
+          malformed-sel {:selection/player-id :player-1
                          :selection/selected #{}
                          :selection/select-count 1
                          :selection/validation :exact
