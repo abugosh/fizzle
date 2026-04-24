@@ -114,12 +114,26 @@
 
 
 (deftest test-step-to-clears-pending-mode-selection
-  (testing "step-to clears stale :game/pending-mode-selection"
-    (let [db (-> (build-3-entry-db)
-                 (assoc :game/pending-mode-selection {:some :mode}))
+  (testing "step-to clears stale :game/pending-selection (ADR-023: pending-mode-selection retired)"
+    ;; :game/pending-mode-selection is retired per ADR-023. Mode selection now uses
+    ;; :game/pending-selection with :selection/type :spell-mode. step-to clears
+    ;; :game/pending-selection as part of clear-stale-ui-state.
+    (let [spell-mode-sel {:selection/type :spell-mode
+                          :selection/mechanism :pick-mode
+                          :selection/domain :spell-mode
+                          :selection/player-id :player-1
+                          :selection/object-id (random-uuid)
+                          :selection/candidates []
+                          :selection/selected #{}
+                          :selection/select-count 1
+                          :selection/lifecycle :finalized
+                          :selection/auto-confirm? true
+                          :selection/validation :exact}
+          db (-> (build-3-entry-db)
+                 (assoc :game/pending-selection spell-mode-sel))
           db' (history/step-to db 0)]
-      (is (nil? (:game/pending-mode-selection db'))
-          "Pending mode selection should be cleared after step-to"))))
+      (is (nil? (:game/pending-selection db'))
+          "step-to must clear :game/pending-selection (including spell-mode selections) after ADR-023"))))
 
 
 (deftest test-clear-stale-clears-history-keys

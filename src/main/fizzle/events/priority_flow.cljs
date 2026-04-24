@@ -143,8 +143,9 @@
                      :principal player-id
                      :event-type :fizzle.events.priority-flow/cast-and-yield})})
 
-      ;; Mode selection needed — no continuation (mode selection is a choice, not a cost)
-      (:game/pending-mode-selection after-cast)
+      ;; Mode selection needed — no continuation (mode selection is a choice, not a cost).
+      ;; After ADR-023: mode selection uses :game/pending-selection with :selection/type :spell-mode.
+      (= :spell-mode (:selection/type (:game/pending-selection after-cast)))
       {:db after-cast}
 
       ;; Cast failed or nothing on stack

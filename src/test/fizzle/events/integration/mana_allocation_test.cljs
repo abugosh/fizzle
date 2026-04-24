@@ -204,8 +204,7 @@
   [game-db]
   {:game/db game-db
    :game/selected-card nil
-   :game/pending-selection nil
-   :game/pending-mode-selection nil})
+   :game/pending-selection nil})
 
 
 ;; =====================================================

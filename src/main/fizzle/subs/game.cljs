@@ -449,12 +449,13 @@
 
 
 ;; === Mode Selection Subscriptions ===
-;; For spells with multiple casting modes from the same zone
+;; Retired (ADR-023): mode selection now uses :game/pending-selection with
+;; :selection/type :spell-mode. This subscription always returns nil.
 
 (rf/reg-sub
   ::pending-mode-selection
-  (fn [db _]
-    (:game/pending-mode-selection db)))
+  (fn [_db _]
+    nil))
 
 
 (rf/reg-sub

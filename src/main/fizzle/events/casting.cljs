@@ -226,9 +226,21 @@
   (let [object-id (:continuation/object-id continuation)
         game-db (:game/db app-db)
         player-id (queries/get-human-player-id game-db)
+        ;; Determine casting mode for this spell.
+        ;; For alternate-cost spells (primary + hand-zone alternate), :object/chosen-mode is a
+        ;; casting mode map (has :mode/mana-cost) — use it to honour the player's mode choice.
+        ;; For modal cards (:card/modes), :object/chosen-mode is an effects mode map (no
+        ;; :mode/mana-cost) — ignore it and fall back to primary casting mode as before.
+        obj (queries/get-object game-db object-id)
+        chosen-mode (:object/chosen-mode obj)
         modes (rules/get-casting-modes game-db player-id object-id)
-        primary (first (filter #(= :primary (:mode/id %)) modes))
-        casting-mode (or primary (first modes))
+        casting-mode (if (and chosen-mode (:mode/mana-cost chosen-mode))
+                       ;; Alternate-cost scenario: chosen-mode IS the casting mode.
+                       chosen-mode
+                       ;; Modal card scenario: chosen-mode is an effects mode, not a casting mode.
+                       ;; Pick :primary or first from get-casting-modes.
+                       (or (first (filter #(= :primary (:mode/id %)) modes))
+                           (first modes)))
         result (initiate-cast-with-mode app-db player-id object-id casting-mode nil)
         cast-and-yield? (= :cast-and-yield (:type (:history/deferred-entry result)))]
     (cond
@@ -287,11 +299,19 @@
                (empty? castable-modes)
                app-db
 
-               ;; Multiple modes: show selector first (X costs/targeting checked after mode selection)
+               ;; Multiple modes: show selector via standard selection pipeline (ADR-023).
+               ;; build-spell-mode-selection creates a :spell-mode selection whose
+               ;; :cast-after-spell-mode continuation reads :object/chosen-mode.
                (> (count castable-modes) 1)
-               (assoc app-db :game/pending-mode-selection
-                      {:object-id object-id
-                       :modes castable-modes})
+               (-> app-db
+                   (sel-spec/set-pending-selection
+                     (build-spell-mode-selection player-id object-id castable-modes))
+                   (assoc :history/deferred-entry
+                          {:type :cast-spell
+                           :object-id object-id
+                           :pre-game-db game-db-before
+                           :principal player-id
+                           :event-type :fizzle.events.casting/cast-spell}))
 
                ;; Single mode: check for X costs, targeting, then cast
                :else
@@ -323,20 +343,16 @@
 
 
 ;; === Mode Selection System ===
-;; For spells with multiple valid casting modes from the same zone
+;; Mode selection is now handled by the standard selection pipeline (ADR-023).
+;; Mode choice uses :game/pending-selection with :selection/type :spell-mode.
+;; These event handlers are retained for backward compatibility only.
 
 (defn select-casting-mode-handler
-  "Handle select-casting-mode event: cast spell with the chosen mode.
-   Clears pending mode selection and initiates cast with X cost/targeting checks.
+  "Retired (ADR-023): mode selection now goes through the standard selection pipeline.
+   This handler is a no-op — mode selection is confirmed via ::selection/confirm-selection.
    Pure function: (app-db, mode) -> app-db"
-  [app-db mode]
-  (let [pending (:game/pending-mode-selection app-db)
-        object-id (:object-id pending)]
-    (if (and pending object-id mode)
-      ;; Use initiate-cast-with-mode to handle X costs, targeting, and casting
-      (-> (initiate-cast-with-mode app-db (queries/get-human-player-id (:game/db app-db)) object-id mode nil)
-          (dissoc :game/pending-mode-selection))
-      app-db)))
+  [app-db _mode]
+  app-db)
 
 
 (rf/reg-event-db
@@ -346,10 +362,11 @@
 
 
 (defn cancel-mode-selection-handler
-  "Handle cancel-mode-selection event: clear pending mode selection state.
+  "Retired (ADR-023): mode selection cancellation now goes through ::selection/cancel-selection.
+   This handler is a no-op.
    Pure function: (app-db) -> app-db"
   [app-db]
-  (dissoc app-db :game/pending-mode-selection))
+  app-db)
 
 
 (rf/reg-event-db

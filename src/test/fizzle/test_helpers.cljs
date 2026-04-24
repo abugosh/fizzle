@@ -328,10 +328,6 @@
                                             :object-id obj-id
                                             :target target-id})]
     (cond
-      (:game/pending-mode-selection result)
-      (throw (ex-info "cast-with-target: spell requires mode selection, use cast-mode-with-target"
-                      {:object-id obj-id}))
-
       (and (:game/pending-selection result)
            (= :spell-mode (:selection/type (:game/pending-selection result))))
       (throw (ex-info "cast-with-target: spell requires mode selection, use cast-mode-with-target"

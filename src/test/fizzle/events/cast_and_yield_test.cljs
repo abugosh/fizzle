@@ -145,17 +145,19 @@
                         {:game/db db
                          :game/selected-card obj-id})
           result (dispatch-cast-and-yield app-db)]
-      ;; Should have pending mode selection (not auto-yielded)
-      (let [mode-sel (:game/pending-mode-selection result)]
-        (is (some? mode-sel)
-            "Should show mode selector for multi-mode spell")
-        (is (= obj-id (:object-id mode-sel))
-            "Mode selection should reference the cast object")
-        (is (= 2 (count (:modes mode-sel)))
-            "Should have 2 castable modes (normal + alternate)"))
+      ;; After ADR-023: multi-mode spells use :game/pending-selection with :selection/type :spell-mode
+      (let [pending (:game/pending-selection result)]
+        (is (some? pending)
+            "Should have pending-selection for multi-mode spell (ADR-023: standard pipeline)")
+        (is (= :spell-mode (:selection/type pending))
+            "Selection type must be :spell-mode for casting mode choice")
+        (is (= obj-id (:selection/object-id pending))
+            "Mode selection must reference the cast object")
+        (is (= 2 (count (:selection/candidates pending)))
+            "Should have 2 castable modes as candidates"))
       ;; Stack should NOT have the spell (mode selector is pre-cast)
-      (is (nil? (:game/pending-selection result))
-          "Should not have pending selection (mode selection is different)"))))
+      (is (nil? (:game/pending-mode-selection result))
+          "Legacy :game/pending-mode-selection must be nil (retired per ADR-023)"))))
 
 
 (deftest test-cast-and-yield-targeted-spell-shows-targeting

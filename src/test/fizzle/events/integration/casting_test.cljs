@@ -3,8 +3,8 @@
 
    Covers all 3 reg-event-db handlers:
      ::cast-spell            — cast-spell-handler delegation
-     ::select-casting-mode   — select-casting-mode-handler delegation
-     ::cancel-mode-selection — cancel-mode-selection-handler delegation
+     ::select-casting-mode   — select-casting-mode-handler delegation (retired)
+     ::cancel-mode-selection — cancel-mode-selection-handler delegation (retired)
 
    Deletion-test standard: if src/test/fizzle/cards/** were deleted,
    these tests must still independently prove the handlers work.
@@ -328,41 +328,26 @@
 
 
 ;; ============================================================
-;; ::select-casting-mode — Branch 1: Happy path
-;; Setup pending-mode-selection, dispatch with a valid mode
-;; Expected: pending-mode-selection dissoc'd, spell on stack (or targeting selection)
+;; ::select-casting-mode — Retired (ADR-023)
+;; Mode selection now goes through the standard :game/pending-selection pipeline.
+;; This handler is a no-op. Tests verify the no-op contract.
 ;; ============================================================
 
 (deftest select-casting-mode-happy-path
-  (testing "::select-casting-mode with valid pending and mode initiates cast"
-    ;; Use Dark Ritual ({B}) — pure colored cost, no generic mana, no targeting.
-    ;; Cabal Ritual ({1}{B}) has generic mana which triggers mana-allocation pre-cast
-    ;; step, leaving the spell in hand. Dark Ritual casts immediately.
+  (testing "::select-casting-mode (retired) is a no-op regardless of arguments"
     (let [app-db (setup-app-db {:mana {:black 1}})
           game-db (:game/db app-db)
           [game-db' obj-id] (h/add-card-to-zone game-db :dark-ritual :hand :player-1)
-          _ (is (rules/can-cast? game-db' :player-1 obj-id)
-                "Precondition: can-cast? must be true for Dark Ritual with 1 black mana")
-          ;; Build the pending-mode-selection as cast-spell-handler would create it
-          ;; (simulating a scenario where mode-selection was shown)
           modes (rules/get-casting-modes game-db' :player-1 obj-id)
-          castable-modes (filterv #(rules/can-cast-mode? game-db' :player-1 obj-id %) modes)
-          _ (is (>= (count castable-modes) 1)
-                "Precondition: at least one castable mode")
-          primary-mode (first castable-modes)
-          app-db' (-> app-db
-                      (assoc :game/db game-db')
-                      (assoc :game/pending-mode-selection
-                             {:object-id obj-id
-                              :modes castable-modes}))
-          result (dispatch-event app-db' [::casting/select-casting-mode primary-mode])
-          result-db (:game/db result)]
-      ;; pending-mode-selection should be dissoc'd
-      (is (nil? (:game/pending-mode-selection result))
-          "pending-mode-selection should be cleared after mode is selected")
-      ;; Dark Ritual has pure colored cost — should cast immediately (no pre-cast steps)
-      (is (= :stack (:object/zone (q/get-object result-db obj-id)))
-          "Dark Ritual should be on stack after mode selection (pure colored cost, no pre-cast steps)"))))
+          primary-mode (first modes)
+          app-db' (assoc app-db :game/db game-db')
+          result (dispatch-event app-db' [::casting/select-casting-mode primary-mode])]
+      ;; Retired handler: app-db must be unchanged
+      (is (= app-db' result)
+          "::select-casting-mode is retired (ADR-023): must be a no-op")
+      ;; Spell must still be in hand (handler did not cast it)
+      (is (= :hand (:object/zone (q/get-object (:game/db result) obj-id)))
+          "Spell must remain in hand (retired handler does not cast)"))))
 
 
 ;; ============================================================
@@ -417,109 +402,69 @@
 
 
 ;; ============================================================
-;; ::select-casting-mode — Branch 5: Chosen mode requires targeting
-;; Vision Charm mode 1 (mill player) — requires player targeting
-;; Expected: pending-mode-selection cleared, targeting selection created
+;; ::select-casting-mode — Branch 5 (retired): now a no-op (ADR-023)
+;; The standard pipeline is tested in cast-spell-multi-mode-confirm-mode-puts-spell-on-stack.
 ;; ============================================================
 
 (deftest select-casting-mode-with-targeting-creates-selection
-  (testing "::select-casting-mode with a mode requiring targeting creates targeting selection"
+  (testing "::select-casting-mode (retired) is a no-op even with chosen-mode set on object"
     (let [app-db (setup-app-db {:mana {:blue 1}})
           game-db (:game/db app-db)
           [game-db' obj-id] (h/add-card-to-zone game-db :vision-charm :hand :player-1)
-          _ (is (rules/can-cast? game-db' :player-1 obj-id)
-                "Precondition: Vision Charm can be cast with 1 blue mana")
-          ;; Vision Charm has :card/modes, NOT :card/alternate-costs.
-          ;; get-casting-modes returns the primary mode (no alternates for vision-charm).
-          ;; For Vision Charm's modes (mode/label), these are spell-mode candidates —
-          ;; we simulate what happens after spell-mode is selected: the chosen-mode
-          ;; is set on the object, then select-casting-mode is called with the primary mode.
+          app-db' (assoc app-db :game/db game-db')
           modes (rules/get-casting-modes game-db' :player-1 obj-id)
           primary-mode (first modes)
-          ;; Set the chosen-mode to Vision Charm mode 0 (mill player — requires targeting)
-          obj-eid (q/get-object-eid game-db' obj-id)
-          vision-charm-card (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]]
-                                 game-db' :vision-charm)
-          card-modes (d/q '[:find ?modes . :in $ ?e :where [?e :card/modes ?modes]]
-                          game-db' vision-charm-card)
-          mill-mode (when (seq card-modes) (first card-modes))
-          game-db-with-mode (if mill-mode
-                              (d/db-with game-db' [[:db/add obj-eid :object/chosen-mode mill-mode]])
-                              game-db')
-          app-db' (-> app-db
-                      (assoc :game/db game-db-with-mode)
-                      (assoc :game/pending-mode-selection
-                             {:object-id obj-id
-                              :modes modes}))
-          result (dispatch-event app-db' [::casting/select-casting-mode primary-mode])
-          sel (:game/pending-selection result)]
-      ;; pending-mode-selection should be cleared
+          result (dispatch-event app-db' [::casting/select-casting-mode primary-mode])]
+      ;; Retired handler: app-db unchanged
+      (is (= app-db' result)
+          "::select-casting-mode is retired (ADR-023): must be a no-op")
+      ;; Legacy key is absent (no pending-mode-selection was set here)
       (is (nil? (:game/pending-mode-selection result))
-          "pending-mode-selection should be cleared after mode selection")
-      ;; With chosen-mode set to mill-mode (targeting required),
-      ;; should create a targeting selection OR cast directly (if only 1 target)
-      ;; Either way, the spell is in motion (stack or pending-selection exists)
-      (is (or (some? sel)
-              (= :stack (:object/zone (q/get-object (:game/db result) obj-id))))
-          "Spell should either have a pending selection or be on stack after mode selection"))))
+          ":game/pending-mode-selection must be nil (retired per ADR-023)"))))
 
 
 ;; ============================================================
-;; ::select-casting-mode — Branch 6: Chosen mode with X cost
-;; Flash of Insight: {X}{1}{U} — selecting it should create X selection
+;; ::select-casting-mode — Branch 6 (retired): now a no-op (ADR-023)
+;; X-cost mode selection via standard pipeline not yet testable here
+;; (requires multi-mode card with X-cost alternate, not in current card library).
 ;; ============================================================
 
 (deftest select-casting-mode-with-x-cost-creates-x-selection
-  (testing "::select-casting-mode with an X-cost mode creates X-mana-cost selection"
+  (testing "::select-casting-mode (retired) is a no-op even with X-cost mode argument"
     (let [app-db (setup-app-db {:mana {:blue 3 :colorless 2}})
           game-db (:game/db app-db)
           [game-db' obj-id] (h/add-card-to-zone game-db :flash-of-insight :hand :player-1)
           [game-db'' _] (h/add-cards-to-library game-db' [:island :island :island] :player-1)
-          _ (is (rules/can-cast? game-db'' :player-1 obj-id)
-                "Precondition: Flash of Insight can be cast with sufficient mana")
           modes (rules/get-casting-modes game-db'' :player-1 obj-id)
-          castable-modes (filterv #(rules/can-cast-mode? game-db'' :player-1 obj-id %) modes)
-          _ (is (seq castable-modes)
-                "Precondition: at least one castable mode")
-          primary-mode (first castable-modes)
-          app-db' (-> app-db
-                      (assoc :game/db game-db'')
-                      (assoc :game/pending-mode-selection
-                             {:object-id obj-id
-                              :modes castable-modes}))
-          result (dispatch-event app-db' [::casting/select-casting-mode primary-mode])
-          sel (:game/pending-selection result)]
-      ;; pending-mode-selection cleared
+          primary-mode (first modes)
+          app-db' (assoc app-db :game/db game-db'')
+          result (dispatch-event app-db' [::casting/select-casting-mode primary-mode])]
+      ;; Retired handler: app-db unchanged
+      (is (= app-db' result)
+          "::select-casting-mode is retired (ADR-023): must be a no-op")
+      ;; Legacy key absent
       (is (nil? (:game/pending-mode-selection result))
-          "pending-mode-selection should be cleared after mode selection")
-      ;; X-cost spell should create x-mana-cost selection
-      (is (some? sel)
-          "Flash of Insight should create a pending selection for X cost")
-      (is (= :x-mana-cost (:selection/type sel))
-          "Selection type should be :x-mana-cost for Flash of Insight"))))
+          ":game/pending-mode-selection must be nil (retired per ADR-023)"))))
 
 
 ;; ============================================================
-;; ::cancel-mode-selection — Branch 1: Happy path
-;; Expected: :game/pending-mode-selection dissoc'd, nothing else changed
+;; ::cancel-mode-selection — Retired (ADR-023)
+;; Mode selection cancellation now uses ::selection/cancel-selection.
+;; This handler is a no-op. Tests verify the no-op contract.
 ;; ============================================================
 
 (deftest cancel-mode-selection-clears-pending
-  (testing "::cancel-mode-selection clears :game/pending-mode-selection"
+  (testing "::cancel-mode-selection (retired) is a no-op (ADR-023)"
     (let [app-db (setup-app-db)
-          game-db (:game/db app-db)
-          [game-db' obj-id] (h/add-card-to-zone game-db :dark-ritual :hand :player-1)
-          modes (rules/get-casting-modes game-db' :player-1 obj-id)
-          app-db' (-> app-db
-                      (assoc :game/db game-db')
-                      (assoc :game/pending-mode-selection
-                             {:object-id obj-id
-                              :modes modes}))
-          _ (is (some? (:game/pending-mode-selection app-db'))
-                "Precondition: pending-mode-selection is set")
-          result (dispatch-event app-db' [::casting/cancel-mode-selection])]
+          ;; :game/pending-mode-selection should never be set (retired), but test
+          ;; the no-op contract regardless.
+          result (dispatch-event app-db [::casting/cancel-mode-selection])]
+      ;; Retired handler: app-db must be unchanged
+      (is (= app-db result)
+          "::cancel-mode-selection is retired (ADR-023): must be a no-op")
+      ;; :game/pending-mode-selection is absent (retired key)
       (is (nil? (:game/pending-mode-selection result))
-          ":game/pending-mode-selection should be nil after cancel"))))
+          ":game/pending-mode-selection must be nil (retired per ADR-023)"))))
 
 
 ;; ============================================================
@@ -528,36 +473,127 @@
 ;; ============================================================
 
 (deftest cancel-mode-selection-idempotent-when-absent
-  (testing "::cancel-mode-selection is idempotent when no pending-mode-selection exists"
+  (testing "::cancel-mode-selection is idempotent (always a no-op)"
     (let [app-db (setup-app-db)
-          app-db-no-pending (dissoc app-db :game/pending-mode-selection)
-          result (dispatch-event app-db-no-pending [::casting/cancel-mode-selection])]
-      (is (= app-db-no-pending result)
-          "app-db should be unchanged when no pending-mode-selection exists"))))
+          result (dispatch-event app-db [::casting/cancel-mode-selection])]
+      (is (= app-db result)
+          "::cancel-mode-selection is retired (ADR-023): always a no-op"))))
 
 
 ;; ============================================================
 ;; ::cancel-mode-selection — Branch 3: Does not affect unrelated state
-;; Expected: only :game/pending-mode-selection removed; :game/selected-card intact
+;; Expected: app-db unchanged (no-op preserves all keys)
 ;; ============================================================
 
 (deftest cancel-mode-selection-preserves-unrelated-state
-  (testing "::cancel-mode-selection only removes pending-mode-selection, preserves other state"
+  (testing "::cancel-mode-selection (retired) no-op preserves all app-db keys"
     (let [app-db (setup-app-db)
-          game-db (:game/db app-db)
-          [game-db' obj-id] (h/add-card-to-zone game-db :dark-ritual :hand :player-1)
-          modes (rules/get-casting-modes game-db' :player-1 obj-id)
           sentinel-value (random-uuid)
-          app-db' (-> app-db
-                      (assoc :game/db game-db')
-                      (assoc :game/pending-mode-selection
-                             {:object-id obj-id
-                              :modes modes})
-                      (assoc :game/selected-card sentinel-value))
+          app-db' (assoc app-db :game/selected-card sentinel-value)
           result (dispatch-event app-db' [::casting/cancel-mode-selection])]
-      ;; pending-mode-selection cleared
-      (is (nil? (:game/pending-mode-selection result))
-          ":game/pending-mode-selection should be removed")
-      ;; :game/selected-card intact
+      ;; No-op: app-db unchanged
+      (is (= app-db' result)
+          "::cancel-mode-selection is retired (ADR-023): app-db must be unchanged")
+      ;; :game/selected-card preserved (no-op does not touch any keys)
       (is (= sentinel-value (:game/selected-card result))
-          ":game/selected-card should be preserved after cancel-mode-selection"))))
+          ":game/selected-card should be preserved (no-op handler)"))))
+
+
+;; ============================================================
+;; ADR-023 completion: multi-mode casting uses standard selection pipeline
+;;
+;; After retirement of :game/pending-mode-selection, when ::cast-spell is
+;; called on a spell with >1 castable modes, it must use :game/pending-selection
+;; with :selection/type :spell-mode (standard pipeline) rather than setting
+;; :game/pending-mode-selection directly.
+;;
+;; Test card: inline alternate-cost card castable from hand with 2 modes.
+;; ============================================================
+
+(defn- setup-multi-mode-app-db
+  "Create an app-db with a test card that has 2 castable modes from hand.
+   Primary mode: {U}{U}. Alternate (hand-zone): {U} + pay 2 life.
+   Returns [app-db obj-id]."
+  []
+  (let [app-db (setup-app-db {:mana {:blue 2}})
+        game-db (:game/db app-db)
+        ;; Add test card with 2 castable modes from hand: primary + hand-zone alternate
+        conn (d/conn-from-db game-db)
+        _ (d/transact! conn [{:card/id :test-dual-mode-adr023
+                              :card/name "Test Dual Mode ADR-023"
+                              :card/mana-cost {:blue 2}
+                              :card/cmc 2
+                              :card/types #{:instant}
+                              :card/colors #{:blue}
+                              :card/effects [{:effect/type :draw :effect/amount 1}]
+                              :card/alternate-costs [{:alternate/id :phyrexian-cost
+                                                      :alternate/zone :hand
+                                                      :alternate/mana-cost {:blue 1}
+                                                      :alternate/additional-costs [{:cost/type :pay-life
+                                                                                    :cost/amount 2}]
+                                                      :alternate/on-resolve :graveyard}]}])
+        game-db' @conn
+        [game-db'' obj-id] (h/add-card-to-zone game-db' :test-dual-mode-adr023 :hand :player-1)
+        app-db' (assoc app-db :game/db game-db'' :game/selected-card obj-id)]
+    [app-db' obj-id]))
+
+
+(deftest cast-spell-multi-mode-uses-standard-selection-pipeline
+  (testing "::cast-spell on multi-mode spell uses :game/pending-selection (not :game/pending-mode-selection)"
+    (let [[app-db obj-id] (setup-multi-mode-app-db)
+          game-db (:game/db app-db)
+          _ (is (rules/can-cast? game-db :player-1 obj-id)
+                "Precondition: can-cast? must be true for test-dual-mode-adr023")
+          _ (is (> (count (rules/get-casting-modes game-db :player-1 obj-id)) 1)
+                "Precondition: must have >1 castable mode")
+          result (dispatch-event app-db [::casting/cast-spell])
+          pending-sel (:game/pending-selection result)]
+      ;; Standard selection pipeline: :game/pending-selection must be present
+      (is (some? pending-sel)
+          "Multi-mode spell must use :game/pending-selection (standard pipeline)")
+      (is (= :spell-mode (:selection/type pending-sel))
+          ":selection/type must be :spell-mode for casting mode selection")
+      ;; Mechanism check: :pick-mode is the mechanism for mode selection (per ADR-030)
+      (is (= :pick-mode (:selection/mechanism pending-sel))
+          ":selection/mechanism must be :pick-mode for casting mode selection")
+      ;; MUST NOT set legacy key
+      (is (nil? (:game/pending-mode-selection result))
+          ":game/pending-mode-selection must be nil (retired per ADR-023)")
+      ;; Spell still in hand (awaiting mode choice)
+      (is (= :hand (:object/zone (q/get-object (:game/db result) obj-id)))
+          "Spell must remain in hand while awaiting mode selection"))))
+
+
+(deftest cast-spell-multi-mode-priority-gate-holds
+  (testing "Priority is NOT yielded after casting multi-mode spell until mode is confirmed"
+    (let [[app-db _] (setup-multi-mode-app-db)
+          result (dispatch-event app-db [::casting/cast-spell])]
+      ;; A pending-selection blocks priority — stack must be empty
+      (is (empty? (q/get-all-stack-items (:game/db result)))
+          "Spell must not be on stack yet while awaiting mode selection")
+      ;; pending-selection is present (priority gate)
+      (is (some? (:game/pending-selection result))
+          "Pending selection must be present to block priority yield"))))
+
+
+(deftest cast-spell-multi-mode-confirm-mode-puts-spell-on-stack
+  (testing "Confirming mode selection puts spell on stack via standard confirm-selection pipeline"
+    (let [[app-db obj-id] (setup-multi-mode-app-db)
+          ;; Cast to get pending-selection
+          after-cast (dispatch-event app-db [::casting/cast-spell])
+          pending-sel (:game/pending-selection after-cast)
+          _ (is (= :spell-mode (:selection/type pending-sel))
+                "Precondition: pending-selection is spell-mode after cast")
+          ;; Select the primary mode (first candidate)
+          primary-mode (first (:selection/candidates pending-sel))
+          _ (is (some? primary-mode) "Precondition: has at least one candidate mode")
+          ;; Use standard selection pipeline to confirm mode
+          ;; confirm-selection takes (game-db selection selected-items)
+          after-confirm (h/confirm-selection
+                          (:game/db after-cast)
+                          pending-sel
+                          #{primary-mode})]
+      ;; After confirming mode: spell should be on stack (or pre-cast selection for mana)
+      (is (or (= :stack (:object/zone (q/get-object (:db after-confirm) obj-id)))
+              (some? (:selection after-confirm)))
+          "After confirming mode, spell is on stack or pending a pre-cast selection"))))

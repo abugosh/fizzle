@@ -74,7 +74,6 @@
   (dissoc db
           :game/pending-selection
           :game/selected-card
-          :game/pending-mode-selection
           :history/pending-entry
           :history/deferred-entry))
 
