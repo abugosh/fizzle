@@ -104,8 +104,7 @@
         auto-selected (if (= 1 (count candidates))
                         candidates
                         #{})]
-    {
-     :selection/mechanism :pick-from-zone
+    {:selection/mechanism :pick-from-zone
      :selection/domain    :pile-choice
      :selection/lifecycle :finalized
      :selection/card-source :candidates
@@ -144,8 +143,7 @@
     (when (pos? amount)
       (let [library-cards (queries/get-top-n-library game-db player-id amount)]
         (when (seq library-cards)
-          {
-           :selection/mechanism :reorder
+          {:selection/mechanism :reorder
            :selection/domain    :scry
            :selection/lifecycle :finalized
            :selection/player-id player-id
@@ -248,8 +246,7 @@
   ([remainder-ids player-id spell-id]
    (build-order-bottom-selection remainder-ids player-id spell-id nil))
   ([remainder-ids player-id spell-id remaining-effects]
-   {
-    :selection/mechanism :reorder
+   {:selection/mechanism :reorder
     :selection/domain    :order-bottom
     :selection/lifecycle :finalized
     :selection/candidates (set remainder-ids)
@@ -274,8 +271,7 @@
   ([remainder-ids player-id spell-id]
    (build-order-top-selection remainder-ids player-id spell-id nil))
   ([remainder-ids player-id spell-id remaining-effects]
-   {
-    :selection/mechanism :reorder
+   {:selection/mechanism :reorder
     :selection/domain    :order-top
     :selection/lifecycle :finalized
     :selection/candidates (set remainder-ids)
@@ -344,8 +340,7 @@
       (let [library-cards (queries/get-top-n-library game-db target-player peek-count)]
         (when (seq library-cards)
           (cond->
-            {
-             :selection/mechanism :reorder
+            {:selection/mechanism :reorder
              :selection/domain    :peek-and-reorder
              :selection/lifecycle :finalized
              :selection/candidates (set library-cards)

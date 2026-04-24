@@ -151,4 +151,3 @@
         cards @(rf/subscribe [::subs/selection-cards])]
     (when selection
       (render-selection-modal selection cards))))
-

@@ -228,8 +228,8 @@
       (let [choices [{:choice/label "Proceed" :choice/action :proceed}
                      {:choice/label "Decline" :choice/action :redirect :choice/redirect-to :graveyard}]
             sel {:selection/type      :replacement-choice
-               :selection/mechanism :binary-choice
-               :selection/domain    :replacement-choice
+                 :selection/mechanism :binary-choice
+                 :selection/domain    :replacement-choice
                  :selection/player-id :player-1
                  :selection/object-id (random-uuid)
                  :selection/replacement-entity-id 42

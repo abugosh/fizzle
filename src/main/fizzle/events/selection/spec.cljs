@@ -105,8 +105,7 @@
                 :selection/selected
                 :selection/validation
                 :selection/auto-confirm?]
-          :opt [
-                :selection/lifecycle
+          :opt [:selection/lifecycle
                 :selection/select-count
                 :selection/valid-targets
                 :selection/candidate-ids
@@ -161,8 +160,7 @@
                 :selection/player-id
                 :selection/validation
                 :selection/auto-confirm?]
-          :opt [
-                :selection/lifecycle
+          :opt [:selection/lifecycle
                 :selection/cards
                 :selection/top-pile
                 :selection/bottom-pile
@@ -184,8 +182,7 @@
                 :selection/player-id
                 :selection/validation
                 :selection/auto-confirm?]
-          :opt [
-                :selection/selected
+          :opt [:selection/selected
                 :selection/max-x
                 :selection/selected-x
                 :selection/copy-count
@@ -212,8 +209,7 @@
                 :selection/generic-remaining
                 :selection/generic-total
                 :selection/allocation]
-          :opt [
-                :selection/zone
+          :opt [:selection/zone
                 :selection/spell-id
                 :selection/mode
                 :selection/remaining-pool
@@ -240,8 +236,7 @@
                 :selection/valid-targets
                 :selection/validation
                 :selection/auto-confirm?]
-          :opt [
-                :selection/object-id
+          :opt [:selection/object-id
                 :selection/mode
                 :selection/target-requirement
                 :selection/ability-index
@@ -266,8 +261,7 @@
                 :selection/domain
                 :selection/player-id
                 :selection/validation]
-          :opt [
-                :selection/lifecycle
+          :opt [:selection/lifecycle
                 :selection/selected
                 :selection/select-count
                 :selection/auto-confirm?
@@ -290,8 +284,7 @@
                 :selection/selected
                 :selection/validation
                 :selection/auto-confirm?]
-          :opt [
-                :selection/lifecycle
+          :opt [:selection/lifecycle
                 :selection/select-count
                 :selection/valid-targets
                 :selection/spell-id
@@ -319,8 +312,7 @@
 
 (def minimal-valid-selections
   {:discard
-   {
-    :selection/mechanism :pick-from-zone
+   {:selection/mechanism :pick-from-zone
     :selection/domain    :discard
     :selection/lifecycle :standard
     :selection/player-id :player-1
@@ -329,8 +321,7 @@
     :selection/auto-confirm? false}
 
    :graveyard-return
-   {
-    :selection/mechanism :pick-from-zone
+   {:selection/mechanism :pick-from-zone
     :selection/domain    :graveyard-return
     :selection/lifecycle :standard
     :selection/player-id :player-1
@@ -340,8 +331,7 @@
     :selection/candidate-ids #{}}
 
    :hand-reveal-discard
-   {
-    :selection/mechanism :pick-from-zone
+   {:selection/mechanism :pick-from-zone
     :selection/domain    :revealed-hand-discard
     :selection/player-id :player-1
     :selection/selected #{}
@@ -351,8 +341,7 @@
     :selection/valid-targets []}
 
    :chain-bounce
-   {
-    :selection/mechanism :pick-from-zone
+   {:selection/mechanism :pick-from-zone
     :selection/domain    :chain-bounce
     :selection/lifecycle :chaining
     :selection/player-id :player-1
@@ -363,8 +352,7 @@
     :selection/select-count 1}
 
    :chain-bounce-target
-   {
-    :selection/mechanism :pick-from-zone
+   {:selection/mechanism :pick-from-zone
     :selection/domain    :chain-bounce-target
     :selection/player-id :player-1
     :selection/selected #{}
@@ -374,8 +362,7 @@
     :selection/select-count 1}
 
    :unless-pay
-   {
-    :selection/mechanism :binary-choice
+   {:selection/mechanism :binary-choice
     :selection/domain    :unless-pay
     :selection/player-id :player-1
     :selection/selected #{}
@@ -385,8 +372,7 @@
     :selection/auto-confirm? true}
 
    :storm-split
-   {
-    :selection/mechanism :accumulate
+   {:selection/mechanism :accumulate
     :selection/domain    :storm-split
     :selection/lifecycle :finalized
     :selection/player-id :player-1
@@ -398,8 +384,7 @@
     :selection/allocation {:player-2 3 :player-1 0}}
 
    :x-mana-cost
-   {
-    :selection/mechanism :accumulate
+   {:selection/mechanism :accumulate
     :selection/domain    :x-mana-cost
     :selection/lifecycle :chaining
     :selection/player-id :player-1
@@ -409,8 +394,7 @@
     :selection/selected-x 0}
 
    :mana-allocation
-   {
-    :selection/mechanism :allocate-resource
+   {:selection/mechanism :allocate-resource
     :selection/domain    :mana-allocation
     :selection/lifecycle :finalized
     :selection/player-id :player-1
@@ -421,8 +405,7 @@
     :selection/allocation {}}
 
    :pay-x-life
-   {
-    :selection/mechanism :accumulate
+   {:selection/mechanism :accumulate
     :selection/domain    :pay-x-life
     :selection/lifecycle :finalized
     :selection/player-id :player-1
@@ -432,8 +415,7 @@
     :selection/selected-x 0}
 
    :scry
-   {
-    :selection/mechanism :reorder
+   {:selection/mechanism :reorder
     :selection/domain    :scry
     :selection/lifecycle :finalized
     :selection/player-id :player-1
@@ -442,8 +424,7 @@
     :selection/cards [:obj-1 :obj-2]}
 
    :peek-and-reorder
-   {
-    :selection/mechanism :reorder
+   {:selection/mechanism :reorder
     :selection/domain    :peek-and-reorder
     :selection/lifecycle :finalized
     :selection/player-id :player-1
@@ -453,8 +434,7 @@
     :selection/ordered []}
 
    :order-bottom
-   {
-    :selection/mechanism :reorder
+   {:selection/mechanism :reorder
     :selection/domain    :order-bottom
     :selection/player-id :player-1
     :selection/validation :always
@@ -463,8 +443,7 @@
     :selection/ordered []}
 
    :order-top
-   {
-    :selection/mechanism :reorder
+   {:selection/mechanism :reorder
     :selection/domain    :order-top
     :selection/player-id :player-1
     :selection/validation :always
@@ -473,8 +452,7 @@
     :selection/ordered []}
 
    :tutor
-   {
-    :selection/mechanism :pick-from-zone
+   {:selection/mechanism :pick-from-zone
     :selection/domain    :tutor
     :selection/lifecycle :chaining
     :selection/player-id :player-1
@@ -486,8 +464,7 @@
     :selection/select-count 1}
 
    :peek-and-select
-   {
-    :selection/mechanism :pick-from-zone
+   {:selection/mechanism :pick-from-zone
     :selection/domain    :peek-and-select
     :selection/lifecycle :chaining
     :selection/player-id :player-1
@@ -500,8 +477,7 @@
     :selection/select-count 1}
 
    :pile-choice
-   {
-    :selection/mechanism :pick-from-zone
+   {:selection/mechanism :pick-from-zone
     :selection/domain    :pile-choice
     :selection/lifecycle :finalized
     :selection/player-id :player-1
@@ -513,8 +489,7 @@
     :selection/select-count 1}
 
    :player-target
-   {
-    :selection/mechanism :n-slot-targeting
+   {:selection/mechanism :n-slot-targeting
     :selection/domain    :player-target
     :selection/lifecycle :finalized
     :selection/player-id :player-1
@@ -525,8 +500,7 @@
     :selection/auto-confirm? true}
 
    :cast-time-targeting
-   {
-    :selection/mechanism :n-slot-targeting
+   {:selection/mechanism :n-slot-targeting
     :selection/domain    :cast-time-targeting
     :selection/lifecycle :finalized
     :selection/player-id :player-1
@@ -540,8 +514,7 @@
     :selection/target-requirement {:target/id :target :target/type :object}}
 
    :ability-cast-targeting
-   {
-    :selection/mechanism :n-slot-targeting
+   {:selection/mechanism :n-slot-targeting
     :selection/domain    :ability-cast-targeting
     :selection/lifecycle :finalized
     :selection/player-id :player-1
@@ -555,8 +528,7 @@
     :selection/target-requirement {:target/id :target :target/type :object}}
 
    :ability-targeting
-   {
-    :selection/mechanism :n-slot-targeting
+   {:selection/mechanism :n-slot-targeting
     :selection/domain    :ability-targeting
     :selection/lifecycle :finalized
     :selection/player-id :player-1
@@ -572,8 +544,7 @@
     :selection/remaining-target-reqs []}
 
    :discard-specific-cost
-   {
-    :selection/mechanism :pick-from-zone
+   {:selection/mechanism :pick-from-zone
     :selection/domain    :discard-cost
     :selection/player-id :player-1
     :selection/selected #{}
@@ -583,8 +554,7 @@
     :selection/mode {:mode/id :primary :mode/mana-cost {:blue 1}}}
 
    :return-land-cost
-   {
-    :selection/mechanism :pick-from-zone
+   {:selection/mechanism :pick-from-zone
     :selection/domain    :return-land-cost
     :selection/player-id :player-1
     :selection/selected #{}
@@ -595,8 +565,7 @@
     :selection/mode {:mode/id :primary :mode/mana-cost {:blue 1}}}
 
    :sacrifice-permanent-cost
-   {
-    :selection/mechanism :pick-from-zone
+   {:selection/mechanism :pick-from-zone
     :selection/domain    :sacrifice-cost
     :selection/player-id :player-1
     :selection/selected #{}
@@ -606,8 +575,7 @@
     :selection/auto-confirm? false}
 
    :exile-cards-cost
-   {
-    :selection/mechanism :pick-from-zone
+   {:selection/mechanism :pick-from-zone
     :selection/domain    :exile-cost
     :selection/lifecycle :finalized
     :selection/player-id :player-1
@@ -619,8 +587,7 @@
     :selection/mode {:mode/id :primary :mode/mana-cost {:colorless 1}}}
 
    :land-type-source
-   {
-    :selection/mechanism :pick-mode
+   {:selection/mechanism :pick-mode
     :selection/domain    :land-type-source
     :selection/lifecycle :chaining
     :selection/player-id :player-1
@@ -629,8 +596,7 @@
     :selection/validation :exact}
 
    :land-type-target
-   {
-    :selection/mechanism :pick-mode
+   {:selection/mechanism :pick-mode
     :selection/domain    :land-type-target
     :selection/lifecycle :standard
     :selection/player-id :player-1
@@ -639,8 +605,7 @@
     :selection/validation :exact}
 
    :select-attackers
-   {
-    :selection/mechanism :n-slot-targeting
+   {:selection/mechanism :n-slot-targeting
     :selection/domain    :select-attackers
     :selection/lifecycle :finalized
     :selection/player-id :player-1
@@ -652,8 +617,7 @@
     :selection/select-count 1}
 
    :assign-blockers
-   {
-    :selection/mechanism :n-slot-targeting
+   {:selection/mechanism :n-slot-targeting
     :selection/domain    :assign-blockers
     :selection/lifecycle :chaining
     :selection/player-id :player-1
@@ -667,8 +631,7 @@
     :selection/select-count 1}
 
    :spell-mode
-   {
-    :selection/mechanism :pick-mode
+   {:selection/mechanism :pick-mode
     :selection/domain    :spell-mode
     :selection/lifecycle :finalized
     :selection/player-id :player-1
@@ -680,8 +643,7 @@
     :selection/candidates [{:mode/id :primary}]}
 
    :untap-lands
-   {
-    :selection/mechanism :pick-from-zone
+   {:selection/mechanism :pick-from-zone
     :selection/domain    :untap-lands
     :selection/player-id :player-1
     :selection/selected #{}
@@ -692,8 +654,7 @@
     :selection/candidate-ids #{:land-1}}
 
    :replacement-choice
-   {
-    :selection/mechanism :binary-choice
+   {:selection/mechanism :binary-choice
     :selection/domain    :replacement-choice
     :selection/player-id :player-1
     :selection/object-id #uuid "00000000-0000-0000-0000-000000000001"
@@ -711,8 +672,6 @@
    Used by tests to verify every type has a working defmethod."
   [selection-type]
   (get minimal-valid-selections selection-type))
-
-
 
 
 ;; =====================================================

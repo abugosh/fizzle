@@ -341,4 +341,3 @@
   ::cast-spell
   (fn [db [_ opts]]
     (cast-spell-handler db opts)))
-
