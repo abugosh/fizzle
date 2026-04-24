@@ -51,32 +51,6 @@
         {:db db}))))
 
 
-(defmethod sel-core/execute-confirmed-selection :select-attackers
-  [game-db selection]
-  (let [selected (:selection/selected selection)
-        attacker-ids (vec selected)
-        controller (:selection/player-id selection)
-        si-eid (:selection/stack-item-eid selection)
-        db (stack/remove-stack-item game-db si-eid)]
-    (if (empty? attacker-ids)
-      {:db db}
-      (let [db (combat/tap-and-mark-attackers db attacker-ids)
-            db (stack/create-stack-item db
-                                        {:stack-item/type :combat-damage
-                                         :stack-item/controller controller
-                                         :stack-item/description "Combat Damage"})
-            db (stack/create-stack-item db
-                                        {:stack-item/type :declare-blockers
-                                         :stack-item/controller controller
-                                         :stack-item/description "Declare Blockers"})
-            ;; Dispatch attack triggers AFTER creating combat stack items
-            ;; so triggers go on top of stack (resolve before blockers)
-            db (reduce (fn [d atk-id]
-                         (dispatch/dispatch-event d
-                                                  (game-events/creature-attacked-event atk-id controller)))
-                       db attacker-ids)]
-        {:db db}))))
-
 
 (defn build-blocker-selection
   [db remaining-attackers defender-id stack-item-eid]
@@ -106,14 +80,6 @@
         db (combat/mark-blockers game-db blocker-ids attacker-id)]
     {:db db}))
 
-
-(defmethod sel-core/execute-confirmed-selection :assign-blockers
-  [game-db selection]
-  (let [selected (:selection/selected selection)
-        blocker-ids (vec selected)
-        attacker-id (:selection/current-attacker selection)
-        db (combat/mark-blockers game-db blocker-ids attacker-id)]
-    {:db db}))
 
 
 (defmethod sel-core/build-chain-selection :assign-blockers

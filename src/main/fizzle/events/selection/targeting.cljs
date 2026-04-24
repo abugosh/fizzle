@@ -215,19 +215,6 @@
 ;; Confirm Selection Multimethod
 ;; =====================================================
 
-(defmethod core/execute-confirmed-selection :player-target
-  [game-db selection]
-  (let [selected-target (first (:selection/selected selection))
-        target-effect (:selection/target-effect selection)
-        remaining-effects (vec (or (:selection/remaining-effects selection) []))
-        player-id (:selection/player-id selection)
-        ;; Replace :any-player with selected target
-        resolved-effect (assoc target-effect :effect/target selected-target)
-        db-after-effect (effects/execute-effect game-db player-id resolved-effect)
-        ;; Execute remaining effects — finalized lifecycle means framework won't re-apply
-        result (effects/reduce-effects db-after-effect player-id remaining-effects)]
-    {:db (:db result)}))
-
 
 ;; Generic chain: targeting selections that chain to mana-allocation.
 ;; Dispatches for :cast-time-targeting and :ability-cast-targeting via hierarchy.
@@ -244,23 +231,3 @@
       (assoc sel :selection/pending-targets {target-id selected-target}))))
 
 
-(defmethod core/execute-confirmed-selection :cast-time-targeting
-  [game-db selection]
-  (if (= :chaining (:selection/lifecycle selection))
-    ;; Chaining: chain builder will provide mana-allocation
-    {:db game-db}
-    ;; Finalized: cast directly with target storage
-    {:db (confirm-cast-time-target game-db selection)}))
-
-
-(defmethod core/execute-confirmed-selection :ability-cast-targeting
-  [game-db selection]
-  ;; NOTE: The :chaining lifecycle branch of this executor is unreachable
-  ;; with the current card library because no card combines :target/type :ability
-  ;; with generic mana cost (Stifle is {U} only). If such a card is added,
-  ;; add a chaining-branch test to targeting_test.cljs.
-  (if (= :chaining (:selection/lifecycle selection))
-    ;; Chaining: chain builder will provide mana-allocation
-    {:db game-db}
-    ;; Finalized: cast directly with target storage
-    {:db (confirm-cast-time-target game-db selection)}))

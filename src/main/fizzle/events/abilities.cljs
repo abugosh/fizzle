@@ -327,16 +327,6 @@
                    player-id)))))))
 
 
-(defmethod selection-core/execute-confirmed-selection :ability-targeting
-  [game-db selection]
-  (let [remaining-reqs (:selection/remaining-target-reqs selection)]
-    (if (seq remaining-reqs)
-      ;; Chaining: db unchanged, build-chain-selection handles next target
-      {:db game-db}
-      ;; Final target: pay costs and create stack item
-      (let [result (confirm-ability-target game-db selection)]
-        {:db (:db result)}))))
-
 
 (defmethod selection-core/apply-domain-policy :ability-targeting
   [game-db selection]

@@ -44,12 +44,6 @@
   {:db game-db})
 
 
-(defmethod core/execute-confirmed-selection :land-type-source
-  [game-db _selection]
-  ;; No db mutation needed at this step — source type is stored on the
-  ;; selection map itself and read by build-chain-selection.
-  {:db game-db})
-
 
 ;; =====================================================
 ;; Chain Builder: :land-type-source → :land-type-target selection
@@ -123,31 +117,3 @@
     {:db db-with-grants}))
 
 
-(defmethod core/execute-confirmed-selection :land-type-target
-  [game-db selection]
-  (let [target-type (first (:selection/selected selection))
-        source-type (:selection/source-type selection)
-        spell-id (:selection/spell-id selection)
-        player-id (:selection/player-id selection)
-        game-state (queries/get-game-state game-db)
-        current-turn (:game/turn game-state)
-        ;; Find all lands on battlefield with source subtype (both players)
-        all-objects (get-all-battlefield-objects game-db player-id)
-        matching-lands (filterv #(land-has-subtype? % source-type) all-objects)
-        new-produces (get-in land-types/basic-land-types [target-type :produces])
-        ;; Apply :land-type-override grant to each matching land
-        db-with-grants (reduce
-                         (fn [db land-obj]
-                           (let [land-id (:object/id land-obj)
-                                 grant {:grant/id (random-uuid)
-                                        :grant/type :land-type-override
-                                        :grant/source spell-id
-                                        :grant/data {:original-subtype source-type
-                                                     :new-subtype target-type
-                                                     :new-produces new-produces}
-                                        :grant/expires {:expires/turn current-turn
-                                                        :expires/phase :cleanup}}]
-                             (grants/add-grant db land-id grant)))
-                         game-db
-                         matching-lands)]
-    {:db db-with-grants}))

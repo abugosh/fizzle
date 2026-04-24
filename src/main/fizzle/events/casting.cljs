@@ -212,15 +212,6 @@
            game-db)}))
 
 
-(defmethod sel-core/execute-confirmed-selection :spell-mode
-  [game-db selection]
-  (let [chosen-mode (first (:selection/selected selection))
-        object-id (:selection/object-id selection)
-        obj-eid (queries/get-object-eid game-db object-id)]
-    {:db (if (and chosen-mode obj-eid)
-           (d/db-with game-db [[:db/add obj-eid :object/chosen-mode chosen-mode]])
-           game-db)}))
-
 
 (defmethod sel-core/apply-continuation :cast-after-spell-mode
   [continuation app-db]

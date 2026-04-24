@@ -642,39 +642,6 @@
              :selection/card-source :valid-targets}))))))
 
 
-(defmethod core/execute-confirmed-selection :discard-specific-cost
-  [game-db selection]
-  (let [selected (:selection/selected selection)
-        player-id (:selection/player-id selection)
-        object-id (:selection/spell-id selection)
-        mode (:selection/mode selection)
-        ;; Discard selected cards to graveyard
-        db-after-discard (reduce (fn [d card-id]
-                                   (zone-change-dispatch/move-to-zone-db d card-id :graveyard))
-                                 game-db
-                                 selected)]
-    (if (= :chaining (:selection/lifecycle selection))
-      ;; Chaining: just discard, chain builder handles targeting
-      {:db db-after-discard}
-      ;; Finalized: no targeting, cast directly
-      {:db (rules/cast-spell-mode db-after-discard player-id object-id mode)})))
-
-
-(defmethod core/execute-confirmed-selection :return-land-cost
-  [game-db selection]
-  (let [selected-land-id (first (:selection/selected selection))
-        player-id (:selection/player-id selection)
-        object-id (:selection/spell-id selection)
-        mode (:selection/mode selection)
-        ;; Return the land to hand (bounce)
-        db-after-return (zone-change-dispatch/move-to-zone-db game-db selected-land-id :hand)]
-    (if (= :chaining (:selection/lifecycle selection))
-      ;; Chaining: just bounce, chain builder handles targeting
-      {:db db-after-return}
-      ;; Finalized: no targeting, cast directly
-      {:db (rules/cast-spell-mode db-after-return player-id object-id mode)})))
-
-
 (defn- find-stack-item-eid-for-object
   "Find the stack-item EID that references the given object UUID.
    Returns nil if no stack item references this object."
@@ -687,107 +654,6 @@
            db obj-eid))))
 
 
-(defmethod core/execute-confirmed-selection :sacrifice-permanent-cost
-  [game-db selection]
-  (let [selected-permanent-id (first (:selection/selected selection))
-        player-id (:selection/player-id selection)
-        object-id (:selection/spell-id selection)
-        mode (:selection/mode selection)
-        source-type (:selection/source-type selection)
-        ability (:selection/ability selection)
-        ;; Capture effective power BEFORE graveyard move (zone-based statics may change)
-        effective-power (creatures/effective-power game-db selected-permanent-id)
-        sacrifice-info {:power effective-power}
-        ;; Sacrifice the permanent (move to graveyard)
-        db-after-sacrifice (zone-change-dispatch/move-to-zone-db game-db selected-permanent-id :graveyard)]
-    (cond
-      ;; Chaining lifecycle (spell with targeting): sacrifice permanent, store sacrifice-info
-      ;; temporarily on spell object so the targeting executor can transfer it to the stack item.
-      (= :chaining (:selection/lifecycle selection))
-      (let [obj-eid (queries/get-object-eid db-after-sacrifice object-id)
-            db-with-pending (if obj-eid
-                              (d/db-with db-after-sacrifice
-                                         [[:db/add obj-eid :object/pending-sacrifice-info sacrifice-info]])
-                              db-after-sacrifice)]
-        {:db db-with-pending})
-
-      ;; Finalized lifecycle, ability path: create stack item directly with sacrifice-info.
-      (= source-type :ability)
-      (let [effects-list (:ability/effects ability [])
-            db-with-item (stack/create-stack-item db-after-sacrifice
-                                                  {:stack-item/type :activated-ability
-                                                   :stack-item/controller player-id
-                                                   :stack-item/source object-id
-                                                   :stack-item/effects effects-list
-                                                   :stack-item/sacrifice-info sacrifice-info
-                                                   :stack-item/description (:ability/description ability)})]
-        {:db db-with-item})
-
-      ;; Finalized lifecycle, spell path: cast spell then store sacrifice-info on stack item.
-      :else
-      (let [db-after-cast (rules/cast-spell-mode db-after-sacrifice player-id object-id mode)
-            stack-item-eid (find-stack-item-eid-for-object db-after-cast object-id)
-            db-final (if stack-item-eid
-                       (d/db-with db-after-cast
-                                  [[:db/add stack-item-eid :stack-item/sacrifice-info sacrifice-info]])
-                       db-after-cast)]
-        {:db db-final}))))
-
-
-(defmethod core/execute-confirmed-selection :exile-cards-cost
-  [game-db selection]
-  (let [selected (:selection/selected selection)
-        selected-count (count selected)
-        player-id (:selection/player-id selection)
-        object-id (:selection/spell-id selection)
-        mode (:selection/mode selection)
-        db-after-exile (reduce (fn [d card-id]
-                                 (zone-change-dispatch/move-to-zone-db d card-id :exile))
-                               game-db
-                               selected)
-        obj-eid (queries/get-object-eid db-after-exile object-id)
-        db-with-x (d/db-with db-after-exile
-                             [[:db/add obj-eid :object/x-value selected-count]])
-        db-after-cast (rules/cast-spell-mode db-with-x player-id object-id mode)]
-    {:db db-after-cast}))
-
-
-(defmethod core/execute-confirmed-selection :pay-x-life
-  [game-db selection]
-  (let [x-value (:selection/selected-x selection)
-        player-id (:selection/player-id selection)
-        object-id (:selection/spell-id selection)
-        mode (:selection/mode selection)
-        ;; Deduct life from controller
-        player-eid (queries/get-player-eid game-db player-id)
-        current-life (queries/get-life-total game-db player-id)
-        new-life (- current-life x-value)
-        db-after-life (d/db-with game-db [[:db/add player-eid :player/life new-life]])
-        ;; Cast the spell
-        db-after-cast (rules/cast-spell-mode db-after-life player-id object-id mode)
-        ;; Store chosen-x on the stack item
-        obj-eid (queries/get-object-eid db-after-cast object-id)
-        stack-item-eid (when obj-eid
-                         (d/q '[:find ?e .
-                                :in $ ?obj-eid
-                                :where [?e :stack-item/object-ref ?obj-eid]]
-                              db-after-cast obj-eid))
-        db-final (if stack-item-eid
-                   (d/db-with db-after-cast
-                              [[:db/add stack-item-eid :stack-item/chosen-x x-value]])
-                   db-after-cast)]
-    {:db db-final}))
-
-
-(defmethod core/execute-confirmed-selection :x-mana-cost
-  [game-db selection]
-  (let [x-value (:selection/selected-x selection)
-        object-id (:selection/spell-id selection)
-        obj-eid (queries/get-object-eid game-db object-id)
-        db-with-x (d/db-with game-db
-                             [[:db/add obj-eid :object/x-value x-value]])]
-    ;; Store X value. Chain builder provides mana-allocation for casting.
-    {:db db-with-x}))
 
 
 (defn- confirm-spell-mana-allocation
@@ -835,15 +701,6 @@
                                                :stack-item/description (:ability/description ability)})]
     {:db db-with-item}))
 
-
-(defmethod core/execute-confirmed-selection :mana-allocation
-  [game-db selection]
-  (let [source-type (:selection/source-type selection)]
-    (case source-type
-      :ability     (confirm-ability-mana-allocation game-db selection)
-      :mana-ability (mana-ability/confirm-mana-ability-mana-allocation game-db selection)
-      ;; default: spell path (no source-type set, or :spell)
-      (confirm-spell-mana-allocation game-db selection))))
 
 
 ;; =====================================================

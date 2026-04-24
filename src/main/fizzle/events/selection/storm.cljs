@@ -87,33 +87,6 @@
         {:db db-final}))))
 
 
-(defmethod core/execute-confirmed-selection :storm-split
-  [game-db selection]
-  (let [allocation (:selection/allocation selection)
-        source-id (:selection/source-object-id selection)
-        controller (:selection/player-id selection)
-        si-eid (:selection/stack-item-eid selection)
-        copy-count (:selection/copy-count selection)
-        total (apply + (vals allocation))]
-    (if (not= total copy-count)
-      ;; Reject partial allocation (no-op)
-      {:db game-db}
-      ;; Create copies with individually assigned targets
-      (let [db-with-copies (reduce-kv
-                             (fn [d target-player-id cnt]
-                               (if (pos? cnt)
-                                 (loop [d' d remaining cnt]
-                                   (if (pos? remaining)
-                                     (recur (triggers/create-spell-copy
-                                              d' source-id controller
-                                              {:player target-player-id})
-                                            (dec remaining))
-                                     d'))
-                                 d))
-                             game-db allocation)
-            db-final (stack/remove-stack-item db-with-copies si-eid)]
-        {:db db-final}))))
-
 
 ;; =====================================================
 ;; Stepper Event Handlers
