@@ -654,7 +654,7 @@
         remaining-effects (:selection/remaining-effects selection)
         player-id (:selection/player-id selection)
         game-db (:game/db app-db)]
-    (if (= :scry (:selection/type selection))
+    (if (= :scry (:selection/domain selection))
       (let [;; Reorder library based on pile assignments
             db-after-reorder (reorder-library-for-scry game-db player-id selection)
             ;; Execute remaining effects (e.g., draw for Opt)

@@ -144,8 +144,8 @@
                      :event-type :fizzle.events.priority-flow/cast-and-yield})})
 
       ;; Mode selection needed — no continuation (mode selection is a choice, not a cost).
-      ;; After ADR-023: mode selection uses :game/pending-selection with :selection/type :spell-mode.
-      (= :spell-mode (:selection/type (:game/pending-selection after-cast)))
+      ;; After ADR-030: mode selection uses :game/pending-selection with :selection/mechanism :pick-mode.
+      (= :pick-mode (:selection/mechanism (:game/pending-selection after-cast)))
       {:db after-cast}
 
       ;; Cast failed or nothing on stack

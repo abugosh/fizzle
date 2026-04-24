@@ -417,7 +417,7 @@
   ::mana-allocation-state
   :<- [::pending-selection]
   (fn [selection _]
-    (when (= :mana-allocation (:selection/type selection))
+    (when (= :mana-allocation (:selection/domain selection))
       selection)))
 
 
@@ -425,7 +425,7 @@
   ::unless-pay-state
   :<- [::pending-selection]
   (fn [selection _]
-    (when (= :unless-pay (:selection/type selection))
+    (when (= :unless-pay (:selection/domain selection))
       selection)))
 
 
@@ -446,16 +446,6 @@
              (let [total-pool (reduce + (vals pool))
                    total-colored (reduce + 0 (vals colored-cost))]
                (>= (- total-pool total-colored) generic)))))))
-
-
-;; === Mode Selection Subscriptions ===
-;; Retired (ADR-023): mode selection now uses :game/pending-selection with
-;; :selection/type :spell-mode. This subscription always returns nil.
-
-(rf/reg-sub
-  ::pending-mode-selection
-  (fn [_db _]
-    nil))
 
 
 (rf/reg-sub
@@ -481,7 +471,7 @@
             card-source (:selection/card-source selection)
             zone (:selection/zone selection)
             combat-selection? (#{:select-attackers :assign-blockers}
-                               (:selection/type selection))
+                               (:selection/domain selection))
             raw-cards
             (case card-source
               ;; Map candidate IDs to card objects (pile-choice, exile-cards-cost, peek-and-select)
@@ -536,7 +526,7 @@
   :<- [::game-db]
   :<- [::pending-selection]
   (fn [[game-db selection] _]
-    (when (and game-db selection (= :assign-blockers (:selection/type selection)))
+    (when (and game-db selection (= :assign-blockers (:selection/domain selection)))
       (when-let [attacker-id (:selection/current-attacker selection)]
         (when-let [obj (queries/get-object game-db attacker-id)]
           (let [display (compute-creature-display game-db obj)]
@@ -550,7 +540,7 @@
   :<- [::game-db]
   :<- [::pending-selection]
   (fn [[game-db selection] _]
-    (when (and game-db selection (= :storm-split (:selection/type selection)))
+    (when (and game-db selection (= :storm-split (:selection/domain selection)))
       (when-let [source-id (:selection/source-object-id selection)]
         (when-let [obj (queries/get-object game-db source-id)]
           (get-in obj [:object/card :card/name]))))))
@@ -563,7 +553,7 @@
   :<- [::game-db]
   :<- [::pending-selection]
   (fn [[game-db selection] _]
-    (when (and game-db selection (= :scry (:selection/type selection)))
+    (when (and game-db selection (= :scry (:selection/domain selection)))
       (let [card-ids (:selection/cards selection)
             top-pile (:selection/top-pile selection)
             bottom-pile (:selection/bottom-pile selection)
@@ -581,7 +571,7 @@
   :<- [::game-db]
   :<- [::pending-selection]
   (fn [[game-db selection] _]
-    (when (and game-db selection (= :order-bottom (:selection/type selection)))
+    (when (and game-db selection (= :order-bottom (:selection/domain selection)))
       (let [candidates (:selection/candidates selection)
             ordered (:selection/ordered selection)
             ordered-set (set ordered)
@@ -599,7 +589,7 @@
   :<- [::game-db]
   :<- [::pending-selection]
   (fn [[game-db selection] _]
-    (when (and game-db selection (= :peek-and-reorder (:selection/type selection)))
+    (when (and game-db selection (= :peek-and-reorder (:selection/domain selection)))
       (let [candidates (:selection/candidates selection)
             ordered (:selection/ordered selection)
             ordered-set (set ordered)
@@ -618,7 +608,7 @@
   :<- [::game-db]
   :<- [::pending-selection]
   (fn [[game-db selection] _]
-    (when (and game-db selection (= :order-top (:selection/type selection)))
+    (when (and game-db selection (= :order-top (:selection/domain selection)))
       (let [candidates (:selection/candidates selection)
             ordered (:selection/ordered selection)
             ordered-set (set ordered)
@@ -636,7 +626,7 @@
   :<- [::game-db]
   :<- [::pending-selection]
   (fn [[game-db selection] _]
-    (when (and game-db selection (= :ability-cast-targeting (:selection/type selection)))
+    (when (and game-db selection (= :ability-cast-targeting (:selection/domain selection)))
       (let [valid-eids (set (:selection/valid-targets selection))
             all-items (queries/get-all-stack-items game-db)]
         (->> all-items

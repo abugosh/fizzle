@@ -104,7 +104,6 @@
    [collapsible-right-column "History" ::subs/history-collapsed ::ui-events/toggle-history-collapsed [history/history-sidebar]]
    ;; Modals (overlay, not in grid flow)
    [modals/selection-modal]
-   [modals/mode-selector-modal]
    [game-over/game-over-modal]])
 
 

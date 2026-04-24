@@ -152,5 +152,3 @@
     (when selection
       (render-selection-modal selection cards))))
 
-
-(def mode-selector-modal custom/mode-selector-modal)

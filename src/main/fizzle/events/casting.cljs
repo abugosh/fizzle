@@ -343,35 +343,3 @@
   (fn [db [_ opts]]
     (cast-spell-handler db opts)))
 
-
-;; === Mode Selection System ===
-;; Mode selection is now handled by the standard selection pipeline (ADR-023).
-;; Mode choice uses :game/pending-selection with :selection/type :spell-mode.
-;; These event handlers are retained for backward compatibility only.
-
-(defn select-casting-mode-handler
-  "Retired (ADR-023): mode selection now goes through the standard selection pipeline.
-   This handler is a no-op — mode selection is confirmed via ::selection/confirm-selection.
-   Pure function: (app-db, mode) -> app-db"
-  [app-db _mode]
-  app-db)
-
-
-(rf/reg-event-db
-  ::select-casting-mode
-  (fn [db [_ mode]]
-    (select-casting-mode-handler db mode)))
-
-
-(defn cancel-mode-selection-handler
-  "Retired (ADR-023): mode selection cancellation now goes through ::selection/cancel-selection.
-   This handler is a no-op.
-   Pure function: (app-db) -> app-db"
-  [app-db]
-  app-db)
-
-
-(rf/reg-event-db
-  ::cancel-mode-selection
-  (fn [db _]
-    (cancel-mode-selection-handler db)))

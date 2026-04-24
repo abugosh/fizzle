@@ -3,7 +3,6 @@
   (:require
     [clojure.string :as str]
     [fizzle.db.game-state :as game-state]
-    [fizzle.events.casting :as casting-events]
     [fizzle.events.selection :as selection-events]
     [fizzle.subs.game :as subs]
     [fizzle.views.selection.common :as common]
@@ -228,32 +227,6 @@
          (str/join ", "))))
 
 
-(defn mode-selector-modal
-  []
-  (let [pending @(rf/subscribe [::subs/pending-mode-selection])]
-    (when pending
-      [:div {:class common/overlay-class
-             :on-click #(rf/dispatch [::casting-events/cancel-mode-selection])}
-       [:div {:class (common/container-class {:max-width "400px"})
-              :on-click #(.stopPropagation %)}
-        [:h2 {:class "text-text m-0 mb-4 text-lg text-center"} "Choose casting mode"]
-        [:div {:class "flex flex-col"}
-         (for [mode (:modes pending)
-               :let [fmana (format-mana-cost (:mode/mana-cost mode))
-                     fadd (format-additional-costs (:mode/additional-costs mode))]]
-           ^{:key (:mode/id mode)}
-           [:button {:class mode-btn-class
-                     :on-click #(rf/dispatch [::casting-events/select-casting-mode mode])}
-            [:div {:class "font-bold text-sm mb-1"}
-             (case (:mode/id mode) :primary "Normal Cast" :flashback "Flashback"
-                   (name (:mode/id mode)))]
-            [:div {:class "text-[13px] text-text-muted"}
-             fmana (when fadd [:span {:class "ml-2 text-cost-text"} (str "+ " fadd)])]])]
-        [:button {:class dismiss-btn-class
-                  :on-click #(rf/dispatch [::casting-events/cancel-mode-selection])}
-         "Cancel"]]])))
-
-
 ;; === Land Type Selection ===
 
 (def ^:private land-type-display-names
@@ -273,7 +246,7 @@
   (let [selected (or (:selection/selected selection) #{})
         options (:selection/options selection)
         valid? @(rf/subscribe [::subs/selection-valid?])
-        title (if (= :land-type-source (:selection/type selection))
+        title (if (= :land-type-source (:selection/domain selection))
                 "Choose source land type"
                 (str "Change " (land-type-display-names (:selection/source-type selection) "land")
                      "s to..."))]
