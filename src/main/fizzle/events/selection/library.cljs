@@ -55,7 +55,6 @@
          :selection/selected #{}
          :selection/spell-id object-id
          :selection/remaining-effects effects-after
-         :selection/type      :tutor
          :selection/mechanism :pick-from-zone
          :selection/domain    :tutor
          :selection/target-zone target-zone
@@ -94,7 +93,6 @@
      remaining-effects - Effects to execute after pile choice
 
    Returns selection state with:
-     :selection/type :pile-choice
      :selection/candidates - Set of card IDs to distribute
      :selection/hand-count - How many go to hand
      :selection/selected - Pre-selected cards (auto-select if only 1 card)
@@ -106,7 +104,7 @@
         auto-selected (if (= 1 (count candidates))
                         candidates
                         #{})]
-    {:selection/type      :pile-choice
+    {
      :selection/mechanism :pick-from-zone
      :selection/domain    :pile-choice
      :selection/lifecycle :finalized
@@ -146,7 +144,7 @@
     (when (pos? amount)
       (let [library-cards (queries/get-top-n-library game-db player-id amount)]
         (when (seq library-cards)
-          {:selection/type      :scry
+          {
            :selection/mechanism :reorder
            :selection/domain    :scry
            :selection/lifecycle :finalized
@@ -194,7 +192,6 @@
                 actual-select-count (min select-count (count candidate-ids))]
             (cond->
               {:selection/zone :peek  ; Distinct from :library (tutor)
-               :selection/type      :peek-and-select
                :selection/mechanism :pick-from-zone
                :selection/domain    :peek-and-select
                :selection/lifecycle :chaining
@@ -251,7 +248,7 @@
   ([remainder-ids player-id spell-id]
    (build-order-bottom-selection remainder-ids player-id spell-id nil))
   ([remainder-ids player-id spell-id remaining-effects]
-   {:selection/type      :order-bottom
+   {
     :selection/mechanism :reorder
     :selection/domain    :order-bottom
     :selection/lifecycle :finalized
@@ -277,7 +274,7 @@
   ([remainder-ids player-id spell-id]
    (build-order-top-selection remainder-ids player-id spell-id nil))
   ([remainder-ids player-id spell-id remaining-effects]
-   {:selection/type      :order-top
+   {
     :selection/mechanism :reorder
     :selection/domain    :order-top
     :selection/lifecycle :finalized
@@ -347,7 +344,7 @@
       (let [library-cards (queries/get-top-n-library game-db target-player peek-count)]
         (when (seq library-cards)
           (cond->
-            {:selection/type      :peek-and-reorder
+            {
              :selection/mechanism :reorder
              :selection/domain    :peek-and-reorder
              :selection/lifecycle :finalized

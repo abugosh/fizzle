@@ -5,8 +5,7 @@
    set-pending-selection is the sole writer — all callers use it.
 
    Multi-spec dispatches on :selection/mechanism (ADR-030, fizzle-8650 phase 4).
-   7 defmethods — one per mechanism — replace the previous 33 type-keyed defmethods.
-   :selection/type is :opt in all methods; phase 5 removes it from all builders.
+   7 defmethods — one per mechanism — replace the previous 33 type-keyed defmethods. has been fully retired (ADR-030 complete).
 
    Validation is dev-only via goog.DEBUG (dead-code eliminated in release).
    set-pending-selection uses validate-at-chokepoint! — throws when
@@ -14,24 +13,21 @@
   (:require
     [cljs.spec.alpha :as s]
     [fizzle.engine.spec-common]
-    [fizzle.engine.spec-util :as spec-util]
-    [fizzle.events.selection.mechanism-domain :as mechanism-domain]))
+    [fizzle.engine.spec-util :as spec-util]))
 
 
 ;; =====================================================
 ;; Base Field Specs
 ;; =====================================================
 
-(s/def :selection/type keyword?)
 (s/def :selection/lifecycle #{:standard :finalized :chaining})
 
 
-;; ADR-030 mechanism/domain split. Set directly by builders (inject-mechanism-domain is now
-;; a dead compat adapter — to be deleted in phase 6 of fizzle-8650).
+;; ADR-030 mechanism/domain split. Set directly by all builders (ADR-030 complete).
 ;; :selection/mechanism is a bounded alphabet identifying the UI/interaction pattern.
 ;; :selection/domain is a free-form keyword tag identifying post-confirm policy.
 ;; :selection/mechanism is :req in all defmethods (dispatch key for multi-spec).
-;; :selection/type remains :opt until phase 5 retires it from all builders.
+;; has been fully retired.
 (s/def :selection/mechanism
   #{:pick-from-zone :reorder :accumulate :allocate-resource
     :n-slot-targeting :pick-mode :binary-choice})
@@ -87,8 +83,7 @@
 ;;
 ;; Dispatches on :selection/mechanism (7 mechanisms).
 ;; :selection/mechanism is :req in all methods (dispatch key).
-;; :selection/type is :opt in all methods — still present in builders until
-;; phase 5 removes it. After phase 5, :selection/type will be absent.
+;; has been fully retired (ADR-030 complete).
 ;;
 ;; Each method validates the minimum fields common to all domains under
 ;; that mechanism plus a comprehensive :opt list covering all domain-specific
@@ -110,7 +105,7 @@
                 :selection/selected
                 :selection/validation
                 :selection/auto-confirm?]
-          :opt [:selection/type
+          :opt [
                 :selection/lifecycle
                 :selection/select-count
                 :selection/valid-targets
@@ -166,7 +161,7 @@
                 :selection/player-id
                 :selection/validation
                 :selection/auto-confirm?]
-          :opt [:selection/type
+          :opt [
                 :selection/lifecycle
                 :selection/cards
                 :selection/top-pile
@@ -189,7 +184,7 @@
                 :selection/player-id
                 :selection/validation
                 :selection/auto-confirm?]
-          :opt [:selection/type
+          :opt [
                 :selection/selected
                 :selection/max-x
                 :selection/selected-x
@@ -217,7 +212,7 @@
                 :selection/generic-remaining
                 :selection/generic-total
                 :selection/allocation]
-          :opt [:selection/type
+          :opt [
                 :selection/zone
                 :selection/spell-id
                 :selection/mode
@@ -245,7 +240,7 @@
                 :selection/valid-targets
                 :selection/validation
                 :selection/auto-confirm?]
-          :opt [:selection/type
+          :opt [
                 :selection/object-id
                 :selection/mode
                 :selection/target-requirement
@@ -271,7 +266,7 @@
                 :selection/domain
                 :selection/player-id
                 :selection/validation]
-          :opt [:selection/type
+          :opt [
                 :selection/lifecycle
                 :selection/selected
                 :selection/select-count
@@ -295,7 +290,7 @@
                 :selection/selected
                 :selection/validation
                 :selection/auto-confirm?]
-          :opt [:selection/type
+          :opt [
                 :selection/lifecycle
                 :selection/select-count
                 :selection/valid-targets
@@ -324,7 +319,7 @@
 
 (def minimal-valid-selections
   {:discard
-   {:selection/type      :discard
+   {
     :selection/mechanism :pick-from-zone
     :selection/domain    :discard
     :selection/lifecycle :standard
@@ -334,7 +329,7 @@
     :selection/auto-confirm? false}
 
    :graveyard-return
-   {:selection/type      :graveyard-return
+   {
     :selection/mechanism :pick-from-zone
     :selection/domain    :graveyard-return
     :selection/lifecycle :standard
@@ -345,7 +340,7 @@
     :selection/candidate-ids #{}}
 
    :hand-reveal-discard
-   {:selection/type      :hand-reveal-discard
+   {
     :selection/mechanism :pick-from-zone
     :selection/domain    :revealed-hand-discard
     :selection/player-id :player-1
@@ -356,7 +351,7 @@
     :selection/valid-targets []}
 
    :chain-bounce
-   {:selection/type      :chain-bounce
+   {
     :selection/mechanism :pick-from-zone
     :selection/domain    :chain-bounce
     :selection/lifecycle :chaining
@@ -368,7 +363,7 @@
     :selection/select-count 1}
 
    :chain-bounce-target
-   {:selection/type      :chain-bounce-target
+   {
     :selection/mechanism :pick-from-zone
     :selection/domain    :chain-bounce-target
     :selection/player-id :player-1
@@ -379,7 +374,7 @@
     :selection/select-count 1}
 
    :unless-pay
-   {:selection/type      :unless-pay
+   {
     :selection/mechanism :binary-choice
     :selection/domain    :unless-pay
     :selection/player-id :player-1
@@ -390,7 +385,7 @@
     :selection/auto-confirm? true}
 
    :storm-split
-   {:selection/type      :storm-split
+   {
     :selection/mechanism :accumulate
     :selection/domain    :storm-split
     :selection/lifecycle :finalized
@@ -403,7 +398,7 @@
     :selection/allocation {:player-2 3 :player-1 0}}
 
    :x-mana-cost
-   {:selection/type      :x-mana-cost
+   {
     :selection/mechanism :accumulate
     :selection/domain    :x-mana-cost
     :selection/lifecycle :chaining
@@ -414,7 +409,7 @@
     :selection/selected-x 0}
 
    :mana-allocation
-   {:selection/type      :mana-allocation
+   {
     :selection/mechanism :allocate-resource
     :selection/domain    :mana-allocation
     :selection/lifecycle :finalized
@@ -426,7 +421,7 @@
     :selection/allocation {}}
 
    :pay-x-life
-   {:selection/type      :pay-x-life
+   {
     :selection/mechanism :accumulate
     :selection/domain    :pay-x-life
     :selection/lifecycle :finalized
@@ -437,7 +432,7 @@
     :selection/selected-x 0}
 
    :scry
-   {:selection/type      :scry
+   {
     :selection/mechanism :reorder
     :selection/domain    :scry
     :selection/lifecycle :finalized
@@ -447,7 +442,7 @@
     :selection/cards [:obj-1 :obj-2]}
 
    :peek-and-reorder
-   {:selection/type      :peek-and-reorder
+   {
     :selection/mechanism :reorder
     :selection/domain    :peek-and-reorder
     :selection/lifecycle :finalized
@@ -458,7 +453,7 @@
     :selection/ordered []}
 
    :order-bottom
-   {:selection/type      :order-bottom
+   {
     :selection/mechanism :reorder
     :selection/domain    :order-bottom
     :selection/player-id :player-1
@@ -468,7 +463,7 @@
     :selection/ordered []}
 
    :order-top
-   {:selection/type      :order-top
+   {
     :selection/mechanism :reorder
     :selection/domain    :order-top
     :selection/player-id :player-1
@@ -478,7 +473,7 @@
     :selection/ordered []}
 
    :tutor
-   {:selection/type      :tutor
+   {
     :selection/mechanism :pick-from-zone
     :selection/domain    :tutor
     :selection/lifecycle :chaining
@@ -491,7 +486,7 @@
     :selection/select-count 1}
 
    :peek-and-select
-   {:selection/type      :peek-and-select
+   {
     :selection/mechanism :pick-from-zone
     :selection/domain    :peek-and-select
     :selection/lifecycle :chaining
@@ -505,7 +500,7 @@
     :selection/select-count 1}
 
    :pile-choice
-   {:selection/type      :pile-choice
+   {
     :selection/mechanism :pick-from-zone
     :selection/domain    :pile-choice
     :selection/lifecycle :finalized
@@ -518,7 +513,7 @@
     :selection/select-count 1}
 
    :player-target
-   {:selection/type      :player-target
+   {
     :selection/mechanism :n-slot-targeting
     :selection/domain    :player-target
     :selection/lifecycle :finalized
@@ -530,7 +525,7 @@
     :selection/auto-confirm? true}
 
    :cast-time-targeting
-   {:selection/type      :cast-time-targeting
+   {
     :selection/mechanism :n-slot-targeting
     :selection/domain    :cast-time-targeting
     :selection/lifecycle :finalized
@@ -545,7 +540,7 @@
     :selection/target-requirement {:target/id :target :target/type :object}}
 
    :ability-cast-targeting
-   {:selection/type      :ability-cast-targeting
+   {
     :selection/mechanism :n-slot-targeting
     :selection/domain    :ability-cast-targeting
     :selection/lifecycle :finalized
@@ -560,7 +555,7 @@
     :selection/target-requirement {:target/id :target :target/type :object}}
 
    :ability-targeting
-   {:selection/type      :ability-targeting
+   {
     :selection/mechanism :n-slot-targeting
     :selection/domain    :ability-targeting
     :selection/lifecycle :finalized
@@ -577,7 +572,7 @@
     :selection/remaining-target-reqs []}
 
    :discard-specific-cost
-   {:selection/type      :discard-specific-cost
+   {
     :selection/mechanism :pick-from-zone
     :selection/domain    :discard-cost
     :selection/player-id :player-1
@@ -588,7 +583,7 @@
     :selection/mode {:mode/id :primary :mode/mana-cost {:blue 1}}}
 
    :return-land-cost
-   {:selection/type      :return-land-cost
+   {
     :selection/mechanism :pick-from-zone
     :selection/domain    :return-land-cost
     :selection/player-id :player-1
@@ -600,7 +595,7 @@
     :selection/mode {:mode/id :primary :mode/mana-cost {:blue 1}}}
 
    :sacrifice-permanent-cost
-   {:selection/type      :sacrifice-permanent-cost
+   {
     :selection/mechanism :pick-from-zone
     :selection/domain    :sacrifice-cost
     :selection/player-id :player-1
@@ -611,7 +606,7 @@
     :selection/auto-confirm? false}
 
    :exile-cards-cost
-   {:selection/type      :exile-cards-cost
+   {
     :selection/mechanism :pick-from-zone
     :selection/domain    :exile-cost
     :selection/lifecycle :finalized
@@ -624,7 +619,7 @@
     :selection/mode {:mode/id :primary :mode/mana-cost {:colorless 1}}}
 
    :land-type-source
-   {:selection/type      :land-type-source
+   {
     :selection/mechanism :pick-mode
     :selection/domain    :land-type-source
     :selection/lifecycle :chaining
@@ -634,7 +629,7 @@
     :selection/validation :exact}
 
    :land-type-target
-   {:selection/type      :land-type-target
+   {
     :selection/mechanism :pick-mode
     :selection/domain    :land-type-target
     :selection/lifecycle :standard
@@ -644,7 +639,7 @@
     :selection/validation :exact}
 
    :select-attackers
-   {:selection/type      :select-attackers
+   {
     :selection/mechanism :n-slot-targeting
     :selection/domain    :select-attackers
     :selection/lifecycle :finalized
@@ -657,7 +652,7 @@
     :selection/select-count 1}
 
    :assign-blockers
-   {:selection/type      :assign-blockers
+   {
     :selection/mechanism :n-slot-targeting
     :selection/domain    :assign-blockers
     :selection/lifecycle :chaining
@@ -672,7 +667,7 @@
     :selection/select-count 1}
 
    :spell-mode
-   {:selection/type      :spell-mode
+   {
     :selection/mechanism :pick-mode
     :selection/domain    :spell-mode
     :selection/lifecycle :finalized
@@ -685,7 +680,7 @@
     :selection/candidates [{:mode/id :primary}]}
 
    :untap-lands
-   {:selection/type      :untap-lands
+   {
     :selection/mechanism :pick-from-zone
     :selection/domain    :untap-lands
     :selection/player-id :player-1
@@ -697,7 +692,7 @@
     :selection/candidate-ids #{:land-1}}
 
    :replacement-choice
-   {:selection/type      :replacement-choice
+   {
     :selection/mechanism :binary-choice
     :selection/domain    :replacement-choice
     :selection/player-id :player-1
@@ -712,38 +707,12 @@
 
 
 (defn minimal-valid-selection
-  "Return a minimal valid selection map for the given :selection/type keyword.
+  "Return a minimal valid selection map for the given keyword.
    Used by tests to verify every type has a working defmethod."
   [selection-type]
   (get minimal-valid-selections selection-type))
 
 
-;; =====================================================
-;; Mechanism/Domain Compat Adapter (ADR-030, task fizzle-6y8i)
-;; =====================================================
-
-(defn inject-mechanism-domain
-  "Compat adapter: enriches a selection map with :selection/mechanism and
-   :selection/domain by looking up :selection/type in the canonical mapping.
-
-   Called at the top of set-pending-selection (BEFORE validate-at-chokepoint!)
-   so the validator sees the enriched map.
-
-   Nil-safety: if :selection/type is absent or unmapped, returns the selection
-   unchanged. Never assocs nil under either field — absent is strictly better
-   than nil (nil would pollute the spec and mislead downstream readers).
-
-   Idempotency: if fields are already present, assoc overwrites with the same
-   values (harmless lookup cost)."
-  [selection]
-  (let [sel-type (:selection/type selection)
-        entry    (when sel-type
-                   (get mechanism-domain/type->mechanism-domain sel-type))]
-    (if entry
-      (assoc selection
-             :selection/mechanism (:mechanism entry)
-             :selection/domain    (:domain entry))
-      selection)))
 
 
 ;; =====================================================
