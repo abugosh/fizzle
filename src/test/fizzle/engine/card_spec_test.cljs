@@ -216,25 +216,6 @@
       (is (= true (card-spec/valid-card? card))))))
 
 
-(deftest test-card-with-kicker-valid
-  (testing "card with kicker passes"
-    (let [card {:card/id :test-kicker
-                :card/name "Kicker Spell"
-                :card/cmc 1
-                :card/mana-cost {:white 1}
-                :card/colors #{:white}
-                :card/types #{:instant}
-                :card/text "Kicker W."
-                :card/kicker {:white 1}
-                :card/effects [{:effect/type :add-restriction
-                                :effect/target :opponent
-                                :restriction/type :cannot-cast-spells}]
-                :card/kicked-effects [{:effect/type :add-restriction
-                                       :effect/target :opponent
-                                       :restriction/type :cannot-attack}]}]
-      (is (= true (card-spec/valid-card? card))))))
-
-
 ;; === Effect Multi-Spec Tests ===
 
 ;; --- Shape validation: valid effects pass ---
@@ -445,7 +426,6 @@
     (doseq [card cards/all-cards]
       (doseq [effect (concat (:card/effects card)
                              (:card/etb-effects card)
-                             (:card/kicked-effects card)
                              (mapcat :ability/effects (:card/abilities card))
                              (mapcat :trigger/effects (:card/triggers card))
                              (mapcat :state/effects (:card/state-triggers card))

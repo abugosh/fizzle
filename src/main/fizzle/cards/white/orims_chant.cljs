@@ -32,7 +32,6 @@
    ;; Kicked alternate cost: total mana cost is {WW} (base {W} + kicker {W})
    ;; :alternate/effects REPLACES :card/effects (replacement semantics per epic anti-pattern)
    ;; :alternate/targeting REPLACES :card/targeting (same for Orim's Chant)
-   ;; No :card/kicker key — prevents duplicate mode from get-kicked-mode
    :card/alternate-costs [{:alternate/id :kicked
                            :alternate/kind :kicker
                            :alternate/zone :hand

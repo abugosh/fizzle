@@ -23,13 +23,6 @@
 ;; Alternate Casting Modes
 ;; =====================================================
 
-(defn- merge-mana-costs
-  "Merge two mana costs by adding values for each color.
-   Used for combining base cost with kicker cost."
-  [cost1 cost2]
-  (merge-with + (or cost1 {}) (or cost2 {})))
-
-
 (defn- get-primary-mode
   "Returns the primary casting mode for a card.
    Primary mode is: cast from hand with the card's mana cost.
@@ -42,21 +35,6 @@
    :mode/on-resolve (if (some #{:instant :sorcery} (set (:card/types card)))
                       :graveyard
                       :battlefield)})
-
-
-(defn- get-kicked-mode
-  "Returns the kicked casting mode for a card with kicker, or nil if no kicker.
-   Kicked mode combines base cost with kicker cost and uses kicked effects."
-  [card]
-  (when (:card/kicker card)
-    {:mode/id :kicked
-     :mode/zone :hand
-     :mode/mana-cost (merge-mana-costs (:card/mana-cost card) (:card/kicker card))
-     :mode/additional-costs []
-     :mode/effects (or (:card/kicked-effects card) [])
-     :mode/on-resolve (if (some #{:instant :sorcery} (set (:card/types card)))
-                        :graveyard
-                        :battlefield)}))
 
 
 (defn- alternate-to-mode
@@ -106,12 +84,8 @@
           current-zone (:object/zone obj)
           object-grants (q/get-grants db object-id)]
       (case current-zone
-        :hand (let [primary (get-primary-mode card)
-                    kicked (get-kicked-mode card)
-                    alternates (get-alternate-modes card :hand object-grants)]
-                (cond-> [primary]
-                  kicked (conj kicked)
-                  true (into alternates)))
+        :hand (into [(get-primary-mode card)]
+                    (get-alternate-modes card :hand object-grants))
         :graveyard (vec (get-alternate-modes card :graveyard object-grants))
         ;; Other zones: can't cast
         []))
@@ -412,7 +386,7 @@
 
    Priority order:
    1. Chosen spell mode (:object/chosen-mode) - used for modal spells (REB, BEB)
-   2. Casting mode effects (:mode/effects on cast mode) - used for kicked spells
+   2. Casting mode effects (:mode/effects on cast mode) - used for alternate-cost modes (kicker via :card/alternate-costs)
    3. Conditional effects (e.g., threshold) - checked at resolution time
    4. Default effects (:card/effects)
 
@@ -421,7 +395,7 @@
    - :card/modes - Modal spell modes (chosen at cast time, stored on object)
    - :card/conditional-effects - Map of condition keyword to effects list
      e.g., {:threshold [{:effect/type :add-mana :effect/mana {:black 5}}]}
-   - :card/kicked-effects - Effects when cast with kicker (stored in mode)"
+   - :card/alternate-costs - Alternate casting modes (e.g. kicker via :alternate/kind :kicker)"
   [db player-id card object-id]
   (let [obj (q/get-object db object-id)
         chosen-mode (:object/chosen-mode obj)
@@ -434,7 +408,7 @@
       (seq (:mode/effects chosen-mode))
       (:mode/effects chosen-mode)
 
-      ;; Use casting mode effects if present (kicked spells)
+      ;; Use casting mode effects if present (alternate-cost modes, e.g. kicker)
       (seq mode-effects)
       mode-effects
 

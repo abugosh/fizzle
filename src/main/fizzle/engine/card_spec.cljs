@@ -600,8 +600,6 @@
 (s/def :card/conditional-effects ::conditional-effects)
 (s/def :card/additional-costs (s/coll-of ::additional-cost :kind vector?))
 (s/def :card/cast-restriction map?)
-(s/def :card/kicker ::mana-cost)
-(s/def :card/kicked-effects ::effects)
 (s/def :card/cycling ::mana-cost)
 (s/def :card/power int?)
 (s/def :card/toughness pos-int?)
@@ -638,7 +636,7 @@
                        :card/colors :card/types :card/text]
                  :opt [:card/effects :card/abilities :card/etb-effects
                        :card/triggers :card/targeting :card/alternate-costs
-                       :card/conditional-effects :card/kicker :card/kicked-effects
+                       :card/conditional-effects
                        :card/subtypes :card/supertypes :card/keywords
                        :card/additional-costs :card/cast-restriction
                        :card/static-abilities :card/power :card/toughness
