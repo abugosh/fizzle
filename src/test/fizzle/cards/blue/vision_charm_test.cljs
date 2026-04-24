@@ -264,7 +264,7 @@
           db-on-stack (rules/cast-spell db :player-1 vc-id)
           ;; Resolve — should return a selection
           result (th/resolve-top db-on-stack)]
-      (is (= :land-type-source (:selection/type (:selection result)))
+      (is (= :land-type-source (:selection/domain (:selection result)))
           "Mode 2 resolve should return a :land-type-source pending selection"))))
 
 
@@ -284,11 +284,11 @@
           db-on-stack (rules/cast-spell db :player-1 vc-id)
           ;; Resolve → should return source land type selection
           {:keys [db selection]} (th/resolve-top db-on-stack)
-          _ (is (= :land-type-source (:selection/type selection))
+          _ (is (= :land-type-source (:selection/domain selection))
                 "Should return :land-type-source selection after resolve")
           ;; Step 1: Confirm source type = :island
           {:keys [db selection]} (th/confirm-selection db selection #{:island})
-          _ (is (= :land-type-target (:selection/type selection))
+          _ (is (= :land-type-target (:selection/domain selection))
                 "Should chain to :land-type-target selection")
           ;; Step 2: Confirm target type = :mountain
           {:keys [db]} (th/confirm-selection db selection #{:mountain})

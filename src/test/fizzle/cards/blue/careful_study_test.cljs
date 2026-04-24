@@ -115,7 +115,7 @@
       (is (= 2 (th/get-hand-count db :player-1))
           "Should have 2 cards in hand after draw (before discard)")
       ;; Discard selection should be pending
-      (is (= :discard (:selection/type selection))
+      (is (= :discard (:selection/domain selection))
           "Selection type should be :discard")
       (is (= 2 (:selection/select-count selection))
           "Should require discarding 2 cards"))))
@@ -139,7 +139,7 @@
           db-cast (rules/cast-spell db :player-1 cs-id)
           {:keys [db selection]} (th/resolve-top db-cast)]
       ;; Draw should have happened, discard selection should be pending
-      (is (= :discard (:selection/type selection))
+      (is (= :discard (:selection/domain selection))
           "Selection type should be :discard")
       (is (= 2 (:selection/select-count selection))
           "Should require discarding 2 cards")
@@ -173,7 +173,7 @@
       (is (= 2 (get-in result [:pending-selection :selection/select-count]))
           "Selection should require exactly 2 cards")
       ;; Selection type should be :discard
-      (is (= :discard (get-in result [:pending-selection :selection/type]))
+      (is (= :discard (get-in result [:pending-selection :selection/domain]))
           "Selection effect type should be :discard")
       ;; Draw effect should have executed (3 cards in hand: 2 drawn + 0 from empty hand after CS cast)
       (is (= 2 (th/get-hand-count (:db result) :player-1))
@@ -236,7 +236,7 @@
       (is (= 2 (th/get-hand-count (:db result) :player-1))
           "After drawing from empty library, hand should have 2 cards")
       ;; Should still have pending discard selection
-      (is (= :discard (get-in result [:pending-selection :selection/type]))
+      (is (= :discard (get-in result [:pending-selection :selection/domain]))
           "Selection type should be :discard even with empty library draw")
       (is (= 2 (get-in result [:pending-selection :selection/select-count]))
           "Should require discarding 2 cards"))))
@@ -272,7 +272,7 @@
       (is (= 0 (count (q/get-objects-in-zone (:db result) :player-1 :library)))
           "Library should be empty after drawing the only card")
       ;; Should have pending discard selection
-      (is (= :discard (get-in result [:pending-selection :selection/type]))
+      (is (= :discard (get-in result [:pending-selection :selection/domain]))
           "Selection type should be :discard")
       (is (= 2 (get-in result [:pending-selection :selection/select-count]))
           "Should require discarding 2 cards"))))
@@ -300,7 +300,7 @@
       (is (= 2 (th/get-hand-count db :player-1))
           "Should have 2 cards in hand after draw")
       ;; Should have pending discard selection
-      (is (= :discard (:selection/type selection))
+      (is (= :discard (:selection/domain selection))
           "Selection type should be :discard")
       (is (= 2 (:selection/select-count selection))
           "Should require discarding 2 cards")

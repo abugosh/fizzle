@@ -136,14 +136,14 @@
           ;; Activate ability — first selection: battlefield artifact
           result1 (ability-events/activate-ability db :player-1 welder-id 0)
           pending1 (:pending-selection result1)
-          _ (is (= :ability-targeting (:selection/type pending1))
+          _ (is (= :ability-targeting (:selection/domain pending1))
                 "First pending selection should be ability-targeting")
           _ (is (contains? (set (:selection/valid-targets pending1)) petal-id)
                 "First selection should offer Lotus Petal as valid target")
           ;; Select Lotus Petal (battlefield artifact)
           result2 (ability-events/confirm-ability-target (:db result1) (assoc pending1 :selection/selected #{petal-id}))
           pending2 (:pending-selection result2)
-          _ (is (= :ability-targeting (:selection/type pending2))
+          _ (is (= :ability-targeting (:selection/domain pending2))
                 "Second pending selection should also be ability-targeting")
           _ (is (contains? (set (:selection/valid-targets pending2)) led-id)
                 "Second selection should offer LED (same controller's graveyard)")
@@ -364,7 +364,7 @@
           ;; Confirm first target through the SELECTION SYSTEM (not confirm-ability-target)
           chain-result (th/confirm-selection (:db result1) pending1 #{petal-id})]
       ;; The selection system should chain to the second target selection
-      (is (= :ability-targeting (:selection/type (:selection chain-result)))
+      (is (= :ability-targeting (:selection/domain (:selection chain-result)))
           "Chained selection should be :ability-targeting type")
       (is (contains? (set (:selection/valid-targets (:selection chain-result))) led-id)
           "Chained selection should include LED as valid graveyard target"))))

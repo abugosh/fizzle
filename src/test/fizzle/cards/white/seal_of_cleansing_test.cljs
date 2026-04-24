@@ -219,7 +219,7 @@
           result (ability-events/activate-ability db :player-1 seal-id 0)
           sel (:pending-selection result)]
       ;; Should have pending selection for target
-      (is (= :ability-targeting (:selection/type sel))
+      (is (= :ability-targeting (:selection/domain sel))
           "Selection type should be :ability-targeting")
       ;; Confirm target selection via production path
       (let [{db-after-confirm :db} (th/confirm-selection (:db result) sel #{target-id})]

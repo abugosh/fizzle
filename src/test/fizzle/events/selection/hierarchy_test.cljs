@@ -37,7 +37,7 @@
                   :effect/count 2
                   :effect/selection :player}
           sel (core/build-selection-for-effect db :player-1 :spell-123 effect [])]
-      (is (= :discard (:selection/type sel))
+      (is (= :discard (:selection/domain sel))
           "selection/type should be the original effect type, NOT :zone-pick")
       (is (= 2 (:selection/select-count sel))
           "select-count should match :effect/count")
@@ -114,7 +114,7 @@
     (let [db (th/create-test-db)
           effect {:effect/type :discard :effect/count 1 :effect/selection :player}
           sel (core/build-selection-for-effect db :player-1 :spell-1 effect [])]
-      (is (= :discard (:selection/type sel))
+      (is (= :discard (:selection/domain sel))
           ":discard should route to zone-pick builder and produce :discard type sel"))))
 
 
@@ -125,7 +125,7 @@
                   :chain/controller :player-1
                   :chain/target-id :some-target}
           sel (core/build-selection-for-effect db :player-1 :spell-1 effect [])]
-      (is (= :chain-bounce (:selection/type sel))
+      (is (= :chain-bounce (:selection/domain sel))
           ":chain-bounce should still use its custom builder"))))
 
 
@@ -166,7 +166,7 @@
           selection (:pending-selection result)]
       (is (some? selection)
           "Cleanup should create pending selection")
-      (is (= :discard (:selection/type selection))
+      (is (= :discard (:selection/domain selection))
           "Selection type should be :discard")
       (is (true? (:selection/cleanup? selection))
           "Should have cleanup flag")
@@ -188,7 +188,7 @@
           db-cast (rules/cast-spell db :player-1 cs-id)
           {:keys [db selection]} (th/resolve-top db-cast)]
       ;; Selection should have correct shape from generic builder
-      (is (= :discard (:selection/type selection))
+      (is (= :discard (:selection/domain selection))
           "Selection type preserved as :discard")
       (is (= 2 (:selection/select-count selection))
           "Should require discarding 2 cards")
@@ -215,7 +215,7 @@
                   :effect/count 2
                   :effect/selection :player}
           sel (core/build-selection-for-effect db :player-1 :spell-1 effect [:remaining])]
-      (is (= :graveyard-return (:selection/type sel))
+      (is (= :graveyard-return (:selection/domain sel))
           "selection/type should be :graveyard-return (mapped from :return-from-graveyard effect)")
       (is (= :graveyard (:selection/zone sel))
           "zone should be :graveyard (not default :hand)")
@@ -250,7 +250,7 @@
           sel (core/build-selection-for-effect db :player-1 :spell-1 effect [])]
       (is (= #{} (:selection/candidate-ids sel))
           "candidate-ids should be empty set, not nil")
-      (is (= :graveyard-return (:selection/type sel))
+      (is (= :graveyard-return (:selection/domain sel))
           "selection/type should still be :graveyard-return"))))
 
 
@@ -332,7 +332,7 @@
                   :effect/count 1
                   :effect/selection :player}
           sel (core/build-selection-for-effect db :player-1 :spell-1 effect [])]
-      (is (= :graveyard-return (:selection/type sel))
+      (is (= :graveyard-return (:selection/domain sel))
           ":graveyard-return should route to zone-pick builder and produce :graveyard-return type"))))
 
 
@@ -352,7 +352,7 @@
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
       ;; Should have graveyard-return selection from generic builder
-      (is (= :graveyard-return (:selection/type sel))
+      (is (= :graveyard-return (:selection/domain sel))
           "Selection type should be :graveyard-return")
       (is (= 3 (:selection/select-count sel))
           "Max selection count should be 3")
@@ -416,7 +416,7 @@
           storm-si (first (filter #(= :storm (:stack-item/type %))
                                   (q/get-all-stack-items db-with-storm)))
           selection (storm/build-storm-split-selection db-with-storm :player-1 storm-si)]
-      (is (= :storm-split (:selection/type selection))
+      (is (= :storm-split (:selection/domain selection))
           "Storm split builder should produce :storm-split type"))))
 
 
@@ -428,7 +428,7 @@
           mode {:mode/id :primary
                 :mode/mana-cost {:colorless 1 :x true}}
           selection (sel-costs/build-x-mana-selection db :player-1 spell-id mode)]
-      (is (= :x-mana-cost (:selection/type selection))
+      (is (= :x-mana-cost (:selection/domain selection))
           "X mana builder should produce :x-mana-cost type"))))
 
 
@@ -441,7 +441,7 @@
                 :mode/mana-cost {:colorless 2}}
           resolved-cost {:colorless 2}
           selection (sel-costs/build-mana-allocation-selection db :player-1 spell-id mode resolved-cost)]
-      (is (= :mana-allocation (:selection/type selection))
+      (is (= :mana-allocation (:selection/domain selection))
           "Mana allocation builder should produce :mana-allocation type"))))
 
 
@@ -513,7 +513,7 @@
           [db _lib-ids] (th/add-cards-to-library db [:dark-ritual :cabal-ritual] :player-1)
           effect {:effect/type :scry :effect/amount 2}
           sel (core/build-selection-for-effect db :player-1 :spell-1 effect [])]
-      (is (= :scry (:selection/type sel))
+      (is (= :scry (:selection/domain sel))
           "Scry builder should produce :scry type"))))
 
 
@@ -523,7 +523,7 @@
           [db _lib-ids] (th/add-cards-to-library db [:dark-ritual :cabal-ritual :brain-freeze] :player-1)
           effect {:effect/type :peek-and-reorder :effect/count 3}
           sel (core/build-selection-for-effect db :player-1 :spell-1 effect [])]
-      (is (= :peek-and-reorder (:selection/type sel))
+      (is (= :peek-and-reorder (:selection/domain sel))
           "Peek-and-reorder builder should produce :peek-and-reorder type"))))
 
 
@@ -539,7 +539,8 @@
     ;; :land-type-source → :land-type-target is an unconditional chain (never nil)
     ;; Player chose :swamp as source; chain builds a target selector for destination type
     (let [db (th/create-test-db)
-          selection {:selection/type :land-type-source
+          selection {:selection/mechanism :pick-mode
+                     :selection/domain    :land-type-source
                      :selection/lifecycle :chaining
                      :selection/player-id :player-1
                      :selection/spell-id (random-uuid)
@@ -548,7 +549,7 @@
           result (core/build-chain-selection db selection)]
       (is (map? result)
           ":land-type-source chain must always return a map")
-      (is (= :land-type-target (:selection/type result))
+      (is (= :land-type-target (:selection/domain result))
           "Chain selection type must be :land-type-target")
       (is (vector? (:selection/options result))
           "Options must be a vector of remaining land types")

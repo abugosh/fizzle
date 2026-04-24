@@ -96,7 +96,7 @@
           ;; Resolve Mana Leak -> should get unless-pay selection
           resolve-result (th/resolve-top db-cast)]
       (let [selection (:selection resolve-result)
-            _ (is (= :unless-pay (:selection/type selection))
+            _ (is (= :unless-pay (:selection/domain selection))
                   "Selection type should be :unless-pay")
             _ (is (= :player-2 (:selection/player-id selection))
                   "Choosing player should be the targeted spell's controller")

@@ -211,7 +211,7 @@
           ;; Interactive spell — rules/cast-spell required (selection on resolve)
           db-cast (rules/cast-spell db :player-1 obj-id)
           result (resolution/resolve-one-item db-cast)]
-      (is (= :player-target (:selection/type (:pending-selection result)))
+      (is (= :player-target (:selection/domain (:pending-selection result)))
           "Selection type should be :player-target")
       (is (= obj-id (:selection/spell-id (:pending-selection result)))
           "Should track spell id for cleanup"))))
@@ -356,7 +356,7 @@
           ;; for cards with :card/targeting
           result (sel-targeting/cast-spell-with-targeting db :player-1 obj-id)]
       ;; Should have pending target selection (not yet on stack)
-      (is (= :cast-time-targeting (:selection/type (:pending-target-selection result)))
+      (is (= :cast-time-targeting (:selection/domain (:pending-target-selection result)))
           "Selection type should be :cast-time-targeting"))))
 
 
@@ -435,7 +435,7 @@
           ;; Cast via cast-spell-with-targeting (should work from graveyard too)
           result (sel-targeting/cast-spell-with-targeting db :player-1 obj-id)]
       ;; Should have pending target selection
-      (is (= :cast-time-targeting (:selection/type (:pending-target-selection result)))
+      (is (= :cast-time-targeting (:selection/domain (:pending-target-selection result)))
           "Selection type should be :cast-time-targeting")
       ;; Mode should be flashback
       (is (= :flashback (:mode/id (:selection/mode (:pending-target-selection result))))

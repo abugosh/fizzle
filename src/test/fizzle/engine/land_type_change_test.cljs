@@ -83,7 +83,7 @@
     (let [db (th/create-test-db)
           effect {:effect/type :change-land-types}
           sel (sel-core/build-selection-for-effect db :player-1 (random-uuid) effect [])]
-      (is (= :land-type-source (:selection/type sel))
+      (is (= :land-type-source (:selection/domain sel))
           "Selection type should be :land-type-source")
       (is (= [:plains :island :swamp :mountain :forest] (:selection/options sel))
           "All 5 basic land types should be options")
@@ -111,7 +111,7 @@
           result (sel-core/confirm-selection-impl app-db)
           next-sel (:game/pending-selection result)]
       (is (some? next-sel) "Should chain to target selection")
-      (is (= :land-type-target (:selection/type next-sel))
+      (is (= :land-type-target (:selection/domain next-sel))
           "Chained selection type should be :land-type-target")
       (is (= 4 (count (:selection/options next-sel)))
           "Target options should exclude the source type (4 remaining)")

@@ -53,10 +53,10 @@
           (when pending
             (is (nil? pending)
                 (str "First yield left pending-selection of type "
-                     (:selection/type pending)
+                     (:selection/domain pending)
                      " — this blocks subsequent yields. Selection: "
                      (pr-str (select-keys pending
-                                          [:selection/type :selection/lifecycle
+                                          [:selection/domain :selection/lifecycle
                                            :selection/player-id :selection/cleanup?])))))
 
           (when-not pending
@@ -93,7 +93,7 @@
       (when (= :pending-selection reason)
         (is (nil? pending)
             (str "yield-all stopped with pending-selection of type "
-                 (:selection/type pending)
+                 (:selection/domain pending)
                  " — likely the stuck-game bug"))))))
 
 
@@ -109,7 +109,7 @@
           "First yield should change game-db on normal scenario")
       (is (nil? pending-1)
           (str "Normal scenario first yield should not leave pending-selection, got: "
-               (:selection/type pending-1)))
+               (:selection/domain pending-1)))
 
       (when-not pending-1
         (let [result-2 (director/run-to-decision (:app-db result-1)

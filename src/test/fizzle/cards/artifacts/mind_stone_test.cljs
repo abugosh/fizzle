@@ -199,7 +199,7 @@
           sel (:pending-selection result)
           _ (is (= :graveyard (th/get-object-zone db-after-non-mana obj-id))
                 "Mind Stone should be in graveyard after non-mana costs paid (tap+sacrifice-self)")
-          _ (is (= :mana-allocation (:selection/type sel))
+          _ (is (= :mana-allocation (:selection/domain sel))
                 "Pending selection should be :mana-allocation for the {1} generic cost")
           ;; Allocate the one colorless toward the generic cost — allocator
           ;; auto-confirms when generic-remaining hits 0, which creates the

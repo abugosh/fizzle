@@ -10,8 +10,7 @@
 
 (defn build-attacker-selection
   [eligible-attackers controller stack-item-eid]
-  {:selection/type      :select-attackers
-   :selection/mechanism :n-slot-targeting
+  {:selection/mechanism :n-slot-targeting
    :selection/domain    :select-attackers
    :selection/lifecycle :finalized
    :selection/source-type :stack-item
@@ -83,8 +82,7 @@
   [db remaining-attackers defender-id stack-item-eid]
   (let [current-attacker (first remaining-attackers)
         eligible (combat/get-eligible-blockers db defender-id current-attacker)]
-    {:selection/type      :assign-blockers
-     :selection/mechanism :n-slot-targeting
+    {:selection/mechanism :n-slot-targeting
      :selection/domain    :assign-blockers
      :selection/lifecycle :chaining
      :selection/source-type :stack-item

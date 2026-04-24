@@ -118,7 +118,7 @@
                   :effect/target-zone :hand
                   :effect/shuffle? true}
           sel (sel-core/build-selection-for-effect db2 :player-1 obj-id effect [])]
-      (is (= :tutor (:selection/type sel))
+      (is (= :tutor (:selection/domain sel))
           "Builder should return :tutor selection type")
       (is (contains? (:selection/candidates sel) opt-id)
           "opt (blue instant) should be in tutor candidates")
@@ -142,7 +142,7 @@
                   :effect/target-zone :hand
                   :effect/shuffle? true}
           sel (sel-core/build-selection-for-effect db1 :player-1 obj-id effect [])]
-      (is (= :tutor (:selection/type sel))
+      (is (= :tutor (:selection/domain sel))
           "Builder should return :tutor even with empty candidates")
       (is (empty? (:selection/candidates sel))
           "Candidates should be empty when library has no matching cards"))))
@@ -180,7 +180,7 @@
           top-card-id (first library-top)
           effect {:effect/type :scry :effect/amount 1}
           sel (sel-core/build-selection-for-effect db1 :player-1 obj-id effect [])]
-      (is (= :scry (:selection/type sel))
+      (is (= :scry (:selection/domain sel))
           "Builder should return :scry selection type")
       (is (= [top-card-id] (:selection/cards sel))
           "Top library card should be in selection/cards")
@@ -201,7 +201,7 @@
           library-top-2 (q/get-top-n-library db1 :player-1 2)
           effect {:effect/type :scry :effect/amount 2}
           sel (sel-core/build-selection-for-effect db1 :player-1 obj-id effect [])]
-      (is (= :scry (:selection/type sel)))
+      (is (= :scry (:selection/domain sel)))
       (is (= 2 (count (:selection/cards sel)))
           "Scry 2 should reveal 2 cards")
       (is (= library-top-2 (:selection/cards sel))
@@ -244,7 +244,7 @@
                   :effect/selected-zone :hand
                   :effect/remainder-zone :bottom-of-library}
           sel (sel-core/build-selection-for-effect db1 :player-1 obj-id effect [])]
-      (is (= :peek-and-select (:selection/type sel))
+      (is (= :peek-and-select (:selection/domain sel))
           "Builder should return :peek-and-select selection type")
       (is (= (set library-top-2) (:selection/candidates sel))
           "Candidates should be top-2 library cards")
@@ -271,7 +271,7 @@
                   :effect/remainder-zone :bottom-of-library
                   :effect/order-remainder? true}
           sel (sel-core/build-selection-for-effect db1 :player-1 obj-id effect [])]
-      (is (= :peek-and-select (:selection/type sel)))
+      (is (= :peek-and-select (:selection/domain sel)))
       (is (true? (:selection/order-remainder? sel))
           "order-remainder? should be true for Impulse-style effect")
       (is (fn? (:selection/chain-builder sel))
@@ -307,7 +307,7 @@
                   :effect/count 3
                   :effect/may-shuffle? true}
           sel (sel-core/build-selection-for-effect db1 :player-1 obj-id effect [])]
-      (is (= :peek-and-reorder (:selection/type sel))
+      (is (= :peek-and-reorder (:selection/domain sel))
           "Builder should return :peek-and-reorder selection type")
       (is (= (set library-top-3) (:selection/candidates sel))
           "Candidates should be top-3 library cards")
@@ -332,7 +332,7 @@
                   :effect/count 3
                   :effect/target :player-2}
           sel (sel-core/build-selection-for-effect db2 :player-1 obj-id effect [])]
-      (is (= :peek-and-reorder (:selection/type sel)))
+      (is (= :peek-and-reorder (:selection/domain sel)))
       (is (= :player-2 (:selection/target-player sel))
           "Target-player should be :player-2 when :effect/target is :player-2")
       (is (= (set library-top) (:selection/candidates sel))
@@ -466,7 +466,7 @@
           candidates (:selection/candidates sel)
           pick-id (first candidates)
           {:keys [selection]} (th/confirm-selection db1 sel #{pick-id})]
-      (is (= :order-bottom (:selection/type selection))
+      (is (= :order-bottom (:selection/domain selection))
           "Chained selection should be :order-bottom"))))
 
 
@@ -820,7 +820,7 @@
           result (dispatch-event app-db' [:fizzle.events.selection/select-random-pile-choice])]
       ;; Selection should still be present — handler does NOT confirm
       (let [result-sel (:game/pending-selection result)]
-        (is (= :pile-choice (:selection/type result-sel))
+        (is (= :pile-choice (:selection/domain result-sel))
             "select-random-pile-choice should NOT confirm the selection, only update :selected")
         (is (seq (:selection/selected result-sel))
             "select-random-pile-choice should populate :selected with candidate cards")))))

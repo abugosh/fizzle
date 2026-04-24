@@ -167,7 +167,7 @@
           ;; Resolve: zone-pick selection appears for graveyard cards
           {:keys [db selection]} (th/resolve-top db-cast)]
       ;; Selection should be the shuffle-from-graveyard-to-library type
-      (is (= :shuffle-from-graveyard-to-library (:selection/type selection))
+      (is (= :shuffle-to-library (:selection/domain selection))
           "Should enter shuffle-from-graveyard-to-library selection")
       (is (= :player-1 (:selection/player-id selection))
           "Selection player-id should be player-1 (the targeted player)")
@@ -261,7 +261,7 @@
           db-cast (th/cast-with-target db :player-1 gb-id :player-1)
           {:keys [db selection]} (th/resolve-top db-cast)
           sel selection]
-      (is (= :shuffle-from-graveyard-to-library (:selection/type sel))
+      (is (= :shuffle-to-library (:selection/domain sel))
           "Selection type should be :shuffle-from-graveyard-to-library")
       (is (= :at-most (:selection/validation sel))
           "Validation should be :at-most (not :exact)")

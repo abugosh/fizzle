@@ -260,7 +260,7 @@
       (is (= :graveyard (:object/zone (q/get-object db other-id)))
           "Other card should be in graveyard")
       ;; Should chain to targeting selection for choosing counter target
-      (is (= :cast-time-targeting (:selection/type selection))
+      (is (= :cast-time-targeting (:selection/domain selection))
           "Should chain to cast-time-targeting selection"))))
 
 

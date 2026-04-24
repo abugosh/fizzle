@@ -326,7 +326,7 @@
           result (ability-events/activate-ability db''' :player-1 obj-id 1)
           selection (:pending-selection result)]
       ;; Should return pending selection
-      (is (= :ability-targeting (:selection/type selection))
+      (is (= :ability-targeting (:selection/domain selection))
           "Selection type should be :ability-targeting")
       (is (= :player-1 (:selection/player-id selection))
           "Selection should track activating player")
@@ -432,7 +432,7 @@
       (is (= 3 (th/get-hand-count (:db resolve-result) :player-1))
           "Player should have drawn 3 cards from threshold ability")
       ;; Should have pending discard selection (discard 3)
-      (is (= :discard (get-in resolve-result [:pending-selection :selection/type]))
+      (is (= :discard (get-in resolve-result [:pending-selection :selection/domain]))
           "Pending selection should be for discard")
       (is (= 3 (get-in resolve-result [:pending-selection :selection/select-count]))
           "Should require discarding 3 cards"))))

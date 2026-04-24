@@ -84,7 +84,7 @@
           "Screen should transition to :setup")
       (is (some? sel-after)
           ":game/pending-selection should be preserved after screen transition")
-      (is (= :discard (:selection/type sel-after))
+      (is (= :discard (:selection/domain sel-after))
           ":game/pending-selection type should remain :discard"))))
 
 

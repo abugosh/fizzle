@@ -314,7 +314,7 @@
                      :selection/colored-cost {:black 1}}
           app-db (sel-spec/set-pending-selection {:game/db game-db} selection)
           result (sub-value app-db [::subs/mana-allocation-state])]
-      (is (= :mana-allocation (:selection/type result)))
+      (is (= :mana-allocation (:selection/domain result)))
       (is (= 3 (:selection/generic-remaining result)))
       (is (= 3 (:selection/generic-total result)))
       (is (= {} (:selection/allocation result)))

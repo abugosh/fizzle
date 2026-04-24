@@ -118,7 +118,7 @@
           result (ability-events/activate-ability db :player-1 bauble-id 0)
           sel (:pending-selection result)]
       ;; Should have pending selection for player target
-      (is (= :ability-targeting (:selection/type sel))
+      (is (= :ability-targeting (:selection/domain sel))
           "Should enter targeting selection")
       ;; Select opponent as target
       (let [selection-with-target (assoc sel :selection/selected #{:player-2})

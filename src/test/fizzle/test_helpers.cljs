@@ -329,14 +329,14 @@
                                             :target target-id})]
     (cond
       (and (:game/pending-selection result)
-           (= :spell-mode (:selection/type (:game/pending-selection result))))
+           (= :spell-mode (:selection/domain (:game/pending-selection result))))
       (throw (ex-info "cast-with-target: spell requires mode selection, use cast-mode-with-target"
                       {:object-id obj-id}))
 
       (:game/pending-selection result)
       (throw (ex-info "cast-with-target: spell has pre-cast costs requiring selection"
                       {:object-id obj-id
-                       :selection-type (:selection/type (:game/pending-selection result))}))
+                       :selection-type (:selection/domain (:game/pending-selection result))}))
 
       :else
       (:game/db result))))

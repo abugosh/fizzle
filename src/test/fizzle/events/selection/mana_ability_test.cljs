@@ -129,7 +129,7 @@
                    db :player-1 obj-id :blue 0)]
       (is (some? (:pending-selection result))
           "Chromatic Sphere (generic cost) must route to selection, not direct engine")
-      (is (= :mana-allocation (:selection/type (:pending-selection result)))
+      (is (= :mana-allocation (:selection/domain (:pending-selection result)))
           "Selection type must be :mana-allocation"))))
 
 

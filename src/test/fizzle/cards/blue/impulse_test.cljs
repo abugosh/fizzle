@@ -67,7 +67,7 @@
                 "Should be on stack after casting")
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
-      (is (= :peek-and-select (:selection/type sel))
+      (is (= :peek-and-select (:selection/domain sel))
           "Selection type should be :peek-and-select")
       (is (= 4 (count (:selection/candidates sel)))
           "Should peek at 4 cards")
@@ -100,7 +100,7 @@
       (is (= :hand (th/get-object-zone db selected-card))
           "Selected card should be moved to hand")
       ;; Should chain to order-bottom for remaining 3
-      (is (= :order-bottom (:selection/type selection))
+      (is (= :order-bottom (:selection/domain selection))
           "Chained selection should be :order-bottom")
       (is (= 3 (count (:selection/candidates selection)))
           "Order-bottom should have 3 cards (the non-selected peeked cards)"))))
@@ -200,7 +200,7 @@
       (is (= :hand (th/get-object-zone db first-card))
           "First card should be in hand")
       (let [remainder (set (rest (take 4 lib-ids)))]
-        (is (= :order-bottom (:selection/type selection))
+        (is (= :order-bottom (:selection/domain selection))
             "Should chain to order-bottom")
         (is (= remainder (:selection/candidates selection))
             "Order-bottom candidates should be the 3 non-selected peeked cards")))))
@@ -222,7 +222,7 @@
           {:keys [selection]} (th/confirm-selection
                                 (:db result) sel #{})]
       ;; Should chain to order-bottom for all 4 candidates
-      (is (= :order-bottom (:selection/type selection))
+      (is (= :order-bottom (:selection/domain selection))
           "Should chain to order-bottom")
       (is (= 4 (count (:selection/candidates selection)))
           "Order-bottom should have all 4 cards"))))
@@ -240,7 +240,7 @@
           db-cast (rules/cast-spell db :player-1 imp-id)
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
-      (is (= :peek-and-select (:selection/type sel))
+      (is (= :peek-and-select (:selection/domain sel))
           "Should still create peek-and-select")
       (is (= 2 (count (:selection/candidates sel)))
           "Should peek at 2 cards (all available)")
@@ -264,7 +264,7 @@
           db-cast (rules/cast-spell db :player-1 imp-id)
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
-      (is (= :peek-and-select (:selection/type sel))
+      (is (= :peek-and-select (:selection/domain sel))
           "Should still create peek-and-select")
       (is (= 1 (count (:selection/candidates sel)))
           "Should peek at 1 card (all available)")

@@ -216,7 +216,7 @@
                                   :selection/auto-confirm? false})
           result (core/confirm-selection-impl app-db)]
       (is (some? (:game/pending-selection result)))
-      (is (= :test-standard (:selection/type (:game/pending-selection result)))))))
+      (is (= :test-standard (:selection/domain (:game/pending-selection result)))))))
 
 
 (deftest test-chaining-lifecycle-propagates-on-complete

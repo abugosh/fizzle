@@ -155,8 +155,7 @@
       ;; Return :auto-redirect so the events layer can commit the redirect immediately.
       {:db updated-db :selection nil :auto-redirect (first valid-choices)}
       ;; Multiple valid choices — build the selection map for player input
-      (let [sel (cond-> {:selection/type                  :replacement-choice
-                         :selection/mechanism             :binary-choice
+      (let [sel (cond-> {:selection/mechanism             :binary-choice
                          :selection/domain                :replacement-choice
                          :selection/player-id            player-id
                          :selection/object-id            object-id
@@ -334,8 +333,7 @@
             candidates  (filterv #(not= object-id (:object/id %)) matching)
             cand-ids    (set (map :object/id candidates))
             ;; Build discard selection with on-complete = :resume-replacement-zone-change
-            discard-sel {:selection/type          :discard
-                         :selection/mechanism     :pick-from-zone
+            discard-sel {:selection/mechanism     :pick-from-zone
                          :selection/domain        :discard
                          :selection/lifecycle     :finalized
                          :selection/zone          :hand

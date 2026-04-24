@@ -49,7 +49,7 @@
                 :mode/additional-costs []}
           sel (costs/build-mana-allocation-selection
                 db :player-1 obj-id mode {:colorless 2 :black 1})]
-      (is (= :mana-allocation (:selection/type sel)))
+      (is (= :mana-allocation (:selection/domain sel)))
       (is (= 2 (:selection/generic-remaining sel)))
       (is (= {} (:selection/allocation sel)))
       (is (= {:black 1} (:selection/colored-cost sel)))

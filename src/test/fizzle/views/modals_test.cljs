@@ -20,7 +20,6 @@
   "Build a minimal selection map with :selection/mechanism set."
   [mechanism]
   {:selection/mechanism mechanism
-   :selection/type      :discard     ; arbitrary legacy type — mechanism wins
    :selection/selected  #{}})
 
 
@@ -128,7 +127,6 @@
   (testing "modal-dispatch-key ignores :selection/pattern when :selection/mechanism present"
     (let [selection {:selection/mechanism :pick-from-zone
                      :selection/pattern   :accumulator ; old pattern that contradicts mechanism
-                     :selection/type      :discard
                      :selection/selected  #{}}]
       (is (= :pick-from-zone (#'modals/modal-dispatch-key selection))
           ":selection/mechanism must win over :selection/pattern when both present"))))

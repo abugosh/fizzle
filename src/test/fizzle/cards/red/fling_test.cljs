@@ -141,7 +141,7 @@
           [db fling-id] (th/add-card-to-zone db :fling :hand :player-1)
           app-db (casting/cast-spell-handler {:game/db db :game/selected-card fling-id})
           pending-sel (:game/pending-selection app-db)]
-      (is (= :sacrifice-permanent-cost (:selection/type pending-sel))
+      (is (= :sacrifice-cost (:selection/domain pending-sel))
           "Should show sacrifice selection")
       (is (false? (:selection/auto-confirm? pending-sel))
           "auto-confirm? should be false — player always picks"))))
@@ -156,7 +156,7 @@
           app-db (casting/cast-spell-handler {:game/db db :game/selected-card fling-id})
           sac-sel (:game/pending-selection app-db)
           {selection :selection} (th/confirm-selection (:game/db app-db) sac-sel #{creature-id})]
-      (is (= :cast-time-targeting (:selection/type selection))
+      (is (= :cast-time-targeting (:selection/domain selection))
           "Should chain to cast-time-targeting"))))
 
 

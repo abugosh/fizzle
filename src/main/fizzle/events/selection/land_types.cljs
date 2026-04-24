@@ -18,8 +18,7 @@
 
 (defmethod core/build-selection-for-effect :change-land-types
   [_db player-id object-id _effect remaining-effects]
-  {:selection/type      :land-type-source
-   :selection/mechanism :pick-mode
+  {:selection/mechanism :pick-mode
    :selection/domain    :land-type-source
    :selection/lifecycle :chaining
    :selection/options land-types/basic-land-type-keys
@@ -59,8 +58,7 @@
 (defmethod core/build-chain-selection :land-type-source
   [_db selection]
   (let [source-type (first (:selection/selected selection))]
-    {:selection/type      :land-type-target
-     :selection/mechanism :pick-mode
+    {:selection/mechanism :pick-mode
      :selection/domain    :land-type-target
      :selection/lifecycle :standard
      :selection/options (vec (remove #{source-type} land-types/basic-land-type-keys))

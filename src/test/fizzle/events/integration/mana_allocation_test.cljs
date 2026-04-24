@@ -222,7 +222,7 @@
           sel (:game/pending-selection result)]
       ;; Should enter allocation mode, not cast directly
       (is (some? sel) "Should have pending selection for allocation")
-      (is (= :mana-allocation (:selection/type sel))
+      (is (= :mana-allocation (:selection/domain sel))
           "Selection type should be :mana-allocation")
       (is (= 2 (:selection/generic-remaining sel))
           "Generic remaining should be 2 (colorless from {2}{B})")
@@ -272,7 +272,7 @@
           result (casting/cast-spell-handler app-db)
           sel (:game/pending-selection result)]
       (is (some? sel) "Should enter allocation mode")
-      (is (= :mana-allocation (:selection/type sel)))
+      (is (= :mana-allocation (:selection/domain sel)))
       (is (= 3 (:selection/generic-remaining sel))
           "Generic remaining should be 3")
       ;; No colored deduction - remaining = full pool
@@ -302,7 +302,7 @@
       ;; Chain builder should provide mana-allocation
       (is (some? chain-sel)
           "X confirm should chain to :mana-allocation selection")
-      (is (= :mana-allocation (:selection/type chain-sel))
+      (is (= :mana-allocation (:selection/domain chain-sel))
           "Chained selection should be :mana-allocation")
       (is (= 3 (:selection/generic-remaining chain-sel))
           "Generic remaining should be 3 (X=2 + fixed 1)")
@@ -330,7 +330,7 @@
       ;; so mana-allocation executor handles casting
       (is (some? chain-sel)
           "X=0 should still chain to mana-allocation for casting")
-      (is (= :mana-allocation (:selection/type chain-sel))
+      (is (= :mana-allocation (:selection/domain chain-sel))
           "Chained selection should be :mana-allocation")
       (is (= 0 (:selection/generic-remaining chain-sel))
           "Generic remaining should be 0"))))
@@ -365,7 +365,7 @@
       ;; Chain builder should provide mana-allocation with pending targets
       (is (some? chain-sel)
           "Targeting confirm should chain to allocation")
-      (is (= :mana-allocation (:selection/type chain-sel))
+      (is (= :mana-allocation (:selection/domain chain-sel))
           "Chained selection should be :mana-allocation")
       (is (= 1 (:selection/generic-remaining chain-sel))
           "Generic remaining should be 1")
@@ -540,7 +540,7 @@
           sel (:pending-selection result)]
       ;; Should enter allocation mode
       (is (some? sel) "Should have pending selection for allocation")
-      (is (= :mana-allocation (:selection/type sel))
+      (is (= :mana-allocation (:selection/domain sel))
           "Selection type should be :mana-allocation")
       (is (= :ability (:selection/source-type sel))
           "Source type should be :ability")

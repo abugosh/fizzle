@@ -251,7 +251,7 @@
       (is (= :hand (:object/zone (q/get-object db island-id)))
           "Island should be returned to hand")
       ;; Should chain to targeting selection
-      (is (= :cast-time-targeting (:selection/type selection))
+      (is (= :cast-time-targeting (:selection/domain selection))
           "Should chain to cast-time-targeting selection"))))
 
 

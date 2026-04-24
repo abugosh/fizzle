@@ -66,7 +66,7 @@
           effect {:effect/type :untap-lands :effect/count 3}
           remaining-effects []
           sel (sel-core/build-selection-for-effect db :player-1 land-id effect remaining-effects)]
-      (is (= :untap-lands (:selection/type sel))
+      (is (= :untap-lands (:selection/domain sel))
           "Builder should produce :untap-lands selection type")
       (is (= :at-most (:selection/validation sel))
           "Validation should be :at-most (player may select 0 to N lands)")
@@ -178,7 +178,7 @@
           ;; === Step 2: Resolve ETB trigger — exercises build-selection-for-effect :untap-lands ===
           {:keys [db selection]} (th/resolve-top db)]
       ;; Verify builder output shape
-      (is (= :untap-lands (:selection/type selection))
+      (is (= :untap-lands (:selection/domain selection))
           "ETB trigger should produce :untap-lands selection via build-selection-for-effect")
       (is (= :at-most (:selection/validation selection))
           "Builder: validation should be :at-most")

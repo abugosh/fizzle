@@ -221,7 +221,7 @@
           [db stifle-id] (th/add-card-to-zone db :stifle :hand :player-1)
           result (sel-targeting/cast-spell-with-targeting db :player-1 stifle-id)
           sel (:pending-target-selection result)]
-      (is (= :ability-cast-targeting (:selection/type sel))
+      (is (= :ability-cast-targeting (:selection/domain sel))
           "Selection type should be :ability-cast-targeting for ability targets")
       (is (= [ability-eid] (:selection/valid-targets sel))
           "Valid targets should include the ability on stack"))))

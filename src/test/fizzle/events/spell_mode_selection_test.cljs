@@ -41,7 +41,7 @@
       (is (some? (:game/pending-selection result-db))
           "Should show selection for modal card")
       (let [selection (:game/pending-selection result-db)]
-        (is (= :spell-mode (:selection/type selection))
+        (is (= :spell-mode (:selection/domain selection))
             "Selection type should be :spell-mode")
         (is (= reb-id (:selection/object-id selection))
             "Should track the object id")
@@ -110,7 +110,7 @@
       (is (some? (:game/pending-selection result-db))
           "Should proceed to target selection after spell mode chosen")
       ;; Spell mode selection should be cleared (new selection is targeting, not spell-mode)
-      (is (not= :spell-mode (:selection/type (:game/pending-selection result-db)))
+      (is (not= :spell-mode (:selection/domain (:game/pending-selection result-db)))
           "Should no longer be in spell-mode selection"))))
 
 
@@ -131,7 +131,7 @@
                   :game/selected-card cs-id}
           result-db (casting/cast-spell-handler app-db)]
       ;; Should NOT show spell mode selection
-      (is (not= :spell-mode (:selection/type (:game/pending-selection result-db)))
+      (is (not= :spell-mode (:selection/domain (:game/pending-selection result-db)))
           "Non-modal card should not trigger spell mode selection")
       ;; Should proceed to targeting directly
       (is (some? (:game/pending-selection result-db))

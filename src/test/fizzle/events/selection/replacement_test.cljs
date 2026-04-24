@@ -255,7 +255,7 @@
           needs-sel (build-mock-needs-selection replacement-entity obj-id :hand :battlefield)
           result (sel-replacement/build-selection-for-replacement db needs-sel)
           sel (:selection result)]
-      (is (= :replacement-choice (:selection/type sel))
+      (is (= :replacement-choice (:selection/domain sel))
           "build-selection-for-replacement should produce :replacement-choice type"))))
 
 

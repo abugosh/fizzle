@@ -111,7 +111,7 @@
           replacement-sel (:selection resolve-result)
           _ (is (some? replacement-sel)
                 "Resolving Mox Diamond should produce a replacement-choice selection")
-          _ (is (= :replacement-choice (:selection/type replacement-sel))
+          _ (is (= :replacement-choice (:selection/domain replacement-sel))
                 "Selection type should be :replacement-choice")
           ;; Step 3: Confirm :proceed choice
           proceed-choice (first (filter #(= :proceed (:choice/action %))
@@ -202,7 +202,7 @@
           db-cast (rules/cast-spell db :player-1 md-id)
           resolve-result (th/resolve-top db-cast)
           sel (:selection resolve-result)]
-      (is (= :replacement-choice (:selection/type sel))
+      (is (= :replacement-choice (:selection/domain sel))
           "Should produce a replacement-choice selection on resolve")
       (is (= 2 (count (:selection/choices sel)))
           "Should have exactly 2 choices")

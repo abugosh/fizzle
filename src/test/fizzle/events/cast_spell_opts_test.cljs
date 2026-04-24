@@ -141,7 +141,7 @@
       (is (some? (:game/pending-selection result))
           "Should show targeting selection when no target provided")
       (is (= :cast-time-targeting
-             (:selection/type (:game/pending-selection result)))
+             (:selection/domain (:game/pending-selection result)))
           "Selection type should be :cast-time-targeting"))))
 
 

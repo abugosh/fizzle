@@ -114,7 +114,7 @@
       ;; Should pause for targeting selection (two valid targets: player-1 and player-2)
       (is (some? sel)
           "Lightning Bolt should create a pending-selection for targeting")
-      (is (= :cast-time-targeting (:selection/type sel))
+      (is (= :cast-time-targeting (:selection/domain sel))
           "Selection type should be :cast-time-targeting for Lightning Bolt")
       ;; Deferred entry set (history entry deferred until cast completes)
       (is (some? (:history/deferred-entry result))
@@ -144,7 +144,7 @@
       ;; Modal spell: spell-mode selection should be created
       (is (some? sel)
           "Vision Charm should create a pending-selection for mode choice")
-      (is (= :spell-mode (:selection/type sel))
+      (is (= :spell-mode (:selection/domain sel))
           "Selection type should be :spell-mode for a modal card")
       ;; At least 2 valid modes (modes without unreachable targets)
       (is (>= (count (:selection/candidates sel)) 2)
@@ -179,7 +179,7 @@
       ;; Should pause for X mana selection
       (is (some? sel)
           "Flash of Insight should create a pending-selection for X cost")
-      (is (= :x-mana-cost (:selection/type sel))
+      (is (= :x-mana-cost (:selection/domain sel))
           "Selection type should be :x-mana-cost for Flash of Insight")
       ;; Deferred entry set
       (is (some? (:history/deferred-entry result))
@@ -551,7 +551,7 @@
       ;; Standard selection pipeline: :game/pending-selection must be present
       (is (some? pending-sel)
           "Multi-mode spell must use :game/pending-selection (standard pipeline)")
-      (is (= :spell-mode (:selection/type pending-sel))
+      (is (= :spell-mode (:selection/domain pending-sel))
           ":selection/type must be :spell-mode for casting mode selection")
       ;; Mechanism check: :pick-mode is the mechanism for mode selection (per ADR-030)
       (is (= :pick-mode (:selection/mechanism pending-sel))
@@ -582,7 +582,7 @@
           ;; Cast to get pending-selection
           after-cast (dispatch-event app-db [::casting/cast-spell])
           pending-sel (:game/pending-selection after-cast)
-          _ (is (= :spell-mode (:selection/type pending-sel))
+          _ (is (= :spell-mode (:selection/domain pending-sel))
                 "Precondition: pending-selection is spell-mode after cast")
           ;; Select the primary mode (first candidate)
           primary-mode (first (:selection/candidates pending-sel))

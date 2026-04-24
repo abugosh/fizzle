@@ -160,7 +160,7 @@
           selection (:game/pending-selection after-cleanup)]
       (is (some? selection)
           "pending-selection should exist when hand exceeds max size")
-      (is (= :discard (:selection/type selection))
+      (is (= :discard (:selection/domain selection))
           "selection type should be :discard")
       (is (= 1 (:selection/select-count selection))
           "should need to discard exactly 1 card (8 - 7 = 1)")

@@ -83,7 +83,7 @@
           app-db (casting/cast-spell-handler {:game/db db :game/selected-card tinker-id})
           pending-sel (:game/pending-selection app-db)
           ;; Selection should be sacrifice-permanent-cost
-          _ (is (= :sacrifice-permanent-cost (:selection/type pending-sel))
+          _ (is (= :sacrifice-cost (:selection/domain pending-sel))
                 "Should show sacrifice-permanent-cost selection")
           _ (is (= #{petal-id} (set (:selection/valid-targets pending-sel)))
                 "Should offer Lotus Petal as sacrifice candidate")
@@ -99,7 +99,7 @@
           ;; Now resolve Tinker — triggers tutor selection
           {:keys [db selection]} (th/resolve-top db)
           ;; Should produce tutor selection for artifacts
-          _ (is (= :tutor (:selection/type selection))
+          _ (is (= :tutor (:selection/domain selection))
                 "Resolving Tinker should show tutor selection")
           _ (is (= #{led-id} (:selection/candidates selection))
                 "Should offer LED as tutor candidate")
@@ -166,7 +166,7 @@
           [db tinker-id] (th/add-card-to-zone db :tinker :hand :player-1)
           app-db (casting/cast-spell-handler {:game/db db :game/selected-card tinker-id})
           pending-sel (:game/pending-selection app-db)]
-      (is (= :sacrifice-permanent-cost (:selection/type pending-sel))
+      (is (= :sacrifice-cost (:selection/domain pending-sel))
           "Should show sacrifice selection")
       (is (= #{petal-id} (set (:selection/valid-targets pending-sel)))
           "Only artifact should be a valid sacrifice target"))))
@@ -199,7 +199,7 @@
           {:keys [db]} (th/confirm-selection (:game/db app-db) pending-sel #{petal-id})
           ;; Resolve Tinker — tutor selection fires with no artifact candidates
           {:keys [db selection]} (th/resolve-top db)
-          _ (is (= :tutor (:selection/type selection)) "Should show tutor selection")
+          _ (is (= :tutor (:selection/domain selection)) "Should show tutor selection")
           _ (is (empty? (:selection/candidates selection)) "Should have no artifact candidates")
           ;; Fail-to-find: confirm empty selection
           {:keys [db]} (th/confirm-selection db selection #{})]
@@ -271,7 +271,7 @@
           primary (first (filter #(= :primary (:mode/id %)) modes))
           sac-cost (sel-costs/get-sacrifice-permanent-cost primary)
           sel (sel-costs/build-sacrifice-permanent-selection db :player-1 tinker-id primary sac-cost)]
-      (is (= :sacrifice-permanent-cost (:selection/type sel))
+      (is (= :sacrifice-cost (:selection/domain sel))
           "Selection type should be :sacrifice-permanent-cost")
       (is (= :finalized (:selection/lifecycle sel))
           "Lifecycle should be :finalized (Tinker has no targeting)")

@@ -141,7 +141,7 @@
                                   (q/get-all-stack-items db-with-storm)))
           selection (storm/build-storm-split-selection db-with-storm :player-1 storm-si)]
       (is (some? selection) "Selection should not be nil")
-      (is (= :storm-split (:selection/type selection)))
+      (is (= :storm-split (:selection/domain selection)))
       (is (= :finalized (:selection/lifecycle selection)))
       (is (= 3 (:selection/copy-count selection)))
       (is (= source-id (:selection/source-object-id selection)))
@@ -402,7 +402,7 @@
       (is (some? (:pending-selection result))
           "Should return pending storm-split selection")
       (when-let [sel (:pending-selection result)]
-        (is (= :storm-split (:selection/type sel))
+        (is (= :storm-split (:selection/domain sel))
             "Selection type should be :storm-split")
         (is (= 1 (:selection/copy-count sel))
             "Should have 1 copy (storm count was 2, so copies = 1)")))))

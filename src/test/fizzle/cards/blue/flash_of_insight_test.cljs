@@ -156,7 +156,7 @@
           result (resolution/resolve-one-item db-with-x)
           sel (:pending-selection result)]
       ;; Selection type should be :peek-and-select
-      (is (= :peek-and-select (:selection/type sel))
+      (is (= :peek-and-select (:selection/domain sel))
           "Selection effect type should be :peek-and-select")
       ;; Should show 2 candidates (X=2 peek)
       (is (= 2 (count (:selection/candidates sel)))
@@ -253,7 +253,7 @@
           db-with-x (d/db-with db-cast [[:db/add foi-eid :object/x-value 3]])
           ;; Resolve → peek-and-select selection
           {:keys [db selection]} (th/resolve-top db-with-x)
-          _ (is (= :peek-and-select (:selection/type selection))
+          _ (is (= :peek-and-select (:selection/domain selection))
                 "Should get peek-and-select selection")
           _ (is (= 3 (count (:selection/candidates selection)))
                 "Should peek 3 cards")
@@ -262,7 +262,7 @@
       ;; Must chain to order-bottom selection
       (is (some? selection)
           "Should chain to order-bottom selection (2 remainder cards)")
-      (is (= :order-bottom (:selection/type selection))
+      (is (= :order-bottom (:selection/domain selection))
           "Chained selection should be :order-bottom")
       (is (= 2 (count (:selection/candidates selection)))
           "Order-bottom should have 2 remainder cards")
@@ -294,9 +294,9 @@
                        db-cast foi-id)
           db-with-x (d/db-with db-cast [[:db/add foi-eid :object/x-value 3]])
           {:keys [db selection]} (th/resolve-top db-with-x)
-          _ (is (= :peek-and-select (:selection/type selection)))
+          _ (is (= :peek-and-select (:selection/domain selection)))
           {:keys [db selection]} (th/confirm-selection db selection #{lib1})]
-      (is (= :order-bottom (:selection/type selection))
+      (is (= :order-bottom (:selection/domain selection))
           "Should chain to order-bottom")
       (let [ordered (vec (:selection/candidates selection))
             {:keys [db]} (th/confirm-selection db selection ordered)]
@@ -360,7 +360,7 @@
           result (resolution/resolve-one-item db-with-x)
           sel (:pending-selection result)]
       ;; Should peek at only 1 card (all that's available)
-      (is (= :peek-and-select (:selection/type sel))
+      (is (= :peek-and-select (:selection/domain sel))
           "Should have peek-and-select selection")
       (is (<= (count (:selection/candidates sel)) 1)
           "Should have at most 1 candidate (library only has 1 card)"))))

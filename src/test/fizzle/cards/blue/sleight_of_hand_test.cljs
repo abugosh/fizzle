@@ -65,7 +65,7 @@
                 "Should be on stack after casting")
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
-      (is (= :peek-and-select (:selection/type sel))
+      (is (= :peek-and-select (:selection/domain sel))
           "Selection type should be :peek-and-select")
       (is (= 2 (count (:selection/candidates sel)))
           "Should peek at 2 cards")
@@ -191,7 +191,7 @@
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
       ;; Should peek at the 1 available card
-      (is (= :peek-and-select (:selection/type sel))
+      (is (= :peek-and-select (:selection/domain sel))
           "Should still create peek-and-select selection")
       (is (= 1 (count (:selection/candidates sel)))
           "Should peek at 1 card (all available)")

@@ -84,7 +84,7 @@
       (is (= 3 (th/get-zone-count resolved-db :graveyard :player-2))
           "Opponent's discarded hand cards should be in graveyard")
       ;; Should have pending graveyard-return selection
-      (is (= :graveyard-return (:selection/type (:pending-selection result)))
+      (is (= :graveyard-return (:selection/domain (:pending-selection result)))
           "Should pause with :graveyard-return selection for player's choice"))))
 
 
@@ -105,7 +105,7 @@
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
       ;; Selection structure
-      (is (= :graveyard-return (:selection/type sel))
+      (is (= :graveyard-return (:selection/domain sel))
           "Selection type should be graveyard-return")
       (is (= 3 (:selection/select-count sel))
           "Max 3 cards to return")
@@ -189,7 +189,7 @@
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
       ;; Selection should be graveyard-return type
-      (is (= :graveyard-return (:selection/type sel))
+      (is (= :graveyard-return (:selection/domain sel))
           "Selection type should be :graveyard-return")
       ;; Should allow selecting 0-3 cards
       (is (= 3 (:selection/select-count sel))

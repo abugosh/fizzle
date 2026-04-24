@@ -238,7 +238,7 @@
           result (sel-core/confirm-selection-impl app-db')
           chained-sel (:game/pending-selection result)]
       ;; Chain builder should return a new :assign-blockers selection
-      (is (= :assign-blockers (:selection/type chained-sel))
+      (is (= :assign-blockers (:selection/domain chained-sel))
           "Chain builder should produce :assign-blockers selection for next attacker")
       ;; The next current-attacker should be c2 (the previously-remaining one)
       (is (= c2-id (:selection/current-attacker chained-sel))
@@ -326,7 +326,7 @@
             "Round-trip: blocker should reference atk1 as the blocked attacker")
 
         ;; chain builder produced step 3 selection for atk2
-        (is (= :assign-blockers (:selection/type chained-sel))
+        (is (= :assign-blockers (:selection/domain chained-sel))
             "Round-trip: chain builder should produce :assign-blockers for atk2")
         (is (= atk2-id (:selection/current-attacker chained-sel))
             "Round-trip: next selection should have atk2 as current-attacker")

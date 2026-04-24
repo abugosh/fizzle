@@ -79,7 +79,7 @@
                   :effect/target :player-2
                   :effect/criteria {:match/not-types #{:creature :land}}}
           sel (sel-core/build-selection-for-effect db1 :player-1 obj-id effect [])]
-      (is (= :hand-reveal-discard (:selection/type sel))
+      (is (= :revealed-hand-discard (:selection/domain sel))
           "Builder returns :hand-reveal-discard selection type")
       (is (= :player-2 (:selection/target-player sel))
           "Target player should be :player-2 (opponent)")
@@ -253,7 +253,7 @@
                   :chain/controller :player-2
                   :chain/target-id target-id}
           sel (sel-core/build-selection-for-effect db3 :player-1 cov-id effect [])]
-      (is (= :chain-bounce (:selection/type sel))
+      (is (= :chain-bounce (:selection/domain sel))
           "Builder should return :chain-bounce selection type")
       (is (= :player-2 (:selection/player-id sel))
           "Selecting player should be chain-controller (player-2)")
@@ -312,7 +312,7 @@
           after-chain (sel-core/confirm-selection-impl app-db)
           next-sel (:game/pending-selection after-chain)]
       ;; Should chain to :chain-bounce-target selection
-      (is (= :chain-bounce-target (:selection/type next-sel))
+      (is (= :chain-bounce-target (:selection/domain next-sel))
           "Next selection type should be :chain-bounce-target")
       ;; Target selection includes player-2's nonland permanents (chain-controller's side)
       ;; Note: get-opponent-id uses :player/is-opponent flag — in tests with add-opponent,
@@ -482,7 +482,7 @@
                   :effect/unless-pay {:colorless 3}
                   :unless-pay/controller :player-2}
           sel (sel-core/build-selection-for-effect db2 :player-1 ml-id effect [])]
-      (is (= :unless-pay (:selection/type sel))
+      (is (= :unless-pay (:selection/domain sel))
           "Builder should return :unless-pay selection type")
       (is (= :player-2 (:selection/player-id sel))
           "Choosing player should be the targeted spell's controller (player-2)")

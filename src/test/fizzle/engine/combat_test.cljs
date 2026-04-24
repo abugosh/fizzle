@@ -274,7 +274,7 @@
           result (resolution/resolve-one-item db)]
       (is (some? (:pending-selection result))
           "Should return pending-selection for attacker selection")
-      (is (= :select-attackers (:selection/type (:pending-selection result)))
+      (is (= :select-attackers (:selection/domain (:pending-selection result)))
           "Selection type should be :select-attackers")
       (is (= #{obj-id} (set (:selection/valid-targets (:pending-selection result))))
           "Valid targets should include eligible attackers")
@@ -426,7 +426,7 @@
                                           :stack-item/description "Declare Blockers"})
           result (resolution/resolve-one-item db)]
       (is (some? (:pending-selection result)))
-      (is (= :assign-blockers (:selection/type (:pending-selection result))))
+      (is (= :assign-blockers (:selection/domain (:pending-selection result))))
       (is (= :valid-targets (:selection/card-source (:pending-selection result)))
           "Card source should be :valid-targets so view shows creatures, not hand"))))
 
@@ -497,11 +497,11 @@
                                           :stack-item/description "Declare Blockers"})
           result (resolution/resolve-one-item db)
           sel1 (:pending-selection result)
-          _ (is (= :assign-blockers (:selection/type sel1)))
+          _ (is (= :assign-blockers (:selection/domain sel1)))
           confirmed1 (th/confirm-selection (:db result) sel1 #{blk1-id})
           sel2 (:selection confirmed1)]
       (is (some? sel2))
-      (is (= :assign-blockers (:selection/type sel2)))
+      (is (= :assign-blockers (:selection/domain sel2)))
       (let [confirmed2 (th/confirm-selection (:db confirmed1) sel2 #{blk2-id})
             db-after (:db confirmed2)]
         (is (nil? (:selection confirmed2)))

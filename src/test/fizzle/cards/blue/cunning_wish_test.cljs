@@ -73,7 +73,7 @@
           db-cast (rules/cast-spell db :player-1 wish-id)
           ;; Resolve — exile-self executes, then tutor pauses for selection
           {:keys [db selection]} (th/resolve-top db-cast)
-          _ (is (= :tutor (:selection/type selection))
+          _ (is (= :tutor (:selection/domain selection))
                 "Should produce tutor selection")
           _ (is (= :sideboard (:selection/zone selection))
                 "Selection should search sideboard")

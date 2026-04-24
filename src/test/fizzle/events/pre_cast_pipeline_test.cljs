@@ -92,7 +92,7 @@
       ;; Should show targeting selection
       (is (some? (:game/pending-selection result)))
       (let [sel (:game/pending-selection result)]
-        (is (= :cast-time-targeting (:selection/type sel)))))))
+        (is (= :cast-time-targeting (:selection/domain sel)))))))
 
 
 (deftest generic-mana-shows-allocation-selection-test
@@ -116,4 +116,4 @@
       ;; Should show mana allocation selection (has 1 generic)
       (is (some? (:game/pending-selection result)))
       (let [sel (:game/pending-selection result)]
-        (is (= :mana-allocation (:selection/type sel)))))))
+        (is (= :mana-allocation (:selection/domain sel)))))))

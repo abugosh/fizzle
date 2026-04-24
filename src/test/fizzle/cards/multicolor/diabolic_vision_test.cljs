@@ -53,7 +53,7 @@
           db-cast (rules/cast-spell db :player-1 dv-id)
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
-      (is (= :peek-and-select (:selection/type sel)))
+      (is (= :peek-and-select (:selection/domain sel)))
       (is (= 5 (count (:selection/candidates sel))))
       (is (= (set (take 5 lib-ids)) (:selection/candidates sel)))
       (is (= 1 (:selection/select-count sel)))
@@ -127,7 +127,7 @@
       (is (= :hand (th/get-object-zone db selected-card)))
       ;; Should chain to order-top
       (is (some? selection))
-      (is (= :order-top (:selection/type selection))
+      (is (= :order-top (:selection/domain selection))
           "Chained selection should be :order-top, not :order-bottom")
       (is (= 4 (count (:selection/candidates selection)))
           "Order-top should have 4 remainder cards"))))
@@ -180,7 +180,7 @@
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)
           {:keys [selection]} (th/confirm-selection (:db result) sel #{})]
-      (is (= :order-top (:selection/type selection)))
+      (is (= :order-top (:selection/domain selection)))
       (is (= 5 (count (:selection/candidates selection)))))))
 
 
@@ -200,7 +200,7 @@
       (is (= 3 (count (:selection/candidates sel))))
       (let [selected (first lib-ids)
             {:keys [selection]} (th/confirm-selection (:db result) sel #{selected})]
-        (is (= :order-top (:selection/type selection)))
+        (is (= :order-top (:selection/domain selection)))
         (is (= 2 (count (:selection/candidates selection))))))))
 
 

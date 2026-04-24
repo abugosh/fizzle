@@ -116,7 +116,7 @@
                 "Should be on stack after casting")
           result (resolve-portent db-cast)
           sel (:pending-selection result)]
-      (is (= :peek-and-reorder (:selection/type sel))
+      (is (= :peek-and-reorder (:selection/domain sel))
           "Selection type should be :peek-and-reorder")
       (is (= 3 (count (:selection/candidates sel)))
           "Should peek at 3 cards")
@@ -198,7 +198,7 @@
           db-cast (cast-portent-with-target db :player-1 portent-id :player-2)
           result (resolve-portent db-cast)
           sel (:pending-selection result)]
-      (is (= :peek-and-reorder (:selection/type sel))
+      (is (= :peek-and-reorder (:selection/domain sel))
           "Should create peek-and-reorder selection")
       (is (= 3 (count (:selection/candidates sel)))
           "Should peek at 3 cards from opponent's library")
@@ -217,7 +217,7 @@
           db-cast (cast-portent-with-target db :player-1 portent-id :player-1)
           result (resolve-portent db-cast)
           sel (:pending-selection result)]
-      (is (= :peek-and-reorder (:selection/type sel))
+      (is (= :peek-and-reorder (:selection/domain sel))
           "Should create peek-and-reorder selection")
       (is (= 3 (count (:selection/candidates sel)))
           "Should peek at 3 cards from own library"))))
@@ -251,7 +251,7 @@
           db-cast (cast-portent-with-target db :player-1 portent-id :player-1)
           result (resolve-portent db-cast)
           sel (:pending-selection result)]
-      (is (= :peek-and-reorder (:selection/type sel))
+      (is (= :peek-and-reorder (:selection/domain sel))
           "Should still create peek-and-reorder selection")
       (is (= 2 (count (:selection/candidates sel)))
           "Should peek at 2 cards (all available)")
@@ -295,7 +295,7 @@
       ;; 4. Call turn-based/fire-delayed-effects
       ;; 5. Verify hand increased by 1
       ;; For now, just verify the selection has remaining effects
-      (is (= :peek-and-reorder (:selection/type sel)) "Should have pending peek-and-reorder selection")
+      (is (= :peek-and-reorder (:selection/domain sel)) "Should have pending peek-and-reorder selection")
       (is (= 1 (count (:selection/remaining-effects sel)))
           "Should have 1 remaining effect (grant-delayed-draw)")
       (let [grant-effect (first (:selection/remaining-effects sel))]

@@ -38,7 +38,6 @@
    :selection/select-count discard-count
    :selection/player-id player-id
    :selection/selected #{}
-   :selection/type      :discard
    :selection/mechanism :pick-from-zone
    :selection/domain    :discard
    :selection/lifecycle :finalized

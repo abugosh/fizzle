@@ -96,7 +96,7 @@
           "Cloud of Faeries should be on battlefield after resolution")
       ;; Resolve ETB trigger — pauses for untap selection
       (let [{:keys [db selection]} (th/resolve-top db)]
-        (is (= :untap-lands (:selection/type selection))
+        (is (= :untap-lands (:selection/domain selection))
             "ETB trigger should fire untap-lands selection")
         (is (= 2 (:selection/select-count selection))
             "ETB should allow untapping up to 2 lands")
@@ -121,7 +121,7 @@
           ;; Resolve ETB trigger — untap selection
           {:keys [db selection]} (th/resolve-top db)]
       ;; Should still get selection (empty candidates)
-      (is (= :untap-lands (:selection/type selection))
+      (is (= :untap-lands (:selection/domain selection))
           "ETB should still provide untap selection")
       (is (empty? (:selection/candidate-ids selection))
           "No candidates when no tapped lands")

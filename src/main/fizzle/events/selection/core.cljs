@@ -34,8 +34,7 @@
    and build-chain-selection for dispatch.
 
    Note: build-selection-for-effect dispatches on :effect/type, while
-   execute-confirmed-selection dispatches on :selection/type. These may
-   differ (e.g., :return-from-graveyard effect -> :graveyard-return selection).
+   execute-confirmed-selection dispatches on :selection/mechanism (ADR-030).
    Both sides must derive from :zone-pick for the hierarchy to work."
   (-> (make-hierarchy)
       ;; Zone-pick: select N cards from a zone
@@ -53,9 +52,10 @@
       (derive :order-bottom :reorder)
       (derive :order-top :reorder)
       ;; Pre-cast cost chains: cost selections that chain to targeting
-      (derive :discard-specific-cost :pre-cast-cost-to-targeting)
+      ;; Uses :selection/domain names (ADR-030): discard-cost, return-land-cost, sacrifice-cost, exile-cost
+      (derive :discard-cost :pre-cast-cost-to-targeting)
       (derive :return-land-cost :pre-cast-cost-to-targeting)
-      (derive :sacrifice-permanent-cost :pre-cast-cost-to-targeting)
+      (derive :sacrifice-cost :pre-cast-cost-to-targeting)
       ;; Targeting chains: targeting selections that chain to mana-allocation
       (derive :cast-time-targeting :targeting-to-mana-allocation)
       (derive :ability-cast-targeting :targeting-to-mana-allocation)
@@ -123,7 +123,6 @@
    :selection/selected #{}
    :selection/spell-id object-id
    :selection/remaining-effects remaining-effects
-   :selection/type (:effect/type effect)
    :selection/validation :exact
    :selection/auto-confirm? false})
 
@@ -143,9 +142,7 @@
 (def ^:private zone-pick-config
   "Per-effect-type overrides for zone-pick builder.
    Keys not present fall through to zone-pick-defaults.
-   :selection-type overrides :selection/type when effect type differs
-   from the historical selection type (e.g., :return-from-graveyard
-   effect produces :graveyard-return selection type).
+   :selection-type is now unused (domain comes from :domain config key directly).
    :mechanism and :domain set the ADR-030 dispatch keys."
   {:return-from-graveyard {:selection-type :graveyard-return
                            :mechanism :pick-from-zone
@@ -191,8 +188,7 @@
                                             db target-player source-zone)
                                           [])]
                        (set (map :object/id zone-cards))))]
-    (cond-> {:selection/type      sel-type
-             :selection/mechanism sel-mechanism
+    (cond-> {:selection/mechanism sel-mechanism
              :selection/domain    sel-domain
              :selection/lifecycle :standard
              :selection/zone source-zone
@@ -260,7 +256,7 @@
   [_game-db selection]
   (throw (ex-info "execute-confirmed-selection has no mechanism defmethod (ADR-030)"
                   {:selection/mechanism (:selection/mechanism selection)
-                   :selection/type (:selection/type selection)
+                   :selection/domain (:selection/domain selection)
                    :selection selection})))
 
 
@@ -296,11 +292,11 @@
 
 (defmulti build-chain-selection
   "Build the next selection for a chaining lifecycle.
-   Dispatches on :selection/type of the completed selection.
+   Dispatches on :selection/domain of the completed selection (ADR-030).
    Uses selection hierarchy for pattern-based routing.
    Returns next selection map, or nil for conditional chaining
    (no chain needed, fall through to standard behavior)."
-  (fn [_db selection] (:selection/type selection))
+  (fn [_db selection] (:selection/domain selection))
   :hierarchy #'selection-hierarchy)
 
 
@@ -506,7 +502,7 @@
       ;; pos-int? excludes nil, 0, negative, and non-integer in one predicate.
       (when-not (pos-int? select-count)
         (throw (ex-info "toggle-selection-impl: :selection/select-count must be a positive int"
-                        {:selection-type (:selection/type selection)
+                        {:selection/domain (:selection/domain selection)
                          :select-count select-count
                          :selection selection})))
       (let [[new-db selected?]
@@ -552,7 +548,7 @@
               ;; contract violation (invariant broken upstream).
               :else
               (throw (ex-info "toggle-selection-impl: cond fell through to :else — contract violation, no arm matched"
-                              {:selection-type (:selection/type selection)
+                              {:selection/domain (:selection/domain selection)
                                :selected selected
                                :select-count select-count
                                :id id

@@ -30,8 +30,7 @@
                                                 :land)))
                               bf-objects)
         candidate-ids (set (mapv :object/id tapped-lands))]
-    {:selection/type      :untap-lands
-     :selection/mechanism :pick-from-zone
+    {:selection/mechanism :pick-from-zone
      :selection/domain    :untap-lands
      :selection/zone :battlefield
      :selection/card-source :candidates

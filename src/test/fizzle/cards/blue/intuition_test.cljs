@@ -110,7 +110,7 @@
           db-cast (rules/cast-spell db :player-1 int-id)
           {:keys [selection]} (th/resolve-top db-cast)]
       ;; Verify tutor selection was created
-      (is (= :tutor (:selection/type selection))
+      (is (= :tutor (:selection/domain selection))
           "Selection type should be :tutor")
       ;; Verify multi-select tutor
       (is (= 3 (:selection/select-count selection))
@@ -136,7 +136,7 @@
           result (resolution/resolve-one-item db-cast)
           sel (:pending-selection result)]
       ;; Should have pending selection (tutor)
-      (is (= :tutor (:selection/type sel))
+      (is (= :tutor (:selection/domain sel))
           "Selection type should be :tutor")
       ;; With only 2 cards, can only find up to 2
       (is (<= (count (:selection/candidate-ids sel)) 2)

@@ -146,7 +146,7 @@
           ;; Activate ability index 1 (index 0 is the mana ability)
           result (ability-events/activate-ability db :player-1 wasteland-id 1)
           sel (:pending-selection result)]
-      (is (= :ability-targeting (:selection/type sel))
+      (is (= :ability-targeting (:selection/domain sel))
           "Should enter targeting selection")
       (is (contains? (set (:selection/valid-targets sel)) target-land-id)
           "City of Brass should be a valid target")

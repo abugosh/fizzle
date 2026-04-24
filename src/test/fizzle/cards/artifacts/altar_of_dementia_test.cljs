@@ -229,7 +229,7 @@
           [db altar-id] (th/add-card-to-zone db :altar-of-dementia :battlefield :player-1)
           [db _creature-id] (th/add-card-to-zone db :nimble-mongoose :battlefield :player-1)
           result (abilities/activate-ability db :player-1 altar-id 0)]
-      (is (= :sacrifice-permanent-cost (:selection/type (:pending-selection result)))
+      (is (= :sacrifice-cost (:selection/domain (:pending-selection result)))
           "Selection type should be :sacrifice-permanent-cost"))))
 
 

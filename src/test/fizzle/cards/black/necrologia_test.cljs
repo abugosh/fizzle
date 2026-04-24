@@ -83,7 +83,7 @@
         (is (sel-costs/has-pay-x-life-cost? mode))
         ;; Build selection
         (let [sel (sel-costs/build-pay-x-life-selection db :player-1 obj-id mode)]
-          (is (= :pay-x-life (:selection/type sel)))
+          (is (= :pay-x-life (:selection/domain sel)))
           (is (= 20 (:selection/max-x sel)))
           (is (= 0 (:selection/selected-x sel)))
           ;; Confirm with X=3
@@ -163,7 +163,7 @@
           db (set-phase db :end)
           mode (first (rules/get-casting-modes db :player-1 obj-id))
           sel (sel-costs/build-pay-x-life-selection db :player-1 obj-id mode)]
-      (is (= :pay-x-life (:selection/type sel)))
+      (is (= :pay-x-life (:selection/domain sel)))
       (is (= :finalized (:selection/lifecycle sel)))
       (is (= 15 (:selection/max-x sel))
           "Max X should equal current life")
@@ -233,7 +233,7 @@
           ctx {:game-db db :player-id :player-1 :object-id obj-id :mode mode :target nil}
           result (casting/evaluate-pre-cast-step :pay-x-life ctx)]
       (is (map? result) "Pipeline should return a result for pay-x-life")
-      (is (= :pay-x-life (:selection/type (:selection result))) "Result should contain a pay-x-life selection"))))
+      (is (= :pay-x-life (:selection/domain (:selection result))) "Result should contain a pay-x-life selection"))))
 
 
 (deftest necrologia-castable-only-during-end-step-test

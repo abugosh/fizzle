@@ -77,7 +77,7 @@
                   :effect/target :any-player}
           remaining-effects []
           sel (sel-core/build-selection-for-effect db1 :player-1 obj-id effect remaining-effects)]
-      (is (= :player-target (:selection/type sel))
+      (is (= :player-target (:selection/domain sel))
           "Builder should return :player-target selection type")
       (is (= :player-1 (:selection/player-id sel))
           "Selecting player should be :player-1 (caster)")
@@ -209,7 +209,7 @@
           ;; cast-spell-handler should return a pending selection (targeting pauses cast)
           sel (:game/pending-selection result)
           db-after-handler (:game/db result)]
-      (is (= :cast-time-targeting (:selection/type sel))
+      (is (= :cast-time-targeting (:selection/domain sel))
           "cast-spell-handler should produce a :cast-time-targeting selection for Lightning Bolt")
       (is (= :finalized (:selection/lifecycle sel))
           "Lifecycle should be :finalized (no generic mana cost on Bolt)")
@@ -248,7 +248,7 @@
                                               :object-id da-id})
           sel (:game/pending-selection result)
           db-after-handler (:game/db result)]
-      (is (= :cast-time-targeting (:selection/type sel))
+      (is (= :cast-time-targeting (:selection/domain sel))
           "cast-spell-handler should produce a :cast-time-targeting selection for Deep Analysis")
       (is (= :chaining (:selection/lifecycle sel))
           "Lifecycle should be :chaining (Deep Analysis has colorless generic mana cost)")
@@ -261,7 +261,7 @@
         (is (= :hand (:object/zone (q/get-object (:game/db after-confirm) da-id)))
             "Deep Analysis should still be in hand after chaining targeting (not yet cast)")
         ;; Should have chained to mana-allocation selection
-        (is (= :mana-allocation (:selection/type (:game/pending-selection after-confirm)))
+        (is (= :mana-allocation (:selection/domain (:game/pending-selection after-confirm)))
             "Should chain to :mana-allocation selection after chaining targeting")
         ;; Mana-allocation selection should carry the pending target
         (is (some? (:selection/pending-targets (:game/pending-selection after-confirm)))
@@ -294,7 +294,7 @@
             after-confirm (sel-core/confirm-selection-impl app-db')
             mana-sel (:game/pending-selection after-confirm)]
         ;; Chain builder should produce a :mana-allocation selection
-        (is (= :mana-allocation (:selection/type mana-sel))
+        (is (= :mana-allocation (:selection/domain mana-sel))
             "Chain builder should produce :mana-allocation selection")
         ;; pending-targets must have the target stored (target-id -> selected-target)
         (is (map? (:selection/pending-targets mana-sel))
@@ -323,7 +323,7 @@
           app-db' (update app-db :game/pending-selection assoc :selection/selected #{:player-1})
           after-confirm (sel-core/confirm-selection-impl app-db')
           mana-sel (:game/pending-selection after-confirm)]
-      (is (= :mana-allocation (:selection/type mana-sel))
+      (is (= :mana-allocation (:selection/domain mana-sel))
           "Chain builder should produce :mana-allocation selection when self is target")
       (is (= :player-1 (first (vals (:selection/pending-targets mana-sel))))
           ":selection/pending-targets should map to :player-1 (self target)"))))
@@ -359,7 +359,7 @@
                                               :object-id stifle-id})
           sel (:game/pending-selection result)
           db-after-handler (:game/db result)]
-      (is (= :ability-cast-targeting (:selection/type sel))
+      (is (= :ability-cast-targeting (:selection/domain sel))
           "cast-spell-handler should produce :ability-cast-targeting for Stifle")
       (is (= :finalized (:selection/lifecycle sel))
           "Lifecycle should be :finalized (Stifle has no generic mana cost)")

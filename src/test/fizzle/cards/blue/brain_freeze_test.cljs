@@ -86,7 +86,7 @@
           db-with-mana (mana/add-mana db' :player-1 {:blue 1 :colorless 1})
           result (sel-targeting/cast-spell-with-targeting db-with-mana :player-1 obj-id)]
       (let [sel (:pending-target-selection result)]
-        (is (= :cast-time-targeting (:selection/type sel))
+        (is (= :cast-time-targeting (:selection/domain sel))
             "Selection type should be :cast-time-targeting")
         (is (= :player-1 (:selection/player-id sel)))
         (is (= obj-id (:selection/object-id sel)))

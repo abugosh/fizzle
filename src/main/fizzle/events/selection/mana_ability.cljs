@@ -51,7 +51,6 @@
       (let [pool (q/get-mana-pool db player-id)
             remaining-pool (merge-with - pool colored-cost)]
         {:selection/zone      :mana-pool
-         :selection/type      :mana-allocation
          :selection/mechanism :allocate-resource
          :selection/domain    :mana-allocation
          :selection/lifecycle :finalized

@@ -107,7 +107,7 @@
           ;; Resolve spell - should create scry selection
           result (resolution/resolve-one-item db-after-cast)]
       ;; Selection type should be :scry
-      (is (= :scry (get-in result [:pending-selection :selection/type]))
+      (is (= :scry (get-in result [:pending-selection :selection/domain]))
           "Selection type should be :scry")
       ;; Should have 1 card to scry
       (is (= 1 (count (get-in result [:pending-selection :selection/cards])))

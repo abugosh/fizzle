@@ -110,7 +110,7 @@
           "A new pending-selection should be set when remaining-effects has an interactive effect")
 
       ;; The new selection should be for the :discard type (the interactive effect)
-      (is (= :discard (:selection/type (:game/pending-selection result)))
+      (is (= :discard (:selection/domain (:game/pending-selection result)))
           "New pending-selection type should be :discard (the next interactive effect)")
 
       ;; The original card should still exist in hand (discard not yet confirmed)
@@ -291,7 +291,7 @@
 
       (is (map? result)
           "build-selection-for-effect must return a map for :discard with no count")
-      (is (= :discard (:selection/type result))
+      (is (= :discard (:selection/domain result))
           "Selection type must be :discard")
       ;; :selection/select-count will be nil — that is acceptable (builder doesn't crash)
       (is (contains? result :selection/select-count)

@@ -198,7 +198,7 @@
                 "Merchant Scroll should be on stack")
           ;; Resolve with selection system
           result (resolution/resolve-one-item db-after-cast)]
-      (is (= :tutor (get-in result [:pending-selection :selection/type]))
+      (is (= :tutor (get-in result [:pending-selection :selection/domain]))
           "Selection effect type should be :tutor")
       (is (= :library (get-in result [:pending-selection :selection/zone]))
           "Selection zone should be :library")

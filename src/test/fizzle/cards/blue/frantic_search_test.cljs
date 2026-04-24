@@ -91,7 +91,7 @@
       (is (= 2 (th/get-hand-count db :player-1))
           "Should have drawn 2 cards")
       ;; Should have discard selection pending
-      (is (= :discard (:selection/type selection))
+      (is (= :discard (:selection/domain selection))
           "First selection should be :discard")
       (is (= 2 (:selection/select-count selection))
           "Should require discarding 2 cards")
@@ -104,7 +104,7 @@
         (is (= 0 (th/get-hand-count db :player-1))
             "Hand should be empty after discarding 2 cards")
         ;; Should now have untap-lands selection
-        (is (= :untap-lands (:selection/type selection))
+        (is (= :untap-lands (:selection/domain selection))
             "Second selection should be :untap-lands")
         (is (= 3 (:selection/select-count selection))
             "Should allow selecting up to 3 lands")
@@ -185,7 +185,7 @@
           card-ids (set (map :object/id hand-cards))
           {_db2 :db untap-sel :selection} (th/confirm-selection db1 discard-sel card-ids)]
       ;; Should now have untap-lands selection
-      (is (= :untap-lands (:selection/type untap-sel))
+      (is (= :untap-lands (:selection/domain untap-sel))
           "Should have untap-lands selection")
       (let [candidates (:selection/candidate-ids untap-sel)]
         ;; Only tapped lands should be candidates
@@ -238,7 +238,7 @@
           hand-cards (q/get-hand db :player-1)
           card-ids (set (map :object/id hand-cards))
           {:keys [db selection]} (th/confirm-selection db selection card-ids)]
-      (is (= :untap-lands (:selection/type selection))
+      (is (= :untap-lands (:selection/domain selection))
           "Should still get untap-lands selection")
       (is (empty? (:selection/candidate-ids selection))
           "Candidate list should be empty with no tapped lands")

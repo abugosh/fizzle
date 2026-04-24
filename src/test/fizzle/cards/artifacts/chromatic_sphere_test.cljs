@@ -154,7 +154,7 @@
           pending-sel (:game/pending-selection app-db-after-dispatch)
           _ (is (some? pending-sel)
                 "After dispatch: pending-selection must be non-nil (selection opened for {1} generic cost)")
-          _ (is (= :mana-allocation (:selection/type pending-sel))
+          _ (is (= :mana-allocation (:selection/domain pending-sel))
                 "Pending selection type must be :mana-allocation")
           ;; Allocate :black toward the {1} generic cost.
           ;; auto-confirm fires when generic-remaining hits 0 (no explicit confirm needed).

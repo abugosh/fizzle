@@ -69,7 +69,7 @@
           effect {:effect/type :change-land-types}
           remaining-effects []
           sel (sel-core/build-selection-for-effect db1 :player-1 obj-id effect remaining-effects)]
-      (is (= :land-type-source (:selection/type sel))
+      (is (= :land-type-source (:selection/domain sel))
           "Builder should produce :land-type-source selection type")
       (is (= :chaining (:selection/lifecycle sel))
           "Lifecycle should be :chaining (chains to :land-type-target after source picked)")
@@ -116,11 +116,11 @@
           db3 (d/db-with db2 [[:db/add obj-eid :object/chosen-mode mode-2]])
           db-on-stack (rules/cast-spell db3 :player-1 obj-id)
           {:keys [db selection]} (th/resolve-top db-on-stack)]
-      (is (= :land-type-source (:selection/type selection))
+      (is (= :land-type-source (:selection/domain selection))
           "Precondition: resolve returns :land-type-source selection")
       ;; Confirm source type :island — executor should chain without writing grants
       (let [{:keys [db selection]} (th/confirm-selection db selection #{:island})]
-        (is (= :land-type-target (:selection/type selection))
+        (is (= :land-type-target (:selection/domain selection))
             "After source confirm, should chain to :land-type-target")
         ;; Source executor must not write grants — grants only come from :land-type-target executor
         (is (= 0 (count (grants/get-grants-by-type db island-id :land-type-override)))
@@ -139,7 +139,7 @@
           effect {:effect/type :change-land-types}
           sel (sel-core/build-selection-for-effect db1 :player-1 obj-id effect [])
           {:keys [selection]} (th/confirm-selection db1 sel #{:island})]
-      (is (= :land-type-target (:selection/type selection))
+      (is (= :land-type-target (:selection/domain selection))
           "Chain builder should produce :land-type-target selection")
       (is (= :standard (:selection/lifecycle selection))
           "Target selection lifecycle should be :standard")
@@ -187,11 +187,11 @@
           db4 (d/db-with db3 [[:db/add obj-eid :object/chosen-mode mode-2]])
           db-on-stack (rules/cast-spell db4 :player-1 obj-id)
           {:keys [db selection]} (th/resolve-top db-on-stack)
-          _ (is (= :land-type-source (:selection/type selection))
+          _ (is (= :land-type-source (:selection/domain selection))
                 "Precondition: resolve returns :land-type-source selection")
           ;; Step 1: confirm source = :island
           {:keys [db selection]} (th/confirm-selection db selection #{:island})
-          _ (is (= :land-type-target (:selection/type selection))
+          _ (is (= :land-type-target (:selection/domain selection))
                 "Precondition: chained to :land-type-target")
           ;; Step 2: confirm target = :mountain — exercises :land-type-target executor
           {:keys [db]} (th/confirm-selection db selection #{:mountain})
@@ -275,7 +275,7 @@
           db-on-stack (rules/cast-spell db5 :player-1 obj-id)
           {:keys [db selection]} (th/resolve-top db-on-stack)]
       ;; Verify builder output
-      (is (= :land-type-source (:selection/type selection))
+      (is (= :land-type-source (:selection/domain selection))
           "Resolve should produce :land-type-source selection")
       (is (= land-types/basic-land-type-keys (:selection/options selection))
           "Builder: options should be all 5 basic land type keys")
@@ -284,7 +284,7 @@
       ;; === Step 2: Confirm source :forest — exercises :land-type-source executor + chain ===
       (let [{:keys [db selection]} (th/confirm-selection db selection #{:forest})]
         ;; Verify chain builder output
-        (is (= :land-type-target (:selection/type selection))
+        (is (= :land-type-target (:selection/domain selection))
             "After source confirm, should chain to :land-type-target")
         (is (= :forest (:selection/source-type selection))
             "Chain builder: :selection/source-type should be :forest")

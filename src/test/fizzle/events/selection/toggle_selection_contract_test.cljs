@@ -23,7 +23,8 @@
    Uses :select-count as passed. Does not go through spec validation —
    the entry guard must catch invalid select-count before spec would run."
   [select-count]
-  {:selection/type :discard
+  {:selection/mechanism :pick-from-zone
+   :selection/domain    :discard
    :selection/lifecycle :standard
    :selection/player-id :player-1
    :selection/selected #{}
@@ -97,8 +98,8 @@
         (selection-core/toggle-selection-impl app-db :card-a)
         (is false "Expected exception was not thrown")
         (catch js/Error e
-          (is (= :discard (:selection-type (ex-data e)))
-              "ex-data must include :selection-type"))))))
+          (is (= :discard (:selection/domain (ex-data e)))
+              "ex-data must include :selection/domain"))))))
 
 
 ;; =====================================================

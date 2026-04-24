@@ -672,7 +672,7 @@
           app-db {:game/db db :game/selected-card dr-id}
           result (casting/cast-spell-handler app-db)
           sel (:game/pending-selection result)]
-      (is (= :mana-allocation (:selection/type sel))
+      (is (= :mana-allocation (:selection/domain sel))
           "Selection type should be :mana-allocation")))
 
   (testing "Dark Ritual without Sphere casts immediately (no allocation needed)"

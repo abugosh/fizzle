@@ -87,7 +87,7 @@
           {:keys [db selection]} (th/resolve-top db-cast)
           sel selection]
       ;; Should have pending selection for hand reveal
-      (is (= :hand-reveal-discard (:selection/type sel))
+      (is (= :revealed-hand-discard (:selection/domain sel))
           "Should enter hand-reveal-discard selection")
       (is (= :player-1 (:selection/player-id sel))
           "Caster should be the one choosing")
@@ -236,7 +236,7 @@
           {:keys [selection]} (th/resolve-top db-cast)
           sel selection]
       ;; Should still enter selection (reveals empty hand)
-      (is (= :hand-reveal-discard (:selection/type sel))
+      (is (= :revealed-hand-discard (:selection/domain sel))
           "Should enter hand-reveal-discard even with empty hand")
       (is (empty? (:selection/valid-targets sel))
           "Should have no valid targets")

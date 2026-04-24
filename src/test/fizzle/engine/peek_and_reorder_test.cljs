@@ -64,7 +64,7 @@
           effect {:effect/type :peek-and-reorder :effect/count 3}
           selection (selection-core/build-selection-for-effect db :player-1 spell-id effect [])]
       (is (some? selection))
-      (is (= :peek-and-reorder (:selection/type selection)))
+      (is (= :peek-and-reorder (:selection/domain selection)))
       (is (= 3 (count (:selection/candidates selection))))
       (is (= :player-1 (:selection/player-id selection)))
       (is (= spell-id (:selection/spell-id selection)))

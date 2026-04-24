@@ -149,7 +149,7 @@
       (let [pending (:game/pending-selection result)]
         (is (some? pending)
             "Should have pending-selection for multi-mode spell (ADR-023: standard pipeline)")
-        (is (= :spell-mode (:selection/type pending))
+        (is (= :spell-mode (:selection/domain pending))
             "Selection type must be :spell-mode for casting mode choice")
         (is (= obj-id (:selection/object-id pending))
             "Mode selection must reference the cast object")
@@ -172,7 +172,7 @@
           result (dispatch-cast-and-yield app-db)]
       ;; Should have pending selection (targeting)
       (is (= :cast-time-targeting
-             (:selection/type (:game/pending-selection result)))
+             (:selection/domain (:game/pending-selection result)))
           "Should show targeting selection for targeted spell")
       ;; Stack should be empty (spell not cast yet, targeting is pre-cast)
       (is (empty? (queries/get-all-stack-items (:game/db result)))
@@ -269,7 +269,7 @@
           result (dispatch-cast-and-yield app-db)]
       ;; Should have pending selection (mana allocation)
       (is (= :mana-allocation
-             (:selection/type (:game/pending-selection result)))
+             (:selection/domain (:game/pending-selection result)))
           "Should show mana allocation selection for spell with generic cost")
       ;; Spell should NOT be resolved
       (is (empty? (queries/get-all-stack-items (:game/db result)))
@@ -395,7 +395,7 @@
                          :game/selected-card obj-id})
           ;; Step 1: cast-and-yield — modal spell shows spell-mode selection first
           result (dispatch-cast-and-yield app-db)
-          _ (is (= :spell-mode (:selection/type (:game/pending-selection result)))
+          _ (is (= :spell-mode (:selection/domain (:game/pending-selection result)))
                 "Should have spell-mode selection after cast-and-yield")
           ;; Step 2: select the mode — auto-confirm? true means confirm fires after toggle.
           ;; :cast-after-spell-mode continuation then runs and returns mana allocation selection.
@@ -404,7 +404,7 @@
           _ (rf/dispatch-sync [:fizzle.events.selection/toggle-selection mode])
           _ (rf/dispatch-sync [:fizzle.events.selection/confirm-selection])
           after-mode @rf-db/app-db
-          _ (is (= :mana-allocation (:selection/type (:game/pending-selection after-mode)))
+          _ (is (= :mana-allocation (:selection/domain (:game/pending-selection after-mode)))
                 "Should have mana-allocation selection after mode confirmed")
           ;; Step 3: allocate mana — this completes the chain synchronously via :then
           _ (rf/dispatch-sync [::sel-costs/allocate-mana-color :black])
@@ -433,7 +433,7 @@
           _ (is (some? (:game/pending-selection result))
                 "Should have pending targeting selection")
           _ (is (= :cast-time-targeting
-                   (:selection/type (:game/pending-selection result)))
+                   (:selection/domain (:game/pending-selection result)))
                 "Selection type should be :cast-time-targeting")
           ;; Selection should carry on-complete continuation
           _ (is (= {:continuation/type :resolve-one-and-stop}
@@ -471,7 +471,7 @@
           ;; Step 1: cast-and-yield shows targeting selection
           result (dispatch-cast-and-yield app-db)
           _ (is (= :cast-time-targeting
-                   (:selection/type (:game/pending-selection result)))
+                   (:selection/domain (:game/pending-selection result)))
                 "Should show targeting selection first")
           _ (is (= {:continuation/type :resolve-one-and-stop}
                    (:selection/on-complete (:game/pending-selection result)))
@@ -487,7 +487,7 @@
       (is (some? (:game/pending-selection after-target))
           "Should chain to mana allocation after targeting")
       (is (= :mana-allocation
-             (:selection/type (:game/pending-selection after-target)))
+             (:selection/domain (:game/pending-selection after-target)))
           "Chained selection should be mana allocation")
       (is (= {:continuation/type :resolve-one-and-stop}
              (:selection/on-complete (:game/pending-selection after-target)))

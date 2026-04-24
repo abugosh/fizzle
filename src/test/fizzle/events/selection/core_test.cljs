@@ -457,7 +457,6 @@
   (testing ":default method throws ex-info for unknown :selection/domain"
     ;; Use a domain keyword that is genuinely unregistered (not in any defmethod)
     (let [sel {:selection/domain :nonexistent-domain-addzz9912
-               :selection/type :discard
                :selection/selected #{}}]
       (is (thrown? js/Error
             (selection-core/apply-domain-policy nil sel))
@@ -512,7 +511,7 @@
                                                        :object-id spell-id})
           targeting-sel (:game/pending-selection app-db-with-sel)]
       ;; Precondition: targeting sel was produced with :chaining lifecycle and no source-type
-      (is (= :cast-time-targeting (:selection/type targeting-sel))
+      (is (= :cast-time-targeting (:selection/domain targeting-sel))
           "Precondition: cast-spell-handler must produce :cast-time-targeting selection")
       (is (= :chaining (:selection/lifecycle targeting-sel))
           "Precondition: lifecycle must be :chaining (Deep Analysis has generic cost)")
@@ -526,7 +525,7 @@
               after-confirm (selection-core/confirm-selection-impl app-db')
               mana-sel (:game/pending-selection after-confirm)]
           ;; Should have chained to :mana-allocation without spec error
-          (is (= :mana-allocation (:selection/type mana-sel))
+          (is (= :mana-allocation (:selection/domain mana-sel))
               "Must chain to :mana-allocation selection after targeting confirm")
           ;; Key assertion: source-type must be absent (not nil) in the chained selection
           (is (not (contains? mana-sel :selection/source-type))
@@ -546,7 +545,6 @@
           ;; it should still route to :pick-from-zone and call apply-domain-policy :discard.
           selection {:selection/mechanism :pick-from-zone
                      :selection/domain :discard
-                     :selection/type :bogus-type-that-has-no-defmethod
                      :selection/selected #{id1}
                      :selection/target-zone :graveyard}
           result (selection-core/execute-confirmed-selection db selection)]
@@ -573,7 +571,6 @@
           ;; Drive through execute-confirmed-selection with explicit mechanism+domain
           selection {:selection/mechanism :pick-from-zone
                      :selection/domain :discard
-                     :selection/type :discard
                      :selection/selected #{id1}
                      :selection/target-zone :graveyard}
           result (selection-core/execute-confirmed-selection db selection)

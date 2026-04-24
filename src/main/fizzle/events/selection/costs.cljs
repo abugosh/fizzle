@@ -131,7 +131,6 @@
         candidate-ids (set (map :object/id candidates))]
     (when (seq candidate-ids)
       {:selection/zone      zone
-       :selection/type      :exile-cards-cost
        :selection/mechanism :pick-from-zone
        :selection/domain    :exile-cost
        :selection/lifecycle :finalized
@@ -171,7 +170,6 @@
         has-targeting? (seq (:card/targeting (:object/card obj)))]
     (when (seq candidate-ids)
       (cond-> {:selection/zone      :battlefield
-               :selection/type      :return-land-cost
                :selection/mechanism :pick-from-zone
                :selection/domain    :return-land-cost
                :selection/card-source :valid-targets
@@ -215,7 +213,6 @@
         has-targeting? (seq (:card/targeting (:object/card obj)))]
     (when (seq candidate-ids)
       (cond-> {:selection/zone      :hand
-               :selection/type      :discard-specific-cost
                :selection/mechanism :pick-from-zone
                :selection/domain    :discard-cost
                :selection/card-source :hand
@@ -268,7 +265,6 @@
                             (seq (:card/targeting (:object/card obj)))))]
      (when (seq candidate-ids)
        (cond-> {:selection/zone      :battlefield
-                :selection/type      :sacrifice-permanent-cost
                 :selection/mechanism :pick-from-zone
                 :selection/domain    :sacrifice-cost
                 :selection/card-source :valid-targets
@@ -315,7 +311,6 @@
         ;; Max X is what's left after paying fixed costs
         max-x total-remaining]
     {:selection/zone      :mana-pool
-     :selection/type      :x-mana-cost
      :selection/mechanism :accumulate
      :selection/domain    :x-mana-cost
      :selection/lifecycle :chaining
@@ -342,7 +337,6 @@
                    pool' (queries/get-mana-pool db sel-player)
                    remaining-pool (merge-with - pool' colored-cost)]
                {:selection/zone      :mana-pool
-                :selection/type      :mana-allocation
                 :selection/mechanism :allocate-resource
                 :selection/domain    :mana-allocation
                 :selection/lifecycle :finalized
@@ -377,7 +371,6 @@
         ;; Max X is current life (can pay down to 0)
         max-x (max 0 current-life)]
     {:selection/zone      :life
-     :selection/type      :pay-x-life
      :selection/mechanism :accumulate
      :selection/domain    :pay-x-life
      :selection/lifecycle :finalized
@@ -410,7 +403,6 @@
       (let [pool (queries/get-mana-pool game-db player-id)
             remaining-pool (merge-with - pool colored-cost)]
         {:selection/zone      :mana-pool
-         :selection/type      :mana-allocation
          :selection/mechanism :allocate-resource
          :selection/domain    :mana-allocation
          :selection/lifecycle :finalized
@@ -581,8 +573,7 @@
         targeting-reqs (:card/targeting (:object/card obj))]
     (when (seq targeting-reqs)
       (let [first-req (first targeting-reqs)]
-        {:selection/type      :cast-time-targeting
-         :selection/mechanism :n-slot-targeting
+        {:selection/mechanism :n-slot-targeting
          :selection/domain    :cast-time-targeting
          :selection/lifecycle :finalized
          :selection/player-id player-id
@@ -597,10 +588,10 @@
          :selection/card-source :valid-targets}))))
 
 
-;; Override chain selection for :sacrifice-permanent-cost to handle both spell and ability paths.
+;; Override chain selection for :sacrifice-cost (domain of sacrifice-permanent-cost) to handle both spell and ability paths.
 ;; For the spell path, delegate to parent :pre-cast-cost-to-targeting behavior (cast-time targeting).
 ;; For the ability path, build an ability-targeting selection instead.
-(defmethod core/build-chain-selection :sacrifice-permanent-cost
+(defmethod core/build-chain-selection :sacrifice-cost
   [db selection]
   (let [source-type (:selection/source-type selection)]
     (if (= source-type :ability)
@@ -613,8 +604,7 @@
         (when (seq targeting-reqs)
           (let [first-req (first targeting-reqs)
                 remaining-reqs (vec (rest targeting-reqs))]
-            {:selection/type      :ability-targeting
-             :selection/mechanism :n-slot-targeting
+            {:selection/mechanism :n-slot-targeting
              :selection/domain    :ability-targeting
              :selection/lifecycle (if (seq remaining-reqs) :chaining :finalized)
              :selection/player-id player-id
@@ -637,8 +627,7 @@
             targeting-reqs (:card/targeting (:object/card obj))]
         (when (seq targeting-reqs)
           (let [first-req (first targeting-reqs)]
-            {:selection/type      :cast-time-targeting
-             :selection/mechanism :n-slot-targeting
+            {:selection/mechanism :n-slot-targeting
              :selection/domain    :cast-time-targeting
              :selection/lifecycle :finalized
              :selection/player-id player-id

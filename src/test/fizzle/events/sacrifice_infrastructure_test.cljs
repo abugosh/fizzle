@@ -177,7 +177,7 @@
           [db fling-id] (th/add-card-to-zone db :fling :hand :player-1)
           app-db (casting/cast-spell-handler {:game/db db :game/selected-card fling-id})
           pending-sel (:game/pending-selection app-db)]
-      (is (= :sacrifice-permanent-cost (:selection/type pending-sel))
+      (is (= :sacrifice-cost (:selection/domain pending-sel))
           "Should show sacrifice-permanent-cost selection")
       (is (false? (:selection/auto-confirm? pending-sel))
           "auto-confirm? should be false — player always picks even with one creature"))))
@@ -200,7 +200,7 @@
           result (abilities/activate-ability db :player-1 altar-id 0)]
       (is (some? (:pending-selection result))
           "Activating sacrifice ability should produce a pending selection")
-      (is (= :sacrifice-permanent-cost (:selection/type (:pending-selection result)))
+      (is (= :sacrifice-cost (:selection/domain (:pending-selection result)))
           "Pending selection should be :sacrifice-permanent-cost"))))
 
 
@@ -217,7 +217,7 @@
           {:keys [db selection]} (th/confirm-selection (:db result) sac-sel #{creature-id})
           ;; Should have a targeting selection (Altar targets a player)
           _ (is (some? selection) "Should chain to targeting selection after sacrifice")
-          _ (is (= :ability-targeting (:selection/type selection))
+          _ (is (= :ability-targeting (:selection/domain selection))
                 "Chain selection should be ability-targeting")
           ;; Confirm target player
           {:keys [db]} (th/confirm-selection db selection #{:player-2})]
@@ -303,8 +303,8 @@
           _ (reset! rf-db/app-db app-db)
           _ (rf/dispatch-sync [::casting/cast-spell {:object-id fling-id}])
           after-cast @rf-db/app-db
-          _ (is (= :sacrifice-permanent-cost
-                   (:selection/type (:game/pending-selection after-cast)))
+          _ (is (= :sacrifice-cost
+                   (:selection/domain (:game/pending-selection after-cast)))
                 "Precondition: sacrifice selection pending after cast")
           ;; Step 2: toggle the creature (select it for sacrifice)
           _ (rf/dispatch-sync [::selection/toggle-selection creature-id])
@@ -312,7 +312,7 @@
           _ (rf/dispatch-sync [::selection/confirm-selection])
           after-sac @rf-db/app-db
           _ (is (= :cast-time-targeting
-                   (:selection/type (:game/pending-selection after-sac)))
+                   (:selection/domain (:game/pending-selection after-sac)))
                 "Precondition: targeting selection pending after sacrifice")
           ;; Step 4: toggle target player (auto-confirm kicks in via fx dispatch, need explicit confirm)
           _ (rf/dispatch-sync [::selection/toggle-selection :player-2])

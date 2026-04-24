@@ -337,7 +337,7 @@
           "should discard 2 cards (9 - 7)")
       (is (= :hand (:selection/zone selection))
           "should select from hand")
-      (is (= :discard (:selection/type selection))
+      (is (= :discard (:selection/domain selection))
           "should have discard type with cleanup? flag")
       (is (true? (:selection/cleanup? selection))
           "should be marked as cleanup discard")
@@ -416,7 +416,7 @@
                  (set-turn 1)
                  (add-cards-to-hand :player-1 8))
           result (cleanup/begin-cleanup db :player-1)]
-      (is (= :discard (:selection/type (:pending-selection result)))
+      (is (= :discard (:selection/domain (:pending-selection result)))
           "selection should be for cleanup discard")
       (let [cleanup-db (:db result)
             after-advance (phases/advance-phase cleanup-db :player-1)]

@@ -123,7 +123,7 @@
             result (ability-events/activate-ability db'' :player-1 fetch-id 0)
             db-after-activate (:db result)
             resolve-result (resolution/resolve-one-item db-after-activate)]
-        (is (= :tutor (get-in resolve-result [:pending-selection :selection/type]))
+        (is (= :tutor (get-in resolve-result [:pending-selection :selection/domain]))
             "Selection should be tutor type")
         (let [candidates (:selection/candidates (:pending-selection resolve-result))]
           (is (contains? candidates target-a-id)
