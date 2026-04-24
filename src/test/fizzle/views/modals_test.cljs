@@ -130,3 +130,51 @@
                      :selection/selected  #{}}]
       (is (= :pick-from-zone (#'modals/modal-dispatch-key selection))
           ":selection/mechanism must win over :selection/pattern when both present"))))
+
+
+;; ---------------------------------------------------------------------------
+;; D. Multi-slot targeting label computation (fizzle-l77d)
+;; cast-time-targeting-labels is a pure function — testable without React.
+
+(deftest cast-time-targeting-labels-single-slot-test
+  (testing "cast-time-targeting-labels returns single-slot labels when select-count=1"
+    (let [sel {:selection/select-count 1 :selection/selected []}
+          {:keys [header unselected-label selected-label]}
+          (#'modals/cast-time-targeting-labels sel)]
+      (is (= "Select a target" unselected-label)
+          "unselected label is 'Select a target' for single slot")
+      (is (= "1 target selected" selected-label)
+          "selected label is '1 target selected' for single slot")
+      (is (string? header)
+          "header must be a string"))))
+
+
+(deftest cast-time-targeting-labels-multi-slot-test
+  (testing "cast-time-targeting-labels returns multi-slot labels when select-count=2"
+    (let [sel {:selection/select-count 2 :selection/selected []}
+          {:keys [unselected-label selected-label header]}
+          (#'modals/cast-time-targeting-labels sel)]
+      (is (= "Select 2 targets" unselected-label)
+          "unselected label shows count for multi-slot")
+      (is (string? selected-label)
+          "selected label must be a string for multi-slot")
+      (is (string? header)
+          "header must be a string"))))
+
+
+(deftest cast-time-targeting-labels-partial-fill-test
+  (testing "cast-time-targeting-labels reflects partial fill state"
+    (let [sel {:selection/select-count 2 :selection/selected [:obj-a]}
+          {:keys [selected-label]}
+          (#'modals/cast-time-targeting-labels sel)]
+      (is (= "1/2 targets selected" selected-label)
+          "selected label shows N/M progress when partial"))))
+
+
+(deftest cast-time-targeting-labels-fully-filled-test
+  (testing "cast-time-targeting-labels reflects full-fill state"
+    (let [sel {:selection/select-count 2 :selection/selected [:obj-a :obj-b]}
+          {:keys [selected-label]}
+          (#'modals/cast-time-targeting-labels sel)]
+      (is (= "2/2 targets selected" selected-label)
+          "selected label shows N/N when all slots filled"))))

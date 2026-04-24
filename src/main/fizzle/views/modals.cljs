@@ -40,6 +40,22 @@
     :default-zone zone :selected-label sel-label :unselected-label unsel-label}])
 
 
+(defn- cast-time-targeting-labels
+  "Pure function — compute modal labels for :cast-time-targeting domain.
+   Handles both single-slot (select-count=1) and multi-slot (select-count>1).
+   Returns {:header :unselected-label :selected-label}."
+  [selection]
+  (let [n (:selection/select-count selection)
+        filled (count (:selection/selected selection))]
+    (if (= n 1)
+      {:header          "Choose target from battlefield"
+       :unselected-label "Select a target"
+       :selected-label   "1 target selected"}
+      {:header          (str "Choose " n " targets from battlefield")
+       :unselected-label (str "Select " n " targets")
+       :selected-label   (str filled "/" n " targets selected")})))
+
+
 ;; -----------------------------------------------------------------------
 ;; :pick-from-zone — select N cards/objects from a zone and act on them.
 ;; Covers: :discard, :graveyard-return, :shuffle-to-library, :hand-reveal-discard,
@@ -98,13 +114,20 @@
 ;;   :assign-blockers       → blocker assignment modal
 
 (defmethod render-selection-modal :n-slot-targeting [s c]
-  (let [target-req (:selection/target-requirement s)
+  ;; :selection/target-requirements (plural, fizzle-29gc) for new multi-slot selections.
+  ;; :selection/target-requirement (singular) for older single-slot selections.
+  (let [target-req (or (first (:selection/target-requirements s))
+                       (:selection/target-requirement s))
         target-type (:target/type target-req)]
     (case (:selection/domain s)
       :player-target         [custom/player-target-modal s ::selection-events/confirm-selection]
       :cast-time-targeting   (if (= :player target-type)
                                [custom/player-target-modal s ::selection-events/confirm-selection]
-                               (object-target s c :graveyard "1 card selected" "Select a card"))
+                               ;; N-slot: use computed labels for both 1-slot and N-slot cases.
+                               ;; Auto-confirm (Lightning Bolt etc.) bypasses this modal entirely.
+                               (let [{:keys [selected-label unselected-label]}
+                                     (cast-time-targeting-labels s)]
+                                 (object-target s c :battlefield selected-label unselected-label)))
       :ability-targeting     (if (= :player target-type)
                                [custom/player-target-modal s ::selection-events/confirm-selection]
                                (if (= :any target-type)

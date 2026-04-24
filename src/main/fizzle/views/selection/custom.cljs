@@ -99,7 +99,14 @@
   [selection cards {:keys [select-event confirm-event default-zone
                            selected-label unselected-label]}]
   (let [selected (or (:selection/selected selection) #{})
-        zone-name (name (or (get-in selection [:selection/target-requirement :target/zone]) default-zone))
+        ;; Use set for O(1) membership — works for both set and vector :selected.
+        ;; (contains? vector id) checks by index, not value; (contains? set id) is correct.
+        selected-set (set selected)
+        ;; Read zone from :selection/target-requirements (plural, fizzle-29gc) or
+        ;; legacy :selection/target-requirement (singular) for older selection types.
+        zone-name (name (or (get-in selection [:selection/target-requirements 0 :target/zone])
+                            (get-in selection [:selection/target-requirement :target/zone])
+                            default-zone))
         valid? @(rf/subscribe [::subs/selection-valid?])]
     [:div {:class common/overlay-class}
      [:div {:class (common/container-class {})}
@@ -112,7 +119,7 @@
          (for [obj cards]
            ^{:key (:object/id obj)}
            [common/selection-card-view obj
-            (contains? selected (:object/id obj))
+            (contains? selected-set (:object/id obj))
             select-event])
          [:div {:class "text-perm-text-tapped"} "No valid targets"])]
       [:div {:class "flex justify-end"}

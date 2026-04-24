@@ -490,7 +490,19 @@
     (let [selected (get selection :selection/selected #{})
           valid-targets (:selection/valid-targets selection)
           select-count (:selection/select-count selection)
-          currently-selected? (contains? selected id)]
+          ;; Use some #{id} for membership: works for both sets and vectors.
+          ;; (contains? vector id) checks by index, not value — wrong for vectors.
+          currently-selected? (boolean (some #{id} selected))
+          ;; Remove item preserving collection type.
+          ;; disj only works on sets; filterv preserves vector ordering.
+          remove-selected (fn [coll item]
+                            (if (vector? coll)
+                              (filterv #(not= item %) coll)
+                              (disj coll item)))
+          ;; Wrap single item in the same collection type as selected.
+          ;; N-slot targeting uses [] for ordered slot tracking (fizzle-29gc).
+          wrap-single (fn [coll item]
+                        (if (vector? coll) [item] #{item}))]
       ;; Layer 1a: production guard — select-count MUST be a positive int.
       ;; pos-int? excludes nil, 0, negative, and non-integer in one predicate.
       (when-not (pos-int? select-count)
@@ -504,16 +516,16 @@
               (and valid-targets (not (contains? (set valid-targets) id)))
               [app-db false]
 
-              ;; Deselect: remove from set
+              ;; Deselect: remove from collection (set or vector)
               currently-selected?
               [(assoc-in app-db [:game/pending-selection :selection/selected]
-                         (disj selected id))
+                         (remove-selected selected id))
                false]
 
               ;; Single-select (select-count=1): replace current selection
               (= select-count 1)
               [(assoc-in app-db [:game/pending-selection :selection/selected]
-                         #{id})
+                         (wrap-single selected id))
                true]
 
               ;; Unlimited select (exact?=false, e.g. exile-cards): always add

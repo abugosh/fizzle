@@ -228,3 +228,69 @@
               js/Error
               (selection-core/toggle-selection-impl app-db :card-a))
             "validate-at-chokepoint! must fire on malformed selection and throw under *throw-on-spec-failure*")))))
+
+
+;; =====================================================
+;; Vector semantics — N-slot targeting (fizzle-l77d)
+;; :selection/selected is a vector [] for multi-slot cast-time targeting.
+;; toggle-selection-impl must handle vector correctly (not use set ops).
+;; =====================================================
+
+(defn- n-slot-selection
+  "Minimal valid n-slot selection with vector :selection/selected."
+  [selected]
+  {:selection/mechanism :n-slot-targeting
+   :selection/domain    :cast-time-targeting
+   :selection/lifecycle :standard
+   :selection/player-id :player-1
+   :selection/selected selected
+   :selection/valid-targets [:obj-a :obj-b :obj-c]
+   :selection/validation :exact
+   :selection/auto-confirm? false
+   :selection/select-count 2})
+
+
+(deftest test-toggle-impl-vector-add-item
+  (testing "toggle-selection-impl adds item to vector :selection/selected"
+    (let [sel (n-slot-selection [])
+          app-db (app-db-with sel)
+          result (selection-core/toggle-selection-impl app-db :obj-a)
+          new-sel (get-in result [:app-db :game/pending-selection :selection/selected])]
+      (is (= 1 (count new-sel))
+          "adding to empty vector should yield count=1")
+      (is (some #{:obj-a} new-sel)
+          "added item must be in the result"))))
+
+
+(deftest test-toggle-impl-vector-deselect-item
+  (testing "toggle-selection-impl removes item from vector :selection/selected"
+    (let [sel (n-slot-selection [:obj-a :obj-b])
+          app-db (app-db-with sel)
+          result (selection-core/toggle-selection-impl app-db :obj-a)
+          new-sel (get-in result [:app-db :game/pending-selection :selection/selected])]
+      (is (= 1 (count new-sel))
+          "removing one item from 2-item vector should yield count=1")
+      (is (not (some #{:obj-a} new-sel))
+          "removed item must not be in result")
+      (is (some #{:obj-b} new-sel)
+          "remaining item must still be in result"))))
+
+
+(deftest test-toggle-impl-vector-at-limit-noop
+  (testing "toggle-selection-impl is a no-op when vector is at select-count limit"
+    (let [sel (n-slot-selection [:obj-a :obj-b])
+          app-db (app-db-with sel)
+          result (selection-core/toggle-selection-impl app-db :obj-c)]
+      (is (= app-db (:app-db result))
+          "at-limit click on new item must return unchanged app-db")
+      (is (false? (:auto-confirm? result))
+          "at-limit must not auto-confirm"))))
+
+
+(deftest test-toggle-impl-vector-no-auto-confirm-at-2
+  (testing "toggle-selection-impl does not auto-confirm when select-count=2 even when filled"
+    (let [sel (n-slot-selection [:obj-a])
+          app-db (app-db-with sel)
+          result (selection-core/toggle-selection-impl app-db :obj-b)]
+      (is (false? (:auto-confirm? result))
+          "auto-confirm? must be false when select-count=2 (not 1)"))))
