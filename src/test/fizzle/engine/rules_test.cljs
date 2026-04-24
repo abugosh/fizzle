@@ -1566,3 +1566,37 @@
                             [:db/add game-eid :game/active-player opp-eid]])]
       (is (false? (rules/can-cast? db :player-1 obj-id))
           "Should not be castable during opponent's end step"))))
+
+
+;; === alternate-to-mode pass-through tests ===
+
+(deftest alternate-to-mode-propagates-kind-effects-targeting
+  (testing "alternate-to-mode passes :alternate/kind, :alternate/effects, :alternate/targeting through as :mode/* keys"
+    (let [alt {:alternate/id :kicked
+               :alternate/kind :kicker
+               :alternate/zone :hand
+               :alternate/mana-cost {:white 2}
+               :alternate/effects [{:effect/type :draw :effect/count 1}]
+               :alternate/targeting [{:target/id :p :target/type :player :target/required true}]
+               :alternate/on-resolve :graveyard}
+          mode (#'rules/alternate-to-mode alt)]
+      (is (= :kicker (:mode/kind mode))
+          "Should propagate :alternate/kind as :mode/kind")
+      (is (= [{:effect/type :draw :effect/count 1}] (:mode/effects mode))
+          "Should propagate :alternate/effects as :mode/effects")
+      (is (= [{:target/id :p :target/type :player :target/required true}]
+             (:mode/targeting mode))
+          "Should propagate :alternate/targeting as :mode/targeting")))
+
+  (testing "alternate-to-mode does NOT add :mode/kind when :alternate/kind absent"
+    (let [alt {:alternate/id :flashback
+               :alternate/zone :graveyard
+               :alternate/mana-cost {:colorless 1 :blue 1}
+               :alternate/on-resolve :exile}
+          mode (#'rules/alternate-to-mode alt)]
+      (is (not (contains? mode :mode/kind))
+          "Should not contain :mode/kind when not provided")
+      (is (not (contains? mode :mode/effects))
+          "Should not contain :mode/effects when not provided")
+      (is (not (contains? mode :mode/targeting))
+          "Should not contain :mode/targeting when not provided"))))

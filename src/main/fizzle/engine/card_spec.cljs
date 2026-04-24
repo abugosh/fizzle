@@ -508,18 +508,22 @@
                 :cost/groups :cost/total]))
 
 
-;; === Alternate Cost Spec (Flashback) ===
+;; === Alternate Cost Spec (Flashback, Kicker, etc.) ===
 
 (s/def :alternate/id keyword?)
 (s/def :alternate/zone keyword?)
 (s/def :alternate/mana-cost ::mana-cost)
 (s/def :alternate/additional-costs (s/coll-of ::additional-cost :kind vector?))
 (s/def :alternate/on-resolve keyword?)
+(s/def :alternate/kind keyword?)
+(s/def :alternate/effects ::effects)
+(s/def :alternate/targeting ::targeting-vec)
 
 
 (s/def ::alternate-cost
   (s/keys :req [:alternate/id :alternate/zone :alternate/mana-cost]
-          :opt [:alternate/additional-costs :alternate/on-resolve]))
+          :opt [:alternate/additional-costs :alternate/on-resolve
+                :alternate/kind :alternate/effects :alternate/targeting]))
 
 
 ;; === Conditional Effects Spec ===

@@ -510,3 +510,37 @@
     (let [sa {:static/type :untap-restriction}]
       (is (not (s/valid? ::card-spec/static-ability sa))
           "untap-restriction without :modifier/criteria must fail the spec"))))
+
+
+;; === alternate-cost extended schema tests ===
+
+(deftest alternate-cost-spec-accepts-extended-keys
+  (testing "::alternate-cost spec accepts :alternate/kind, :alternate/effects, :alternate/targeting"
+    ;; Catches: missing s/def and :opt entries for the 3 new keys
+    ;; Note: use :exile-self (only requires :effect/type) to avoid needing :amount/:count
+    (is (s/valid? ::card-spec/alternate-cost
+                  {:alternate/id :kicked
+                   :alternate/kind :kicker
+                   :alternate/zone :hand
+                   :alternate/mana-cost {:white 2}
+                   :alternate/targeting [{:target/id :p :target/type :player :target/required true}]
+                   :alternate/effects [{:effect/type :exile-self}]})
+        "alternate-cost with :kind/:effects/:targeting must pass spec"))
+
+  (testing "::alternate-cost spec still accepts entry without the new optional keys"
+    ;; Catches: accidentally making the new keys required instead of optional
+    (is (s/valid? ::card-spec/alternate-cost
+                  {:alternate/id :flashback
+                   :alternate/zone :graveyard
+                   :alternate/mana-cost {:colorless 1 :blue 1}
+                   :alternate/on-resolve :exile})
+        "alternate-cost without new keys must still pass spec"))
+
+  (testing ":alternate/kind must be a keyword"
+    ;; Catches: wrong spec type for :alternate/kind
+    (is (not (s/valid? ::card-spec/alternate-cost
+                       {:alternate/id :kicked
+                        :alternate/kind "kicker"
+                        :alternate/zone :hand
+                        :alternate/mana-cost {:white 2}}))
+        ":alternate/kind as string must fail spec")))

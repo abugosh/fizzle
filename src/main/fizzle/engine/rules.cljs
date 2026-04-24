@@ -60,13 +60,18 @@
 
 
 (defn- alternate-to-mode
-  "Converts an alternate-cost definition to a mode map."
+  "Converts an alternate-cost definition to a mode map.
+   Optional keys :alternate/kind, :alternate/effects, :alternate/targeting are
+   propagated as :mode/kind, :mode/effects, :mode/targeting when present."
   [alternate]
-  {:mode/id (:alternate/id alternate)
-   :mode/zone (:alternate/zone alternate)
-   :mode/mana-cost (or (:alternate/mana-cost alternate) {})
-   :mode/additional-costs (or (:alternate/additional-costs alternate) [])
-   :mode/on-resolve (or (:alternate/on-resolve alternate) :graveyard)})
+  (cond-> {:mode/id (:alternate/id alternate)
+           :mode/zone (:alternate/zone alternate)
+           :mode/mana-cost (or (:alternate/mana-cost alternate) {})
+           :mode/additional-costs (or (:alternate/additional-costs alternate) [])
+           :mode/on-resolve (or (:alternate/on-resolve alternate) :graveyard)}
+    (:alternate/kind alternate)      (assoc :mode/kind (:alternate/kind alternate))
+    (:alternate/effects alternate)   (assoc :mode/effects (:alternate/effects alternate))
+    (:alternate/targeting alternate) (assoc :mode/targeting (:alternate/targeting alternate))))
 
 
 (defn- get-alternate-modes
