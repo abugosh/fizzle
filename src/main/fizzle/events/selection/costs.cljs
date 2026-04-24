@@ -654,8 +654,6 @@
            db obj-eid))))
 
 
-
-
 (defn- confirm-spell-mana-allocation
   "Complete spell casting after mana allocation.
    Stores pending targets on stack-item if present."
@@ -700,7 +698,6 @@
                                                :stack-item/effects effects-list
                                                :stack-item/description (:ability/description ability)})]
     {:db db-with-item}))
-
 
 
 ;; =====================================================

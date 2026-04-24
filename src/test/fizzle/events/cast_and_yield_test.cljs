@@ -154,8 +154,7 @@
         (is (= obj-id (:selection/object-id pending))
             "Mode selection must reference the cast object")
         (is (= 2 (count (:selection/candidates pending)))
-            "Should have 2 castable modes as candidates"))
-      )))
+            "Should have 2 castable modes as candidates")))))
 
 
 (deftest test-cast-and-yield-targeted-spell-shows-targeting

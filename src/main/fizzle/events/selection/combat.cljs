@@ -51,7 +51,6 @@
         {:db db}))))
 
 
-
 (defn build-blocker-selection
   [db remaining-attackers defender-id stack-item-eid]
   (let [current-attacker (first remaining-attackers)
@@ -79,7 +78,6 @@
         attacker-id (:selection/current-attacker selection)
         db (combat/mark-blockers game-db blocker-ids attacker-id)]
     {:db db}))
-
 
 
 (defmethod sel-core/build-chain-selection :assign-blockers

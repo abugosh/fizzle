@@ -748,11 +748,12 @@
   gen-uuid-or-kw-set)
 
 
-;; --- Group 1: Zone-Pick Types ---
+;; --- Group 1: :pick-from-zone ---
 
 (defn gen-selection-discard
   []
-  (tgen/hash-map :selection/type (tgen/return :discard)
+  (tgen/hash-map :selection/mechanism (tgen/return :pick-from-zone)
+                 :selection/domain (tgen/return :discard)
                  :selection/lifecycle gen-lifecycle
                  :selection/player-id gen-player-id
                  :selection/selected (tgen/return #{})
@@ -762,7 +763,8 @@
 
 (defn gen-selection-graveyard-return
   []
-  (tgen/hash-map :selection/type (tgen/return :graveyard-return)
+  (tgen/hash-map :selection/mechanism (tgen/return :pick-from-zone)
+                 :selection/domain (tgen/return :graveyard-return)
                  :selection/lifecycle gen-lifecycle
                  :selection/player-id gen-player-id
                  :selection/selected (tgen/return #{})
@@ -773,7 +775,8 @@
 
 (defn gen-selection-hand-reveal-discard
   []
-  (tgen/hash-map :selection/type (tgen/return :hand-reveal-discard)
+  (tgen/hash-map :selection/mechanism (tgen/return :pick-from-zone)
+                 :selection/domain (tgen/return :revealed-hand-discard)
                  :selection/player-id gen-player-id
                  :selection/selected (tgen/return #{})
                  :selection/select-count (tgen/choose 1 3)
@@ -784,7 +787,8 @@
 
 (defn gen-selection-chain-bounce
   []
-  (tgen/hash-map :selection/type (tgen/return :chain-bounce)
+  (tgen/hash-map :selection/mechanism (tgen/return :pick-from-zone)
+                 :selection/domain (tgen/return :chain-bounce)
                  :selection/lifecycle (tgen/return :chaining)
                  :selection/player-id gen-player-id
                  :selection/selected (tgen/return #{})
@@ -795,7 +799,8 @@
 
 (defn gen-selection-chain-bounce-target
   []
-  (tgen/hash-map :selection/type (tgen/return :chain-bounce-target)
+  (tgen/hash-map :selection/mechanism (tgen/return :pick-from-zone)
+                 :selection/domain (tgen/return :chain-bounce-target)
                  :selection/player-id gen-player-id
                  :selection/selected (tgen/return #{})
                  :selection/validation gen-validation-kw
@@ -803,22 +808,163 @@
                  :selection/valid-targets gen-object-vec))
 
 
-(defn gen-selection-unless-pay
+(defn gen-selection-tutor
   []
-  (tgen/hash-map :selection/type (tgen/return :unless-pay)
+  (tgen/hash-map :selection/mechanism (tgen/return :pick-from-zone)
+                 :selection/domain (tgen/return :tutor)
+                 :selection/lifecycle gen-lifecycle
+                 :selection/player-id gen-player-id
+                 :selection/selected (tgen/return #{})
+                 :selection/validation gen-validation-kw
+                 :selection/auto-confirm? (tgen/return true)
+                 :selection/target-zone gen-zone-kw
+                 :selection/candidates gen-candidates-set))
+
+
+(defn gen-selection-pile-choice
+  []
+  (tgen/hash-map :selection/mechanism (tgen/return :pick-from-zone)
+                 :selection/domain (tgen/return :pile-choice)
+                 :selection/lifecycle gen-lifecycle
+                 :selection/player-id gen-player-id
+                 :selection/selected (tgen/return #{})
+                 :selection/validation gen-validation-kw
+                 :selection/auto-confirm? (tgen/return false)
+                 :selection/candidates gen-candidates-set
+                 :selection/hand-count (tgen/choose 0 7)))
+
+
+(defn gen-selection-discard-specific-cost
+  []
+  (tgen/hash-map :selection/mechanism (tgen/return :pick-from-zone)
+                 :selection/domain (tgen/return :discard-cost)
+                 :selection/player-id gen-player-id
+                 :selection/selected (tgen/return #{})
+                 :selection/select-count (tgen/choose 1 3)
+                 :selection/validation gen-validation-kw
+                 :selection/auto-confirm? (tgen/return false)
+                 :selection/mode gen-mode-map))
+
+
+(defn gen-selection-return-land-cost
+  []
+  (tgen/hash-map :selection/mechanism (tgen/return :pick-from-zone)
+                 :selection/domain (tgen/return :return-land-cost)
                  :selection/player-id gen-player-id
                  :selection/selected (tgen/return #{})
                  :selection/select-count (tgen/return 1)
-                 :selection/valid-targets (tgen/return [:pay :decline])
+                 :selection/valid-targets gen-object-vec
                  :selection/validation (tgen/return :exact)
-                 :selection/auto-confirm? (tgen/return true)))
+                 :selection/auto-confirm? (tgen/return true)
+                 :selection/mode gen-mode-map))
 
 
-;; --- Group 2: Accumulator Types ---
+(defn gen-selection-sacrifice-permanent-cost
+  []
+  (tgen/hash-map :selection/mechanism (tgen/return :pick-from-zone)
+                 :selection/domain (tgen/return :sacrifice-cost)
+                 :selection/player-id gen-player-id
+                 :selection/selected (tgen/return #{})
+                 :selection/select-count (tgen/return 1)
+                 :selection/valid-targets gen-object-vec
+                 :selection/validation (tgen/return :exact)
+                 :selection/auto-confirm? (tgen/return false)))
+
+
+(defn gen-selection-exile-cards-cost
+  []
+  (tgen/hash-map :selection/mechanism (tgen/return :pick-from-zone)
+                 :selection/domain (tgen/return :exile-cost)
+                 :selection/lifecycle gen-lifecycle
+                 :selection/player-id gen-player-id
+                 :selection/selected (tgen/return #{})
+                 :selection/select-count (tgen/choose 1 5)
+                 :selection/validation gen-validation-kw
+                 :selection/auto-confirm? (tgen/return false)
+                 :selection/candidates gen-candidates-set
+                 :selection/mode gen-mode-map))
+
+
+(defn gen-selection-untap-lands
+  []
+  (tgen/hash-map :selection/mechanism (tgen/return :pick-from-zone)
+                 :selection/domain (tgen/return :untap-lands)
+                 :selection/player-id gen-player-id
+                 :selection/selected (tgen/return #{})
+                 :selection/select-count (tgen/choose 1 5)
+                 :selection/validation gen-validation-kw
+                 :selection/auto-confirm? (tgen/return false)
+                 :selection/candidates gen-candidates-set
+                 :selection/candidate-ids gen-candidates-set))
+
+
+;; --- Group 2: :reorder ---
+
+(defn gen-selection-scry
+  []
+  (tgen/hash-map :selection/mechanism (tgen/return :reorder)
+                 :selection/domain (tgen/return :scry)
+                 :selection/lifecycle gen-lifecycle
+                 :selection/player-id gen-player-id
+                 :selection/validation (tgen/return :always)
+                 :selection/auto-confirm? (tgen/return false)
+                 :selection/cards gen-object-vec))
+
+
+(defn gen-selection-peek-and-reorder
+  []
+  (tgen/hash-map :selection/mechanism (tgen/return :reorder)
+                 :selection/domain (tgen/return :peek-and-reorder)
+                 :selection/lifecycle gen-lifecycle
+                 :selection/player-id gen-player-id
+                 :selection/validation (tgen/return :always)
+                 :selection/auto-confirm? (tgen/return false)
+                 :selection/candidates gen-candidates-set
+                 :selection/ordered (tgen/return [])))
+
+
+(defn gen-selection-order-bottom
+  []
+  (tgen/hash-map :selection/mechanism (tgen/return :reorder)
+                 :selection/domain (tgen/return :order-bottom)
+                 :selection/player-id gen-player-id
+                 :selection/validation (tgen/return :always)
+                 :selection/auto-confirm? (tgen/return false)
+                 :selection/candidates gen-candidates-set
+                 :selection/ordered (tgen/return [])))
+
+
+(defn gen-selection-order-top
+  []
+  (tgen/hash-map :selection/mechanism (tgen/return :reorder)
+                 :selection/domain (tgen/return :order-top)
+                 :selection/player-id gen-player-id
+                 :selection/validation (tgen/return :always)
+                 :selection/auto-confirm? (tgen/return false)
+                 :selection/candidates gen-candidates-set
+                 :selection/ordered (tgen/return [])))
+
+
+(defn gen-selection-peek-and-select
+  []
+  (tgen/hash-map :selection/mechanism (tgen/return :reorder)
+                 :selection/domain (tgen/return :peek-and-select)
+                 :selection/lifecycle gen-lifecycle
+                 :selection/player-id gen-player-id
+                 :selection/selected (tgen/return #{})
+                 :selection/validation gen-validation-kw
+                 :selection/auto-confirm? (tgen/return false)
+                 :selection/candidates gen-candidates-set
+                 :selection/selected-zone gen-zone-kw
+                 :selection/remainder-zone gen-zone-kw))
+
+
+;; --- Group 3: :accumulate ---
 
 (defn gen-selection-storm-split
   []
-  (tgen/hash-map :selection/type (tgen/return :storm-split)
+  (tgen/hash-map :selection/mechanism (tgen/return :accumulate)
+                 :selection/domain (tgen/return :storm-split)
                  :selection/lifecycle gen-lifecycle
                  :selection/player-id gen-player-id
                  :selection/selected (tgen/return #{})
@@ -831,7 +977,8 @@
 
 (defn gen-selection-x-mana-cost
   []
-  (tgen/hash-map :selection/type (tgen/return :x-mana-cost)
+  (tgen/hash-map :selection/mechanism (tgen/return :accumulate)
+                 :selection/domain (tgen/return :x-mana-cost)
                  :selection/lifecycle gen-lifecycle
                  :selection/player-id gen-player-id
                  :selection/validation (tgen/return :always)
@@ -840,9 +987,24 @@
                  :selection/selected-x (tgen/return 0)))
 
 
+(defn gen-selection-pay-x-life
+  []
+  (tgen/hash-map :selection/mechanism (tgen/return :accumulate)
+                 :selection/domain (tgen/return :pay-x-life)
+                 :selection/lifecycle gen-lifecycle
+                 :selection/player-id gen-player-id
+                 :selection/validation (tgen/return :always)
+                 :selection/auto-confirm? (tgen/return false)
+                 :selection/max-x (tgen/choose 1 20)
+                 :selection/selected-x (tgen/return 0)))
+
+
+;; --- Group 4: :allocate-resource ---
+
 (defn gen-selection-mana-allocation
   []
-  (tgen/hash-map :selection/type (tgen/return :mana-allocation)
+  (tgen/hash-map :selection/mechanism (tgen/return :allocate-resource)
+                 :selection/domain (tgen/return :mana-allocation)
                  :selection/lifecycle gen-lifecycle
                  :selection/player-id gen-player-id
                  :selection/validation (tgen/return :always)
@@ -852,104 +1014,12 @@
                  :selection/allocation (tgen/return {})))
 
 
-(defn gen-selection-pay-x-life
-  []
-  (tgen/hash-map :selection/type (tgen/return :pay-x-life)
-                 :selection/lifecycle gen-lifecycle
-                 :selection/player-id gen-player-id
-                 :selection/validation (tgen/return :always)
-                 :selection/auto-confirm? (tgen/return false)
-                 :selection/max-x (tgen/choose 1 20)
-                 :selection/selected-x (tgen/return 0)))
-
-
-;; --- Group 3: Reorder Types ---
-
-(defn gen-selection-scry
-  []
-  (tgen/hash-map :selection/type (tgen/return :scry)
-                 :selection/lifecycle gen-lifecycle
-                 :selection/player-id gen-player-id
-                 :selection/validation (tgen/return :always)
-                 :selection/auto-confirm? (tgen/return false)
-                 :selection/cards gen-object-vec))
-
-
-(defn gen-selection-peek-and-reorder
-  []
-  (tgen/hash-map :selection/type (tgen/return :peek-and-reorder)
-                 :selection/lifecycle gen-lifecycle
-                 :selection/player-id gen-player-id
-                 :selection/validation (tgen/return :always)
-                 :selection/auto-confirm? (tgen/return false)
-                 :selection/candidates gen-candidates-set
-                 :selection/ordered (tgen/return [])))
-
-
-(defn gen-selection-order-bottom
-  []
-  (tgen/hash-map :selection/type (tgen/return :order-bottom)
-                 :selection/player-id gen-player-id
-                 :selection/validation (tgen/return :always)
-                 :selection/auto-confirm? (tgen/return false)
-                 :selection/candidates gen-candidates-set
-                 :selection/ordered (tgen/return [])))
-
-
-(defn gen-selection-order-top
-  []
-  (tgen/hash-map :selection/type (tgen/return :order-top)
-                 :selection/player-id gen-player-id
-                 :selection/validation (tgen/return :always)
-                 :selection/auto-confirm? (tgen/return false)
-                 :selection/candidates gen-candidates-set
-                 :selection/ordered (tgen/return [])))
-
-
-;; --- Group 4: Library Operation Types ---
-
-(defn gen-selection-tutor
-  []
-  (tgen/hash-map :selection/type (tgen/return :tutor)
-                 :selection/lifecycle gen-lifecycle
-                 :selection/player-id gen-player-id
-                 :selection/selected (tgen/return #{})
-                 :selection/validation gen-validation-kw
-                 :selection/auto-confirm? (tgen/return true)
-                 :selection/target-zone gen-zone-kw
-                 :selection/candidates gen-candidates-set))
-
-
-(defn gen-selection-peek-and-select
-  []
-  (tgen/hash-map :selection/type (tgen/return :peek-and-select)
-                 :selection/lifecycle gen-lifecycle
-                 :selection/player-id gen-player-id
-                 :selection/selected (tgen/return #{})
-                 :selection/validation gen-validation-kw
-                 :selection/auto-confirm? (tgen/return false)
-                 :selection/candidates gen-candidates-set
-                 :selection/selected-zone gen-zone-kw
-                 :selection/remainder-zone gen-zone-kw))
-
-
-(defn gen-selection-pile-choice
-  []
-  (tgen/hash-map :selection/type (tgen/return :pile-choice)
-                 :selection/lifecycle gen-lifecycle
-                 :selection/player-id gen-player-id
-                 :selection/selected (tgen/return #{})
-                 :selection/validation gen-validation-kw
-                 :selection/auto-confirm? (tgen/return false)
-                 :selection/candidates gen-candidates-set
-                 :selection/hand-count (tgen/choose 0 7)))
-
-
-;; --- Group 5: Targeting Types ---
+;; --- Group 5: :n-slot-targeting ---
 
 (defn gen-selection-player-target
   []
-  (tgen/hash-map :selection/type (tgen/return :player-target)
+  (tgen/hash-map :selection/mechanism (tgen/return :n-slot-targeting)
+                 :selection/domain (tgen/return :player-target)
                  :selection/lifecycle gen-lifecycle
                  :selection/player-id gen-player-id
                  :selection/selected (tgen/return #{})
@@ -961,7 +1031,8 @@
 
 (defn gen-selection-cast-time-targeting
   []
-  (tgen/hash-map :selection/type (tgen/return :cast-time-targeting)
+  (tgen/hash-map :selection/mechanism (tgen/return :n-slot-targeting)
+                 :selection/domain (tgen/return :cast-time-targeting)
                  :selection/lifecycle gen-lifecycle
                  :selection/player-id gen-player-id
                  :selection/selected (tgen/return #{})
@@ -976,7 +1047,8 @@
 
 (defn gen-selection-ability-cast-targeting
   []
-  (tgen/hash-map :selection/type (tgen/return :ability-cast-targeting)
+  (tgen/hash-map :selection/mechanism (tgen/return :n-slot-targeting)
+                 :selection/domain (tgen/return :ability-cast-targeting)
                  :selection/lifecycle gen-lifecycle
                  :selection/player-id gen-player-id
                  :selection/selected (tgen/return #{})
@@ -991,7 +1063,8 @@
 
 (defn gen-selection-ability-targeting
   []
-  (tgen/hash-map :selection/type (tgen/return :ability-targeting)
+  (tgen/hash-map :selection/mechanism (tgen/return :n-slot-targeting)
+                 :selection/domain (tgen/return :ability-targeting)
                  :selection/lifecycle gen-lifecycle
                  :selection/player-id gen-player-id
                  :selection/selected (tgen/return #{})
@@ -1006,94 +1079,24 @@
                  :selection/remaining-target-reqs (tgen/return [])))
 
 
-;; --- Group 6: Pre-Cast Cost Types ---
-
-(defn gen-selection-discard-specific-cost
-  []
-  (tgen/hash-map :selection/type (tgen/return :discard-specific-cost)
-                 :selection/player-id gen-player-id
-                 :selection/selected (tgen/return #{})
-                 :selection/select-count (tgen/choose 1 3)
-                 :selection/validation gen-validation-kw
-                 :selection/auto-confirm? (tgen/return false)
-                 :selection/mode gen-mode-map))
-
-
-(defn gen-selection-return-land-cost
-  []
-  (tgen/hash-map :selection/type (tgen/return :return-land-cost)
-                 :selection/player-id gen-player-id
-                 :selection/selected (tgen/return #{})
-                 :selection/select-count (tgen/return 1)
-                 :selection/valid-targets gen-object-vec
-                 :selection/validation (tgen/return :exact)
-                 :selection/auto-confirm? (tgen/return true)
-                 :selection/mode gen-mode-map))
-
-
-(defn gen-selection-sacrifice-permanent-cost
-  []
-  (tgen/hash-map :selection/type (tgen/return :sacrifice-permanent-cost)
-                 :selection/player-id gen-player-id
-                 :selection/selected (tgen/return #{})
-                 :selection/select-count (tgen/return 1)
-                 :selection/valid-targets gen-object-vec
-                 :selection/validation (tgen/return :exact)
-                 :selection/auto-confirm? (tgen/return false)))
-
-
-(defn gen-selection-exile-cards-cost
-  []
-  (tgen/hash-map :selection/type (tgen/return :exile-cards-cost)
-                 :selection/lifecycle gen-lifecycle
-                 :selection/player-id gen-player-id
-                 :selection/selected (tgen/return #{})
-                 :selection/select-count (tgen/choose 1 5)
-                 :selection/validation gen-validation-kw
-                 :selection/auto-confirm? (tgen/return false)
-                 :selection/candidates gen-candidates-set
-                 :selection/mode gen-mode-map))
-
-
-;; --- Group 7: Land Type Types ---
-
-(defn gen-selection-land-type-source
-  []
-  (tgen/hash-map :selection/type (tgen/return :land-type-source)
-                 :selection/lifecycle gen-lifecycle
-                 :selection/player-id gen-player-id
-                 :selection/selected (tgen/return nil)
-                 :selection/select-count (tgen/return 1)
-                 :selection/validation (tgen/return :exact)))
-
-
-(defn gen-selection-land-type-target
-  []
-  (tgen/hash-map :selection/type (tgen/return :land-type-target)
-                 :selection/lifecycle gen-lifecycle
-                 :selection/player-id gen-player-id
-                 :selection/selected (tgen/return nil)
-                 :selection/select-count (tgen/return 1)
-                 :selection/validation (tgen/return :exact)))
-
-
-;; --- Group 8: Combat Types ---
-
 (defn gen-selection-select-attackers
   []
-  (tgen/hash-map :selection/type (tgen/return :select-attackers)
+  (tgen/hash-map :selection/mechanism (tgen/return :n-slot-targeting)
+                 :selection/domain (tgen/return :select-attackers)
                  :selection/lifecycle gen-lifecycle
                  :selection/player-id gen-player-id
                  :selection/selected (tgen/return #{})
                  :selection/validation gen-validation-kw
                  :selection/auto-confirm? (tgen/return false)
                  :selection/stack-item-eid (tgen/choose 1 9999)
-                 :selection/valid-targets gen-object-vec))
+                 :selection/valid-targets gen-object-vec
+                 :selection/select-count (tgen/choose 0 3)))
 
 
 (defn gen-selection-assign-blockers
   []
-  (tgen/hash-map :selection/type (tgen/return :assign-blockers)
+  (tgen/hash-map :selection/mechanism (tgen/return :n-slot-targeting)
+                 :selection/domain (tgen/return :assign-blockers)
                  :selection/lifecycle gen-lifecycle
                  :selection/player-id gen-player-id
                  :selection/selected (tgen/return #{})
@@ -1101,15 +1104,17 @@
                  :selection/auto-confirm? (tgen/return false)
                  :selection/stack-item-eid (tgen/choose 1 9999)
                  :selection/valid-targets gen-object-vec
+                 :selection/select-count (tgen/choose 0 3)
                  :selection/current-attacker gen-object-id
                  :selection/remaining-attackers (tgen/return [])))
 
 
-;; --- Group 9: Other Types ---
+;; --- Group 6: :pick-mode ---
 
 (defn gen-selection-spell-mode
   []
-  (tgen/hash-map :selection/type (tgen/return :spell-mode)
+  (tgen/hash-map :selection/mechanism (tgen/return :pick-mode)
+                 :selection/domain (tgen/return :spell-mode)
                  :selection/lifecycle gen-lifecycle
                  :selection/player-id gen-player-id
                  :selection/selected (tgen/return #{})
@@ -1120,22 +1125,46 @@
                  :selection/candidates (tgen/return [{:mode/id :primary}])))
 
 
-(defn gen-selection-untap-lands
+(defn gen-selection-land-type-source
   []
-  (tgen/hash-map :selection/type (tgen/return :untap-lands)
+  (tgen/hash-map :selection/mechanism (tgen/return :pick-mode)
+                 :selection/domain (tgen/return :land-type-source)
+                 :selection/lifecycle gen-lifecycle
+                 :selection/player-id gen-player-id
+                 :selection/selected (tgen/return nil)
+                 :selection/select-count (tgen/return 1)
+                 :selection/validation (tgen/return :exact)))
+
+
+(defn gen-selection-land-type-target
+  []
+  (tgen/hash-map :selection/mechanism (tgen/return :pick-mode)
+                 :selection/domain (tgen/return :land-type-target)
+                 :selection/lifecycle gen-lifecycle
+                 :selection/player-id gen-player-id
+                 :selection/selected (tgen/return nil)
+                 :selection/select-count (tgen/return 1)
+                 :selection/validation (tgen/return :exact)))
+
+
+;; --- Group 7: :binary-choice ---
+
+(defn gen-selection-unless-pay
+  []
+  (tgen/hash-map :selection/mechanism (tgen/return :binary-choice)
+                 :selection/domain (tgen/return :unless-pay)
                  :selection/player-id gen-player-id
                  :selection/selected (tgen/return #{})
-                 :selection/select-count (tgen/choose 1 5)
-                 :selection/validation gen-validation-kw
-                 :selection/auto-confirm? (tgen/return false)
-                 :selection/candidates gen-candidates-set
-                 :selection/candidate-ids gen-candidates-set))
+                 :selection/select-count (tgen/return 1)
+                 :selection/valid-targets (tgen/return [:pay :decline])
+                 :selection/validation (tgen/return :exact)
+                 :selection/auto-confirm? (tgen/return true)))
 
 
 ;; Register generator on ::selection multi-spec
 (s/def :fizzle.events.selection.spec/selection
   (s/with-gen
-    (s/multi-spec sel-spec/selection-type-spec :selection/type)
+    (s/multi-spec sel-spec/selection-type-spec :selection/mechanism)
     #(tgen/one-of [(gen-selection-discard)
                    (gen-selection-graveyard-return)
                    (gen-selection-hand-reveal-discard)

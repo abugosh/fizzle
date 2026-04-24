@@ -327,7 +327,6 @@
                    player-id)))))))
 
 
-
 (defmethod selection-core/apply-domain-policy :ability-targeting
   [game-db selection]
   (let [remaining-reqs (:selection/remaining-target-reqs selection)]

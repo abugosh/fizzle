@@ -212,7 +212,6 @@
            game-db)}))
 
 
-
 (defmethod sel-core/apply-continuation :cast-after-spell-mode
   [continuation app-db]
   (let [object-id (:continuation/object-id continuation)

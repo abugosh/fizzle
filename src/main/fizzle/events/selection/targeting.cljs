@@ -229,5 +229,3 @@
         target-id (:target/id target-req)]
     (when-let [sel (sel-costs/build-mana-allocation-selection db player-id object-id mode cost)]
       (assoc sel :selection/pending-targets {target-id selected-target}))))
-
-

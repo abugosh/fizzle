@@ -44,7 +44,6 @@
   {:db game-db})
 
 
-
 ;; =====================================================
 ;; Chain Builder: :land-type-source → :land-type-target selection
 ;; =====================================================
@@ -115,5 +114,3 @@
                          game-db
                          matching-lands)]
     {:db db-with-grants}))
-
-
