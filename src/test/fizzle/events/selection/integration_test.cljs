@@ -258,7 +258,6 @@
           ;; Scry 2: show top-id and mid-id, player puts both on top
           library-cards [top-id mid-id]
           pending-sel {:selection/type :scry
-                       :selection/pattern :reorder
                        :selection/lifecycle :finalized
                        :selection/player-id :player-1
                        :selection/cards library-cards

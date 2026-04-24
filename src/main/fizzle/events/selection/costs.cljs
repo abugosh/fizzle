@@ -308,7 +308,6 @@
         max-x total-remaining]
     {:selection/zone :mana-pool
      :selection/type :x-mana-cost
-     :selection/pattern :accumulator
      :selection/lifecycle :chaining
      :selection/player-id player-id
      :selection/spell-id object-id
@@ -334,7 +333,6 @@
                    remaining-pool (merge-with - pool' colored-cost)]
                {:selection/zone :mana-pool
                 :selection/type :mana-allocation
-                :selection/pattern :accumulator
                 :selection/lifecycle :finalized
                 :selection/clear-selected-card? true
                 :selection/player-id sel-player
@@ -368,7 +366,6 @@
         max-x (max 0 current-life)]
     {:selection/zone :life
      :selection/type :pay-x-life
-     :selection/pattern :accumulator
      :selection/lifecycle :finalized
      :selection/clear-selected-card? true
      :selection/player-id player-id
@@ -400,7 +397,6 @@
             remaining-pool (merge-with - pool colored-cost)]
         {:selection/zone :mana-pool
          :selection/type :mana-allocation
-         :selection/pattern :accumulator
          :selection/lifecycle :finalized
          :selection/clear-selected-card? true
          :selection/player-id player-id

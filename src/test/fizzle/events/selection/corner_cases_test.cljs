@@ -190,7 +190,8 @@
           ;; Build scry selection: scry 3 — put top-id and mid-id on top,
           ;; bot-id on bottom
           selection {:selection/type :scry
-                     :selection/pattern :reorder
+                     :selection/mechanism :reorder
+                     :selection/domain :scry
                      :selection/lifecycle :finalized
                      :selection/player-id :player-1
                      :selection/cards [top-id mid-id bot-id]
@@ -225,7 +226,8 @@
           [db spell-id] (th/add-card-to-zone db :opt :stack :player-1)
           ;; Put all cards on bottom — player scryed 3, chose to put all on bottom
           selection {:selection/type :scry
-                     :selection/pattern :reorder
+                     :selection/mechanism :reorder
+                     :selection/domain :scry
                      :selection/lifecycle :finalized
                      :selection/player-id :player-1
                      :selection/cards [a-id b-id c-id]

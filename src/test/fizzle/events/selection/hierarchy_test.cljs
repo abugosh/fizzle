@@ -39,8 +39,6 @@
           sel (core/build-selection-for-effect db :player-1 :spell-123 effect [])]
       (is (= :discard (:selection/type sel))
           "selection/type should be the original effect type, NOT :zone-pick")
-      (is (= :zone-pick (:selection/pattern sel))
-          "selection/pattern should be :zone-pick for future view dispatch")
       (is (= 2 (:selection/select-count sel))
           "select-count should match :effect/count")
       (is (= :hand (:selection/zone sel))
@@ -116,8 +114,8 @@
     (let [db (th/create-test-db)
           effect {:effect/type :discard :effect/count 1 :effect/selection :player}
           sel (core/build-selection-for-effect db :player-1 :spell-1 effect [])]
-      (is (= :zone-pick (:selection/pattern sel))
-          ":discard should route to zone-pick builder and get :zone-pick pattern"))))
+      (is (= :discard (:selection/type sel))
+          ":discard should route to zone-pick builder and produce :discard type sel"))))
 
 
 (deftest test-custom-builders-unaffected-by-hierarchy
@@ -128,9 +126,7 @@
                   :chain/target-id :some-target}
           sel (core/build-selection-for-effect db :player-1 :spell-1 effect [])]
       (is (= :chain-bounce (:selection/type sel))
-          ":chain-bounce should still use its custom builder")
-      (is (nil? (:selection/pattern sel))
-          "Custom builder should not set :selection/pattern"))))
+          ":chain-bounce should still use its custom builder"))))
 
 
 (deftest test-discard-executor-takes-precedence-over-zone-pick
@@ -192,8 +188,6 @@
       ;; Selection should have correct shape from generic builder
       (is (= :discard (:selection/type selection))
           "Selection type preserved as :discard")
-      (is (= :zone-pick (:selection/pattern selection))
-          "Selection pattern should be :zone-pick from generic builder")
       (is (= 2 (:selection/select-count selection))
           "Should require discarding 2 cards")
       ;; Select and confirm discard
@@ -221,8 +215,6 @@
           sel (core/build-selection-for-effect db :player-1 :spell-1 effect [:remaining])]
       (is (= :graveyard-return (:selection/type sel))
           "selection/type should be :graveyard-return (mapped from :return-from-graveyard effect)")
-      (is (= :zone-pick (:selection/pattern sel))
-          "selection/pattern should be :zone-pick")
       (is (= :graveyard (:selection/zone sel))
           "zone should be :graveyard (not default :hand)")
       (is (= :hand (:selection/target-zone sel))
@@ -337,8 +329,8 @@
                   :effect/count 1
                   :effect/selection :player}
           sel (core/build-selection-for-effect db :player-1 :spell-1 effect [])]
-      (is (= :zone-pick (:selection/pattern sel))
-          ":graveyard-return should route to zone-pick builder"))))
+      (is (= :graveyard-return (:selection/type sel))
+          ":graveyard-return should route to zone-pick builder and produce :graveyard-return type"))))
 
 
 ;; =====================================================
@@ -359,8 +351,6 @@
       ;; Should have graveyard-return selection from generic builder
       (is (= :graveyard-return (:selection/type sel))
           "Selection type should be :graveyard-return")
-      (is (= :zone-pick (:selection/pattern sel))
-          "Selection pattern should be :zone-pick from generic builder")
       (is (= 3 (:selection/select-count sel))
           "Max selection count should be 3")
       (is (= 0 (:selection/min-count sel))
@@ -410,8 +400,8 @@
         ":mana-allocation should not derive from :zone-pick")))
 
 
-(deftest test-storm-split-builder-sets-accumulator-pattern
-  (testing "build-storm-split-selection sets :selection/pattern :accumulator"
+(deftest test-storm-split-builder-has-accumulate-mechanism
+  (testing "build-storm-split-selection produces :accumulate mechanism (ADR-030)"
     (let [db (-> (th/create-test-db) (th/add-opponent))
           [db source-id] (th/add-card-to-zone db :brain-freeze :stack :player-1)
           db-with-storm (stack/create-stack-item db
@@ -423,24 +413,24 @@
           storm-si (first (filter #(= :storm (:stack-item/type %))
                                   (q/get-all-stack-items db-with-storm)))
           selection (storm/build-storm-split-selection db-with-storm :player-1 storm-si)]
-      (is (= :accumulator (:selection/pattern selection))
-          "Storm split builder should set pattern to :accumulator"))))
+      (is (= :storm-split (:selection/type selection))
+          "Storm split builder should produce :storm-split type"))))
 
 
-(deftest test-x-mana-builder-sets-accumulator-pattern
-  (testing "build-x-mana-selection sets :selection/pattern :accumulator"
+(deftest test-x-mana-builder-has-accumulate-mechanism
+  (testing "build-x-mana-selection produces :x-mana-cost type (ADR-030 :accumulate mechanism)"
     (let [db (-> (th/create-test-db)
                  (mana/add-mana :player-1 {:colorless 5}))
           [db spell-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           mode {:mode/id :primary
                 :mode/mana-cost {:colorless 1 :x true}}
           selection (sel-costs/build-x-mana-selection db :player-1 spell-id mode)]
-      (is (= :accumulator (:selection/pattern selection))
-          "X mana builder should set pattern to :accumulator"))))
+      (is (= :x-mana-cost (:selection/type selection))
+          "X mana builder should produce :x-mana-cost type"))))
 
 
-(deftest test-mana-allocation-builder-sets-accumulator-pattern
-  (testing "build-mana-allocation-selection sets :selection/pattern :accumulator"
+(deftest test-mana-allocation-builder-has-allocate-resource-mechanism
+  (testing "build-mana-allocation-selection produces :mana-allocation type (ADR-030 :allocate-resource mechanism)"
     (let [db (-> (th/create-test-db)
                  (mana/add-mana :player-1 {:black 3 :blue 2}))
           [db spell-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
@@ -448,8 +438,8 @@
                 :mode/mana-cost {:colorless 2}}
           resolved-cost {:colorless 2}
           selection (sel-costs/build-mana-allocation-selection db :player-1 spell-id mode resolved-cost)]
-      (is (= :accumulator (:selection/pattern selection))
-          "Mana allocation builder should set pattern to :accumulator"))))
+      (is (= :mana-allocation (:selection/type selection))
+          "Mana allocation builder should produce :mana-allocation type"))))
 
 
 (deftest test-accumulator-custom-executors-take-precedence
@@ -512,24 +502,24 @@
           (str rtype " should not derive from :accumulator")))))
 
 
-(deftest test-scry-builder-sets-reorder-pattern
-  (testing "build-scry-selection sets :selection/pattern :reorder"
+(deftest test-scry-builder-produces-scry-type
+  (testing "build-scry-selection produces :scry type (ADR-030 :reorder mechanism)"
     (let [db (th/create-test-db)
           [db _lib-ids] (th/add-cards-to-library db [:dark-ritual :cabal-ritual] :player-1)
           effect {:effect/type :scry :effect/amount 2}
           sel (core/build-selection-for-effect db :player-1 :spell-1 effect [])]
-      (is (= :reorder (:selection/pattern sel))
-          "Scry builder should set pattern to :reorder"))))
+      (is (= :scry (:selection/type sel))
+          "Scry builder should produce :scry type"))))
 
 
-(deftest test-peek-and-reorder-builder-sets-reorder-pattern
-  (testing "build-peek-and-reorder-selection sets :selection/pattern :reorder"
+(deftest test-peek-and-reorder-builder-produces-reorder-type
+  (testing "build-peek-and-reorder-selection produces :peek-and-reorder type (ADR-030 :reorder mechanism)"
     (let [db (th/create-test-db)
           [db _lib-ids] (th/add-cards-to-library db [:dark-ritual :cabal-ritual :brain-freeze] :player-1)
           effect {:effect/type :peek-and-reorder :effect/count 3}
           sel (core/build-selection-for-effect db :player-1 :spell-1 effect [])]
-      (is (= :reorder (:selection/pattern sel))
-          "Peek-and-reorder builder should set pattern to :reorder"))))
+      (is (= :peek-and-reorder (:selection/type sel))
+          "Peek-and-reorder builder should produce :peek-and-reorder type"))))
 
 
 ;; =====================================================

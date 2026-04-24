@@ -143,7 +143,6 @@
       (let [library-cards (queries/get-top-n-library game-db player-id amount)]
         (when (seq library-cards)
           {:selection/type :scry
-           :selection/pattern :reorder
            :selection/lifecycle :finalized
            :selection/player-id player-id
            :selection/cards (vec library-cards)
@@ -246,7 +245,6 @@
   ([remainder-ids player-id spell-id remaining-effects]
    {:selection/type :order-bottom
     :selection/lifecycle :finalized
-    :selection/pattern :reorder
     :selection/candidates (set remainder-ids)
     :selection/ordered []
     :selection/player-id player-id
@@ -271,7 +269,6 @@
   ([remainder-ids player-id spell-id remaining-effects]
    {:selection/type :order-top
     :selection/lifecycle :finalized
-    :selection/pattern :reorder
     :selection/candidates (set remainder-ids)
     :selection/ordered []
     :selection/player-id player-id
@@ -339,7 +336,6 @@
         (when (seq library-cards)
           (cond->
             {:selection/type :peek-and-reorder
-             :selection/pattern :reorder
              :selection/lifecycle :finalized
              :selection/candidates (set library-cards)
              :selection/ordered []

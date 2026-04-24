@@ -52,7 +52,6 @@
             remaining-pool (merge-with - pool colored-cost)]
         {:selection/zone :mana-pool
          :selection/type :mana-allocation
-         :selection/pattern :accumulator
          :selection/lifecycle :finalized
          :selection/clear-selected-card? true
          :selection/player-id player-id

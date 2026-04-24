@@ -99,7 +99,6 @@
                 :selection/select-count
                 :selection/spell-id
                 :selection/remaining-effects
-                :selection/pattern
                 :selection/cleanup?]))
 
 
@@ -119,7 +118,6 @@
                 :selection/select-count
                 :selection/spell-id
                 :selection/remaining-effects
-                :selection/pattern
                 :selection/min-count]))
 
 
@@ -140,7 +138,6 @@
                 :selection/select-count
                 :selection/spell-id
                 :selection/remaining-effects
-                :selection/pattern
                 :selection/min-count
                 :selection/caster-id]))
 
@@ -236,8 +233,7 @@
                 :selection/copy-count
                 :selection/valid-targets
                 :selection/allocation]
-          :opt [:selection/pattern
-                :selection/source-object-id
+          :opt [:selection/source-object-id
                 :selection/stack-item-eid]))
 
 
@@ -254,7 +250,6 @@
           :opt [:selection/zone
                 :selection/spell-id
                 :selection/mode
-                :selection/pattern
                 :selection/chain-builder
                 :selection/selected]))
 
@@ -273,7 +268,6 @@
           :opt [:selection/zone
                 :selection/spell-id
                 :selection/mode
-                :selection/pattern
                 :selection/remaining-pool
                 :selection/original-remaining-pool
                 :selection/colored-cost
@@ -316,8 +310,7 @@
                 :selection/validation
                 :selection/auto-confirm?
                 :selection/cards]
-          :opt [:selection/pattern
-                :selection/top-pile
+          :opt [:selection/top-pile
                 :selection/bottom-pile
                 :selection/spell-id
                 :selection/remaining-effects
@@ -334,8 +327,7 @@
                 :selection/auto-confirm?
                 :selection/candidates
                 :selection/ordered]
-          :opt [:selection/pattern
-                :selection/target-player
+          :opt [:selection/target-player
                 :selection/spell-id
                 :selection/remaining-effects
                 :selection/may-shuffle?
@@ -366,8 +358,7 @@
                 :selection/auto-confirm?
                 :selection/candidates
                 :selection/ordered]
-          :opt [:selection/pattern
-                :selection/spell-id
+          :opt [:selection/spell-id
                 :selection/remaining-effects
                 :selection/lifecycle
                 :selection/selected]))

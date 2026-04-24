@@ -21,9 +21,8 @@
                         the candidates are action keywords, not card/object identifiers.
 
    :zone-pick resolution: :zone-pick was the hierarchy parent keyword and the value
-   of :selection/pattern on zone-pick selections. It is NOT a mechanism in the new
-   system — the mechanism is :pick-from-zone. :zone-pick was a view-side hint that
-   will be retired when :selection/pattern is retired (task 5, fizzle-nayb).")
+   of :selection/pattern on zone-pick selections (retired in task 5, fizzle-nayb).
+   It is NOT a mechanism in the new system — the mechanism is :pick-from-zone.")
 
 
 (def type->mechanism-domain
@@ -36,7 +35,7 @@
 
   {;; ======================================================
    ;; :pick-from-zone — select N cards from a zone and act on them
-   ;; Replaces the :zone-pick hierarchy parent (view-side :selection/pattern :zone-pick).
+   ;; Replaces the :zone-pick hierarchy parent (retired :selection/pattern in fizzle-nayb).
    ;; ======================================================
 
    :discard

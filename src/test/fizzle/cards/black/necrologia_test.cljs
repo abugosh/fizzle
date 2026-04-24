@@ -84,7 +84,6 @@
         ;; Build selection
         (let [sel (sel-costs/build-pay-x-life-selection db :player-1 obj-id mode)]
           (is (= :pay-x-life (:selection/type sel)))
-          (is (= :accumulator (:selection/pattern sel)))
           (is (= 20 (:selection/max-x sel)))
           (is (= 0 (:selection/selected-x sel)))
           ;; Confirm with X=3
@@ -165,7 +164,6 @@
           mode (first (rules/get-casting-modes db :player-1 obj-id))
           sel (sel-costs/build-pay-x-life-selection db :player-1 obj-id mode)]
       (is (= :pay-x-life (:selection/type sel)))
-      (is (= :accumulator (:selection/pattern sel)))
       (is (= :finalized (:selection/lifecycle sel)))
       (is (= 15 (:selection/max-x sel))
           "Max X should equal current life")
