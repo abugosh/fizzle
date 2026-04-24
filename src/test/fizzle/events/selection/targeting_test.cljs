@@ -41,7 +41,7 @@
     [fizzle.events.selection.core :as sel-core]
     ;; Load targeting defmethods so they register on the multimethods (side-effect require)
     [fizzle.events.selection.spec :as sel-spec]
-    [fizzle.events.selection.targeting]
+    [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.test-helpers :as th]))
 
 
@@ -384,3 +384,188 @@
               "Stack item should have :stack-item/targets set after targeting")
           (is (= ability-eid (:ability (:stack-item/targets stack-item)))
               ":ability key in targets should be the ability stack-item EID"))))))
+
+
+;; =====================================================
+;; Multi-slot cast-time targeting (fizzle-4xcm.4)
+;; Tests for N-slot builder, distinctness, targets-map storage,
+;; and effect target resolution via :target/id keywords.
+;; =====================================================
+
+(deftest build-cast-time-target-selection-handles-multi-slot
+  (testing "builder accepts vector of N target-reqs and produces N-slot selection"
+    (let [db (setup-db {:add-opponent? true})
+          [db1 a] (th/add-test-creature db :player-1 2 2)
+          [db2 b] (th/add-test-creature db1 :player-2 2 2)
+          [db3 rr-id] (th/add-card-to-zone db2 :lightning-bolt :hand :player-1)
+          ;; Two identical nonland-permanent targeting requirements (Rushing River kicked mode shape)
+          ;; :target/zone :battlefield + :target/controller :any to include both players' permanents
+          ;; :match/not-types #{:land} to exclude lands
+          req-a {:target/id :slot-a :target/type :object
+                 :target/zone :battlefield :target/controller :any
+                 :target/criteria {:match/not-types #{:land}}
+                 :target/required true}
+          req-b {:target/id :slot-b :target/type :object
+                 :target/zone :battlefield :target/controller :any
+                 :target/criteria {:match/not-types #{:land}}
+                 :target/required true}
+          target-reqs [req-a req-b]
+          mode {:mode/id :kicked :mode/mana-cost {:colorless 2 :blue 1}}
+          sel (sel-targeting/build-cast-time-target-selection db3 :player-1 rr-id mode target-reqs)]
+      (is (= 2 (:selection/select-count sel))
+          "select-count should equal number of target-reqs")
+      (is (= :n-slot-targeting (:selection/mechanism sel))
+          "mechanism should be :n-slot-targeting")
+      (is (= :cast-time-targeting (:selection/domain sel))
+          "domain should be :cast-time-targeting")
+      (is (= [] (:selection/selected sel))
+          "selected should start as empty vector")
+      (is (true? (:selection/enforce-distinctness sel))
+          "enforce-distinctness should be true when reqs share criteria")
+      (is (= target-reqs (:selection/target-requirements sel))
+          "target-requirements should be the full vector of reqs")
+      (is (contains? (set (:selection/valid-targets sel)) a)
+          "creature A should be in valid-targets")
+      (is (contains? (set (:selection/valid-targets sel)) b)
+          "creature B should be in valid-targets"))))
+
+
+;; =====================================================
+;; Distinctness enforcement (Step 5-6)
+;; =====================================================
+
+(deftest multi-slot-distinctness-allows-same-target-when-disabled
+  (testing "no distinctness enforcement when reqs have :target/allow-duplicate true"
+    (let [db (setup-db {:add-opponent? true})
+          [db1 _] (th/add-test-creature db :player-1 2 2)
+          [db2 rr-id] (th/add-card-to-zone db1 :lightning-bolt :hand :player-1)
+          req-a {:target/id :slot-a :target/type :object
+                 :target/zone :battlefield :target/controller :any
+                 :target/criteria {:match/not-types #{:land}}
+                 :target/required true
+                 :target/allow-duplicate true}
+          req-b {:target/id :slot-b :target/type :object
+                 :target/zone :battlefield :target/controller :any
+                 :target/criteria {:match/not-types #{:land}}
+                 :target/required true
+                 :target/allow-duplicate true}
+          target-reqs [req-a req-b]
+          mode {:mode/id :kicked :mode/mana-cost {:colorless 2 :blue 1}}
+          sel (sel-targeting/build-cast-time-target-selection db2 :player-1 rr-id mode target-reqs)]
+      (is (false? (:selection/enforce-distinctness sel))
+          "enforce-distinctness should be false when :target/allow-duplicate true is set"))))
+
+
+(deftest multi-slot-distinctness-no-enforcement-for-single-req
+  (testing "single-req selections do not set enforce-distinctness (nothing to be distinct from)"
+    (let [db (setup-db {:add-opponent? true})
+          [db1 rr-id] (th/add-card-to-zone db :lightning-bolt :hand :player-1)
+          req {:target/id :target :target/type :player
+               :target/options [:any-player] :target/required true}
+          mode {:mode/id :primary :mode/mana-cost {:red 1}}
+          sel (sel-targeting/build-cast-time-target-selection db1 :player-1 rr-id mode [req])]
+      (is (false? (:selection/enforce-distinctness sel))
+          "enforce-distinctness should be false for a single-req selection"))))
+
+
+;; =====================================================
+;; :stack-item/targets storage (Steps 7-8)
+;; =====================================================
+
+(deftest confirmed-multi-slot-targets-stored-by-target-id
+  (testing "confirmed multi-slot targets stored as {:slot-a A :slot-b B} on stack-item"
+    (let [db (setup-db {:add-opponent? true :mana {:red 1}})
+          [db1 a] (th/add-test-creature db :player-1 2 2)
+          [db2 b] (th/add-test-creature db1 :player-2 2 2)
+          ;; Use lightning-bolt as a proxy spell; we'll inject a synthetic 2-req selection
+          [db3 bolt-id] (th/add-card-to-zone db2 :lightning-bolt :hand :player-1)
+          req-a {:target/id :slot-a :target/type :object
+                 :target/zone :battlefield :target/controller :any
+                 :target/criteria {:match/not-types #{:land}}
+                 :target/required true}
+          req-b {:target/id :slot-b :target/type :object
+                 :target/zone :battlefield :target/controller :any
+                 :target/criteria {:match/not-types #{:land}}
+                 :target/required true}
+          mode {:mode/id :primary :mode/mana-cost {:red 1}}
+          ;; Build the 2-slot selection manually and confirm with [a b]
+          sel {:selection/mechanism :n-slot-targeting
+               :selection/domain :cast-time-targeting
+               :selection/lifecycle :finalized
+               :selection/player-id :player-1
+               :selection/object-id bolt-id
+               :selection/mode mode
+               :selection/target-requirements [req-a req-b]
+               :selection/valid-targets [a b]
+               :selection/selected [a b]
+               :selection/select-count 2
+               :selection/validation :exact
+               :selection/auto-confirm? false
+               :selection/enforce-distinctness true}
+          db-after (sel-targeting/confirm-cast-time-target db3 sel)
+          bolt-eid (q/get-object-eid db-after bolt-id)
+          stack-item (when bolt-eid
+                       (d/q '[:find (pull ?si [:stack-item/targets]) .
+                              :in $ ?obj-eid
+                              :where [?si :stack-item/object-ref ?obj-eid]]
+                            db-after bolt-eid))]
+      (is (= :stack (:object/zone (q/get-object db-after bolt-id)))
+          "Spell should be on stack after multi-slot confirm")
+      (is (= {:slot-a a :slot-b b} (:stack-item/targets stack-item))
+          ":stack-item/targets should be keyed by :target/id"))))
+
+
+(deftest distinctness-violation-prevents-confirm
+  (testing "confirming duplicate targets returns db unchanged when enforce-distinctness is true"
+    (let [db (setup-db {:add-opponent? true :mana {:red 1}})
+          [db1 a] (th/add-test-creature db :player-1 2 2)
+          [db2 bolt-id] (th/add-card-to-zone db1 :lightning-bolt :hand :player-1)
+          req-a {:target/id :slot-a :target/type :object
+                 :target/zone :battlefield :target/controller :any
+                 :target/criteria {:match/not-types #{:land}}
+                 :target/required true}
+          req-b {:target/id :slot-b :target/type :object
+                 :target/zone :battlefield :target/controller :any
+                 :target/criteria {:match/not-types #{:land}}
+                 :target/required true}
+          mode {:mode/id :primary :mode/mana-cost {:red 1}}
+          sel {:selection/mechanism :n-slot-targeting
+               :selection/domain :cast-time-targeting
+               :selection/lifecycle :finalized
+               :selection/player-id :player-1
+               :selection/object-id bolt-id
+               :selection/mode mode
+               :selection/target-requirements [req-a req-b]
+               :selection/valid-targets [a]
+               :selection/selected [a a]  ; duplicate!
+               :selection/select-count 2
+               :selection/validation :exact
+               :selection/auto-confirm? false
+               :selection/enforce-distinctness true}
+          db-after (sel-targeting/confirm-cast-time-target db2 sel)]
+      ;; Spell should NOT be on stack — confirm was a no-op
+      (is (= :hand (:object/zone (q/get-object db-after bolt-id)))
+          "Spell should stay in hand when duplicate targets are rejected"))))
+
+
+;; =====================================================
+;; Effect target resolution via :effect/target :slot-a (Steps 9-10)
+;; =====================================================
+
+(deftest resolve-effect-target-resolves-slot-keyword-via-target-ref
+  (testing ":effect/target-ref :slot-a resolves to object A from stored-targets map"
+    (let [stored-targets {:slot-a :obj-a :slot-b :obj-b}
+          ;; Effects use :effect/target-ref to look up stored targets
+          effect {:effect/type :bounce :effect/target-ref :slot-a}
+          resolved (stack/resolve-effect-target effect :source-id :player-1 stored-targets)]
+      (is (= :obj-a (:effect/target resolved))
+          ":effect/target should be resolved from stored-targets[:slot-a] via :effect/target-ref"))))
+
+
+(deftest resolve-effect-target-resolves-second-slot
+  (testing ":effect/target-ref :slot-b resolves to object B from stored-targets map"
+    (let [stored-targets {:slot-a :obj-a :slot-b :obj-b}
+          effect {:effect/type :bounce :effect/target-ref :slot-b}
+          resolved (stack/resolve-effect-target effect :source-id :player-1 stored-targets)]
+      (is (= :obj-b (:effect/target resolved))
+          ":effect/target should be resolved from stored-targets[:slot-b] via :effect/target-ref"))))

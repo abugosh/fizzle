@@ -102,29 +102,33 @@
                          (targeting/get-targeting-requirements card))]
     (when (seq targeting-reqs)
       (let [first-req (first targeting-reqs)]
-        (if target
-          ;; Pre-determined target: cast directly
+        (cond
+          ;; Pre-determined single target (backward-compat shortcut): cast directly.
+          ;; Only applies when a target is explicitly passed AND there is exactly 1 req.
+          (and target (= 1 (count targeting-reqs)))
           (let [sel {:selection/player-id player-id
                      :selection/object-id object-id
                      :selection/mode mode
-                     :selection/target-requirement first-req
-                     :selection/selected #{target}}]
+                     :selection/target-requirements targeting-reqs
+                     :selection/selected [target]}]
             {:db (sel-targeting/confirm-cast-time-target game-db sel)})
-          ;; Interactive targeting
-          (let [valid-targets (targeting/find-valid-targets game-db player-id first-req)]
-            (if (and (= :player (:target/type first-req))
-                     (= 1 (count valid-targets)))
-              ;; Single player target — auto-cast without dialog
-              (let [auto-target (first valid-targets)
-                    sel {:selection/player-id player-id
-                         :selection/object-id object-id
-                         :selection/mode mode
-                         :selection/target-requirement first-req
-                         :selection/selected #{auto-target}}]
-                {:db (sel-targeting/confirm-cast-time-target game-db sel)})
-              ;; Multiple targets or object targeting — show selection
-              {:selection (sel-targeting/build-cast-time-target-selection
-                            game-db player-id object-id mode first-req)})))))))
+
+          ;; Single player req with only one valid player target — auto-cast without dialog.
+          (and (= 1 (count targeting-reqs))
+               (= :player (:target/type first-req))
+               (= 1 (count (targeting/find-valid-targets game-db player-id first-req))))
+          (let [auto-target (first (targeting/find-valid-targets game-db player-id first-req))
+                sel {:selection/player-id player-id
+                     :selection/object-id object-id
+                     :selection/mode mode
+                     :selection/target-requirements targeting-reqs
+                     :selection/selected [auto-target]}]
+            {:db (sel-targeting/confirm-cast-time-target game-db sel)})
+
+          ;; Interactive (multi-req OR multiple valid targets OR object targeting) — show selection.
+          :else
+          {:selection (sel-targeting/build-cast-time-target-selection
+                        game-db player-id object-id mode targeting-reqs)})))))
 
 
 (defmethod evaluate-pre-cast-step :mana-allocation

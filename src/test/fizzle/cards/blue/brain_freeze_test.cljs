@@ -90,7 +90,7 @@
             "Selection type should be :cast-time-targeting")
         (is (= :player-1 (:selection/player-id sel)))
         (is (= obj-id (:selection/object-id sel)))
-        (is (= #{} (:selection/selected sel))
+        (is (empty? (:selection/selected sel))
             "No target selected yet")))))
 
 

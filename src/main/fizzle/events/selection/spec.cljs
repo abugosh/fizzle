@@ -78,6 +78,11 @@
 (s/def :selection/replacement-entity-id int?)
 
 
+;; Multi-slot cast-time targeting (fizzle-4xcm.4)
+(s/def :selection/target-requirements (s/coll-of map? :kind vector?))
+(s/def :selection/enforce-distinctness boolean?)
+
+
 ;; =====================================================
 ;; Selection Multi-Spec — mechanism-keyed (ADR-030, fizzle-8650 phase 4)
 ;;
@@ -239,6 +244,8 @@
           :opt [:selection/object-id
                 :selection/mode
                 :selection/target-requirement
+                :selection/target-requirements
+                :selection/enforce-distinctness
                 :selection/ability-index
                 :selection/chosen-targets
                 :selection/remaining-target-reqs

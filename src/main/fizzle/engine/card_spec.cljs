@@ -434,11 +434,18 @@
 (s/def :target/same-controller-as keyword?)
 
 
+;; Opt-out of default distinctness enforcement for multi-target selections
+;; (fizzle-4xcm.4). When true on any req sharing criteria with another,
+;; enforce-distinctness is disabled for the pair.
+(s/def :target/allow-duplicate boolean?)
+
+
 (s/def ::targeting
   (s/keys :req [:target/id :target/type]
           :opt [:target/zone :target/controller
                 :target/criteria :target/options
-                :target/required :target/same-controller-as]))
+                :target/required :target/same-controller-as
+                :target/allow-duplicate]))
 
 
 (s/def ::targeting-vec (s/coll-of ::targeting :kind vector?))
