@@ -13,7 +13,8 @@
   (:require
     [cljs.spec.alpha :as s]
     [fizzle.engine.spec-common]
-    [fizzle.engine.spec-util :as spec-util]))
+    [fizzle.engine.spec-util :as spec-util]
+    [fizzle.events.selection.mechanism-domain :as mechanism-domain]))
 
 
 ;; =====================================================
@@ -22,6 +23,18 @@
 
 (s/def :selection/type keyword?)
 (s/def :selection/lifecycle #{:standard :finalized :chaining})
+
+
+;; ADR-030 mechanism/domain split. Injected by inject-mechanism-domain at set-pending-selection.
+;; :selection/mechanism is a bounded alphabet identifying the UI/interaction pattern.
+;; :selection/domain is a free-form keyword tag identifying post-confirm policy.
+;; These are :opt on all existing defmethods until task 7 (fizzle-8650) migrates builders.
+(s/def :selection/mechanism
+  #{:pick-from-zone :reorder :accumulate :allocate-resource
+    :n-slot-targeting :pick-mode :binary-choice})
+
+
+(s/def :selection/domain keyword?)
 (s/def :selection/validation #{:exact :at-most :at-least-one :exact-or-zero :always})
 (s/def :selection/player-id :game/player-id)
 
@@ -1094,17 +1107,48 @@
 
 
 ;; =====================================================
+;; Mechanism/Domain Compat Adapter (ADR-030, task fizzle-6y8i)
+;; =====================================================
+
+(defn inject-mechanism-domain
+  "Compat adapter: enriches a selection map with :selection/mechanism and
+   :selection/domain by looking up :selection/type in the canonical mapping.
+
+   Called at the top of set-pending-selection (BEFORE validate-at-chokepoint!)
+   so the validator sees the enriched map.
+
+   Nil-safety: if :selection/type is absent or unmapped, returns the selection
+   unchanged. Never assocs nil under either field — absent is strictly better
+   than nil (nil would pollute the spec and mislead downstream readers).
+
+   Idempotency: if fields are already present, assoc overwrites with the same
+   values (harmless lookup cost)."
+  [selection]
+  (let [sel-type (:selection/type selection)
+        entry    (when sel-type
+                   (get mechanism-domain/type->mechanism-domain sel-type))]
+    (if entry
+      (assoc selection
+             :selection/mechanism (:mechanism entry)
+             :selection/domain    (:domain entry))
+      selection)))
+
+
+;; =====================================================
 ;; set-pending-selection Helper
 ;; =====================================================
 
 (defn set-pending-selection
   "Validated setter for :game/pending-selection.
+   Enriches selection with :selection/mechanism + :selection/domain (ADR-030 compat
+   adapter) BEFORE validation so the validator sees the enriched shape.
    In dev (goog.DEBUG): validates selection via validate-at-chokepoint!.
    Throws when *throw-on-spec-failure* is true (tests), console.error otherwise.
    In prod: no validation (dead-code eliminated by Closure compiler).
 
    Pure function: (app-db, selection) -> app-db."
   [app-db selection]
-  (spec-util/validate-at-chokepoint!
-    ::selection selection "set-pending-selection")
-  (assoc app-db :game/pending-selection selection))
+  (let [enriched (inject-mechanism-domain selection)]
+    (spec-util/validate-at-chokepoint!
+      ::selection enriched "set-pending-selection")
+    (assoc app-db :game/pending-selection enriched)))
