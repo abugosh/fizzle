@@ -85,6 +85,25 @@
   :hierarchy #'selection-hierarchy)
 
 
+(defmulti apply-domain-policy
+  "Post-confirm policy dispatch keyed on :selection/domain (ADR-030).
+
+   Called by execute-confirmed-selection mechanism defmethods (task 4,
+   fizzle-xx4u) after the mechanism's shared work completes. Each domain
+   registers its tail policy via (defmethod apply-domain-policy <domain> ...).
+
+   Contract: receives [game-db selection] and returns a tagged map per
+   ADR-020 (typically {:db ...} or {:db ... :selection <next>})."
+  (fn [_game-db selection] (:selection/domain selection)))
+
+
+(defmethod apply-domain-policy :default
+  [_game-db selection]
+  (throw (ex-info "apply-domain-policy has no method for :selection/domain (task 4, ADR-030)"
+                  {:selection/domain (:selection/domain selection)
+                   :selection selection})))
+
+
 (defmulti build-selection-for-effect
   "Build selection state for an effect requiring player interaction.
    Dispatches on effect type or :player-target for :any-player targeting.

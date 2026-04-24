@@ -431,6 +431,41 @@
 
 
 ;; =====================================================
+;; apply-domain-policy multimethod scaffold (fizzle-snnw, ADR-030)
+;; =====================================================
+
+(deftest test-apply-domain-policy-is-a-multimethod
+  (testing "apply-domain-policy is bound as a multimethod (MultiFn)"
+    (is (instance? cljs.core/MultiFn selection-core/apply-domain-policy)
+        "apply-domain-policy must be a defmulti (MultiFn instance)")))
+
+
+(deftest test-apply-domain-policy-unknown-domain-throws-with-ex-info
+  (testing ":default method throws ex-info for unknown :selection/domain"
+    (let [sel {:selection/domain :discard
+               :selection/type :discard
+               :selection/selected #{}}]
+      (is (thrown? js/Error
+            (selection-core/apply-domain-policy nil sel))
+          "apply-domain-policy must throw for unregistered domain")
+      (let [caught (try
+                     (selection-core/apply-domain-policy nil sel)
+                     nil
+                     (catch :default e e))]
+        (is (= :discard (:selection/domain (ex-data caught)))
+            ":selection/domain must be present in ex-data")))))
+
+
+(deftest test-apply-domain-policy-nil-domain-throws-with-ex-info
+  (testing ":default method throws ex-info when :selection/domain is nil"
+    (let [sel {:selection/type :discard
+               :selection/selected #{}}]
+      (is (thrown? js/Error
+            (selection-core/apply-domain-policy nil sel))
+          "apply-domain-policy must throw when :selection/domain is absent"))))
+
+
+;; =====================================================
 ;; chaining-path: nil :selection/source-type propagation guard (fizzle-jaz4)
 ;; =====================================================
 ;; Bug: when the parent selection has no :selection/source-type (e.g.
