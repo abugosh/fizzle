@@ -1,7 +1,6 @@
 (ns fizzle.views.selection.custom
   "Custom modal components for genuinely unique selection types."
   (:require
-    [clojure.string :as str]
     [fizzle.db.game-state :as game-state]
     [fizzle.events.selection :as selection-events]
     [fizzle.subs.game :as subs]
@@ -202,29 +201,6 @@
 (def ^:private dismiss-btn-class
   (str "w-full py-2 px-4 mt-2 border border-border rounded "
        "cursor-pointer bg-surface-dim text-text-label text-[13px]"))
-
-
-(defn- format-mana-cost
-  [mc]
-  (if (or (nil? mc) (empty? mc))
-    "{0}"
-    (apply str (for [[k s] [[:colorless nil] [:white "W"] [:blue "U"] [:black "B"] [:red "R"] [:green "G"]]
-                     :let [n (get mc k 0)]
-                     :when (pos? n)]
-                 (if s (apply str (repeat n (str "{" s "}"))) (str "{" n "}"))))))
-
-
-(defn- format-additional-costs
-  [costs]
-  (when (seq costs)
-    (->> costs
-         (map (fn [c]
-                (case (:cost/type c)
-                  :pay-life (str "Pay " (:cost/amount c) " life")
-                  :return-lands (str "Return " (:cost/count c) " " (name (:cost/subtype c)) "s")
-                  :sacrifice (str "Sacrifice " (:cost/count c) " " (name (:cost/subtype c)))
-                  "Additional cost")))
-         (str/join ", "))))
 
 
 ;; === Land Type Selection ===
