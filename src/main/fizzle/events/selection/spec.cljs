@@ -4,8 +4,9 @@
    Validates selection maps at the :game/pending-selection chokepoint.
    set-pending-selection is the sole writer — all callers use it.
 
-   Multi-spec dispatches on :selection/type. One defmethod per concrete
-   type (no hierarchy reuse — per Phase 1 pattern in engine/card-spec.cljs).
+   Multi-spec dispatches on :selection/mechanism (ADR-030, fizzle-8650 phase 4).
+   7 defmethods — one per mechanism — replace the previous 33 type-keyed defmethods.
+   :selection/type is :opt in all methods; phase 5 removes it from all builders.
 
    Validation is dev-only via goog.DEBUG (dead-code eliminated in release).
    set-pending-selection uses validate-at-chokepoint! — throws when
@@ -29,7 +30,8 @@
 ;; a dead compat adapter — to be deleted in phase 6 of fizzle-8650).
 ;; :selection/mechanism is a bounded alphabet identifying the UI/interaction pattern.
 ;; :selection/domain is a free-form keyword tag identifying post-confirm policy.
-;; These are :opt on all existing defmethods until :selection/type is retired (fizzle-8650 phase 5).
+;; :selection/mechanism is :req in all defmethods (dispatch key for multi-spec).
+;; :selection/type remains :opt until phase 5 retires it from all builders.
 (s/def :selection/mechanism
   #{:pick-from-zone :reorder :accumulate :allocate-resource
     :n-slot-targeting :pick-mode :binary-choice})
@@ -71,194 +73,143 @@
 
 
 ;; =====================================================
-;; Selection Multi-Spec
+;; Replacement-choice spec fields (placed here before multi-spec defmethods
+;; that reference them; previously co-located with :replacement-choice defmethod)
 ;; =====================================================
 
-(defmulti selection-type-spec :selection/type)
+(s/def :selection/choices (s/coll-of map?))
+(s/def :selection/replacement-event map?)
+(s/def :selection/replacement-entity-id int?)
 
 
 ;; =====================================================
-;; Group 1: Zone-Pick Types
-;; Built by generic zone-pick builder in core.cljs via hierarchy,
-;; or by custom builders. Common keys: type, lifecycle, player-id, selected,
-;; validation, auto-confirm?. Zone-pick types with :card-source :zone
-;; always have :selection/candidate-ids.
+;; Selection Multi-Spec — mechanism-keyed (ADR-030, fizzle-8650 phase 4)
+;;
+;; Dispatches on :selection/mechanism (7 mechanisms).
+;; :selection/mechanism is :req in all methods (dispatch key).
+;; :selection/type is :opt in all methods — still present in builders until
+;; phase 5 removes it. After phase 5, :selection/type will be absent.
+;;
+;; Each method validates the minimum fields common to all domains under
+;; that mechanism plus a comprehensive :opt list covering all domain-specific
+;; fields. Domain-specific validation is handled by apply-domain-policy.
 ;; =====================================================
 
-;; :discard — built by generic zone-pick builder (:discard derives :zone-pick)
-;; card-source is :hand (default). No candidate-ids (hand-based, not pre-enumerated).
-(defmethod selection-type-spec :discard [_]
-  (s/keys :req [:selection/type
-                :selection/lifecycle
+(defmulti selection-type-spec :selection/mechanism)
+
+
+;; :pick-from-zone — select N cards/objects from a zone.
+;; Covers: discard, graveyard-return, shuffle-from-graveyard-to-library,
+;;   hand-reveal-discard, chain-bounce, chain-bounce-target, untap-lands,
+;;   discard-specific-cost, return-land-cost, sacrifice-permanent-cost,
+;;   exile-cards-cost, tutor, peek-and-select, pile-choice.
+(defmethod selection-type-spec :pick-from-zone [_]
+  (s/keys :req [:selection/mechanism
+                :selection/domain
                 :selection/player-id
                 :selection/selected
                 :selection/validation
                 :selection/auto-confirm?]
-          :opt [:selection/zone
-                :selection/card-source
-                :selection/target-zone
-                :selection/select-count
-                :selection/spell-id
-                :selection/remaining-effects
-                :selection/cleanup?]))
-
-
-;; :graveyard-return — built by zone-pick builder with :return-from-graveyard config.
-;; card-source :zone → always has :selection/candidate-ids.
-(defmethod selection-type-spec :graveyard-return [_]
-  (s/keys :req [:selection/type
+          :opt [:selection/type
                 :selection/lifecycle
-                :selection/player-id
-                :selection/selected
-                :selection/validation
-                :selection/auto-confirm?
-                :selection/candidate-ids]
-          :opt [:selection/zone
+                :selection/select-count
+                :selection/valid-targets
+                :selection/candidate-ids
+                :selection/candidates
+                :selection/zone
                 :selection/card-source
                 :selection/target-zone
-                :selection/select-count
-                :selection/spell-id
-                :selection/remaining-effects
-                :selection/min-count]))
-
-
-;; :shuffle-from-graveyard-to-library — built by zone-pick builder with graveyard config.
-;; card-source :zone → always has :selection/candidate-ids. Caster-id tracks original caster
-;; for remaining-effects (draw fires for caster, not targeted player).
-(defmethod selection-type-spec :shuffle-from-graveyard-to-library [_]
-  (s/keys :req [:selection/type
-                :selection/lifecycle
-                :selection/player-id
-                :selection/selected
-                :selection/validation
-                :selection/auto-confirm?
-                :selection/candidate-ids]
-          :opt [:selection/zone
-                :selection/card-source
-                :selection/target-zone
-                :selection/select-count
                 :selection/spell-id
                 :selection/remaining-effects
                 :selection/min-count
-                :selection/caster-id]))
-
-
-;; :hand-reveal-discard — built by build-hand-reveal-discard-selection in zone_ops.cljs.
-;; Shows opponent's hand. Always has :selection/valid-targets and :selection/target-player.
-(defmethod selection-type-spec :hand-reveal-discard [_]
-  (s/keys :req [:selection/type
-                :selection/player-id
-                :selection/selected
-                :selection/select-count
-                :selection/validation
-                :selection/auto-confirm?
-                :selection/valid-targets]
-          :opt [:selection/card-source
-                :selection/target-player
-                :selection/spell-id
-                :selection/remaining-effects
-                :selection/lifecycle]))
-
-
-;; :chain-bounce — built by build-chain-bounce-selection in zone_ops.cljs.
-;; Always :chaining lifecycle. Has :selection/chain-controller and :selection/chain-target-id.
-;; :selection/select-count migrated :opt -> :req (fizzle-3hym): builder hardcodes 1.
-(defmethod selection-type-spec :chain-bounce [_]
-  (s/keys :req [:selection/type
-                :selection/lifecycle
-                :selection/player-id
-                :selection/selected
-                :selection/validation
-                :selection/auto-confirm?
-                :selection/valid-targets
-                :selection/select-count]
-          :opt [:selection/zone
-                :selection/card-source
-                :selection/spell-id
-                :selection/remaining-effects
+                :selection/caster-id
                 :selection/chain-controller
-                :selection/chain-target-id]))
-
-
-;; :chain-bounce-target — built by build-chain-bounce-target-selection in zone_ops.cljs.
-;; Has :selection/chain-copy-object-id and :selection/chain-copy-stack-item-eid.
-;; :selection/select-count migrated :opt -> :req (fizzle-3hym): builder hardcodes 1.
-(defmethod selection-type-spec :chain-bounce-target [_]
-  (s/keys :req [:selection/type
-                :selection/player-id
-                :selection/selected
-                :selection/validation
-                :selection/auto-confirm?
-                :selection/valid-targets
-                :selection/select-count]
-          :opt [:selection/zone
-                :selection/card-source
-                :selection/spell-id
+                :selection/chain-target-id
                 :selection/chain-copy-object-id
                 :selection/chain-copy-stack-item-eid
-                :selection/lifecycle]))
-
-
-;; :unless-pay — built by build-unless-pay-selection in zone_ops.cljs.
-;; Used for soft counters (Mana Leak, Daze). Has :selection/counter-target-id
-;; and :selection/unless-pay-cost.
-(defmethod selection-type-spec :unless-pay [_]
-  (s/keys :req [:selection/type
-                :selection/player-id
-                :selection/selected
-                :selection/select-count
-                :selection/valid-targets
-                :selection/validation
-                :selection/auto-confirm?]
-          :opt [:selection/spell-id
-                :selection/remaining-effects
+                :selection/target-player
+                :selection/exact?
+                :selection/allow-fail-to-find?
+                :selection/shuffle?
+                :selection/enters-tapped
+                :selection/pile-choice
+                :selection/chain-builder
+                :selection/selected-zone
+                :selection/remainder-zone
+                :selection/shuffle-remainder?
+                :selection/order-remainder?
+                :selection/hand-count
+                :selection/allow-random
+                :selection/mode
+                :selection/discard-cost
+                :selection/discard-groups
+                :selection/candidate-card-map
+                :selection/return-cost
+                :selection/sac-cost
+                :selection/source-type
+                :selection/ability
+                :selection/ability-index
+                :selection/exile-cost
                 :selection/counter-target-id
                 :selection/unless-pay-cost
-                :selection/lifecycle]))
-
-
-;; =====================================================
-;; Group 2: Accumulator Types
-;; Non-card-picking selections using stepper controls.
-;; =====================================================
-
-;; :storm-split — built by build-storm-split-selection in storm.cljs.
-;; Has :selection/copy-count, :selection/allocation, :selection/source-object-id.
-(defmethod selection-type-spec :storm-split [_]
-  (s/keys :req [:selection/type
-                :selection/lifecycle
-                :selection/player-id
-                :selection/selected
-                :selection/validation
-                :selection/auto-confirm?
-                :selection/copy-count
-                :selection/valid-targets
-                :selection/allocation]
-          :opt [:selection/source-object-id
+                :selection/clear-selected-card?
+                :selection/pending-targets
+                :selection/cleanup?
                 :selection/stack-item-eid]))
 
 
-;; :x-mana-cost — built by build-x-mana-selection in costs.cljs.
-;; Has :selection/max-x, :selection/selected-x, :selection/mode.
-(defmethod selection-type-spec :x-mana-cost [_]
-  (s/keys :req [:selection/type
-                :selection/lifecycle
+;; :reorder — sort/assign cards into ordered positions.
+;; Covers: scry, peek-and-reorder, order-bottom, order-top.
+(defmethod selection-type-spec :reorder [_]
+  (s/keys :req [:selection/mechanism
+                :selection/domain
                 :selection/player-id
                 :selection/validation
-                :selection/auto-confirm?
-                :selection/max-x
-                :selection/selected-x]
-          :opt [:selection/zone
+                :selection/auto-confirm?]
+          :opt [:selection/type
+                :selection/lifecycle
+                :selection/cards
+                :selection/top-pile
+                :selection/bottom-pile
+                :selection/candidates
+                :selection/ordered
+                :selection/target-player
                 :selection/spell-id
-                :selection/mode
-                :selection/chain-builder
+                :selection/remaining-effects
+                :selection/may-shuffle?
                 :selection/selected]))
 
 
-;; :mana-allocation — built by build-mana-allocation-selection in costs.cljs.
-;; Has :selection/generic-remaining, :selection/generic-total, :selection/allocation.
-(defmethod selection-type-spec :mana-allocation [_]
-  (s/keys :req [:selection/type
+;; :accumulate — distribute/increment a numeric value via stepper controls.
+;; Covers: storm-split, x-mana-cost, pay-x-life.
+(defmethod selection-type-spec :accumulate [_]
+  (s/keys :req [:selection/mechanism
+                :selection/domain
+                :selection/lifecycle
+                :selection/player-id
+                :selection/validation
+                :selection/auto-confirm?]
+          :opt [:selection/type
+                :selection/selected
+                :selection/max-x
+                :selection/selected-x
+                :selection/copy-count
+                :selection/valid-targets
+                :selection/allocation
+                :selection/source-object-id
+                :selection/stack-item-eid
+                :selection/zone
+                :selection/spell-id
+                :selection/mode
+                :selection/chain-builder
+                :selection/clear-selected-card?]))
+
+
+;; :allocate-resource — assign mana from pool to typed cost slots.
+;; Covers: mana-allocation.
+(defmethod selection-type-spec :allocate-resource [_]
+  (s/keys :req [:selection/mechanism
+                :selection/domain
                 :selection/lifecycle
                 :selection/player-id
                 :selection/validation
@@ -266,7 +217,8 @@
                 :selection/generic-remaining
                 :selection/generic-total
                 :selection/allocation]
-          :opt [:selection/zone
+          :opt [:selection/type
+                :selection/zone
                 :selection/spell-id
                 :selection/mode
                 :selection/remaining-pool
@@ -280,175 +232,12 @@
                 :selection/selected]))
 
 
-;; :pay-x-life — built by build-pay-x-life-selection in costs.cljs.
-;; Has :selection/max-x, :selection/selected-x.
-(defmethod selection-type-spec :pay-x-life [_]
-  (s/keys :req [:selection/type
-                :selection/lifecycle
-                :selection/player-id
-                :selection/validation
-                :selection/auto-confirm?
-                :selection/max-x
-                :selection/selected-x]
-          :opt [:selection/zone
-                :selection/spell-id
-                :selection/mode
-                :selection/clear-selected-card?
-                :selection/selected]))
-
-
-;; =====================================================
-;; Group 3: Reorder Types
-;; Sorting/assigning cards into piles or ordered lists.
-;; =====================================================
-
-;; :scry — built by build-scry-selection in library.cljs.
-;; Has :selection/cards, :selection/top-pile, :selection/bottom-pile.
-(defmethod selection-type-spec :scry [_]
-  (s/keys :req [:selection/type
-                :selection/lifecycle
-                :selection/player-id
-                :selection/validation
-                :selection/auto-confirm?
-                :selection/cards]
-          :opt [:selection/top-pile
-                :selection/bottom-pile
-                :selection/spell-id
-                :selection/remaining-effects
-                :selection/selected]))
-
-
-;; :peek-and-reorder — built by build-peek-and-reorder-selection in library.cljs.
-;; Has :selection/candidates, :selection/ordered, :selection/target-player.
-(defmethod selection-type-spec :peek-and-reorder [_]
-  (s/keys :req [:selection/type
-                :selection/lifecycle
-                :selection/player-id
-                :selection/validation
-                :selection/auto-confirm?
-                :selection/candidates
-                :selection/ordered]
-          :opt [:selection/target-player
-                :selection/spell-id
-                :selection/remaining-effects
-                :selection/may-shuffle?
-                :selection/selected]))
-
-
-;; :order-bottom — built by build-order-bottom-selection in library.cljs.
-;; Has :selection/candidates, :selection/ordered.
-(defmethod selection-type-spec :order-bottom [_]
-  (s/keys :req [:selection/type
-                :selection/player-id
-                :selection/validation
-                :selection/auto-confirm?
-                :selection/candidates
-                :selection/ordered]
-          :opt [:selection/spell-id
-                :selection/remaining-effects
-                :selection/lifecycle
-                :selection/selected]))
-
-
-;; :order-top — built by build-order-top-selection in library.cljs.
-;; Has :selection/candidates, :selection/ordered.
-(defmethod selection-type-spec :order-top [_]
-  (s/keys :req [:selection/type
-                :selection/player-id
-                :selection/validation
-                :selection/auto-confirm?
-                :selection/candidates
-                :selection/ordered]
-          :opt [:selection/spell-id
-                :selection/remaining-effects
-                :selection/lifecycle
-                :selection/selected]))
-
-
-;; =====================================================
-;; Group 4: Library Operation Types
-;; =====================================================
-
-;; :tutor — built by build-tutor-selection in library.cljs.
-;; Has :selection/target-zone, :selection/candidates (set of candidate-ids).
-;; :selection/select-count migrated :opt -> :req (fizzle-3hym): builder always sets it
-;; via (min effect-select-count (count candidate-ids)) — always an integer.
-(defmethod selection-type-spec :tutor [_]
-  (s/keys :req [:selection/type
-                :selection/lifecycle
-                :selection/player-id
-                :selection/selected
-                :selection/validation
-                :selection/auto-confirm?
-                :selection/target-zone
-                :selection/candidates
-                :selection/select-count]
-          :opt [:selection/zone
-                :selection/card-source
-                :selection/exact?
-                :selection/allow-fail-to-find?
-                :selection/shuffle?
-                :selection/enters-tapped
-                :selection/pile-choice
-                :selection/spell-id
-                :selection/remaining-effects
-                :selection/chain-builder]))
-
-
-;; :peek-and-select — built by build-peek-selection in library.cljs.
-;; Has :selection/candidates (set), :selection/selected-zone, :selection/remainder-zone.
-;; :selection/select-count migrated :opt -> :req (fizzle-3hym): builder always sets it
-;; via (min select-count (count candidate-ids)) — always positive when selection is built.
-(defmethod selection-type-spec :peek-and-select [_]
-  (s/keys :req [:selection/type
-                :selection/lifecycle
-                :selection/player-id
-                :selection/selected
-                :selection/validation
-                :selection/auto-confirm?
-                :selection/candidates
-                :selection/selected-zone
-                :selection/remainder-zone
-                :selection/select-count]
-          :opt [:selection/zone
-                :selection/card-source
-                :selection/exact?
-                :selection/allow-fail-to-find?
-                :selection/spell-id
-                :selection/remaining-effects
-                :selection/shuffle-remainder?
-                :selection/order-remainder?
-                :selection/chain-builder]))
-
-
-;; :pile-choice — built by build-pile-choice-selection in library.cljs.
-;; Has :selection/candidates, :selection/hand-count, :selection/allow-random.
-;; :selection/select-count migrated :opt -> :req (fizzle-3hym): builder always sets it
-;; via hand-count from pile-choice config (always an integer).
-(defmethod selection-type-spec :pile-choice [_]
-  (s/keys :req [:selection/type
-                :selection/lifecycle
-                :selection/player-id
-                :selection/selected
-                :selection/validation
-                :selection/auto-confirm?
-                :selection/candidates
-                :selection/hand-count
-                :selection/select-count]
-          :opt [:selection/card-source
-                :selection/allow-random
-                :selection/spell-id
-                :selection/remaining-effects]))
-
-
-;; =====================================================
-;; Group 5: Targeting Types
-;; =====================================================
-
-;; :player-target — built by build-player-target-selection in targeting.cljs.
-;; Has :selection/valid-targets (set of player-ids), :selection/target-effect.
-(defmethod selection-type-spec :player-target [_]
-  (s/keys :req [:selection/type
+;; :n-slot-targeting — fill N target slots from a valid-targets set.
+;; Covers: player-target, cast-time-targeting, ability-cast-targeting,
+;;   ability-targeting, select-attackers, assign-blockers.
+(defmethod selection-type-spec :n-slot-targeting [_]
+  (s/keys :req [:selection/mechanism
+                :selection/domain
                 :selection/lifecycle
                 :selection/player-id
                 :selection/selected
@@ -456,308 +245,75 @@
                 :selection/valid-targets
                 :selection/validation
                 :selection/auto-confirm?]
-          :opt [:selection/spell-id
-                :selection/target-effect
-                :selection/remaining-effects]))
-
-
-;; :cast-time-targeting — built by build-cast-time-target-selection in targeting.cljs.
-;; Has :selection/object-id, :selection/mode, :selection/target-requirement, :selection/valid-targets.
-(defmethod selection-type-spec :cast-time-targeting [_]
-  (s/keys :req [:selection/type
-                :selection/lifecycle
-                :selection/player-id
-                :selection/selected
-                :selection/select-count
-                :selection/valid-targets
-                :selection/validation
-                :selection/auto-confirm?
+          :opt [:selection/type
                 :selection/object-id
                 :selection/mode
-                :selection/target-requirement]
-          :opt [:selection/card-source
-                :selection/clear-selected-card?
-                :selection/pending-targets]))
-
-
-;; :ability-cast-targeting — same shape as :cast-time-targeting (same builder path).
-(defmethod selection-type-spec :ability-cast-targeting [_]
-  (s/keys :req [:selection/type
-                :selection/lifecycle
-                :selection/player-id
-                :selection/selected
-                :selection/select-count
-                :selection/valid-targets
-                :selection/validation
-                :selection/auto-confirm?
-                :selection/object-id
-                :selection/mode
-                :selection/target-requirement]
-          :opt [:selection/card-source
-                :selection/clear-selected-card?
-                :selection/pending-targets]))
-
-
-;; :ability-targeting — built by build-ability-target-selection in abilities.cljs.
-;; Has :selection/object-id, :selection/ability-index, :selection/target-requirement,
-;; :selection/chosen-targets, :selection/remaining-target-reqs.
-(defmethod selection-type-spec :ability-targeting [_]
-  (s/keys :req [:selection/type
-                :selection/lifecycle
-                :selection/player-id
-                :selection/selected
-                :selection/select-count
-                :selection/valid-targets
-                :selection/validation
-                :selection/auto-confirm?
-                :selection/object-id
-                :selection/ability-index
                 :selection/target-requirement
-                :selection/chosen-targets
-                :selection/remaining-target-reqs]
-          :opt [:selection/card-source]))
-
-
-;; =====================================================
-;; Group 6: Pre-Cast Cost Types
-;; =====================================================
-
-;; :discard-specific-cost — built by build-discard-specific-selection in costs.cljs.
-;; Has :selection/mode, :selection/discard-cost, :selection/discard-groups.
-(defmethod selection-type-spec :discard-specific-cost [_]
-  (s/keys :req [:selection/type
-                :selection/player-id
-                :selection/selected
-                :selection/select-count
-                :selection/validation
-                :selection/auto-confirm?
-                :selection/mode]
-          :opt [:selection/zone
-                :selection/card-source
-                :selection/spell-id
-                :selection/discard-cost
-                :selection/discard-groups
-                :selection/valid-targets
-                :selection/candidate-card-map
-                :selection/lifecycle
-                :selection/clear-selected-card?]))
-
-
-;; :return-land-cost — built by build-return-land-selection in costs.cljs.
-;; Has :selection/mode, :selection/return-cost.
-(defmethod selection-type-spec :return-land-cost [_]
-  (s/keys :req [:selection/type
-                :selection/player-id
-                :selection/selected
-                :selection/select-count
-                :selection/valid-targets
-                :selection/validation
-                :selection/auto-confirm?
-                :selection/mode]
-          :opt [:selection/zone
-                :selection/card-source
-                :selection/spell-id
-                :selection/return-cost
-                :selection/lifecycle
-                :selection/clear-selected-card?]))
-
-
-;; :sacrifice-permanent-cost — built by build-sacrifice-permanent-selection in costs.cljs.
-;; Has :selection/mode (nil for ability path), :selection/sac-cost.
-(defmethod selection-type-spec :sacrifice-permanent-cost [_]
-  (s/keys :req [:selection/type
-                :selection/player-id
-                :selection/selected
-                :selection/select-count
-                :selection/valid-targets
-                :selection/validation
-                :selection/auto-confirm?]
-          :opt [:selection/zone
-                :selection/card-source
-                :selection/spell-id
-                :selection/mode
-                :selection/sac-cost
-                :selection/source-type
-                :selection/ability
                 :selection/ability-index
-                :selection/lifecycle
-                :selection/clear-selected-card?]))
-
-
-;; :exile-cards-cost — built by build-exile-cards-selection in costs.cljs.
-;; Has :selection/candidates, :selection/mode, :selection/exile-cost.
-(defmethod selection-type-spec :exile-cards-cost [_]
-  (s/keys :req [:selection/type
-                :selection/lifecycle
-                :selection/player-id
-                :selection/selected
-                :selection/select-count
-                :selection/validation
-                :selection/auto-confirm?
-                :selection/candidates
-                :selection/mode]
-          :opt [:selection/zone
-                :selection/card-source
-                :selection/spell-id
-                :selection/exact?
-                :selection/allow-fail-to-find?
-                :selection/exile-cost
-                :selection/clear-selected-card?]))
-
-
-;; =====================================================
-;; Group 7: Land Type Types
-;; =====================================================
-
-;; :land-type-source — built by build-selection-for-effect :change-land-types in land_types.cljs.
-;; Has :selection/options (the 5 basic land type keys).
-(defmethod selection-type-spec :land-type-source [_]
-  (s/keys :req [:selection/type
-                :selection/lifecycle
-                :selection/player-id
-                :selection/selected
-                :selection/select-count
-                :selection/validation]
-          :opt [:selection/exact?
-                :selection/options
-                :selection/spell-id
-                :selection/remaining-effects
-                :selection/auto-confirm?]))
-
-
-;; :land-type-target — built by build-chain-selection :land-type-source in land_types.cljs.
-;; Has :selection/options (excluding source type), :selection/source-type.
-(defmethod selection-type-spec :land-type-target [_]
-  (s/keys :req [:selection/type
-                :selection/lifecycle
-                :selection/player-id
-                :selection/selected
-                :selection/select-count
-                :selection/validation]
-          :opt [:selection/exact?
-                :selection/options
-                :selection/source-type
-                :selection/spell-id
-                :selection/remaining-effects
-                :selection/auto-confirm?]))
-
-
-;; =====================================================
-;; Group 8: Combat Types
-;; =====================================================
-
-;; :select-attackers — built by build-attacker-selection in combat.cljs.
-;; Has :selection/stack-item-eid (cleanup source), :selection/valid-targets.
-;; :selection/select-count migrated :opt -> :req (fizzle-3hym): builder always sets it
-;; via (count eligible-attackers) — always an integer.
-(defmethod selection-type-spec :select-attackers [_]
-  (s/keys :req [:selection/type
-                :selection/lifecycle
-                :selection/player-id
-                :selection/selected
-                :selection/validation
-                :selection/auto-confirm?
+                :selection/chosen-targets
+                :selection/remaining-target-reqs
                 :selection/stack-item-eid
-                :selection/valid-targets
-                :selection/select-count]
-          :opt [:selection/card-source
-                :selection/source-type]))
-
-
-;; :assign-blockers — built by build-blocker-selection in combat.cljs.
-;; Has :selection/stack-item-eid, :selection/current-attacker, :selection/remaining-attackers.
-;; :selection/select-count migrated :opt -> :req (fizzle-3hym): builder always sets it
-;; via (count eligible) — always an integer.
-(defmethod selection-type-spec :assign-blockers [_]
-  (s/keys :req [:selection/type
-                :selection/lifecycle
-                :selection/player-id
-                :selection/selected
-                :selection/validation
-                :selection/auto-confirm?
-                :selection/stack-item-eid
-                :selection/valid-targets
                 :selection/current-attacker
                 :selection/remaining-attackers
-                :selection/select-count]
-          :opt [:selection/card-source
-                :selection/source-type]))
+                :selection/card-source
+                :selection/source-type
+                :selection/spell-id
+                :selection/target-effect
+                :selection/remaining-effects
+                :selection/clear-selected-card?
+                :selection/pending-targets]))
 
 
-;; =====================================================
-;; Group 9: Other Types
-;; =====================================================
-
-;; :spell-mode — built by build-spell-mode-selection in casting.cljs.
-;; Has :selection/object-id, :selection/candidates (valid modes).
-(defmethod selection-type-spec :spell-mode [_]
-  (s/keys :req [:selection/type
-                :selection/lifecycle
+;; :pick-mode — choose one named option from a finite non-card list.
+;; Covers: spell-mode, land-type-source, land-type-target.
+(defmethod selection-type-spec :pick-mode [_]
+  (s/keys :req [:selection/mechanism
+                :selection/domain
                 :selection/player-id
+                :selection/validation]
+          :opt [:selection/type
+                :selection/lifecycle
                 :selection/selected
                 :selection/select-count
-                :selection/validation
                 :selection/auto-confirm?
                 :selection/object-id
-                :selection/candidates]
-          :opt [:selection/on-complete]))
-
-
-;; :untap-lands — built by build-untap-lands-selection in untap.cljs.
-;; Has :selection/candidates, :selection/candidate-ids (tapped lands).
-(defmethod selection-type-spec :untap-lands [_]
-  (s/keys :req [:selection/type
-                :selection/player-id
-                :selection/selected
-                :selection/select-count
-                :selection/validation
-                :selection/auto-confirm?
                 :selection/candidates
-                :selection/candidate-ids]
-          :opt [:selection/zone
-                :selection/card-source
+                :selection/options
+                :selection/exact?
+                :selection/source-type
                 :selection/spell-id
                 :selection/remaining-effects
-                :selection/min-count
-                :selection/lifecycle]))
+                :selection/on-complete]))
 
 
-;; =====================================================
-;; Group 10: Replacement Types
-;; =====================================================
-
-;; :replacement-choice — built by build-selection-for-replacement in replacement.cljs.
-;; Pauses a zone-change event for player input. The player selects one of the
-;; :selection/choices, each with :choice/action (:proceed or :redirect).
-;; Required keys:
-;;   :selection/choices           — vector of choice maps from the replacement entity
-;;   :selection/replacement-event — in-flight event map (zone-change details for resume)
-;;   :selection/replacement-entity-id — Datascript EID of the replacement entity (for retraction)
-;;   :selection/object-id         — UUID of the paused object (for marker clearing)
-(s/def :selection/choices (s/coll-of map?))
-(s/def :selection/replacement-event map?)
-(s/def :selection/replacement-entity-id int?)
-
-
-(defmethod selection-type-spec :replacement-choice [_]
-  (s/keys :req [:selection/type
+;; :binary-choice — choose one action from a small fixed action-keyword set.
+;; Covers: unless-pay, replacement-choice.
+(defmethod selection-type-spec :binary-choice [_]
+  (s/keys :req [:selection/mechanism
+                :selection/domain
                 :selection/player-id
+                :selection/selected
+                :selection/validation
+                :selection/auto-confirm?]
+          :opt [:selection/type
+                :selection/lifecycle
+                :selection/select-count
+                :selection/valid-targets
+                :selection/spell-id
+                :selection/remaining-effects
+                :selection/counter-target-id
+                :selection/unless-pay-cost
                 :selection/object-id
                 :selection/replacement-entity-id
                 :selection/replacement-event
-                :selection/choices
-                :selection/validation
-                :selection/auto-confirm?
-                :selection/select-count
-                :selection/selected]
-          :opt [:selection/lifecycle]))
+                :selection/choices]))
 
 
 ;; =====================================================
 ;; ::selection Multi-Spec
 ;; =====================================================
 
-(s/def ::selection (s/multi-spec selection-type-spec :selection/type))
+(s/def ::selection (s/multi-spec selection-type-spec :selection/mechanism))
 
 
 ;; =====================================================

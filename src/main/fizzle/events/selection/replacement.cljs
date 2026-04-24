@@ -335,6 +335,8 @@
             cand-ids    (set (map :object/id candidates))
             ;; Build discard selection with on-complete = :resume-replacement-zone-change
             discard-sel {:selection/type          :discard
+                         :selection/mechanism     :pick-from-zone
+                         :selection/domain        :discard
                          :selection/lifecycle     :finalized
                          :selection/zone          :hand
                          :selection/card-source   :valid-targets

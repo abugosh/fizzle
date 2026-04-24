@@ -199,22 +199,27 @@
             "selection without :selection/choices should throw spec failure")))))
 
 
-(deftest test-replacement-choice-spec-rejects-missing-event
-  (testing ":replacement-choice selection without :selection/replacement-event fails spec"
+(deftest test-replacement-choice-spec-rejects-missing-validation
+  (testing ":binary-choice selection without :selection/validation fails spec (ADR-030 mechanism-level req)"
     (binding [spec-util/*throw-on-spec-failure* true]
       (let [choices [{:choice/label "Proceed" :choice/action :proceed}]
-            sel {:selection/type :replacement-choice
+            ;; :selection/validation is :req at the :binary-choice mechanism level
+            ;; (shared across :replacement-choice and :unless-pay domains)
+            sel {:selection/type      :replacement-choice
+                 :selection/mechanism :binary-choice
+                 :selection/domain    :replacement-choice
                  :selection/player-id :player-1
                  :selection/object-id (random-uuid)
                  :selection/replacement-entity-id 42
+                 :selection/replacement-event {:event/type :zone-change}
                  :selection/choices choices
                  :selection/select-count 1
                  :selection/selected #{}
-                 :selection/validation :always
+                 ;; :selection/validation intentionally omitted — must be :req
                  :selection/auto-confirm? false}]
         (is (thrown? js/Error
               (sel-spec/set-pending-selection {:game/db nil} sel))
-            "selection without :selection/replacement-event should throw spec failure")))))
+            ":binary-choice without :selection/validation should throw spec failure")))))
 
 
 (deftest test-replacement-choice-spec-rejects-missing-selected
@@ -222,7 +227,9 @@
     (binding [spec-util/*throw-on-spec-failure* true]
       (let [choices [{:choice/label "Proceed" :choice/action :proceed}
                      {:choice/label "Decline" :choice/action :redirect :choice/redirect-to :graveyard}]
-            sel {:selection/type :replacement-choice
+            sel {:selection/type      :replacement-choice
+               :selection/mechanism :binary-choice
+               :selection/domain    :replacement-choice
                  :selection/player-id :player-1
                  :selection/object-id (random-uuid)
                  :selection/replacement-entity-id 42
@@ -320,7 +327,9 @@
           proceed-choice {:choice/label  "Proceed: Lose 1 life"
                           :choice/action :proceed
                           :choice/cost   {:effect/type :lose-life :effect/amount 1}}
-          sel {:selection/type :replacement-choice
+          sel {:selection/type      :replacement-choice
+               :selection/mechanism :binary-choice
+               :selection/domain    :replacement-choice
                :selection/player-id :player-1
                :selection/object-id obj-id
                :selection/replacement-entity-id replacement-eid
@@ -351,7 +360,9 @@
           [db obj-id replacement-eid] (add-synthetic-object-to-hand db :player-1)
           proceed-choice {:choice/label  "Proceed: Free"
                           :choice/action :proceed}
-          sel {:selection/type :replacement-choice
+          sel {:selection/type      :replacement-choice
+               :selection/mechanism :binary-choice
+               :selection/domain    :replacement-choice
                :selection/player-id :player-1
                :selection/object-id obj-id
                :selection/replacement-entity-id replacement-eid
@@ -378,7 +389,9 @@
           [db obj-id replacement-eid] (add-synthetic-object-to-hand db :player-1)
           proceed-choice {:choice/label  "Proceed: Free"
                           :choice/action :proceed}
-          sel {:selection/type :replacement-choice
+          sel {:selection/type      :replacement-choice
+               :selection/mechanism :binary-choice
+               :selection/domain    :replacement-choice
                :selection/player-id :player-1
                :selection/object-id obj-id
                :selection/replacement-entity-id replacement-eid
@@ -406,7 +419,9 @@
           [db obj-id replacement-eid] (add-synthetic-object-to-hand db :player-1)
           proceed-choice {:choice/label  "Proceed: Free"
                           :choice/action :proceed}
-          sel {:selection/type :replacement-choice
+          sel {:selection/type      :replacement-choice
+               :selection/mechanism :binary-choice
+               :selection/domain    :replacement-choice
                :selection/player-id :player-1
                :selection/object-id obj-id
                :selection/replacement-entity-id replacement-eid
@@ -437,7 +452,9 @@
           [db obj-id replacement-eid] (add-synthetic-object-to-hand db :player-1)
           proceed-choice {:choice/label  "Proceed: Free"
                           :choice/action :proceed}
-          sel {:selection/type :replacement-choice
+          sel {:selection/type      :replacement-choice
+               :selection/mechanism :binary-choice
+               :selection/domain    :replacement-choice
                :selection/player-id :player-1
                :selection/object-id obj-id
                :selection/replacement-entity-id replacement-eid
@@ -469,7 +486,9 @@
           redirect-choice {:choice/label       "Decline: Go to graveyard"
                            :choice/action      :redirect
                            :choice/redirect-to :graveyard}
-          sel {:selection/type :replacement-choice
+          sel {:selection/type      :replacement-choice
+               :selection/mechanism :binary-choice
+               :selection/domain    :replacement-choice
                :selection/player-id :player-1
                :selection/object-id obj-id
                :selection/replacement-entity-id replacement-eid
@@ -511,7 +530,9 @@
           _ (is (= :discard-specific (get-in proceed-choice [:choice/cost :effect/type]))
                 "Precondition: proceed cost is :discard-specific (would discard the land if chosen)")
           ;; Build selection with BOTH choices present; player selects :redirect
-          sel {:selection/type :replacement-choice
+          sel {:selection/type      :replacement-choice
+               :selection/mechanism :binary-choice
+               :selection/domain    :replacement-choice
                :selection/player-id :player-1
                :selection/object-id obj-id
                :selection/replacement-entity-id replacement-eid
@@ -538,7 +559,9 @@
           redirect-choice {:choice/label       "Decline: Go to graveyard"
                            :choice/action      :redirect
                            :choice/redirect-to :graveyard}
-          sel {:selection/type :replacement-choice
+          sel {:selection/type      :replacement-choice
+               :selection/mechanism :binary-choice
+               :selection/domain    :replacement-choice
                :selection/player-id :player-1
                :selection/object-id obj-id
                :selection/replacement-entity-id replacement-eid
@@ -569,7 +592,9 @@
           redirect-choice {:choice/label       "Decline: Go to graveyard"
                            :choice/action      :redirect
                            :choice/redirect-to :graveyard}
-          sel {:selection/type :replacement-choice
+          sel {:selection/type      :replacement-choice
+               :selection/mechanism :binary-choice
+               :selection/domain    :replacement-choice
                :selection/player-id :player-1
                :selection/object-id obj-id
                :selection/replacement-entity-id replacement-eid
@@ -603,7 +628,9 @@
           [db obj-id replacement-eid] (add-synthetic-object-to-hand db :player-1)
           proceed-choice {:choice/label  "Proceed: Free"
                           :choice/action :proceed}
-          sel {:selection/type :replacement-choice
+          sel {:selection/type      :replacement-choice
+               :selection/mechanism :binary-choice
+               :selection/domain    :replacement-choice
                :selection/player-id :player-1
                :selection/object-id obj-id
                :selection/replacement-entity-id replacement-eid
@@ -637,7 +664,9 @@
           [db obj-id replacement-eid] (add-synthetic-object-to-hand db :player-1)
           proceed-choice {:choice/label  "Proceed: Free"
                           :choice/action :proceed}
-          sel {:selection/type :replacement-choice
+          sel {:selection/type      :replacement-choice
+               :selection/mechanism :binary-choice
+               :selection/domain    :replacement-choice
                :selection/player-id :player-1
                :selection/object-id obj-id
                :selection/replacement-entity-id replacement-eid
@@ -734,7 +763,9 @@
                        :continuation/destination :battlefield
                        :continuation/cost        (:choice/cost proceed-choice)
                        :continuation/player-id   :player-1}
-          sel {:selection/type :replacement-choice
+          sel {:selection/type      :replacement-choice
+               :selection/mechanism :binary-choice
+               :selection/domain    :replacement-choice
                :selection/player-id :player-1
                :selection/object-id obj-id
                :selection/replacement-entity-id replacement-eid
@@ -780,7 +811,9 @@
                        :continuation/destination :battlefield
                        :continuation/cost        (:choice/cost proceed-choice)
                        :continuation/player-id   :player-1}
-          sel {:selection/type :replacement-choice
+          sel {:selection/type      :replacement-choice
+               :selection/mechanism :binary-choice
+               :selection/domain    :replacement-choice
                :selection/player-id :player-1
                :selection/object-id obj-id
                :selection/replacement-entity-id replacement-eid
@@ -823,7 +856,9 @@
           ;; Set replacement-pending THEN retract the object entirely
           db-with-pending (d/db-with db [[:db/add obj-eid :object/replacement-pending true]])
           db-dead (d/db-with db-with-pending [[:db/retractEntity obj-eid]])
-          sel {:selection/type :replacement-choice
+          sel {:selection/type      :replacement-choice
+               :selection/mechanism :binary-choice
+               :selection/domain    :replacement-choice
                :selection/player-id :player-1
                :selection/object-id obj-id
                :selection/replacement-entity-id replacement-eid

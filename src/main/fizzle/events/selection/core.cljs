@@ -15,7 +15,6 @@
     [fizzle.engine.effects :as effects]
     [fizzle.engine.spec-util :as spec-util]
     [fizzle.engine.validation :as validation]
-    [fizzle.events.selection.mechanism-domain :as mechanism-domain]
     [fizzle.events.selection.spec :as sel-spec]
     [fizzle.events.selection.spell-cleanup :as spell-cleanup]
     [fizzle.history.descriptions :as descriptions]))
@@ -74,10 +73,6 @@
   "Execute the mechanism-specific logic for a confirmed selection.
    Dispatches on :selection/mechanism (ADR-030).
 
-   Falls back to type->mechanism-domain lookup when :selection/mechanism is
-   absent (compat shim for selections built outside set-pending-selection,
-   e.g. direct test construction or legacy code paths).
-
    Arguments:
      game-db - Datascript database
      selection - Selection state map
@@ -86,28 +81,20 @@
    is declared by builders via :selection/lifecycle on the selection map, not
    signaled by executor return shape."
   (fn [_game-db selection]
-    (or (:selection/mechanism selection)
-        (:mechanism (get mechanism-domain/type->mechanism-domain
-                         (:selection/type selection))))))
+    (:selection/mechanism selection)))
 
 
 (defmulti apply-domain-policy
   "Post-confirm policy dispatch keyed on :selection/domain (ADR-030).
 
-   Called by execute-confirmed-selection mechanism defmethods (task 4,
-   fizzle-xx4u) after the mechanism's shared work completes. Each domain
-   registers its tail policy via (defmethod apply-domain-policy <domain> ...).
-
-   Falls back to type->mechanism-domain lookup when :selection/domain is
-   absent (compat shim for selections built outside set-pending-selection,
-   e.g. direct test construction or legacy code paths).
+   Called by execute-confirmed-selection mechanism defmethods after the
+   mechanism's shared work completes. Each domain registers its tail policy
+   via (defmethod apply-domain-policy <domain> ...).
 
    Contract: receives [game-db selection] and returns a tagged map per
    ADR-020 (typically {:db ...} or {:db ... :selection <next>})."
   (fn [_game-db selection]
-    (or (:selection/domain selection)
-        (:domain (get mechanism-domain/type->mechanism-domain
-                      (:selection/type selection))))))
+    (:selection/domain selection)))
 
 
 (defmethod apply-domain-policy :default

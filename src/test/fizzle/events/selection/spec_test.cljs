@@ -29,11 +29,15 @@
 ;; B. Base key constraints
 ;; ============================================================
 
-(deftest test-missing-lifecycle-fails
-  (testing "selection without :selection/lifecycle fails"
+(deftest test-missing-lifecycle-is-valid-at-mechanism-level
+  (testing ":selection/lifecycle is :opt at mechanism level (ADR-030 phase 4); domain executors enforce it"
+    ;; After phase 4, spec dispatches on :selection/mechanism (7 methods).
+    ;; Domain-specific fields like :lifecycle are :opt at mechanism level —
+    ;; enforcement moved from spec to apply-domain-policy executors.
     (let [sel (-> (get sel-spec/minimal-valid-selections :discard)
                   (dissoc :selection/lifecycle))]
-      (is (not (s/valid? ::sel-spec/selection sel))))))
+      (is (s/valid? ::sel-spec/selection sel)
+          ":discard without :lifecycle is spec-valid (enforcement is executor-level)"))))
 
 
 (deftest test-wrong-lifecycle-fails
@@ -78,12 +82,13 @@
 ;; C. Type-specific required key enforcement
 ;; ============================================================
 
-;; Zone-pick: :graveyard-return requires :selection/candidate-ids
-(deftest test-graveyard-return-missing-candidate-ids-fails
-  (testing ":graveyard-return without :selection/candidate-ids fails"
+;; Zone-pick: :candidate-ids is :opt at mechanism level (ADR-030 phase 4)
+(deftest test-graveyard-return-missing-candidate-ids-is-valid-at-mechanism-level
+  (testing ":graveyard-return without :candidate-ids is spec-valid at mechanism level (enforcement moved to executor)"
     (let [sel (dissoc (get sel-spec/minimal-valid-selections :graveyard-return)
                       :selection/candidate-ids)]
-      (is (not (s/valid? ::sel-spec/selection sel))))))
+      (is (s/valid? ::sel-spec/selection sel)
+          ":pick-from-zone without :candidate-ids is spec-valid; executor enforces it"))))
 
 
 ;; Accumulator: :mana-allocation requires :selection/generic-remaining
@@ -94,28 +99,31 @@
       (is (not (s/valid? ::sel-spec/selection sel))))))
 
 
-;; Storm-split: :storm-split requires :selection/copy-count
-(deftest test-storm-split-missing-copy-count-fails
-  (testing ":storm-split without :selection/copy-count fails"
+;; Accumulate: :copy-count is :opt at mechanism level (ADR-030 phase 4)
+(deftest test-storm-split-missing-copy-count-is-valid-at-mechanism-level
+  (testing ":storm-split without :copy-count is spec-valid at mechanism level (enforcement moved to executor)"
     (let [sel (dissoc (get sel-spec/minimal-valid-selections :storm-split)
                       :selection/copy-count)]
-      (is (not (s/valid? ::sel-spec/selection sel))))))
+      (is (s/valid? ::sel-spec/selection sel)
+          ":accumulate without :copy-count is spec-valid; executor enforces it"))))
 
 
-;; Tutor: :tutor requires :selection/target-zone
-(deftest test-tutor-missing-target-zone-fails
-  (testing ":tutor without :selection/target-zone fails"
+;; Tutor: :target-zone is :opt at mechanism level (ADR-030 phase 4)
+(deftest test-tutor-missing-target-zone-is-valid-at-mechanism-level
+  (testing ":tutor without :selection/target-zone is spec-valid at mechanism level (enforcement moved to executor)"
     (let [sel (dissoc (get sel-spec/minimal-valid-selections :tutor)
                       :selection/target-zone)]
-      (is (not (s/valid? ::sel-spec/selection sel))))))
+      (is (s/valid? ::sel-spec/selection sel)
+          ":pick-from-zone without :target-zone is spec-valid; executor enforces it"))))
 
 
-;; Combat: :select-attackers requires :selection/stack-item-eid
-(deftest test-select-attackers-missing-stack-item-eid-fails
-  (testing ":select-attackers without :selection/stack-item-eid fails"
+;; Combat: :stack-item-eid is :opt at mechanism level (ADR-030 phase 4)
+(deftest test-select-attackers-missing-stack-item-eid-is-valid-at-mechanism-level
+  (testing ":select-attackers without :selection/stack-item-eid is spec-valid at mechanism level (enforcement moved to executor)"
     (let [sel (dissoc (get sel-spec/minimal-valid-selections :select-attackers)
                       :selection/stack-item-eid)]
-      (is (not (s/valid? ::sel-spec/selection sel))))))
+      (is (s/valid? ::sel-spec/selection sel)
+          ":n-slot-targeting without :stack-item-eid is spec-valid; executor enforces it"))))
 
 
 ;; ============================================================
@@ -161,55 +169,56 @@
 
 
 ;; ============================================================
-;; F. :selection/select-count :req migration (epic fizzle-75qq, task fizzle-3hym)
+;; F. :selection/select-count enforcement (ADR-030 phase 4)
 ;;
-;; These 7 types have builders that ALWAYS set :selection/select-count.
-;; After migration from :opt to :req, dissoc'ing the key must fail spec.
+;; After phase 4, :selection/select-count is :opt in :pick-from-zone mechanism.
+;; Enforcement for zone-pick types (tutor, peek-and-select, pile-choice,
+;; chain-bounce, chain-bounce-target) moved from spec to apply-domain-policy.
 ;;
-;; 3 zone-pick types (:discard, :graveyard-return, :shuffle-from-graveyard-to-library)
-;; are SKIPPED: their zone-pick builder uses (or :effect/count :effect/select-count)
-;; which CAN be nil. Migrating would cause false-positive spec failures for legitimate
-;; effects without a count. Documented in task fizzle-3hym close-note.
+;; :n-slot-targeting mechanism keeps :select-count in :req — tests
+;; for select-attackers and assign-blockers are below unchanged.
+;;
+;; Zone-pick types: dissoc'ing :select-count must be spec-valid.
 ;; ============================================================
 
-(deftest test-select-count-req-migration-tutor
-  (testing ":tutor without :selection/select-count fails spec after :req migration"
+(deftest test-select-count-opt-at-mechanism-level-tutor
+  (testing ":tutor without :selection/select-count is spec-valid at mechanism level (enforcement moved to executor)"
     (let [sel (dissoc (get sel-spec/minimal-valid-selections :tutor)
                       :selection/select-count)]
-      (is (not (s/valid? ::sel-spec/selection sel))
-          ":tutor must require :selection/select-count after :opt -> :req migration"))))
+      (is (s/valid? ::sel-spec/selection sel)
+          ":pick-from-zone without :select-count is spec-valid; executor enforces it"))))
 
 
-(deftest test-select-count-req-migration-peek-and-select
-  (testing ":peek-and-select without :selection/select-count fails spec after :req migration"
+(deftest test-select-count-opt-at-mechanism-level-peek-and-select
+  (testing ":peek-and-select without :selection/select-count is spec-valid at mechanism level (enforcement moved to executor)"
     (let [sel (dissoc (get sel-spec/minimal-valid-selections :peek-and-select)
                       :selection/select-count)]
-      (is (not (s/valid? ::sel-spec/selection sel))
-          ":peek-and-select must require :selection/select-count after :opt -> :req migration"))))
+      (is (s/valid? ::sel-spec/selection sel)
+          ":pick-from-zone without :select-count is spec-valid; executor enforces it"))))
 
 
-(deftest test-select-count-req-migration-pile-choice
-  (testing ":pile-choice without :selection/select-count fails spec after :req migration"
+(deftest test-select-count-opt-at-mechanism-level-pile-choice
+  (testing ":pile-choice without :selection/select-count is spec-valid at mechanism level (enforcement moved to executor)"
     (let [sel (dissoc (get sel-spec/minimal-valid-selections :pile-choice)
                       :selection/select-count)]
-      (is (not (s/valid? ::sel-spec/selection sel))
-          ":pile-choice must require :selection/select-count after :opt -> :req migration"))))
+      (is (s/valid? ::sel-spec/selection sel)
+          ":pick-from-zone without :select-count is spec-valid; executor enforces it"))))
 
 
-(deftest test-select-count-req-migration-chain-bounce
-  (testing ":chain-bounce without :selection/select-count fails spec after :req migration"
+(deftest test-select-count-opt-at-mechanism-level-chain-bounce
+  (testing ":chain-bounce without :selection/select-count is spec-valid at mechanism level (enforcement moved to executor)"
     (let [sel (dissoc (get sel-spec/minimal-valid-selections :chain-bounce)
                       :selection/select-count)]
-      (is (not (s/valid? ::sel-spec/selection sel))
-          ":chain-bounce must require :selection/select-count after :opt -> :req migration"))))
+      (is (s/valid? ::sel-spec/selection sel)
+          ":pick-from-zone without :select-count is spec-valid; executor enforces it"))))
 
 
-(deftest test-select-count-req-migration-chain-bounce-target
-  (testing ":chain-bounce-target without :selection/select-count fails spec after :req migration"
+(deftest test-select-count-opt-at-mechanism-level-chain-bounce-target
+  (testing ":chain-bounce-target without :selection/select-count is spec-valid at mechanism level (enforcement moved to executor)"
     (let [sel (dissoc (get sel-spec/minimal-valid-selections :chain-bounce-target)
                       :selection/select-count)]
-      (is (not (s/valid? ::sel-spec/selection sel))
-          ":chain-bounce-target must require :selection/select-count after :opt -> :req migration"))))
+      (is (s/valid? ::sel-spec/selection sel)
+          ":pick-from-zone without :select-count is spec-valid; executor enforces it"))))
 
 
 (deftest test-select-count-req-migration-select-attackers

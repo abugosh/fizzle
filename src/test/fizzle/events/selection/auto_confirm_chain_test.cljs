@@ -136,7 +136,9 @@
           game-db (drain-player game-db :player-2 1)
           ;; Add dark ritual to hand (spell context)
           [game-db spell-id] (th/add-card-to-zone game-db :dark-ritual :hand :player-1)
-          pending-sel {:selection/type :player-target
+          pending-sel {:selection/type      :player-target
+                       :selection/mechanism :n-slot-targeting
+                       :selection/domain    :player-target
                        :selection/lifecycle :finalized
                        :selection/player-id :player-1
                        :selection/selected #{}
@@ -183,7 +185,9 @@
           [game-db [bf-id]] (th/add-cards-to-library game-db [:brain-freeze] :player-1)
           ;; Drain opponent to 0 to verify SBAs fire
           game-db (drain-player game-db :player-2 0)
-          pending-sel {:selection/type :tutor
+          pending-sel {:selection/type      :tutor
+                       :selection/mechanism :pick-from-zone
+                       :selection/domain    :tutor
                        :selection/lifecycle :standard
                        :selection/player-id :player-1
                        :selection/selected #{}

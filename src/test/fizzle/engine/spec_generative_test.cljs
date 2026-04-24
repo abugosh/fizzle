@@ -42,10 +42,15 @@
 
 
 (deftest test-selection-exercise-roundtrip
-  (testing "s/exercise produces valid selections for all types"
-    (doseq [[val _] (s/exercise :fizzle.events.selection.spec/selection 10)]
-      (is (s/valid? :fizzle.events.selection.spec/selection val)
-          (str "Generated selection failed validation: " (pr-str val))))))
+  (testing "minimal-valid-selections covers all types; each passes ::selection spec"
+    ;; s/exercise on a multi-spec dispatching on :selection/mechanism cannot satisfy
+    ;; the generator predicate in CLJS (no test.check gen for constrained enum dispatch).
+    ;; minimal-valid-selections provides the same guarantee: one known-valid instance
+    ;; per type, all 32 conforming to ::selection. ADR-030 phase 4.
+    (doseq [[sel-type minimal] sel-spec/minimal-valid-selections]
+      (is (s/valid? :fizzle.events.selection.spec/selection minimal)
+          (str "minimal-valid-selections entry failed for type " sel-type ": "
+               (s/explain-str :fizzle.events.selection.spec/selection minimal))))))
 
 
 (deftest test-bot-action-exercise-roundtrip
@@ -109,19 +114,19 @@
 
 
 (deftest test-selection-chokepoint-accepts-generated
-  (testing "generated selection maps are spec-valid and stored by set-pending-selection"
-    ;; set-pending-selection calls validate-at-chokepoint! which runs in dev mode.
-    ;; Binding *throw-on-spec-failure* true here would cause this test to throw on any
-    ;; invalid generator output — but we verify validity separately with s/valid? first.
-    ;; The set-pending-selection call verifies the chokepoint stores valid data without error.
+  (testing "minimal-valid-selections entries are spec-valid and stored by set-pending-selection"
+    ;; s/exercise on :selection/mechanism multi-spec cannot satisfy predicate in CLJS.
+    ;; minimal-valid-selections provides full type coverage.
     ;; ADR-030: builders set mechanism+domain directly; stored selection equals input.
-    (doseq [[generated _] (s/exercise :fizzle.events.selection.spec/selection 5)]
+    (doseq [[sel-type generated] sel-spec/minimal-valid-selections]
       (is (s/valid? :fizzle.events.selection.spec/selection generated)
-          (str "Generator produced invalid selection (generator/spec divergence): " (pr-str generated)))
+          (str "minimal-valid-selections entry invalid for type " sel-type ": "
+               (s/explain-str :fizzle.events.selection.spec/selection generated)))
       (let [app-db {:game/db (th/create-test-db)}
             result (sel-spec/set-pending-selection app-db generated)]
         (is (= generated (:game/pending-selection result))
-            (str "set-pending-selection failed to store valid selection: " (pr-str generated)))))))
+            (str "set-pending-selection failed to store valid selection for " sel-type ": "
+                 (pr-str generated)))))))
 
 
 (deftest test-selection-chokepoint-rejects-invalid-when-throw-binding
@@ -194,20 +199,23 @@
           "Stack-item with unknown :stack-item/type should fail spec"))))
 
 
-(deftest test-selection-rejects-missing-type
-  (testing "selection spec rejects map missing required :selection/type"
-    (let [[valid _] (first (s/exercise :fizzle.events.selection.spec/selection 1))
-          broken (dissoc valid :selection/type)]
+(deftest test-selection-rejects-missing-mechanism
+  (testing "selection spec rejects map missing required :selection/mechanism (ADR-030)"
+    ;; Use a known-valid selection from minimal-valid-selections rather than s/exercise
+    ;; (s/exercise on :selection/mechanism multi-spec cannot satisfy predicate in CLJS).
+    (let [valid (get sel-spec/minimal-valid-selections :discard)
+          broken (dissoc valid :selection/mechanism)]
       (is (not (s/valid? :fizzle.events.selection.spec/selection broken))
-          "Selection without :selection/type should fail spec"))))
+          "Selection without :selection/mechanism should fail spec (ADR-030 dispatch key)"))))
 
 
-(deftest test-selection-rejects-invalid-type-value
-  (testing "selection spec rejects map with unregistered :selection/type dispatch value"
-    (let [[valid _] (first (s/exercise :fizzle.events.selection.spec/selection 1))
-          broken (assoc valid :selection/type :this-type-does-not-exist)]
+(deftest test-selection-rejects-invalid-mechanism-value
+  (testing "selection spec rejects map with unregistered :selection/mechanism dispatch value"
+    ;; Use a known-valid selection from minimal-valid-selections rather than s/exercise.
+    (let [valid (get sel-spec/minimal-valid-selections :discard)
+          broken (assoc valid :selection/mechanism :this-mechanism-does-not-exist)]
       (is (not (s/valid? :fizzle.events.selection.spec/selection broken))
-          "Selection with unknown :selection/type should fail spec"))))
+          "Selection with unknown :selection/mechanism should fail spec (ADR-030)"))))
 
 
 (deftest test-bot-action-rejects-missing-action

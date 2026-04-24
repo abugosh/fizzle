@@ -72,7 +72,9 @@
           [game-db' [bf-id _dr-id]] (th/add-cards-to-library game-db
                                                              [:brain-freeze :dark-ritual]
                                                              :player-1)
-          pending {:selection/type :tutor
+          pending {:selection/type          :tutor
+                   :selection/mechanism     :pick-from-zone
+                   :selection/domain        :tutor
                    :selection/player-id :player-1
                    :selection/selected #{}
                    :selection/select-count 1
@@ -152,7 +154,9 @@
 (deftest test-player-target-auto-confirms
   (testing "Player target auto-confirms on player selection"
     (let [game-db (create-game-db)
-          pending {:selection/type :player-target
+          pending {:selection/type      :player-target
+                   :selection/mechanism :n-slot-targeting
+                   :selection/domain    :player-target
                    :selection/player-id :player-1
                    :selection/selected #{}
                    :selection/select-count 1
@@ -286,7 +290,9 @@
   (testing "Find Nothing (empty selection confirm) still works for tutor"
     (let [game-db (create-game-db)
           [game-db' [bf-id]] (th/add-cards-to-library game-db [:brain-freeze] :player-1)
-          pending {:selection/type :tutor
+          pending {:selection/type      :tutor
+                   :selection/mechanism :pick-from-zone
+                   :selection/domain    :tutor
                    :selection/player-id :player-1
                    :selection/selected #{}
                    :selection/select-count 1
@@ -318,7 +324,9 @@
           [game-db' [bf-id dr-id]] (th/add-cards-to-library game-db
                                                             [:brain-freeze :dark-ritual]
                                                             :player-1)
-          pending {:selection/type :tutor
+          pending {:selection/type      :tutor
+                   :selection/mechanism :pick-from-zone
+                   :selection/domain    :tutor
                    :selection/player-id :player-1
                    :selection/selected #{bf-id}
                    :selection/select-count 1

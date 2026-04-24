@@ -113,7 +113,9 @@
           library-objs (q/get-objects-in-zone db :player-1 :library)
           [obj-1 obj-2 obj-3] (sort-by :object/position library-objs)
           ;; Reverse order: obj-3, obj-2, obj-1
-          selection {:selection/type :peek-and-reorder
+          selection {:selection/type      :peek-and-reorder
+                     :selection/mechanism :reorder
+                     :selection/domain    :peek-and-reorder
                      :selection/candidates #{(:object/id obj-1)
                                              (:object/id obj-2)
                                              (:object/id obj-3)}
@@ -140,7 +142,9 @@
           library-objs (q/get-objects-in-zone db :player-1 :library)
           [obj-1 obj-2 obj-3] (sort-by :object/position library-objs)
           ;; Only order obj-3 and obj-1, leave obj-2 unordered
-          selection {:selection/type :peek-and-reorder
+          selection {:selection/type      :peek-and-reorder
+                     :selection/mechanism :reorder
+                     :selection/domain    :peek-and-reorder
                      :selection/candidates #{(:object/id obj-1)
                                              (:object/id obj-2)
                                              (:object/id obj-3)}
@@ -165,7 +169,9 @@
                  (add-library-cards :player-1 [:card-1 :card-2 :card-3]))
           library-objs (q/get-objects-in-zone db :player-1 :library)
           [obj-1 obj-2 obj-3] (sort-by :object/position library-objs)
-          selection {:selection/type :peek-and-reorder
+          selection {:selection/type      :peek-and-reorder
+                     :selection/mechanism :reorder
+                     :selection/domain    :peek-and-reorder
                      :selection/candidates #{(:object/id obj-1)
                                              (:object/id obj-2)
                                              (:object/id obj-3)}
@@ -188,7 +194,9 @@
                  (add-library-cards :player-1 [:card-1 :card-2 :card-3]))
           library-objs (q/get-objects-in-zone db :player-1 :library)
           [obj-1 obj-2 obj-3] (sort-by :object/position library-objs)
-          selection {:selection/type :peek-and-reorder
+          selection {:selection/type      :peek-and-reorder
+                     :selection/mechanism :reorder
+                     :selection/domain    :peek-and-reorder
                      :selection/candidates #{(:object/id obj-1)
                                              (:object/id obj-2)
                                              (:object/id obj-3)}

@@ -346,7 +346,9 @@
           [db obj-id] (add-card-and-object db spell-targeting-with-generic :hand :player-1)
           db (mana/add-mana db :player-1 {:red 3 :black 5})
           mode (first (rules/get-casting-modes db :player-1 obj-id))
-          selection {:selection/type :cast-time-targeting
+          selection {:selection/type      :cast-time-targeting
+                     :selection/mechanism :n-slot-targeting
+                     :selection/domain    :cast-time-targeting
                      :selection/lifecycle :chaining
                      :selection/player-id :player-1
                      :selection/object-id obj-id
@@ -382,7 +384,9 @@
           [db obj-id] (add-card-and-object db spell-targeting-no-generic :hand :player-1)
           db (mana/add-mana db :player-1 {:red 5})
           mode (first (rules/get-casting-modes db :player-1 obj-id))
-          selection {:selection/type :cast-time-targeting
+          selection {:selection/type      :cast-time-targeting
+                     :selection/mechanism :n-slot-targeting
+                     :selection/domain    :cast-time-targeting
                      :selection/lifecycle :finalized
                      :selection/clear-selected-card? true
                      :selection/player-id :player-1
@@ -416,7 +420,9 @@
           db (mana/add-mana db :player-1 {:red 3 :black 5})
           mode (first (rules/get-casting-modes db :player-1 obj-id))
           ;; Simulate allocation selection with pending targets from targeting step
-          selection {:selection/type :mana-allocation
+          selection {:selection/type      :mana-allocation
+                     :selection/mechanism :allocate-resource
+                     :selection/domain    :mana-allocation
                      :selection/player-id :player-1
                      :selection/spell-id obj-id
                      :selection/mode mode
@@ -452,7 +458,9 @@
           ;; Simulate completed allocation: 1 black + 1 blue for generic 2
           app-db {:game/db db
                   :game/pending-selection
-                  {:selection/type :mana-allocation
+                  {:selection/type      :mana-allocation
+                   :selection/mechanism :allocate-resource
+                   :selection/domain    :mana-allocation
                    :selection/lifecycle :finalized
                    :selection/clear-selected-card? true
                    :selection/player-id :player-1
@@ -497,7 +505,9 @@
           db (mana/add-mana db :player-1 {:red 3 :black 5})
           mode (first (rules/get-casting-modes db :player-1 obj-id))
           ;; Simulate targeting -> allocation chain
-          targeting-selection {:selection/type :cast-time-targeting
+          targeting-selection {:selection/type      :cast-time-targeting
+                               :selection/mechanism :n-slot-targeting
+                               :selection/domain    :cast-time-targeting
                                :selection/player-id :player-1
                                :selection/object-id obj-id
                                :selection/mode mode
@@ -593,7 +603,9 @@
           ability (first (:card/abilities permanent-with-generic-ability))
           ;; Simulate allocation selection for ability
           mode {:mode/mana-cost {:colorless 2}}
-          selection {:selection/type :mana-allocation
+          selection {:selection/type      :mana-allocation
+                     :selection/mechanism :allocate-resource
+                     :selection/domain    :mana-allocation
                      :selection/player-id :player-1
                      :selection/spell-id obj-id
                      :selection/mode mode

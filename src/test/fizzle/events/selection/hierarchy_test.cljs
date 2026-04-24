@@ -133,9 +133,11 @@
   (testing ":discard executor (custom) takes precedence over :zone-pick executor in hierarchy"
     (let [db (th/create-test-db)
           [db id1] (th/add-card-to-zone db :dark-ritual :hand :player-1)
-          ;; Execute with :discard type — should use custom :discard executor
+          ;; Execute with :discard domain — should use custom :discard executor
           ;; (which does NOT check :selection/target-zone)
-          selection {:selection/type :discard
+          selection {:selection/type      :discard
+                     :selection/mechanism :pick-from-zone
+                     :selection/domain    :discard
                      :selection/selected #{id1}}
           result (core/execute-confirmed-selection db selection)]
       ;; The :discard executor hardcodes graveyard, proving it took precedence
@@ -306,9 +308,10 @@
     (let [db (th/create-test-db)
           [db id1] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)
           [db id2] (th/add-card-to-zone db :cabal-ritual :graveyard :player-1)
-          ;; :graveyard-return should dispatch to generic :zone-pick executor
-          ;; since we removed the custom executor
-          selection {:selection/type :graveyard-return
+          ;; :graveyard-return should dispatch to :pick-from-zone mechanism, :graveyard-return domain
+          selection {:selection/type      :graveyard-return
+                     :selection/mechanism :pick-from-zone
+                     :selection/domain    :graveyard-return
                      :selection/selected #{id1 id2}
                      :selection/target-zone :hand}
           result (core/execute-confirmed-selection db selection)]
@@ -455,7 +458,9 @@
                                                                         :effect/count 2}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
                                   (q/get-all-stack-items db-with-storm)))
-          selection {:selection/type :storm-split
+          selection {:selection/type      :storm-split
+                     :selection/mechanism :accumulate
+                     :selection/domain    :storm-split
                      :selection/copy-count 2
                      :selection/valid-targets [:player-2 :player-1]
                      :selection/allocation {:player-2 2 :player-1 0}
