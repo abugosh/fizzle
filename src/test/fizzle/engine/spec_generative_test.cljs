@@ -114,15 +114,13 @@
     ;; Binding *throw-on-spec-failure* true here would cause this test to throw on any
     ;; invalid generator output — but we verify validity separately with s/valid? first.
     ;; The set-pending-selection call verifies the chokepoint stores valid data without error.
-    ;; ADR-030: set-pending-selection enriches selections with :selection/mechanism and
-    ;; :selection/domain, so stored map is not identical to input — compare enriched form.
+    ;; ADR-030: builders set mechanism+domain directly; stored selection equals input.
     (doseq [[generated _] (s/exercise :fizzle.events.selection.spec/selection 5)]
       (is (s/valid? :fizzle.events.selection.spec/selection generated)
           (str "Generator produced invalid selection (generator/spec divergence): " (pr-str generated)))
       (let [app-db {:game/db (th/create-test-db)}
-            result (sel-spec/set-pending-selection app-db generated)
-            expected (sel-spec/inject-mechanism-domain generated)]
-        (is (= expected (:game/pending-selection result))
+            result (sel-spec/set-pending-selection app-db generated)]
+        (is (= generated (:game/pending-selection result))
             (str "set-pending-selection failed to store valid selection: " (pr-str generated)))))))
 
 

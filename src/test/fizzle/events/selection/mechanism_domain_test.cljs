@@ -143,10 +143,12 @@
 ;; B. End-to-end: set-pending-selection enriches selections
 ;; =====================================================
 
-(deftest test-set-pending-selection-enriches-with-mechanism-domain
-  (testing "set-pending-selection injects :selection/mechanism and :selection/domain"
+(deftest test-set-pending-selection-stores-selection-directly
+  (testing "set-pending-selection stores selection as-is (builders set mechanism+domain directly)"
     (binding [spec-util/*throw-on-spec-failure* true]
-      (let [discard-sel {:selection/type :discard
+      (let [discard-sel {:selection/type      :discard
+                         :selection/mechanism :pick-from-zone
+                         :selection/domain    :discard
                          :selection/lifecycle :standard
                          :selection/player-id :player-1
                          :selection/selected #{}
@@ -158,10 +160,12 @@
         (is (= :discard (:selection/domain pending)))))))
 
 
-(deftest test-set-pending-selection-spell-mode-enriched
-  (testing "set-pending-selection enriches :spell-mode (built outside selection/ dir, in casting.cljs)"
+(deftest test-set-pending-selection-spell-mode-stored-directly
+  (testing "set-pending-selection stores :spell-mode with mechanism+domain (built by casting.cljs)"
     (binding [spec-util/*throw-on-spec-failure* true]
-      (let [spell-mode-sel {:selection/type :spell-mode
+      (let [spell-mode-sel {:selection/type      :spell-mode
+                            :selection/mechanism :pick-mode
+                            :selection/domain    :spell-mode
                             :selection/lifecycle :finalized
                             :selection/player-id :player-1
                             :selection/selected #{}

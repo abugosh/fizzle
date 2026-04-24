@@ -62,11 +62,10 @@
 ;; =====================================================
 
 (deftest set-pending-selection-accepts-valid-discard-when-binding-true
-  (testing "valid :discard selection is stored (enriched with mechanism/domain) without throwing"
+  (testing "valid :discard selection is stored without throwing"
     ;; Proves the throw in the invalid tests above is due to the bad shape,
     ;; not an always-throw chokepoint. If this fails, the chokepoint is broken.
-    ;; ADR-030: set-pending-selection enriches the selection with :selection/mechanism
-    ;; and :selection/domain before storing — the stored map is not identical to input.
+    ;; ADR-030: builders set mechanism+domain directly; stored selection equals input.
     (binding [spec-util/*throw-on-spec-failure* true]
       (let [app-db {:game/db (th/create-test-db)}
             valid-sel (sel-spec/minimal-valid-selection :discard)
@@ -76,8 +75,8 @@
             "Valid :discard selection should have :pick-from-zone mechanism")
         (is (= :discard (:selection/domain pending))
             "Valid :discard selection should have :discard domain")
-        (is (= (sel-spec/inject-mechanism-domain valid-sel) pending)
-            "Stored selection should be input enriched with mechanism/domain")))))
+        (is (= valid-sel pending)
+            "Stored selection should equal input (builders set mechanism+domain)")))))
 
 
 ;; =====================================================

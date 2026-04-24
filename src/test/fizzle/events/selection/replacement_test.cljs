@@ -155,29 +155,31 @@
 ;; =====================================================
 
 (deftest test-replacement-choice-spec-validates-required-keys
-  (testing "valid :replacement-choice selection passes spec and is enriched with mechanism/domain"
+  (testing "valid :replacement-choice selection passes spec and is stored with mechanism/domain"
     (binding [spec-util/*throw-on-spec-failure* true]
       (let [choices [{:choice/label "Proceed" :choice/action :proceed}
                      {:choice/label "Decline" :choice/action :redirect :choice/redirect-to :graveyard}]
-            sel {:selection/type :replacement-choice
-                 :selection/player-id :player-1
-                 :selection/object-id (random-uuid)
+            sel {:selection/type             :replacement-choice
+                 :selection/mechanism        :binary-choice
+                 :selection/domain           :replacement-choice
+                 :selection/player-id        :player-1
+                 :selection/object-id        (random-uuid)
                  :selection/replacement-entity-id 42
                  :selection/replacement-event {:event/type :zone-change}
-                 :selection/choices choices
-                 :selection/select-count 1
-                 :selection/selected #{}
-                 :selection/validation :always
-                 :selection/auto-confirm? false}
+                 :selection/choices          choices
+                 :selection/select-count     1
+                 :selection/selected         #{}
+                 :selection/validation       :always
+                 :selection/auto-confirm?    false}
             result (sel-spec/set-pending-selection {:game/db nil} sel)
             pending (:game/pending-selection result)]
-        ;; ADR-030: set-pending-selection enriches with :selection/mechanism + :selection/domain
+        ;; ADR-030: builders set mechanism+domain directly; stored selection equals input
         (is (= :binary-choice (:selection/mechanism pending))
             "valid :replacement-choice selection should have :binary-choice mechanism")
         (is (= :replacement-choice (:selection/domain pending))
             "valid :replacement-choice selection should have :replacement-choice domain")
-        (is (= (sel-spec/inject-mechanism-domain sel) pending)
-            "valid :replacement-choice selection should be stored enriched")))))
+        (is (= sel pending)
+            "valid :replacement-choice selection should be stored as-is")))))
 
 
 (deftest test-replacement-choice-spec-rejects-missing-choices

@@ -123,15 +123,13 @@
 ;; ============================================================
 
 (deftest test-set-pending-selection-returns-app-db-with-selection
-  (testing "set-pending-selection assocs :game/pending-selection onto app-db (enriched with mechanism/domain)"
+  (testing "set-pending-selection assocs :game/pending-selection onto app-db"
     (let [app-db {:game/db nil :other-key :val}
           sel (get sel-spec/minimal-valid-selections :discard)
           result (sel-spec/set-pending-selection app-db sel)
           pending (:game/pending-selection result)]
-      ;; ADR-030: set-pending-selection enriches with :selection/mechanism + :selection/domain
-      (is (= (sel-spec/inject-mechanism-domain sel) pending))
-      (is (= :pick-from-zone (:selection/mechanism pending)))
-      (is (= :discard (:selection/domain pending)))
+      ;; ADR-030: builders set mechanism+domain directly; stored selection equals input
+      (is (= sel pending))
       (is (= :val (:other-key result))))))
 
 
@@ -141,8 +139,8 @@
           sel (get sel-spec/minimal-valid-selections :tutor)
           result (sel-spec/set-pending-selection app-db sel)]
       (is (nil? (:game/pending-selection app-db)) "original should be unmodified")
-      ;; ADR-030: stored selection is enriched (has mechanism/domain) not the raw input
-      (is (= (sel-spec/inject-mechanism-domain sel) (:game/pending-selection result))))))
+      ;; ADR-030: stored selection equals input (builders set mechanism+domain directly)
+      (is (= sel (:game/pending-selection result))))))
 
 
 ;; ============================================================
