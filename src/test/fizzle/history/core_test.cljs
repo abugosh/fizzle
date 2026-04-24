@@ -118,8 +118,7 @@
     ;; :game/pending-mode-selection is retired per ADR-023. Mode selection now uses
     ;; :game/pending-selection with :selection/type :spell-mode. step-to clears
     ;; :game/pending-selection as part of clear-stale-ui-state.
-    (let [spell-mode-sel {:selection/type :spell-mode
-                          :selection/mechanism :pick-mode
+    (let [spell-mode-sel {:selection/mechanism :pick-mode
                           :selection/domain :spell-mode
                           :selection/player-id :player-1
                           :selection/object-id (random-uuid)

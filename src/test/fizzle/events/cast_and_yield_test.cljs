@@ -155,9 +155,7 @@
             "Mode selection must reference the cast object")
         (is (= 2 (count (:selection/candidates pending)))
             "Should have 2 castable modes as candidates"))
-      ;; Stack should NOT have the spell (mode selector is pre-cast)
-      (is (nil? (:game/pending-mode-selection result))
-          "Legacy :game/pending-mode-selection must be nil (retired per ADR-023)"))))
+      )))
 
 
 (deftest test-cast-and-yield-targeted-spell-shows-targeting

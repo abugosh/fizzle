@@ -85,9 +85,6 @@
       ;; No pending selection (immediate cast — no pre-cast steps required)
       (is (nil? (:game/pending-selection result))
           "No pending selection for a simple instant with no pre-cast requirements")
-      ;; No pending mode selection
-      (is (nil? (:game/pending-mode-selection result))
-          "No pending mode selection for a simple non-modal spell")
       ;; :game/selected-card cleared
       (is (nil? (:game/selected-card result))
           ":game/selected-card should be cleared after cast"))))
@@ -356,13 +353,11 @@
 ;; ============================================================
 
 (deftest select-casting-mode-guard-no-pending-no-op
-  (testing "::select-casting-mode with no pending-mode-selection is a no-op"
+  (testing "::select-casting-mode with no pending selection is a no-op"
     (let [app-db (setup-app-db)
-          ;; No pending-mode-selection set
-          app-db-no-pending (dissoc app-db :game/pending-mode-selection)
-          result (dispatch-event app-db-no-pending [::casting/select-casting-mode :some-mode])]
-      (is (= app-db-no-pending result)
-          "app-db should be unchanged when no pending-mode-selection exists"))))
+          result (dispatch-event app-db [::casting/select-casting-mode :some-mode])]
+      (is (= app-db result)
+          "app-db should be unchanged (::select-casting-mode is retired per ADR-023)"))))
 
 
 ;; ============================================================
@@ -371,13 +366,11 @@
 ;; ============================================================
 
 (deftest select-casting-mode-guard-no-object-id-no-op
-  (testing "::select-casting-mode with pending but missing :object-id is a no-op"
+  (testing "::select-casting-mode is always a no-op (retired per ADR-023)"
     (let [app-db (setup-app-db)
-          ;; Pending without :object-id
-          app-db-malformed (assoc app-db :game/pending-mode-selection {:modes []})
-          result (dispatch-event app-db-malformed [::casting/select-casting-mode :some-mode])]
-      (is (= app-db-malformed result)
-          "app-db should be unchanged when pending-mode-selection has no :object-id"))))
+          result (dispatch-event app-db [::casting/select-casting-mode :some-mode])]
+      (is (= app-db result)
+          "app-db should be unchanged (::select-casting-mode is retired per ADR-023)"))))
 
 
 ;; ============================================================
@@ -386,19 +379,11 @@
 ;; ============================================================
 
 (deftest select-casting-mode-guard-nil-mode-no-op
-  (testing "::select-casting-mode with nil mode arg is a no-op"
+  (testing "::select-casting-mode with nil mode arg is a no-op (retired per ADR-023)"
     (let [app-db (setup-app-db {:mana {:black 1}})
-          game-db (:game/db app-db)
-          [game-db' obj-id] (h/add-card-to-zone game-db :dark-ritual :hand :player-1)
-          modes (rules/get-casting-modes game-db' :player-1 obj-id)
-          app-db' (-> app-db
-                      (assoc :game/db game-db')
-                      (assoc :game/pending-mode-selection
-                             {:object-id obj-id
-                              :modes modes}))
-          result (dispatch-event app-db' [::casting/select-casting-mode nil])]
-      (is (= app-db' result)
-          "app-db should be unchanged when mode arg is nil"))))
+          result (dispatch-event app-db [::casting/select-casting-mode nil])]
+      (is (= app-db result)
+          "app-db should be unchanged (::select-casting-mode is retired per ADR-023)"))))
 
 
 ;; ============================================================
@@ -417,10 +402,7 @@
           result (dispatch-event app-db' [::casting/select-casting-mode primary-mode])]
       ;; Retired handler: app-db unchanged
       (is (= app-db' result)
-          "::select-casting-mode is retired (ADR-023): must be a no-op")
-      ;; Legacy key is absent (no pending-mode-selection was set here)
-      (is (nil? (:game/pending-mode-selection result))
-          ":game/pending-mode-selection must be nil (retired per ADR-023)"))))
+          "::select-casting-mode is retired (ADR-023): must be a no-op"))))
 
 
 ;; ============================================================
@@ -441,10 +423,7 @@
           result (dispatch-event app-db' [::casting/select-casting-mode primary-mode])]
       ;; Retired handler: app-db unchanged
       (is (= app-db' result)
-          "::select-casting-mode is retired (ADR-023): must be a no-op")
-      ;; Legacy key absent
-      (is (nil? (:game/pending-mode-selection result))
-          ":game/pending-mode-selection must be nil (retired per ADR-023)"))))
+          "::select-casting-mode is retired (ADR-023): must be a no-op"))))
 
 
 ;; ============================================================
@@ -461,10 +440,7 @@
           result (dispatch-event app-db [::casting/cancel-mode-selection])]
       ;; Retired handler: app-db must be unchanged
       (is (= app-db result)
-          "::cancel-mode-selection is retired (ADR-023): must be a no-op")
-      ;; :game/pending-mode-selection is absent (retired key)
-      (is (nil? (:game/pending-mode-selection result))
-          ":game/pending-mode-selection must be nil (retired per ADR-023)"))))
+          "::cancel-mode-selection is retired (ADR-023): must be a no-op"))))
 
 
 ;; ============================================================
@@ -556,9 +532,6 @@
       ;; Mechanism check: :pick-mode is the mechanism for mode selection (per ADR-030)
       (is (= :pick-mode (:selection/mechanism pending-sel))
           ":selection/mechanism must be :pick-mode for casting mode selection")
-      ;; MUST NOT set legacy key
-      (is (nil? (:game/pending-mode-selection result))
-          ":game/pending-mode-selection must be nil (retired per ADR-023)")
       ;; Spell still in hand (awaiting mode choice)
       (is (= :hand (:object/zone (q/get-object (:game/db result) obj-id)))
           "Spell must remain in hand while awaiting mode selection"))))
