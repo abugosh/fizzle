@@ -188,7 +188,9 @@
    Per-mode targeting evaluation happens here (valid modes only).
    Returns selection map for :game/pending-selection."
   [player-id object-id valid-modes]
-  {:selection/type :spell-mode
+  {:selection/type      :spell-mode
+   :selection/mechanism :pick-mode
+   :selection/domain    :spell-mode
    :selection/lifecycle :finalized
    :selection/player-id player-id
    :selection/object-id object-id

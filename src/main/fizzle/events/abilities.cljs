@@ -69,7 +69,9 @@
          ;; If more requirements remain, lifecycle is :chaining to collect all targets before paying costs
          lifecycle (if (seq remaining-reqs) :chaining :finalized)]
      (cond->
-       {:selection/type :ability-targeting
+       {:selection/type      :ability-targeting
+        :selection/mechanism :n-slot-targeting
+        :selection/domain    :ability-targeting
         :selection/lifecycle lifecycle
         :selection/player-id player-id
         :selection/object-id object-id

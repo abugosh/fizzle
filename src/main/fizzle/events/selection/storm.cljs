@@ -42,7 +42,9 @@
             ;; Order: opponent first (most common target), then self
             valid-targets (filterv some? [opponent-id player-id])]
         (when (and (pos? copy-count) (seq valid-targets))
-          {:selection/type :storm-split
+          {:selection/type      :storm-split
+           :selection/mechanism :accumulate
+           :selection/domain    :storm-split
            :selection/lifecycle :finalized
            :selection/copy-count copy-count
            :selection/valid-targets valid-targets

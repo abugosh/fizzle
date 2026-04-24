@@ -47,7 +47,9 @@
                 replacement-eid (:db/id replacement-entity)
                 player-id    (queries/get-player-id (:db build-result)
                                                     (:db/id (:object/controller (queries/get-object (:db result) object-id))))
-                auto-sel {:selection/type :replacement-choice
+                auto-sel {:selection/type      :replacement-choice
+                          :selection/mechanism :binary-choice
+                          :selection/domain    :replacement-choice
                           :selection/player-id player-id
                           :selection/object-id object-id
                           :selection/replacement-entity-id replacement-eid

@@ -158,15 +158,20 @@
    Keys not present fall through to zone-pick-defaults.
    :selection-type overrides :selection/type when effect type differs
    from the historical selection type (e.g., :return-from-graveyard
-   effect produces :graveyard-return selection type)."
+   effect produces :graveyard-return selection type).
+   :mechanism and :domain set the ADR-030 dispatch keys."
   {:return-from-graveyard {:selection-type :graveyard-return
+                           :mechanism :pick-from-zone
+                           :domain :graveyard-return
                            :source-zone :graveyard
                            :target-zone :hand
                            :card-source :zone
                            :validation :at-most
                            :min-count 0}
    :shuffle-from-graveyard-to-library
-   {:source-zone :graveyard
+   {:mechanism :pick-from-zone
+    :domain :shuffle-to-library
+    :source-zone :graveyard
     :target-zone :library
     :card-source :zone
     :validation :at-most
@@ -190,6 +195,8 @@
   (let [effect-type (:effect/type effect)
         config (merge zone-pick-defaults (get zone-pick-config effect-type))
         sel-type (or (:selection-type config) effect-type)
+        sel-mechanism (or (:mechanism config) :pick-from-zone)
+        sel-domain (or (:domain config) sel-type)
         target-player (resolve-target-player db player-id effect)
         source-zone (:source-zone config)
         candidates (when (= :zone (:card-source config))
@@ -197,7 +204,9 @@
                                             db target-player source-zone)
                                           [])]
                        (set (map :object/id zone-cards))))]
-    (cond-> {:selection/type sel-type
+    (cond-> {:selection/type      sel-type
+             :selection/mechanism sel-mechanism
+             :selection/domain    sel-domain
              :selection/lifecycle :standard
              :selection/zone source-zone
              :selection/card-source (:card-source config)

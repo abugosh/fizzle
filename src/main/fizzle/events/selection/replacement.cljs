@@ -155,7 +155,9 @@
       ;; Return :auto-redirect so the events layer can commit the redirect immediately.
       {:db updated-db :selection nil :auto-redirect (first valid-choices)}
       ;; Multiple valid choices — build the selection map for player input
-      (let [sel (cond-> {:selection/type                 :replacement-choice
+      (let [sel (cond-> {:selection/type                  :replacement-choice
+                         :selection/mechanism             :binary-choice
+                         :selection/domain                :replacement-choice
                          :selection/player-id            player-id
                          :selection/object-id            object-id
                          :selection/replacement-entity-id replacement-eid

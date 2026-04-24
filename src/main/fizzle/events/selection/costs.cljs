@@ -130,8 +130,10 @@
         candidates (filterv #(not= object-id (:object/id %)) available)
         candidate-ids (set (map :object/id candidates))]
     (when (seq candidate-ids)
-      {:selection/zone zone
-       :selection/type :exile-cards-cost
+      {:selection/zone      zone
+       :selection/type      :exile-cards-cost
+       :selection/mechanism :pick-from-zone
+       :selection/domain    :exile-cost
        :selection/lifecycle :finalized
        :selection/clear-selected-card? true
        :selection/card-source :candidates
@@ -168,8 +170,10 @@
         obj (queries/get-object game-db object-id)
         has-targeting? (seq (:card/targeting (:object/card obj)))]
     (when (seq candidate-ids)
-      (cond-> {:selection/zone :battlefield
-               :selection/type :return-land-cost
+      (cond-> {:selection/zone      :battlefield
+               :selection/type      :return-land-cost
+               :selection/mechanism :pick-from-zone
+               :selection/domain    :return-land-cost
                :selection/card-source :valid-targets
                :selection/select-count 1
                :selection/valid-targets (vec candidate-ids)
@@ -210,8 +214,10 @@
         obj (queries/get-object game-db object-id)
         has-targeting? (seq (:card/targeting (:object/card obj)))]
     (when (seq candidate-ids)
-      (cond-> {:selection/zone :hand
-               :selection/type :discard-specific-cost
+      (cond-> {:selection/zone      :hand
+               :selection/type      :discard-specific-cost
+               :selection/mechanism :pick-from-zone
+               :selection/domain    :discard-cost
                :selection/card-source :hand
                :selection/select-count total
                :selection/selected #{}
@@ -261,8 +267,10 @@
                           (let [obj (queries/get-object game-db object-id)]
                             (seq (:card/targeting (:object/card obj)))))]
      (when (seq candidate-ids)
-       (cond-> {:selection/zone :battlefield
-                :selection/type :sacrifice-permanent-cost
+       (cond-> {:selection/zone      :battlefield
+                :selection/type      :sacrifice-permanent-cost
+                :selection/mechanism :pick-from-zone
+                :selection/domain    :sacrifice-cost
                 :selection/card-source :valid-targets
                 :selection/select-count 1
                 :selection/valid-targets (vec candidate-ids)
@@ -306,8 +314,10 @@
         total-remaining (max 0 (- (reduce + 0 (vals pool-after-colored)) fixed-colorless))
         ;; Max X is what's left after paying fixed costs
         max-x total-remaining]
-    {:selection/zone :mana-pool
-     :selection/type :x-mana-cost
+    {:selection/zone      :mana-pool
+     :selection/type      :x-mana-cost
+     :selection/mechanism :accumulate
+     :selection/domain    :x-mana-cost
      :selection/lifecycle :chaining
      :selection/player-id player-id
      :selection/spell-id object-id
@@ -331,8 +341,10 @@
              (let [colored-cost (dissoc resolved-mana-cost :colorless)
                    pool' (queries/get-mana-pool db sel-player)
                    remaining-pool (merge-with - pool' colored-cost)]
-               {:selection/zone :mana-pool
-                :selection/type :mana-allocation
+               {:selection/zone      :mana-pool
+                :selection/type      :mana-allocation
+                :selection/mechanism :allocate-resource
+                :selection/domain    :mana-allocation
                 :selection/lifecycle :finalized
                 :selection/clear-selected-card? true
                 :selection/player-id sel-player
@@ -364,8 +376,10 @@
   (let [current-life (queries/get-life-total game-db player-id)
         ;; Max X is current life (can pay down to 0)
         max-x (max 0 current-life)]
-    {:selection/zone :life
-     :selection/type :pay-x-life
+    {:selection/zone      :life
+     :selection/type      :pay-x-life
+     :selection/mechanism :accumulate
+     :selection/domain    :pay-x-life
      :selection/lifecycle :finalized
      :selection/clear-selected-card? true
      :selection/player-id player-id
@@ -395,8 +409,10 @@
     (when (pos? generic)
       (let [pool (queries/get-mana-pool game-db player-id)
             remaining-pool (merge-with - pool colored-cost)]
-        {:selection/zone :mana-pool
-         :selection/type :mana-allocation
+        {:selection/zone      :mana-pool
+         :selection/type      :mana-allocation
+         :selection/mechanism :allocate-resource
+         :selection/domain    :mana-allocation
          :selection/lifecycle :finalized
          :selection/clear-selected-card? true
          :selection/player-id player-id
@@ -565,7 +581,9 @@
         targeting-reqs (:card/targeting (:object/card obj))]
     (when (seq targeting-reqs)
       (let [first-req (first targeting-reqs)]
-        {:selection/type :cast-time-targeting
+        {:selection/type      :cast-time-targeting
+         :selection/mechanism :n-slot-targeting
+         :selection/domain    :cast-time-targeting
          :selection/lifecycle :finalized
          :selection/player-id player-id
          :selection/object-id object-id
@@ -595,7 +613,9 @@
         (when (seq targeting-reqs)
           (let [first-req (first targeting-reqs)
                 remaining-reqs (vec (rest targeting-reqs))]
-            {:selection/type :ability-targeting
+            {:selection/type      :ability-targeting
+             :selection/mechanism :n-slot-targeting
+             :selection/domain    :ability-targeting
              :selection/lifecycle (if (seq remaining-reqs) :chaining :finalized)
              :selection/player-id player-id
              :selection/object-id object-id
@@ -617,7 +637,9 @@
             targeting-reqs (:card/targeting (:object/card obj))]
         (when (seq targeting-reqs)
           (let [first-req (first targeting-reqs)]
-            {:selection/type :cast-time-targeting
+            {:selection/type      :cast-time-targeting
+             :selection/mechanism :n-slot-targeting
+             :selection/domain    :cast-time-targeting
              :selection/lifecycle :finalized
              :selection/player-id player-id
              :selection/object-id object-id

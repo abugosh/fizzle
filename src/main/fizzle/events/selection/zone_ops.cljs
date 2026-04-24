@@ -38,7 +38,9 @@
         hand-cards (or (queries/get-objects-in-zone game-db target-player :hand) [])
         selectable (filterv #(queries/matches-criteria? % criteria) hand-cards)
         selectable-ids (set (map :object/id selectable))]
-    {:selection/type :hand-reveal-discard
+    {:selection/type      :hand-reveal-discard
+     :selection/mechanism :pick-from-zone
+     :selection/domain    :revealed-hand-discard
      :selection/card-source :opponent-hand
      :selection/target-player target-player
      :selection/select-count 1
@@ -142,7 +144,9 @@
                       {:match/types #{:land}})
                     []))
         land-ids (set (mapv :object/id (or lands [])))]
-    {:selection/type :chain-bounce
+    {:selection/type      :chain-bounce
+     :selection/mechanism :pick-from-zone
+     :selection/domain    :chain-bounce
      :selection/lifecycle :chaining
      :selection/zone :battlefield
      :selection/card-source :valid-targets
@@ -177,7 +181,9 @@
                         [])
         all-permanents (concat p1-permanents p2-permanents)
         target-ids (set (mapv :object/id all-permanents))]
-    {:selection/type :chain-bounce-target
+    {:selection/type      :chain-bounce-target
+     :selection/mechanism :pick-from-zone
+     :selection/domain    :chain-bounce-target
      :selection/zone :battlefield
      :selection/card-source :valid-targets
      :selection/select-count 1
@@ -266,7 +272,9 @@
   (let [target-id (:effect/target effect)
         unless-pay (:effect/unless-pay effect)
         controller-id (:unless-pay/controller effect)]
-    {:selection/type :unless-pay
+    {:selection/type      :unless-pay
+     :selection/mechanism :binary-choice
+     :selection/domain    :unless-pay
      :selection/player-id controller-id
      :selection/selected #{}
      :selection/select-count 1

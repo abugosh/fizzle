@@ -27,7 +27,9 @@
   "Build pending selection state for a player-targeted effect.
    Used when :effect/target is :any-player - player must choose target."
   [player-id object-id target-effect effects-after]
-  {:selection/type :player-target
+  {:selection/type      :player-target
+   :selection/mechanism :n-slot-targeting
+   :selection/domain    :player-target
    :selection/lifecycle :finalized
    :selection/player-id player-id
    :selection/selected #{}
@@ -57,9 +59,9 @@
         target-type (:target/type target-req)
         has-generic? (sel-costs/has-generic-mana-cost? (:mode/mana-cost mode))]
     (cond->
-      {:selection/type (if (= :ability target-type)
-                         :ability-cast-targeting
-                         :cast-time-targeting)
+      {:selection/type      (if (= :ability target-type) :ability-cast-targeting :cast-time-targeting)
+       :selection/mechanism :n-slot-targeting
+       :selection/domain    (if (= :ability target-type) :ability-cast-targeting :cast-time-targeting)
        :selection/player-id player-id
        :selection/object-id object-id
        :selection/mode mode
