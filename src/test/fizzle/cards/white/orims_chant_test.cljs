@@ -42,8 +42,12 @@
           "Card should be white")
       (is (= #{:instant} (:card/types card))
           "Card should be an instant")
-      (is (= {:white 1} (:card/kicker card))
-          "Kicker cost should be {W}")
+      (let [alts (:card/alternate-costs card)]
+        (is (= 1 (count alts)) "Should have exactly one alternate cost")
+        (let [kicked (first alts)]
+          (is (= :kicked (:alternate/id kicked)) "Alternate id should be :kicked")
+          (is (= :kicker (:alternate/kind kicked)) "Alternate kind should be :kicker")
+          (is (= {:white 2} (:alternate/mana-cost kicked)) "Kicked mana cost should be {WW} total")))
       (is (= "Kicker {W}. Target player can't cast spells this turn. If this spell was kicked, creatures can't attack this turn."
              (:card/text card))
           "Card text should match oracle")))
@@ -76,10 +80,10 @@
         (is (= :cannot-cast-spells (:restriction/type effect))
             "Restriction type should be :cannot-cast-spells"))))
 
-  (testing "kicked effects add both restrictions"
-    (let [effects (:card/kicked-effects orims-chant/card)]
-      (is (= 2 (count effects))
-          "Should have two kicked effects")
+  (testing "alternate-cost kicked entry has both restriction effects"
+    (let [kicked (first (:card/alternate-costs orims-chant/card))
+          effects (:alternate/effects kicked)]
+      (is (= 2 (count effects)) "Should have two kicked effects")
       (is (= #{:cannot-cast-spells :cannot-attack}
              (set (map :restriction/type effects)))
           "Should include both restriction types"))))

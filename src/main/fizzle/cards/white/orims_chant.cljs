@@ -16,9 +16,6 @@
    :card/types #{:instant}
    :card/text "Kicker {W}. Target player can't cast spells this turn. If this spell was kicked, creatures can't attack this turn."
 
-   ;; Kicker cost - enables kicked mode via get-casting-modes
-   :card/kicker {:white 1}
-
    ;; Cast-time targeting: target any player
    ;; Uses :card/targeting vector format (see targeting.cljs)
    :card/targeting [{:target/id :player
@@ -26,17 +23,28 @@
                      :target/options #{:any-player}
                      :target/required true}]
 
-   ;; Base effects (when not kicked)
+   ;; Base effects (primary mode — not kicked)
    ;; :targeted-player resolves via :object/targets :player
    :card/effects [{:effect/type :add-restriction
                    :effect/target :targeted-player
                    :restriction/type :cannot-cast-spells}]
 
-   ;; Kicked effects (replaces base effects when kicked)
-   ;; Must include BOTH restrictions - kicked effects replace, not extend
-   :card/kicked-effects [{:effect/type :add-restriction
-                          :effect/target :targeted-player
-                          :restriction/type :cannot-cast-spells}
-                         {:effect/type :add-restriction
-                          :effect/target :targeted-player
-                          :restriction/type :cannot-attack}]})
+   ;; Kicked alternate cost: total mana cost is {WW} (base {W} + kicker {W})
+   ;; :alternate/effects REPLACES :card/effects (replacement semantics per epic anti-pattern)
+   ;; :alternate/targeting REPLACES :card/targeting (same for Orim's Chant)
+   ;; No :card/kicker key — prevents duplicate mode from get-kicked-mode
+   :card/alternate-costs [{:alternate/id :kicked
+                           :alternate/kind :kicker
+                           :alternate/zone :hand
+                           :alternate/mana-cost {:white 2}
+                           :alternate/targeting [{:target/id :player
+                                                  :target/type :player
+                                                  :target/options #{:any-player}
+                                                  :target/required true}]
+                           :alternate/effects [{:effect/type :add-restriction
+                                                :effect/target :targeted-player
+                                                :restriction/type :cannot-cast-spells}
+                                               {:effect/type :add-restriction
+                                                :effect/target :targeted-player
+                                                :restriction/type :cannot-attack}]
+                           :alternate/on-resolve :graveyard}]})
