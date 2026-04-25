@@ -843,6 +843,84 @@
           "Empty mana cost {} should be payable"))))
 
 
+;; === Mode targeting feasibility tests ===
+
+(defn- n-slot-mode
+  "Build a synthetic mode with N identical targeting slots targeting battlefield nonland permanents.
+   Uses :self controller (player-1 only) to avoid needing an opponent in the test db.
+   Uses empty mana cost so tests isolate targeting feasibility from mana checks."
+  [n]
+  {:mode/id :kicked
+   :mode/zone :hand
+   :mode/mana-cost {}
+   :mode/targeting (vec (for [i (range n)]
+                          {:target/id (keyword (str "slot-" i))
+                           :target/type :object
+                           :target/zone :battlefield
+                           :target/controller :self
+                           :target/required true
+                           :target/criteria {:match/not-types #{:land}}}))})
+
+
+(deftest can-cast-mode?-rejects-multi-slot-with-1-unique-target
+  (testing "2-slot mode with 1 unique nonland permanent is infeasible"
+    (let [db (th/create-test-db)
+          [db _] (th/add-test-creature db :player-1 2 2)
+          mode (n-slot-mode 2)]
+      (is (false? (rules/can-cast-mode? db :player-1 nil mode))
+          "2-slot mode must be infeasible when only 1 unique valid target exists"))))
+
+
+(deftest can-cast-mode?-accepts-multi-slot-with-2-unique-targets
+  (testing "2-slot mode with 2 unique nonland permanents is feasible"
+    (let [db (th/create-test-db)
+          [db _] (th/add-test-creature db :player-1 2 2)
+          [db _] (th/add-test-creature db :player-1 1 1)
+          mode (n-slot-mode 2)]
+      (is (true? (rules/can-cast-mode? db :player-1 nil mode))
+          "2-slot mode must be feasible when 2 unique valid targets exist"))))
+
+
+(deftest can-cast-mode?-passes-mode-with-no-targeting
+  (testing "mode with no :mode/targeting passes through unchanged"
+    (let [db (th/create-test-db {:mana {:red 1}})
+          [_ obj-id] (th/add-card-to-zone db :lightning-bolt :hand :player-1)
+          mode {:mode/id :primary :mode/zone :hand :mode/mana-cost {:red 1}}]
+      (is (true? (rules/can-cast-mode? db :player-1 obj-id mode))
+          "mode without :mode/targeting must not be rejected by targeting feasibility"))))
+
+
+(deftest can-cast-mode?-allow-duplicate-opts-out-of-count-check
+  (testing ":target/allow-duplicate true on any req disables the distinct-count check"
+    (let [db (th/create-test-db)
+          [db _] (th/add-test-creature db :player-1 2 2)
+          mode {:mode/id :test
+                :mode/zone :hand
+                :mode/mana-cost {}
+                :mode/targeting [{:target/id :slot-a :target/type :object
+                                  :target/zone :battlefield
+                                  :target/controller :self
+                                  :target/required true
+                                  :target/allow-duplicate true
+                                  :target/criteria {:match/not-types #{:land}}}
+                                 {:target/id :slot-b :target/type :object
+                                  :target/zone :battlefield
+                                  :target/controller :self
+                                  :target/required true
+                                  :target/allow-duplicate true
+                                  :target/criteria {:match/not-types #{:land}}}]}]
+      (is (true? (rules/can-cast-mode? db :player-1 nil mode))
+          ":target/allow-duplicate skips distinct-count -- 1 target is enough"))))
+
+
+(deftest can-cast-mode?-rejects-single-slot-with-0-targets
+  (testing "1-slot mode with 0 valid targets is infeasible"
+    (let [db (th/create-test-db)
+          mode (n-slot-mode 1)]
+      (is (false? (rules/can-cast-mode? db :player-1 nil mode))
+          "1-slot required targeting with empty battlefield is infeasible"))))
+
+
 ;; === Backwards compatibility ===
 
 (deftest can-cast-unchanged-for-existing-cards-test

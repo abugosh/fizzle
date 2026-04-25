@@ -137,16 +137,51 @@
           (or costs [])))
 
 
+(defn- can-satisfy-targeting?
+  "Returns true if a mode's :mode/targeting can be satisfied given current board state.
+
+   For multi-slot modes where all required reqs share identical criteria AND no req has
+   :target/allow-duplicate true: checks count(unique valid targets) >= count(required reqs).
+
+   For all other cases: checks each required slot has at least 1 valid target.
+
+   Modes with no :mode/targeting (nil or empty) return true — no targeting constraint."
+  [db player-id mode]
+  (let [reqs (seq (:mode/targeting mode))]
+    (if (nil? reqs)
+      true
+      (let [required-reqs (filter :target/required reqs)
+            allow-duplicate? (boolean (some :target/allow-duplicate reqs))
+            criteria-key #(select-keys % [:target/type :target/options :target/criteria])
+            identical-criteria? (or (empty? required-reqs)
+                                    (apply = (map criteria-key required-reqs)))
+            distinct-check? (and (not allow-duplicate?)
+                                 identical-criteria?
+                                 (> (count required-reqs) 1))]
+        (if distinct-check?
+          ;; Multi-slot identical criteria: need enough unique targets
+          (let [valid (targeting/find-valid-targets db player-id (first required-reqs))]
+            (>= (count (set valid)) (count required-reqs)))
+          ;; Per-slot check: each required slot must have at least 1 valid target
+          (every? (fn [req]
+                    (if (:target/required req)
+                      (seq (targeting/find-valid-targets db player-id req))
+                      true))
+                  reqs))))))
+
+
 (defn can-cast-mode?
   "Check if player can pay all costs for a specific casting mode.
-   Checks effective mana cost (with battlefield cost modifiers) AND all additional costs."
+   Checks effective mana cost (with battlefield cost modifiers), all additional costs,
+   and targeting feasibility (sufficient unique valid targets for multi-slot modes)."
   [db player-id object-id mode]
   (let [effective-cost (static-abilities/get-effective-mana-cost db player-id object-id mode)
         mana-payable (mana/can-pay? db player-id effective-cost)
         additional-costs (:mode/additional-costs mode)
         additional-payable (every? #(can-pay-additional-cost? db player-id object-id %)
-                                   additional-costs)]
-    (and mana-payable additional-payable)))
+                                   additional-costs)
+        targeting-feasible (can-satisfy-targeting? db player-id mode)]
+    (and mana-payable additional-payable targeting-feasible)))
 
 
 (defn has-restriction?
