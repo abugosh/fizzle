@@ -627,8 +627,12 @@
             player-id (:selection/player-id selection)
             mode (:selection/mode selection)
             obj (queries/get-object db object-id)
-            targeting-reqs (or (seq (:mode/targeting mode))
-                               (:card/targeting (:object/card obj)))]
+            ;; NOTE: do NOT use (seq mode-targeting) here — it converts a vector
+            ;; to a list, violating :selection/target-requirements vector? spec.
+            mode-targeting (:mode/targeting mode)
+            targeting-reqs (if (seq mode-targeting)
+                             mode-targeting
+                             (:card/targeting (:object/card obj)))]
         (when (seq targeting-reqs)
           (let [n (count targeting-reqs)
                 first-req (first targeting-reqs)
