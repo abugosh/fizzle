@@ -259,7 +259,7 @@
     [:h2 {:class "text-text m-0 mb-4 text-lg text-center"} "Choose one"]
     [:div {:class "flex flex-col"}
      (for [mode (:selection/candidates selection)]
-       ^{:key (:mode/label mode)}
+       ^{:key (:mode/id mode)}
        [:button {:class mode-btn-class
                  :on-click #(rf/dispatch [::selection-events/toggle-selection mode])}
         [:div {:class "font-bold text-sm"} (:mode/label mode)]])]

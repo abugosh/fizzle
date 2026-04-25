@@ -34,6 +34,7 @@
    ;; :alternate/targeting REPLACES :card/targeting (same for Orim's Chant)
    :card/alternate-costs [{:alternate/id :kicked
                            :alternate/kind :kicker
+                           :alternate/label "Kicker — {W}"
                            :alternate/zone :hand
                            :alternate/mana-cost {:white 2}
                            :alternate/targeting [{:target/id :player

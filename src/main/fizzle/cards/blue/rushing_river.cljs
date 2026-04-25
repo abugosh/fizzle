@@ -44,6 +44,7 @@
    :card/alternate-costs
    [{:alternate/id :kicked
      :alternate/kind :kicker
+     :alternate/label "Kicker — Sacrifice a land"
      :alternate/zone :hand
      :alternate/mana-cost {:colorless 2 :blue 1}
      :alternate/additional-costs [{:cost/type :sacrifice-permanent

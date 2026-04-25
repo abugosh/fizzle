@@ -525,12 +525,14 @@
 (s/def :alternate/kind keyword?)
 (s/def :alternate/effects ::effects)
 (s/def :alternate/targeting ::targeting-vec)
+(s/def :alternate/label string?)
 
 
 (s/def ::alternate-cost
   (s/keys :req [:alternate/id :alternate/zone :alternate/mana-cost]
           :opt [:alternate/additional-costs :alternate/on-resolve
-                :alternate/kind :alternate/effects :alternate/targeting]))
+                :alternate/kind :alternate/effects :alternate/targeting
+                :alternate/label]))
 
 
 ;; === Conditional Effects Spec ===

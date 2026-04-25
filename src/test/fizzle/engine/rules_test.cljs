@@ -1488,3 +1488,53 @@
           "Should not contain :mode/effects when not provided")
       (is (not (contains? mode :mode/targeting))
           "Should not contain :mode/targeting when not provided"))))
+
+
+;; === :mode/label population (fizzle-8mfo) ===
+
+(deftest get-primary-mode-includes-default-label
+  (testing "Primary mode has a non-nil :mode/label so spell-mode-selection-modal can render + key"
+    (let [card {:card/id :foo :card/name "Foo" :card/mana-cost {:blue 1} :card/types #{:instant}}
+          mode (#'rules/get-primary-mode card)]
+      (is (some? (:mode/label mode)))
+      (is (string? (:mode/label mode))))))
+
+
+(deftest alternate-to-mode-uses-authored-label-when-present
+  (testing ":alternate/label takes precedence over auto-derivation"
+    (let [alt {:alternate/id :kicked
+               :alternate/kind :kicker
+               :alternate/zone :hand
+               :alternate/mana-cost {:colorless 2 :blue 1}
+               :alternate/label "Kicker — Sacrifice a land"}
+          mode (#'rules/alternate-to-mode alt)]
+      (is (= "Kicker — Sacrifice a land" (:mode/label mode))))))
+
+
+(deftest alternate-to-mode-derives-label-when-not-authored
+  (testing "When :alternate/label absent, derive a non-nil label from :alternate/id"
+    (let [alt {:alternate/id :flashback
+               :alternate/zone :graveyard
+               :alternate/mana-cost {:colorless 1 :blue 1}}
+          mode (#'rules/alternate-to-mode alt)]
+      (is (some? (:mode/label mode)))
+      (is (string? (:mode/label mode)))
+      (is (re-find #"(?i)flashback" (:mode/label mode))
+          "Derived label should be recognizable from the :alternate/id"))))
+
+
+(deftest casting-modes-have-unique-mode-ids-per-card
+  (testing "Mode IDs in a card's casting modes list are unique — invariant for spell-mode-selection-modal :key"
+    (let [card-with-kicker {:card/id :rr
+                            :card/mana-cost {:blue 1}
+                            :card/types #{:instant}
+                            :card/alternate-costs [{:alternate/id :kicked
+                                                    :alternate/kind :kicker
+                                                    :alternate/zone :hand
+                                                    :alternate/mana-cost {:colorless 2 :blue 1}}]}
+          primary (#'rules/get-primary-mode card-with-kicker)
+          alts (#'rules/get-alternate-modes card-with-kicker :hand [])
+          all-modes (cons primary alts)
+          ids (map :mode/id all-modes)]
+      (is (= (count ids) (count (distinct ids)))
+          "All :mode/id values must be distinct"))))

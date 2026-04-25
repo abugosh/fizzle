@@ -4,6 +4,7 @@
    Orchestrates mana, zones, and effects into casting operations.
    All functions are pure: (db, args) -> db"
   (:require
+    [clojure.string :as str]
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.conditions :as conditions]
@@ -29,6 +30,7 @@
    Includes :card/additional-costs if present on the card."
   [card]
   {:mode/id :primary
+   :mode/label "Cast"
    :mode/zone :hand
    :mode/mana-cost (or (:card/mana-cost card) {})
    :mode/additional-costs (or (:card/additional-costs card) [])
@@ -37,12 +39,23 @@
                       :battlefield)})
 
 
+(defn- derive-alternate-label
+  "Derives a human-readable label for an alternate-cost mode when no
+   :alternate/label is authored. Prefers :alternate/kind (e.g. :kicker → 'Kicker'),
+   falls back to :alternate/id (e.g. :flashback → 'Flashback')."
+  [alternate]
+  (let [src (or (:alternate/kind alternate) (:alternate/id alternate))]
+    (str/capitalize (str/replace (name src) #"[-_]" " "))))
+
+
 (defn- alternate-to-mode
   "Converts an alternate-cost definition to a mode map.
    Optional keys :alternate/kind, :alternate/effects, :alternate/targeting are
-   propagated as :mode/kind, :mode/effects, :mode/targeting when present."
+   propagated as :mode/kind, :mode/effects, :mode/targeting when present.
+   :mode/label is taken from :alternate/label if authored, otherwise derived."
   [alternate]
   (cond-> {:mode/id (:alternate/id alternate)
+           :mode/label (or (:alternate/label alternate) (derive-alternate-label alternate))
            :mode/zone (:alternate/zone alternate)
            :mode/mana-cost (or (:alternate/mana-cost alternate) {})
            :mode/additional-costs (or (:alternate/additional-costs alternate) [])
