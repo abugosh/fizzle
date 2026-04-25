@@ -52,6 +52,7 @@
     [fizzle.cards.blue.merchant-scroll :as merchant-scroll]
     [fizzle.cards.blue.opt :as opt]
     [fizzle.cards.blue.portent :as portent]
+    [fizzle.cards.blue.rushing-river :as rushing-river]
     [fizzle.cards.blue.sleight-of-hand :as sleight-of-hand]
     [fizzle.cards.blue.stifle :as stifle]
     [fizzle.cards.blue.tinker :as tinker]
@@ -121,6 +122,7 @@
        merchant-scroll/card
        opt/card
        portent/card
+       rushing-river/card
        sleight-of-hand/card
        stifle/card
        tinker/card

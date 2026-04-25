@@ -619,27 +619,52 @@
              :selection/validation :exact
              :selection/auto-confirm? true
              :selection/card-source :valid-targets})))
-      ;; Spell path: delegate to pre-cast-cost-to-targeting chain behavior
+      ;; Spell path: delegate to pre-cast-cost-to-targeting chain behavior.
+      ;; Use mode targeting (:mode/targeting) when present — alternate-cost modes
+      ;; (e.g. Rushing River kicked) carry N-slot targeting via :mode/targeting.
+      ;; Fall back to :card/targeting (primary targeting) for standard spells.
       (let [object-id (:selection/spell-id selection)
             player-id (:selection/player-id selection)
             mode (:selection/mode selection)
             obj (queries/get-object db object-id)
-            targeting-reqs (:card/targeting (:object/card obj))]
+            targeting-reqs (or (seq (:mode/targeting mode))
+                               (:card/targeting (:object/card obj)))]
         (when (seq targeting-reqs)
-          (let [first-req (first targeting-reqs)]
-            {:selection/mechanism :n-slot-targeting
-             :selection/domain    :cast-time-targeting
-             :selection/lifecycle :finalized
-             :selection/player-id player-id
-             :selection/object-id object-id
-             :selection/mode mode
-             :selection/target-requirement first-req
-             :selection/valid-targets (targeting/find-valid-targets db player-id first-req)
-             :selection/selected #{}
-             :selection/select-count 1
-             :selection/validation :exact
-             :selection/auto-confirm? true
-             :selection/card-source :valid-targets}))))))
+          (let [n (count targeting-reqs)
+                first-req (first targeting-reqs)
+                ;; Distinctness: enforced when two reqs share identical criteria
+                ;; and no req has :target/allow-duplicate true.
+                criteria-keys [:target/type :target/options :target/criteria]
+                any-shared? (when (> n 1)
+                              (some (fn [[req-a req-b]]
+                                      (= (select-keys req-a criteria-keys)
+                                         (select-keys req-b criteria-keys)))
+                                    (for [i (range n) j (range n) :when (< i j)]
+                                      [(nth targeting-reqs i) (nth targeting-reqs j)])))
+                any-allow-dup? (some :target/allow-duplicate targeting-reqs)
+                enforce-distinctness? (boolean (and any-shared? (not any-allow-dup?)))]
+            (cond->
+              {:selection/mechanism :n-slot-targeting
+               :selection/domain    :cast-time-targeting
+               :selection/lifecycle :finalized
+               :selection/clear-selected-card? true
+               :selection/player-id player-id
+               :selection/object-id object-id
+               :selection/mode mode
+               :selection/target-requirements targeting-reqs
+               :selection/valid-targets (targeting/find-valid-targets db player-id first-req)
+               :selection/selected []
+               :selection/select-count n
+               :selection/validation :exact
+               :selection/auto-confirm? (= 1 n)
+               :selection/enforce-distinctness enforce-distinctness?
+               :selection/card-source :valid-targets}
+              ;; Single-req legacy path: also set singular :selection/target-requirement
+              ;; so existing single-target confirm paths work unchanged.
+              (= 1 n)
+              (assoc :selection/target-requirement first-req
+                     :selection/selected #{}
+                     :selection/auto-confirm? true))))))))
 
 
 (defn- find-stack-item-eid-for-object
