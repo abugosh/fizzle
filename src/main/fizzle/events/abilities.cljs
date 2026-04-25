@@ -37,6 +37,10 @@
           description (descriptions/describe-activate-mana object-id mana-color game-db)
           base (-> db
                    (assoc :game/db game-db-after)
+                   ;; Clear selected card after activation (sacrifice-self mana abilities
+                   ;; move source to graveyard; stale selection highlights it there). Mirrors
+                   ;; the unconditional clear in ::activate-ability below (fizzle-gr9a).
+                   (dissoc :game/selected-card)
                    (assoc :history/pending-entry
                           (descriptions/build-pending-entry game-db-after ::activate-mana-ability description pid)))]
       ;; Critical: use set-pending-selection (synchronous) — do NOT rf/dispatch inside handler.

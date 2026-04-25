@@ -8,6 +8,7 @@
     [cljs.test :refer-macros [deftest is testing]]
     [clojure.string :as str]
     [datascript.core :as d]
+    [fizzle.cards.artifacts.lotus-petal]
     [fizzle.cards.red.lightning-bolt]
     [fizzle.db.queries :as q]
     [fizzle.engine.grants :as grants]
@@ -112,6 +113,38 @@
       ;; After dispatch, :game/selected-card should be cleared
       (is (nil? (:game/selected-card result))
           ":game/selected-card should be dissoc'd after ability activation attempt"))))
+
+
+;; Test 4a: activate-mana-ability clears :game/selected-card on sacrifice-self (fizzle-gr9a)
+(deftest activate-mana-ability-clears-selected-card-on-sacrifice
+  (testing "::activate-mana-ability clears :game/selected-card when source sacrifices itself"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [game-db' obj-id] (h/add-card-to-zone game-db :lotus-petal :battlefield :player-1)
+          app-db' (assoc (assoc app-db :game/db game-db')
+                         :game/selected-card obj-id)
+          _ (is (= obj-id (:game/selected-card app-db'))
+                "Precondition: selected-card is set")
+          result (dispatch-event app-db' [::abilities/activate-mana-ability obj-id :white])]
+      (is (nil? (:game/selected-card result))
+          ":game/selected-card should be dissoc'd after sacrifice-self mana ability")
+      (is (= 1 (:white (q/get-mana-pool (:game/db result) :player-1)))
+          "Mana ability should still execute (white mana added)"))))
+
+
+;; Test 4b: activate-mana-ability clears :game/selected-card unconditionally (fizzle-gr9a)
+(deftest activate-mana-ability-clears-selected-card-simple
+  (testing "::activate-mana-ability clears :game/selected-card for non-sacrificing abilities too"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [game-db' obj-id] (h/add-card-to-zone game-db :swamp :battlefield :player-1)
+          app-db' (assoc (assoc app-db :game/db game-db')
+                         :game/selected-card obj-id)
+          _ (is (= obj-id (:game/selected-card app-db'))
+                "Precondition: selected-card is set")
+          result (dispatch-event app-db' [::abilities/activate-mana-ability obj-id :black])]
+      (is (nil? (:game/selected-card result))
+          ":game/selected-card should be dissoc'd unconditionally (mirrors ::activate-ability)"))))
 
 
 ;; ============================================================
