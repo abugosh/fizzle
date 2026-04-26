@@ -4,7 +4,6 @@
     [fizzle.db.game-state :as game-state]
     [fizzle.db.queries :as queries]
     [fizzle.engine.creatures :as creatures]
-    [fizzle.engine.mana :as mana]
     [fizzle.engine.priority :as priority]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.sorting :as sorting]
@@ -109,13 +108,7 @@
   :<- [::selected-card]
   (fn [[game-db selected] _]
     (when (and game-db selected)
-      (let [obj (queries/get-object game-db selected)
-            card (:object/card obj)
-            cycling-cost (:card/cycling card)
-            player-id (queries/get-human-player-id game-db)]
-        (and obj cycling-cost
-             (= :hand (:object/zone obj))
-             (mana/can-pay? game-db player-id cycling-cost))))))
+      (rules/can-cycle? game-db (queries/get-human-player-id game-db) selected))))
 
 
 (rf/reg-sub

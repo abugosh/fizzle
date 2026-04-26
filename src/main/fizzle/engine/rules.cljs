@@ -596,3 +596,22 @@
            (land-card? db object-id)
            (#{:main1 :main2} phase)
            (q/stack-empty? db)))))
+
+
+(defn can-cycle?
+  "Check if a player can cycle the given card.
+   Requires:
+   - Object exists and has :card/cycling cost
+   - Object is in player's hand
+   - Player can pay the cycling cost
+   Returns true or false. Mirrors the can-cast?/can-play-land? shape.
+   Extracted from subs/game.cljs ::can-cycle? so the ui-invariants
+   interceptor can call it as a pure function (per ADR-031)."
+  [db player-id object-id]
+  (let [obj (q/get-object db object-id)
+        card (:object/card obj)
+        cycling-cost (:card/cycling card)]
+    (boolean
+      (and obj cycling-cost
+           (= :hand (:object/zone obj))
+           (mana/can-pay? db player-id cycling-cost)))))

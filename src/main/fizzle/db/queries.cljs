@@ -87,18 +87,6 @@
        db object-id))
 
 
-(defn get-object-zone
-  "Get the zone keyword for a game object by its :object/id.
-   Returns nil if object does not exist in the database.
-   Used by the ui-invariants interceptor to reconcile :game/selected-card."
-  [db object-id]
-  (d/q '[:find ?z .
-         :in $ ?oid
-         :where [?e :object/id ?oid]
-         [?e :object/zone ?z]]
-       db object-id))
-
-
 (defn get-objects-in-zone
   "Get all game objects in a specific zone for a player.
    Returns vector of objects with card data."

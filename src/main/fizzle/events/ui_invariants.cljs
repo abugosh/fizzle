@@ -1,50 +1,62 @@
 (ns fizzle.events.ui-invariants
   "Cross-cutting UI-state invariant maintenance.
 
-   Per ADR-031: a re-frame post-event interceptor reconciles
-   :game/selected-card against :game/db zone state after each
-   game-mutating event. If the referenced object is no longer in a
-   zone where selection is meaningful (#{:hand :graveyard}), the key
-   is dissoc'd. Mirrors the history/interceptor.cljs pattern.
+   Per ADR-031 (revised 2026-04-26): a re-frame post-event interceptor
+   reconciles :game/selected-card after each game-mutating event using an
+   actionability predicate — not a static zone set.
 
-   Selectable zones (#{:hand :graveyard}) are the zones from which
-   views read :game/selected-card for meaningful interaction:
-   - :hand  — casting spells, playing lands, cycling
-   - :graveyard — flashback spells
+   The predicate mirrors the controls.cljs button-gating logic:
+   :game/selected-card is cleared when the referenced card is no longer
+   eligible for any user action (cast a non-land spell, play a land, or cycle).
+   This matches the existing UX rule: selection is permitted only for cards
+   the user can act on right now.
 
-   If the referenced object moves to any other zone (e.g., :battlefield
-   after play-land, :stack after cast, :exile after flashback, or nil
-   if the object ceases to exist), the selection is cleared."
+   Why actionability, not zones:
+   - :hand alone would break the graveyard flashback flow.
+   - #{:hand :graveyard} is too coarse: non-flashback graveyard cards
+     (Lotus Petal post-sacrifice, Rain-of-Filth-granted lands post-sacrifice)
+     are not actionable, so highlighting them recreates the gr9a/ktba bug class.
+   - Graveyard flashback cards are preserved because rules/can-cast? returns
+     true for them (flashback modes are graveyard-zone modes).
+
+   Pattern mirrors history/interceptor.cljs."
   (:require
     [fizzle.db.queries :as queries]
+    [fizzle.engine.rules :as rules]
     [re-frame.core :as rf]))
 
 
-(def ^:private selectable-zones
-  "Zones where :game/selected-card has meaning (per ADR-031 view-consumer audit)."
-  #{:hand :graveyard})
+(defn- still-actionable?
+  "True if the referenced object is still eligible for some user action
+   (cast a non-land spell, play a land, or cycle). Mirrors the gating
+   logic of the controls.cljs Cast/Play/Cycle buttons. Per ADR-031."
+  [game-db object-id]
+  (let [pid (queries/get-human-player-id game-db)]
+    (or (and (rules/can-cast? game-db pid object-id)
+             (not (rules/land-card? game-db object-id)))
+        (rules/can-play-land? game-db pid object-id)
+        (rules/can-cycle? game-db pid object-id))))
 
 
 (defn- reconcile-selected-card
-  "Pure: given app-db, dissoc :game/selected-card if its object-id's zone
-   in :game/db is not in selectable-zones. No-op if:
+  "Pure: given app-db, dissoc :game/selected-card if its referenced object
+   is no longer eligible for any user action. No-op if:
    - :game/selected-card is unset
    - :game/db is nil (non-game screens like setup/calculator)
-   - zone is selectable"
+   - card is still actionable (can-cast?, can-play-land?, or can-cycle?)"
   [app-db]
   (let [object-id (:game/selected-card app-db)
         game-db   (:game/db app-db)]
     (if (or (nil? object-id) (nil? game-db))
       app-db
-      (let [zone (queries/get-object-zone game-db object-id)]
-        (if (contains? selectable-zones zone)
-          app-db
-          (dissoc app-db :game/selected-card))))))
+      (if (still-actionable? game-db object-id)
+        app-db
+        (dissoc app-db :game/selected-card)))))
 
 
 (def reconcile-ui-invariants-interceptor
   "Re-frame post-event interceptor that reconciles :game/selected-card
-   against :game/db zone state after each game-mutating event.
+   against post-event actionability after each game-mutating event.
 
    Runs in :after position so it observes the net post-event db state.
    No-op when :effects :db is absent (event produced no db change) or
