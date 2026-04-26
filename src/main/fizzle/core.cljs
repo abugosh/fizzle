@@ -21,6 +21,7 @@
     [fizzle.events.selection.zone-ops]
     [fizzle.events.setup :as setup]
     [fizzle.events.ui :as ui-events]
+    [fizzle.events.ui-invariants :as ui-invariants]
     [fizzle.history.events]
     [fizzle.history.interceptor :as history-interceptor]
     [fizzle.snapshot.events :as snapshot]
@@ -143,6 +144,7 @@
 (defn init
   []
   (history-interceptor/register!)
+  (ui-invariants/register!)        ; Per ADR-031: reconcile :game/selected-card on zone change
   (db-effect/register!)            ; Custom :db effect handler — SBA+bot chokepoint
   ;; Always run normal init-setup first (sets up setup screen + config)
   (rf/dispatch-sync [::setup/init-setup])
