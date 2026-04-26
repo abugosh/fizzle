@@ -19,6 +19,7 @@
    - Bug-class regression: non-flashback graveyard card → cleared"
   (:require
     [cljs.test :refer-macros [deftest is testing]]
+    [fizzle.events.casting :as casting]
     [fizzle.events.db-effect :as db-effect]
     [fizzle.events.lands :as land-events]
     [fizzle.events.ui-invariants :as ui-invariants]
@@ -149,3 +150,39 @@
       (let [result (dispatch-event app-db [::land-events/play-land land-id])]
         (is (nil? (:game/selected-card result))
             "interceptor must clear :game/selected-card for non-flashback graveyard card (gr9a/ktba bug class)")))))
+
+
+;; ============================================================
+;; Cast-spell clears :game/selected-card via interceptor (Task 2A characterization)
+;; ============================================================
+
+(deftest cast-spell-clears-selected-card-via-interceptor
+  (testing "cast-spell: :game/selected-card cleared by interceptor after Lotus Petal cast"
+    ;; Regression (Task 2A): after cast-spell, :game/selected-card is cleared because
+    ;; the cast spell goes :hand -> :stack and the interceptor's still-actionable? predicate
+    ;; returns false for the on-stack zone (not in hand, not a land, no cycling cost).
+    ;; Per ADR-031, this clearing must happen via the interceptor — NOT via the per-handler
+    ;; dissoc in casting.cljs (which is deleted by this task).
+    ;;
+    ;; This test characterizes the expected post-cast behavior so that after deletion
+    ;; of the per-handler dissoc, the test continues to pass via the interceptor alone.
+    (let [base-db  (th/create-game-scenario {:bot-archetype :goldfish})
+          game-db  (:game/db base-db)
+          ;; Add Lotus Petal (CMC 0, no mana required) to hand
+          [game-db lp-id] (th/add-card-to-zone game-db :lotus-petal :hand :player-1)
+          ;; Simulate: user clicked Lotus Petal in hand (selected-card set)
+          app-db   (assoc base-db
+                          :game/db game-db
+                          :game/selected-card lp-id)]
+      ;; Precondition: LP is selected and in hand
+      (is (= lp-id (:game/selected-card app-db))
+          "Precondition: :game/selected-card set to Lotus Petal")
+      (is (= :hand (th/get-object-zone game-db lp-id))
+          "Precondition: Lotus Petal is in hand")
+      ;; Dispatch cast-spell with explicit object-id — after cast, LP moves to stack.
+      ;; Interceptor: still-actionable? returns false for on-stack object
+      ;; (can-cast? false — not in hand; can-play-land? false — not a land;
+      ;;  can-cycle? false — no cycling cost). Interceptor clears :game/selected-card.
+      (let [result (dispatch-event app-db [::casting/cast-spell {:object-id lp-id}])]
+        (is (nil? (:game/selected-card result))
+            "interceptor must clear :game/selected-card after cast-spell (not per-handler dissoc — ADR-031)")))))

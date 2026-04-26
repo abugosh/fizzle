@@ -37,10 +37,6 @@
           description (descriptions/describe-activate-mana object-id mana-color game-db)
           base (-> db
                    (assoc :game/db game-db-after)
-                   ;; Clear selected card after activation (sacrifice-self mana abilities
-                   ;; move source to graveyard; stale selection highlights it there). Mirrors
-                   ;; the unconditional clear in ::activate-ability below (fizzle-gr9a).
-                   (dissoc :game/selected-card)
                    (assoc :history/pending-entry
                           (descriptions/build-pending-entry game-db-after ::activate-mana-ability description pid)))]
       ;; Critical: use set-pending-selection (synchronous) — do NOT rf/dispatch inside handler.
@@ -309,9 +305,6 @@
           player-id (queries/get-human-player-id game-db)
           result (activate-ability game-db player-id object-id ability-index)
           base-db (cond-> (assoc db :game/db (:db result))
-                    ;; Clear selected card after activation (sacrifice may move it to graveyard,
-                    ;; and stale selection causes it to appear highlighted there)
-                    true (dissoc :game/selected-card)
                     (:pending-selection result) (sel-spec/set-pending-selection (:pending-selection result)))]
       (if (:pending-selection result)
         ;; Targeting needed — defer history entry until selection chain completes

@@ -158,17 +158,14 @@
       (if (empty? steps)
         ;; All steps skipped — cast immediately
         (-> app-db
-            (assoc :game/db (rules/cast-spell-mode game-db player-id object-id mode))
-            (dissoc :game/selected-card))
+            (assoc :game/db (rules/cast-spell-mode game-db player-id object-id mode)))
         (let [result (evaluate-pre-cast-step (first steps) ctx)]
           (cond
             (nil? result) (recur (rest steps))
             (:selection result) (-> app-db
-                                    (sel-spec/set-pending-selection (:selection result))
-                                    (dissoc :game/selected-card))
+                                    (sel-spec/set-pending-selection (:selection result)))
             (:db result) (-> app-db
-                             (assoc :game/db (:db result))
-                             (dissoc :game/selected-card))))))))
+                             (assoc :game/db (:db result)))))))))
 
 
 (defn- get-valid-spell-modes
