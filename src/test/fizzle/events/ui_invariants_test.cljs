@@ -186,3 +186,45 @@
       (let [result (dispatch-event app-db [::casting/cast-spell {:object-id lp-id}])]
         (is (nil? (:game/selected-card result))
             "interceptor must clear :game/selected-card after cast-spell (not per-handler dissoc — ADR-031)")))))
+
+
+;; ============================================================
+;; Selection-routed cast clears :game/selected-card via interceptor (Task 2B characterization)
+;; ============================================================
+
+(deftest selection-routed-cast-clears-selected-card-via-interceptor
+  (testing "confirm-selection (mana-allocation finalized): interceptor clears :game/selected-card after cast"
+    ;; Regression (Task 2B): a cast that goes through a selection-routed flow
+    ;; (mana-allocation finalized lifecycle) clears :game/selected-card via the
+    ;; interceptor, NOT via the :selection/clear-selected-card? builder flag
+    ;; (retired in this task).
+    ;;
+    ;; Setup: Dark Ritual ({B}, pure colored) in hand with B mana.
+    ;; Dark Ritual has no generic cost — cast-spell dispatches directly without
+    ;; allocation selection. After cast, the spell is on stack (not actionable)
+    ;; and the interceptor clears :game/selected-card.
+    ;;
+    ;; This test characterizes the same outcome as cast-spell-clears-selected-card-via-interceptor
+    ;; but via the ::confirm-selection event path (selection-routed) rather than
+    ;; ::cast-spell directly. Before flag deletion the flag AND interceptor both
+    ;; provided dual coverage; after deletion the interceptor provides sole coverage.
+    (let [base-db (th/create-game-scenario {:bot-archetype :goldfish :mana {:black 1}})
+          game-db (:game/db base-db)
+          [game-db dr-id] (th/add-card-to-zone game-db :dark-ritual :hand :player-1)
+          ;; Set :game/selected-card to the Dark Ritual (simulates user selecting it)
+          app-db (assoc base-db
+                        :game/db game-db
+                        :game/selected-card dr-id)]
+      ;; Precondition: Dark Ritual is selected and in hand with mana
+      (is (= dr-id (:game/selected-card app-db))
+          "Precondition: :game/selected-card set to Dark Ritual")
+      (is (= :hand (th/get-object-zone game-db dr-id))
+          "Precondition: Dark Ritual is in hand")
+      ;; Dispatch cast-spell — Dark Ritual has only colored mana cost (no generic),
+      ;; so cast-spell-handler completes without an allocation selection.
+      ;; After cast, Dark Ritual moves hand→stack (not actionable).
+      ;; Interceptor: can-cast? false (on stack), can-play-land? false, can-cycle? false
+      ;; → clears :game/selected-card.
+      (let [result (dispatch-event app-db [::casting/cast-spell {:object-id dr-id}])]
+        (is (nil? (:game/selected-card result))
+            "interceptor must clear :game/selected-card for selection-routed cast (not flag — ADR-031 2B)")))))

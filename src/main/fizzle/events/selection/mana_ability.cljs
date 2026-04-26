@@ -54,7 +54,6 @@
          :selection/mechanism :allocate-resource
          :selection/domain    :mana-allocation
          :selection/lifecycle :finalized
-         :selection/clear-selected-card? true
          :selection/player-id player-id
          :selection/spell-id object-id
          :selection/mode {:mode/mana-cost mana-cost}

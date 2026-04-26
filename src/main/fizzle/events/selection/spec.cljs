@@ -151,7 +151,6 @@
                 :selection/exile-cost
                 :selection/counter-target-id
                 :selection/unless-pay-cost
-                :selection/clear-selected-card?
                 :selection/pending-targets
                 :selection/cleanup?
                 :selection/stack-item-eid]))
@@ -198,8 +197,7 @@
                 :selection/zone
                 :selection/spell-id
                 :selection/mode
-                :selection/chain-builder
-                :selection/clear-selected-card?]))
+                :selection/chain-builder]))
 
 
 ;; :allocate-resource — assign mana from pool to typed cost slots.
@@ -221,7 +219,6 @@
                 :selection/original-remaining-pool
                 :selection/colored-cost
                 :selection/original-cost
-                :selection/clear-selected-card?
                 :selection/pending-targets
                 :selection/source-type
                 :selection/ability
@@ -257,7 +254,6 @@
                 :selection/spell-id
                 :selection/target-effect
                 :selection/remaining-effects
-                :selection/clear-selected-card?
                 :selection/pending-targets]))
 
 

@@ -134,7 +134,6 @@
        :selection/mechanism :pick-from-zone
        :selection/domain    :exile-cost
        :selection/lifecycle :finalized
-       :selection/clear-selected-card? true
        :selection/card-source :candidates
        :selection/candidates candidate-ids
        :selection/select-count (count candidate-ids)  ; Can select up to all candidates
@@ -183,8 +182,7 @@
                :selection/validation :exact
                :selection/auto-confirm? true}
         has-targeting? (assoc :selection/lifecycle :chaining)
-        (not has-targeting?) (assoc :selection/lifecycle :finalized
-                                    :selection/clear-selected-card? true)))))
+        (not has-targeting?) (assoc :selection/lifecycle :finalized)))))
 
 
 (defn build-discard-specific-selection
@@ -230,8 +228,7 @@
                :selection/validation :exact
                :selection/auto-confirm? false}
         has-targeting? (assoc :selection/lifecycle :chaining)
-        (not has-targeting?) (assoc :selection/lifecycle :finalized
-                                    :selection/clear-selected-card? true)))))
+        (not has-targeting?) (assoc :selection/lifecycle :finalized)))))
 
 
 (defn build-sacrifice-permanent-selection
@@ -281,11 +278,9 @@
                                          :selection/ability ability
                                          :selection/ability-index ability-index)
          (and (not= source-type :ability) has-targeting?) (assoc :selection/lifecycle :chaining)
-         (and (not= source-type :ability) (not has-targeting?)) (assoc :selection/lifecycle :finalized
-                                                                       :selection/clear-selected-card? true)
+         (and (not= source-type :ability) (not has-targeting?)) (assoc :selection/lifecycle :finalized)
          (and (= source-type :ability) (seq (:ability/targeting ability))) (assoc :selection/lifecycle :chaining)
-         (and (= source-type :ability) (not (seq (:ability/targeting ability)))) (assoc :selection/lifecycle :finalized
-                                                                                        :selection/clear-selected-card? true))))))
+         (and (= source-type :ability) (not (seq (:ability/targeting ability)))) (assoc :selection/lifecycle :finalized))))))
 
 
 (defn build-x-mana-selection
@@ -340,7 +335,6 @@
                 :selection/mechanism :allocate-resource
                 :selection/domain    :mana-allocation
                 :selection/lifecycle :finalized
-                :selection/clear-selected-card? true
                 :selection/player-id sel-player
                 :selection/spell-id sel-object
                 :selection/mode mode-with-resolved-cost
@@ -374,7 +368,6 @@
      :selection/mechanism :accumulate
      :selection/domain    :pay-x-life
      :selection/lifecycle :finalized
-     :selection/clear-selected-card? true
      :selection/player-id player-id
      :selection/spell-id object-id
      :selection/mode mode
@@ -406,7 +399,6 @@
          :selection/mechanism :allocate-resource
          :selection/domain    :mana-allocation
          :selection/lifecycle :finalized
-         :selection/clear-selected-card? true
          :selection/player-id player-id
          :selection/spell-id object-id
          :selection/mode mode
@@ -651,7 +643,6 @@
               {:selection/mechanism :n-slot-targeting
                :selection/domain    :cast-time-targeting
                :selection/lifecycle :finalized
-               :selection/clear-selected-card? true
                :selection/player-id player-id
                :selection/object-id object-id
                :selection/mode mode

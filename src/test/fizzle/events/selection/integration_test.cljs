@@ -152,7 +152,6 @@
           pending-sel {:selection/mechanism :allocate-resource
                        :selection/domain    :mana-allocation
                        :selection/lifecycle :finalized
-                       :selection/clear-selected-card? true
                        :selection/player-id :player-1
                        :selection/spell-id spell-id
                        :selection/mode mode

@@ -96,8 +96,7 @@
       has-generic?
       (assoc :selection/lifecycle :chaining)
       (not has-generic?)
-      (assoc :selection/lifecycle :finalized
-             :selection/clear-selected-card? true))))
+      (assoc :selection/lifecycle :finalized))))
 
 
 ;; =====================================================

@@ -142,39 +142,6 @@
       (is (nil? (:game/pending-selection result))))))
 
 
-(deftest test-finalized-lifecycle-clears-selected-card
-  (testing ":finalized with :selection/clear-selected-card? true dissocs :game/selected-card"
-    (let [db (th/create-test-db)
-          app-db (assoc (make-app-db db {:selection/mechanism :pick-from-zone
-                                         :selection/domain :test-finalized
-                                         :selection/lifecycle :finalized
-                                         :selection/clear-selected-card? true
-                                         :selection/player-id :player-1
-                                         :selection/selected #{}
-                                         :selection/validation :always
-                                         :selection/auto-confirm? false})
-                        :game/selected-card :some-card)
-          result (core/confirm-selection-impl app-db)]
-      (is (nil? (:game/pending-selection result)))
-      (is (nil? (:game/selected-card result))))))
-
-
-(deftest test-finalized-lifecycle-without-clear-selected-card
-  (testing ":finalized without :selection/clear-selected-card? preserves :game/selected-card"
-    (let [db (th/create-test-db)
-          app-db (assoc (make-app-db db {:selection/mechanism :pick-from-zone
-                                         :selection/domain :test-finalized
-                                         :selection/lifecycle :finalized
-                                         :selection/player-id :player-1
-                                         :selection/selected #{}
-                                         :selection/validation :always
-                                         :selection/auto-confirm? false})
-                        :game/selected-card :some-card)
-          result (core/confirm-selection-impl app-db)]
-      (is (nil? (:game/pending-selection result)))
-      (is (= :some-card (:game/selected-card result))))))
-
-
 (deftest test-finalized-lifecycle-applies-continuation
   (testing ":finalized lifecycle applies :selection/on-complete continuation"
     (let [db (th/create-test-db)

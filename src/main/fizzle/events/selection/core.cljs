@@ -385,20 +385,21 @@
 
 
 (defn- finalized-path
-  "Finalized lifecycle: clear selection, optionally clear selected-card.
+  "Finalized lifecycle: clear selection.
    When the selection carries :selection/remaining-effects it originated from
    spell resolution (e.g. :order-bottom chained from :peek-and-select), so the
    spell must be cleaned up off the stack. Pre-cast finalized selections
-   (targeting, mana-allocation, spell-mode) never carry remaining-effects."
-  [app-db result selection on-complete clear-selected-card?]
+   (targeting, mana-allocation, spell-mode) never carry remaining-effects.
+   :game/selected-card cleanup is handled by the ui-invariants post-event
+   interceptor (ADR-031) — no per-lifecycle dissoc needed here."
+  [app-db result selection on-complete]
   (let [resolution-phase? (contains? selection :selection/remaining-effects)
         db-final (if resolution-phase?
                    (spell-cleanup/cleanup-selection-source (:db result) selection)
                    (:db result))
-        updated (cond-> app-db
-                  true (assoc :game/db db-final)
-                  true (dissoc :game/pending-selection)
-                  clear-selected-card? (dissoc :game/selected-card))]
+        updated (-> app-db
+                    (assoc :game/db db-final)
+                    (dissoc :game/pending-selection))]
     (if on-complete
       (drain-continuation-chain on-complete updated)
       updated)))
@@ -452,8 +453,7 @@
             lifecycle (or (:selection/lifecycle selection) :standard)
             routed (case lifecycle
                      :chaining (chaining-path app-db result selection on-complete)
-                     :finalized (finalized-path app-db result selection on-complete
-                                                (:selection/clear-selected-card? selection))
+                     :finalized (finalized-path app-db result selection on-complete)
                      :standard (standard-path app-db result selection on-complete))]
         ;; Process deferred entry as the terminal step when the selection chain
         ;; is complete (no pending-selection). process-deferred-entry is a no-op

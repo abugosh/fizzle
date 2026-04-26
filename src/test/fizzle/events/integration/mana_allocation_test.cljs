@@ -386,7 +386,6 @@
           selection {:selection/mechanism :n-slot-targeting
                      :selection/domain    :cast-time-targeting
                      :selection/lifecycle :finalized
-                     :selection/clear-selected-card? true
                      :selection/player-id :player-1
                      :selection/object-id obj-id
                      :selection/mode mode
@@ -458,7 +457,6 @@
                   {:selection/mechanism :allocate-resource
                    :selection/domain    :mana-allocation
                    :selection/lifecycle :finalized
-                   :selection/clear-selected-card? true
                    :selection/player-id :player-1
                    :selection/spell-id obj-id
                    :selection/mode mode
