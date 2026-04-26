@@ -26,11 +26,17 @@ A secondary concern surfaced in the same audit: `cast-spell-handler` (casting.cl
 
 A tertiary concern: there is no test exercising the no-arg dispatch shape `[::cast-spell]` (the production human-click path). All `cast-spell` tests dispatch with `{:object-id obj-id ...}`. After tightening the entry points (per below), the no-arg form ceases to exist and the gap closes structurally.
 
+**Revision (2026-04-26, post-q7lq):** The first implementation task (fizzle-q7lq) surfaced a flaw in the originally-proposed `{:hand :graveyard}` static-zone predicate. Graveyard cannot be a uniform "selectable zone" — a graveyard card without flashback (or a similar graveyard-active mechanic) is **not** clickable in the production UX, so highlighting it there is meaningless and reproduces the gr9a/ktba bug class the chokepoint was meant to eliminate. The actual UX rule is "selection is permitted only for cards that the user can act on right now." The Decision below has been amended to match. The previous reference to `bots/interceptor.cljs` was also incorrect; the actual existing precedent is `history/interceptor.cljs`.
+
 ## Decision
 
 We will:
 
-1. **Anchor `:game/selected-card` cleanup at a re-frame post-event interceptor.** A new interceptor (housed in a new module, provisional name `events/ui_invariants.cljs`) inspects `:game/db` after each game-mutating event and dissocs `:game/selected-card` if the referenced object's post-event zone is not in `{:hand :graveyard}`. The interceptor is registered globally on game-mutating event handlers. The pattern mirrors `bots/interceptor.cljs`, which already runs as a post-event interceptor for cross-cutting concerns. The 15+ scattered dissocs and the entire `:selection/clear-selected-card?` flag mechanism are removed.
+1. **Anchor `:game/selected-card` cleanup at a re-frame post-event interceptor with an actionability predicate.** A new module `events/ui_invariants.cljs` registers a global post-event interceptor that, after each event, dissocs `:game/selected-card` if the referenced object is no longer eligible for *any* user action — i.e. **not** any of: `rules/can-cast?` (excluding lands, which use play-land), `rules/can-play-land?`, or the cycle-eligibility check currently inlined at `subs/game.cljs:106-118`. The cycle-eligibility check is extracted to `engine/rules.cljs` as `can-cycle?` (mirroring the can-cast?/can-play-land? shape) so the interceptor can call it as a pure function. The pattern mirrors `history/interceptor.cljs`. The 15+ scattered dissocs and the entire `:selection/clear-selected-card?` flag mechanism are removed.
+
+   This actionability predicate matches the existing UX rule (the controls.cljs Cast / Play / Cycle buttons are themselves gated by `::can-cast?`, `::can-play-land?`, `::can-cycle?` — the same conditions). When a card stops being a valid target of any of those actions, the highlight is meaningless. Graveyard flashback cards remain selectable because `rules/can-cast?` returns true for them. Graveyard non-flashback cards (Lotus Petal post-sacrifice, Rain-of-Filth-granted lands post-sacrifice) become non-actionable and the interceptor clears the highlight — which is precisely the gr9a/ktba intent.
+
+   A previously-considered static-zone predicate (`#{:hand :graveyard}`) was rejected: graveyard is too coarse a category, and the predicate would preserve highlights on non-actionable graveyard cards, recreating the bug class.
 
 2. **Tighten cast event entry points.** `controls.cljs:61, 68` dispatch `[::cast-spell selected]` and `[::cast-and-yield selected]` explicitly, matching `[::play-land selected]` and `[::cycle-card selected]` in the same view. `cast-spell-handler` and `cast-and-yield-handler` drop the `(or (:object-id opts) (:game/selected-card app-db))` fallback; callers must pass `:object-id` explicitly. The single test exercising the no-arg form (`cast_and_yield_test.cljs:93`) is updated to match.
 
@@ -38,7 +44,7 @@ We will:
 
 4. **Subsume fizzle-ktba into the chokepoint resolution.** The granted-mana sacrifice-self bug auto-clears once the interceptor lands. ktba's regression test (Rain of Filth scenario) is preserved as a verification target and closes when the interceptor satisfies it.
 
-The selectable-zone predicate is `{:hand :graveyard}` — the union of zones from which views read `:game/selected-card`. Battlefield does not use this key (battlefield permanents are clicked for tap/activate, not for selection), and flashback/graveyard targeting uses `:selection/selected` (a separate mechanism), so this predicate fully covers current consumers.
+The actionability predicate intentionally mirrors the gating logic in the controls.cljs buttons. If a future user-action button is added (e.g., a "ninjutsu" or "channel" affordance), its eligibility check is added to the predicate at the same time. This keeps the interceptor's view of "actionable" structurally aligned with the UI's view.
 
 ## Consequences
 
