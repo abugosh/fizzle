@@ -18,43 +18,7 @@
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.targeting :as targeting]
-    [fizzle.events.casting :as casting]
     [fizzle.test-helpers :as th]))
-
-
-;; =====================================================
-;; Helper: multi-step kicked cast flow
-;; =====================================================
-
-(defn- cast-kicked
-  "Cast Rushing River in kicked mode, sacrificing land-id and targeting two permanents.
-   Flow:
-   1. cast-spell-handler → mode selector (primary + kicked)
-   2. confirm kicked mode → sacrifice selection (chaining lifecycle)
-   3. confirm sacrifice of land-id → 2-slot target selection (finalized lifecycle)
-   4. confirm [target-a-id target-b-id] → spell on stack (mana paid greedily by confirm-cast-time-target)
-   Returns db after casting."
-  [db rr-id land-id target-a-id target-b-id]
-  (let [;; Step 1: cast-spell-handler → spell-mode selection pending
-        app-db (casting/cast-spell-handler {:game/db db} {:object-id rr-id})
-        mode-sel (:game/pending-selection app-db)
-        ;; Find the kicked mode from candidates
-        kicked-mode (first (filter #(= :kicked (:mode/id %))
-                                   (:selection/candidates mode-sel)))
-        ;; Step 2: confirm kicked mode → sacrifice selection pending
-        {:keys [db selection]} (th/confirm-selection (:game/db app-db) mode-sel #{kicked-mode})
-        _ (assert (= :sacrifice-cost (:selection/domain selection))
-                  (str "Expected sacrifice-cost selection, got: " (:selection/domain selection)))
-        ;; Step 3: confirm sacrifice of land → 2-slot targeting selection
-        {:keys [db selection]} (th/confirm-selection db selection #{land-id})
-        _ (assert (= :cast-time-targeting (:selection/domain selection))
-                  (str "Expected cast-time-targeting selection, got: " (:selection/domain selection)))
-        _ (assert (= 2 (:selection/select-count selection))
-                  (str "Expected 2-slot target selection, got select-count: "
-                       (:selection/select-count selection)))
-        ;; Step 4: confirm 2 targets → spell on stack
-        {:keys [db]} (th/confirm-selection db selection [target-a-id target-b-id])]
-    db))
 
 
 ;; =====================================================
@@ -303,13 +267,17 @@
           ;; Two nonland permanents on battlefield (both belong to player-2)
           [db creature-a-id] (th/add-test-creature db :player-2 2 2)
           [db creature-b-id] (th/add-test-creature db :player-2 3 3)
-          ;; Execute full kicked flow
-          db-cast (cast-kicked db rr-id land-id creature-a-id creature-b-id)
+          ;; Execute full kicked flow via production chokepoints
+          {:keys [db selection]} (th/cast-with-mode db :player-1 rr-id)
+          kicked-mode (first (filter #(= :kicked (:mode/id %)) (:selection/candidates selection)))
+          {:keys [db selection]} (th/confirm-selection db selection #{kicked-mode})
+          {:keys [db selection]} (th/confirm-selection db selection #{land-id})
+          {:keys [db]} (th/confirm-selection db selection [creature-a-id creature-b-id])
           ;; Verify land was sacrificed
-          _ (is (= :graveyard (:object/zone (q/get-object db-cast land-id)))
+          _ (is (= :graveyard (:object/zone (q/get-object db land-id)))
                 "Sacrificed land should be in graveyard")
           ;; Resolve — both permanents should bounce to hand
-          {:keys [db]} (th/resolve-top db-cast)]
+          {:keys [db]} (th/resolve-top db)]
       (is (= :hand (:object/zone (q/get-object db creature-a-id)))
           "First target should be bounced to owner's hand")
       (is (= :hand (:object/zone (q/get-object db creature-b-id)))
@@ -325,8 +293,12 @@
           ;; One permanent each player
           [db creature-p1-id] (th/add-test-creature db :player-1 2 2)
           [db creature-p2-id] (th/add-test-creature db :player-2 3 3)
-          db-cast (cast-kicked db rr-id land-id creature-p1-id creature-p2-id)
-          {:keys [db]} (th/resolve-top db-cast)]
+          {:keys [db selection]} (th/cast-with-mode db :player-1 rr-id)
+          kicked-mode (first (filter #(= :kicked (:mode/id %)) (:selection/candidates selection)))
+          {:keys [db selection]} (th/confirm-selection db selection #{kicked-mode})
+          {:keys [db selection]} (th/confirm-selection db selection #{land-id})
+          {:keys [db]} (th/confirm-selection db selection [creature-p1-id creature-p2-id])
+          {:keys [db]} (th/resolve-top db)]
       (is (= :hand (:object/zone (q/get-object db creature-p1-id)))
           "Player-1 permanent should be bounced to hand")
       (is (= :hand (:object/zone (q/get-object db creature-p2-id)))
@@ -384,8 +356,12 @@
           [db creature-a-id] (th/add-test-creature db :player-2 2 2)
           [db creature-b-id] (th/add-test-creature db :player-2 3 3)
           storm-before (q/get-storm-count db :player-1)
-          db-cast (cast-kicked db rr-id land-id creature-a-id creature-b-id)]
-      (is (= (inc storm-before) (q/get-storm-count db-cast :player-1))
+          {:keys [db selection]} (th/cast-with-mode db :player-1 rr-id)
+          kicked-mode (first (filter #(= :kicked (:mode/id %)) (:selection/candidates selection)))
+          {:keys [db selection]} (th/confirm-selection db selection #{kicked-mode})
+          {:keys [db selection]} (th/confirm-selection db selection #{land-id})
+          {:keys [db]} (th/confirm-selection db selection [creature-a-id creature-b-id])]
+      (is (= (inc storm-before) (q/get-storm-count db :player-1))
           "Storm count should increment by exactly 1 even when kicked"))))
 
 
@@ -440,8 +416,12 @@
       (is (rules/can-cast-mode? db :player-1 rr-id kicked-mode)
           "Kicked mode should be feasible with exactly 2 valid targets")
       ;; Also verify the full cast works
-      (let [db-cast (cast-kicked db rr-id land-id creature-a-id creature-b-id)
-            {:keys [db]} (th/resolve-top db-cast)]
+      (let [{:keys [db selection]} (th/cast-with-mode db :player-1 rr-id)
+            kicked-mode (first (filter #(= :kicked (:mode/id %)) (:selection/candidates selection)))
+            {:keys [db selection]} (th/confirm-selection db selection #{kicked-mode})
+            {:keys [db selection]} (th/confirm-selection db selection #{land-id})
+            {:keys [db]} (th/confirm-selection db selection [creature-a-id creature-b-id])
+            {:keys [db]} (th/resolve-top db)]
         (is (= :hand (:object/zone (q/get-object db creature-a-id)))
             "First target bounced to hand")
         (is (= :hand (:object/zone (q/get-object db creature-b-id)))
@@ -459,3 +439,42 @@
           targets (targeting/find-valid-targets db :player-1 slot-a-req)]
       (is (not (some #{land-id} targets))
           "The land should not appear in valid targets for bounce slots"))))
+
+
+;; =====================================================
+;; H. Chain-Trace: Production Chokepoints (kicked path)
+;; =====================================================
+
+(deftest rushing-river-kicked-chain-trace-test
+  (testing "Kicked cast traverses spec chokepoints: mode-pick selection has :selection/mechanism"
+    (let [db (th/create-test-db {:mana {:colorless 2 :blue 1}})
+          db (th/add-opponent db)
+          [db rr-id] (th/add-card-to-zone db :rushing-river :hand :player-1)
+          [db land-id] (th/add-card-to-zone db :island :battlefield :player-1)
+          [db creature-a-id] (th/add-test-creature db :player-2 2 2)
+          [db creature-b-id] (th/add-test-creature db :player-2 3 3)
+          ;; Step 1: cast → mode-pick selection (validates spec chokepoint)
+          {:keys [db selection]} (th/cast-with-mode db :player-1 rr-id)
+          _ (is (contains? selection :selection/mechanism)
+                "Mode-pick selection MUST have :selection/mechanism (spec chokepoint reached)")
+          ;; Find kicked mode candidate
+          kicked-mode (first (filter #(= :kicked (:mode/id %))
+                                     (:selection/candidates selection)))
+          ;; Step 2: confirm kicked mode → sacrifice selection
+          {:keys [db selection]} (th/confirm-selection db selection #{kicked-mode})
+          _ (is (= :sacrifice-cost (:selection/domain selection))
+                "After kicked mode: sacrifice-cost selection expected")
+          ;; Step 3: confirm sacrifice of land → 2-slot targeting selection
+          {:keys [db selection]} (th/confirm-selection db selection #{land-id})
+          _ (is (= :cast-time-targeting (:selection/domain selection))
+                "After sacrifice: cast-time-targeting selection expected")
+          _ (is (= 2 (:selection/select-count selection))
+                "Kicked targeting must have 2 slots")
+          ;; Step 4: confirm 2 targets → spell on stack
+          {:keys [db]} (th/confirm-selection db selection [creature-a-id creature-b-id])
+          ;; Verify both targets bounced after resolution
+          {:keys [db]} (th/resolve-top db)]
+      (is (= :hand (:object/zone (q/get-object db creature-a-id)))
+          "First target should be in hand after resolve")
+      (is (= :hand (:object/zone (q/get-object db creature-b-id)))
+          "Second target should be in hand after resolve"))))

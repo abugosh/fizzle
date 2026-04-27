@@ -355,6 +355,31 @@
             targeting-reqs)))
 
 
+(defn cast-with-mode
+  "Initiates casting a multi-mode spell through the full production pipeline via
+   cast-spell-handler. Returns {:db db :selection sel} where sel is the mode-pick
+   pending selection for the caller to chain th/confirm-selection calls.
+
+   Use this for spells with multiple casting modes (kicker, modal via :card/modes,
+   alternate-cost) that require more than one selection step after mode choice —
+   e.g., kicked Rushing River: mode → sacrifice → 2-slot targeting.
+
+   For spells with only mode + single target, prefer cast-mode-with-target instead.
+
+   Asserts: can-cast? passes before entering the pipeline."
+  [db player-id obj-id]
+  (assert (rules/can-cast? db player-id obj-id)
+          (str "can-cast? returned false for " obj-id))
+  (let [app-db {:game/db db}
+        result (casting/cast-spell-handler app-db {:player-id player-id
+                                                   :object-id obj-id})
+        sel (:game/pending-selection result)]
+    (assert sel
+            (str "cast-with-mode: expected pending mode-pick selection for " obj-id
+                 " — spell may have only one castable mode (use cast-and-resolve or cast-with-target)"))
+    {:db (:game/db result) :selection sel}))
+
+
 (defn cast-mode-with-target
   "Casts a modal+targeted spell using the given spell mode and target through
    the full production selection pipeline. For spells like BEB/REB/Hydroblast
