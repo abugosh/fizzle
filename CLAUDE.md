@@ -213,7 +213,9 @@ Every card must have a dedicated test file (`src/test/fizzle/cards/<card>_test.c
 **Production path helpers** (in `fizzle.test-helpers`):
 - `cast-and-resolve` — simple spells: asserts `can-cast?`, casts, resolves, returns db
 - `cast-with-target` — targeted spells: asserts valid target, uses production targeting flow
+- `cast-with-mode` — multi-step modal flows: casts with explicit mode, captures post-cast selection (added in fizzle-dc1u)
 - `cast-mode-with-target` — modal+targeted spells: validates mode has targets, casts with explicit mode
+- `cast-and-yield` — cast + resolve, captures post-resolve selection for spells that produce selections after resolution (e.g. ETB replacements); added in fizzle-y63h
 - `resolve-top` — resolve top stack item, returns `{:db}` or `{:db :selection}`
 - `confirm-selection` — confirm interactive selection, returns `{:db}` or chains to next selection
 
@@ -235,3 +237,43 @@ silence the throw inside the test body:
 
 Every such opt-out MUST have a linked bd issue and the
 `^:fizzle-x40o-triage` metadata tag on the deftest.
+
+### Production-path test definition
+
+A **production path test** traverses the same code path the browser traverses, including:
+
+- (a) every spec chokepoint between the entry point and the assertion (`validate-at-chokepoint!` via `set-pending-selection`)
+- (b) the same `dispatch` / `build-chain-selection` / `set-pending-selection` calls that the UI triggers
+- (c) the rendered modal's data shape, or a pure function of it that all renderings consume
+
+NOT merely "invokes `cast-spell-handler`". Calling the handler directly while bypassing `set-pending-selection` or constructing a `:selection/*` map by hand does not constitute a production path test.
+
+The documented production-path helpers in `test_helpers.cljs` satisfy this definition by construction. Tests written with them are production-path tests. Tests that reconstruct selection state manually are not.
+
+### Helper-introduction rule
+
+New test helpers added during any feature epic MUST be either:
+
+- **(a) compositions** of existing documented production-path helpers (`cast-and-resolve`, `cast-with-target`, `cast-with-mode`, `cast-mode-with-target`, `cast-and-yield`, `resolve-top`, `confirm-selection`), OR
+- **(b) accompanied by a chain-trace test** proving they reach the same spec chokepoints as the production chain (assert `:selection/mechanism` by keyword equality, not `some?`; assert the domain; assert the choice count where applicable)
+
+Inventing a card-specific helper that constructs `:selection/*` state directly is forbidden without explicit lead approval and a documented exception. If existing helpers do not compose for a needed case, file a bd issue and fix the helpers — do not bypass.
+
+When adding a helper to `test_helpers.cljs`, add it to the "Production path helpers" list above and note the task that introduced it.
+
+### Reviewer chain-bypass audit
+
+Every PR or epic that adds tests must be audited for chain-bypass before reviewer approval. Check each of the following:
+
+- Does any new helper in `test_helpers.cljs` construct `:selection/*` state directly (e.g. `{:selection/type :foo ...}` built inline)?
+- Does any new card test file contain a `defn-` helper that calls `casting/`, `rules/`, or `resolution/` namespaces directly, bypassing the event-dispatch path?
+- Does any new test assert `(some? selection)` or `(map? selection)` where it should assert `(= :keyword (:selection/mechanism selection))`?
+- Does any new test helper omit `:selection/mechanism`, `:selection/domain`, or `:selection/lifecycle` from a map it constructs, allowing spec violations to slip through silently?
+
+If any check fires, the test is a chain-bypass. It must be either migrated to the documented production-path helpers or accompanied by a chain-trace test (see "Helper-introduction rule" above) before merge.
+
+### Executor and lead checklist note
+
+The `hyperpowers` plugin's `executing-plans` skill checklist does **not** enforce project-local testing standards — the plugin is versioned and cannot be customized per repo. **CLAUDE.md is canonical** for this project's process rules.
+
+Executors implementing test changes in this repo must apply the production-path test definition and helper-introduction rule above to every test they write or helper they add. Leads approving COMPLETE proposals must verify that any new test helper added during the task either composes existing documented helpers or is accompanied by a chain-trace test. "Tests exist and cover X categories" is not sufficient — the chain end-to-end evidence is required.
