@@ -122,7 +122,8 @@
   "Handle cast-and-yield event: cast the spell and auto-resolve.
    Accepts optional opts map with :player-id, :object-id, :target.
    :object-id MUST be provided explicitly; no implicit fallback to app-db.
-   Throws if :object-id is absent (fail-loud, ADR-031 §2)."
+   If :object-id is absent, delegates to cast-spell-handler which no-ops
+   (can-cast? returns false when object-id is nil — ADR-031 §2)."
   ([db] (cast-and-yield-handler db nil))
   ([db opts]
    (let [pre-game-db (:game/db db)

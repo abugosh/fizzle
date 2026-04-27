@@ -12,11 +12,14 @@
    - gr9a/ktba bug class: non-flashback graveyard card with stale
      selection is cleared (old #{:hand :graveyard} predicate would
      have preserved it — this is the motivating fix for this task)
+   - ik8x reviewer gap: Mox Diamond multi-step replacement flow clears
+     :game/selected-card after full proceed+discard cycle
 
    Test structure:
    - fizzle-ktba regression: play-land clears selection via interceptor
    - Interceptor no-op: hand card with mana → can-cast? true → preserved
-   - Bug-class regression: non-flashback graveyard card → cleared"
+   - Bug-class regression: non-flashback graveyard card → cleared
+   - Mox Diamond regression: multi-step replacement flow clears selection"
   (:require
     [cljs.test :refer-macros [deftest is testing]]
     [fizzle.db.queries :as queries]
@@ -24,6 +27,7 @@
     [fizzle.events.db-effect :as db-effect]
     [fizzle.events.lands :as land-events]
     [fizzle.events.priority-flow :as priority-flow]
+    [fizzle.events.selection :as selection]
     [fizzle.events.ui-invariants :as ui-invariants]
     [fizzle.history.interceptor :as interceptor]
     [fizzle.test-helpers :as th]
@@ -54,8 +58,9 @@
   (testing "::play-land clears :game/selected-card when land moves to battlefield (fizzle-ktba root cause)"
     ;; Setup: land selected in hand, ready to be played.
     ;; ::play-land has no per-handler dissoc for :game/selected-card.
-    ;; After play-land, the land is on battlefield (zone not in #{:hand :graveyard}).
-    ;; The interceptor should detect the zone change and clear the stale reference.
+    ;; After play-land, the land is on battlefield → still-actionable? returns false
+    ;; (can-cast? false, can-play-land? false because already played, can-cycle? false
+    ;; because not in hand) → the interceptor clears the stale reference.
     (let [base-db (th/create-game-scenario {:bot-archetype :goldfish})
           game-db (:game/db base-db)
           ;; Add an Island to hand
@@ -74,8 +79,8 @@
         ;; Land should now be on battlefield
         (is (= :battlefield (th/get-object-zone (:game/db result) land-id))
             "Land should be on battlefield after play-land")
-        ;; :game/selected-card should be cleared by the interceptor
-        ;; (zone=:battlefield not in #{:hand :graveyard})
+        ;; :game/selected-card should be cleared by the interceptor:
+        ;; after play-land, the land is on battlefield → still-actionable? returns false
         (is (nil? (:game/selected-card result))
             ":game/selected-card should be nil after play-land moves land to battlefield (fizzle-ktba)")))))
 
@@ -286,3 +291,83 @@
         ;; :game/selected-card cleared by interceptor (DR in graveyard, no flashback)
         (is (nil? (:game/selected-card result))
             ":game/selected-card cleared after cast-and-yield with explicit :object-id (ADR-031 §2)")))))
+
+
+;; ============================================================
+;; Mox Diamond multi-step replacement flow (ik8x reviewer gap)
+;; ============================================================
+
+(deftest mox-diamond-replacement-flow-clears-selected-card
+  (testing "Mox Diamond multi-step replacement clears :game/selected-card after full proceed+discard cycle"
+    ;; Reviewer gap (ik8x): Mox Diamond's replacement effect fires a sub-selection
+    ;; (discard a land). During this multi-step flow, :game/selected-card must not
+    ;; survive past the point where Mox enters the battlefield.
+    ;;
+    ;; Flow:
+    ;; 1. :game/selected-card = mox-id (user clicked Mox Diamond in hand)
+    ;; 2. ::cast-spell dispatched — Mox goes to stack; replacement-choice selection appears
+    ;; 3. Player chooses :proceed — discard sub-selection appears
+    ;; 4. Player picks the land to discard — Mox enters battlefield
+    ;;
+    ;; After step 4: Mox is on battlefield (not actionable — can-cast? false, not a land,
+    ;; no cycling cost) → interceptor clears :game/selected-card.
+    ;; The discard target selection is in :game/pending-selection, NOT :game/selected-card.
+    (let [base-db (th/create-game-scenario {:bot-archetype :goldfish})
+          game-db (:game/db base-db)
+          ;; Add Mox Diamond (0-cost artifact) to hand
+          [game-db mox-id] (th/add-card-to-zone game-db :mox-diamond :hand :player-1)
+          ;; Add a Forest to hand (will be discarded as replacement cost)
+          [game-db forest-id] (th/add-card-to-zone game-db :forest :hand :player-1)
+          ;; Simulate: user clicked Mox Diamond → :game/selected-card set
+          app-db (assoc base-db
+                        :game/db game-db
+                        :game/selected-card mox-id)]
+      ;; Preconditions
+      (is (= mox-id (:game/selected-card app-db))
+          "Precondition: :game/selected-card set to Mox Diamond")
+      (is (= :hand (th/get-object-zone game-db mox-id))
+          "Precondition: Mox Diamond is in hand")
+      (is (= :hand (th/get-object-zone game-db forest-id))
+          "Precondition: Forest is in hand (discard target)")
+      ;; Step 1: Cast-and-yield Mox Diamond — casts, immediately resolves,
+      ;; replacement effect fires → replacement-choice selection appears
+      ;; (cast-and-yield resolves the spell; for Mox Diamond this triggers
+      ;; the replacement, which needs player input to proceed)
+      (let [after-cast (dispatch-event app-db [::priority-flow/cast-and-yield {:object-id mox-id}])
+            repl-sel (:game/pending-selection after-cast)
+            _ (is (some? repl-sel)
+                  "After cast-and-yield, replacement-choice selection should be pending")
+            _ (is (= :replacement-choice (:selection/domain repl-sel))
+                  "Pending selection domain should be :replacement-choice")
+            ;; Step 2: Select :proceed choice (discard a land to let Mox enter battlefield)
+            proceed-choice (first (filter #(= :proceed (:choice/action %))
+                                          (:selection/choices repl-sel)))
+            _ (is (some? proceed-choice)
+                  "Precondition: :proceed choice should be available (Forest is in hand)")
+            ;; Directly set selection (simulates user clicking 'proceed' in the UI)
+            after-select (assoc-in after-cast [:game/pending-selection :selection/selected]
+                                   #{proceed-choice})
+            ;; Step 3: Confirm replacement-choice — triggers discard sub-selection
+            after-proceed (dispatch-event after-select [::selection/confirm-selection])
+            discard-sel (:game/pending-selection after-proceed)
+            _ (is (some? discard-sel)
+                  "After :proceed, a land-discard selection should be pending")
+            _ (is (= :discard (:selection/domain discard-sel))
+                  "Discard selection domain should be :discard")
+            _ (is (some #{forest-id} (:selection/valid-targets discard-sel))
+                  "Forest should be a valid discard target")
+            ;; Step 4: Toggle the Forest (select it for discard)
+            after-toggle (dispatch-event after-proceed [::selection/toggle-selection forest-id])
+            ;; Step 5: Confirm discard — Mox enters battlefield
+            final (dispatch-event after-toggle [::selection/confirm-selection])]
+        ;; Mox Diamond should be on battlefield
+        (is (= :battlefield (:object/zone (queries/get-object (:game/db final) mox-id)))
+            "Mox Diamond should be on battlefield after full replacement+discard cycle")
+        ;; Forest should be in graveyard
+        (is (= :graveyard (:object/zone (queries/get-object (:game/db final) forest-id)))
+            "Forest should be in graveyard (discarded as replacement cost)")
+        ;; :game/selected-card must be nil — interceptor cleared it
+        ;; Mox is on battlefield: can-cast? false, can-play-land? false, can-cycle? false
+        ;; → still-actionable? returns false → interceptor dissocs :game/selected-card
+        (is (nil? (:game/selected-card final))
+            "interceptor must clear :game/selected-card after Mox Diamond enters battlefield (ik8x reviewer gap)")))))
