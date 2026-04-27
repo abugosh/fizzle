@@ -125,6 +125,61 @@
 
 
 ;; =====================================================
+;; H. Chain-Trace Integration (Phase 3A — modal+target)
+;; =====================================================
+
+(deftest vision-charm-mode1-chain-trace-test
+  (testing "Mode 1 cast via production path: stack-item has correct targets and object has correct chosen-mode"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db _] (th/add-cards-to-library db (vec (repeat 4 :dark-ritual)) :player-2)
+          [db vc-id] (th/add-card-to-zone db :vision-charm :hand :player-1)
+          db (mana/add-mana db :player-1 {:blue 1})
+          mode-1 (get (:card/modes vision-charm/card) 0)
+          db-cast (th/cast-mode-with-target db :player-1 vc-id mode-1 :player-2)
+          ;; Chain-trace assertion 1: stack-item has correct :stack-item/targets
+          ;; This confirms confirm-cast-time-target reached the spec chokepoint and stored targets.
+          top-item (q/get-top-stack-item db-cast)
+          ;; Chain-trace assertion 2: object on stack has correct :object/chosen-mode
+          ;; This confirms the spell-mode executor set the modal effects mode via the production path.
+          ;; (Note: :object/cast-mode stores the primary casting mode, not the effects mode.
+          ;;  :object/chosen-mode is where the modal card's chosen effects mode is stored.)
+          spell-obj (q/get-object db-cast vc-id)]
+      (is (some? top-item)
+          "Spell should be on stack after cast-mode-with-target")
+      (is (= {:mill-player :player-2} (:stack-item/targets top-item))
+          "stack-item/targets must be {:mill-player :player-2} — confirms cast-time-targeting spec chokepoint traversed")
+      (is (= :spell (:stack-item/type top-item))
+          "stack-item/type must be :spell")
+      (is (= :player-1 (:stack-item/controller top-item))
+          "stack-item/controller must be :player-1")
+      (is (= (:mode/label mode-1) (get-in spell-obj [:object/chosen-mode :mode/label]))
+          "object/chosen-mode label must match mode-1 — confirms spell-mode executor traversed production path"))))
+
+
+(deftest vision-charm-mode3-chain-trace-test
+  (testing "Mode 3 cast via production path: stack-item has correct artifact target and object has chosen-mode"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db artifact-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-2)
+          [db vc-id] (th/add-card-to-zone db :vision-charm :hand :player-1)
+          db (mana/add-mana db :player-1 {:blue 1})
+          mode-3 (get (:card/modes vision-charm/card) 2)
+          db-cast (th/cast-mode-with-target db :player-1 vc-id mode-3 artifact-id)
+          ;; Chain-trace assertion: stack-item has correct :stack-item/targets with artifact ref
+          top-item (q/get-top-stack-item db-cast)
+          spell-obj (q/get-object db-cast vc-id)]
+      (is (some? top-item)
+          "Spell should be on stack after cast-mode-with-target")
+      (is (= {:target-artifact artifact-id} (:stack-item/targets top-item))
+          "stack-item/targets must be {:target-artifact artifact-id} — confirms artifact targeting spec chokepoint traversed")
+      (is (= :spell (:stack-item/type top-item))
+          "stack-item/type must be :spell")
+      (is (= (:mode/label mode-3) (get-in spell-obj [:object/chosen-mode :mode/label]))
+          "object/chosen-mode label must match mode-3 — confirms spell-mode executor traversed production path"))))
+
+
+;; =====================================================
 ;; B. Cast-Resolve Happy Path
 ;; =====================================================
 
