@@ -470,6 +470,12 @@
                 "After sacrifice: cast-time-targeting selection expected")
           _ (is (= 2 (:selection/select-count selection))
                 "Kicked targeting must have 2 slots")
+          ;; Regression: fizzle-q3g4 — :selection/target-requirements must be a vector.
+          ;; (seq mode-targeting) converts vector→list and breaks spec validation.
+          ;; This assertion goes through set-pending-selection chokepoint and will fail
+          ;; if the if-guard in costs.cljs build-chain-selection is reverted.
+          _ (is (vector? (:selection/target-requirements selection))
+                "fizzle-q3g4 regression: target-requirements must be a vector (not a list from seq)")
           ;; Step 4: confirm 2 targets → spell on stack
           {:keys [db]} (th/confirm-selection db selection [creature-a-id creature-b-id])
           ;; Verify both targets bounced after resolution

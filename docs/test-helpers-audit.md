@@ -43,7 +43,7 @@ These helpers initialize game state or read state for assertions. They do not mo
 |--------|---------------|-----------|
 | `tap-permanent` | **(a) setup utility** | Uses `d/db-with` directly to set tapped state for test setup. Docstring explicitly documents this is NOT a game-action tap — it does not dispatch `:permanent-tapped`. For game-action taps, production paths must be used. The helper's explicit contract makes this an acceptable test setup tool. |
 
-### Production-Path Cast/Resolve Helpers (6 helpers)
+### Production-Path Cast/Resolve Helpers (7 helpers)
 
 | Helper | Classification | Rationale |
 |--------|---------------|-----------|
@@ -93,20 +93,19 @@ Both `(is (some? (:mode/label mode)))` and `(is (string? (:mode/label mode)))` f
 
 **Fix:** Replaced `(or (seq mode-targeting) card-targeting)` with explicit `if` guard in `costs.cljs:622-627` to prevent `(seq vec)` from producing a list.
 
-**Regression test:** `sacrifice-cost-chain-preserves-vector-type-for-target-requirements` in `targeting_test.cljs` (line 579). The test calls `sel-core/build-chain-selection` directly with a synthesized `sac-selection` map, then asserts `(is (vector? (:selection/target-requirements built)))`.
+**Original regression test:** `sacrifice-cost-chain-preserves-vector-type-for-target-requirements` in `targeting_test.cljs`. The test calls `sel-core/build-chain-selection` directly with a synthesized `sac-selection` map, then asserts `(is (vector? (:selection/target-requirements built)))`.
 
-**Revert method:** Replaced the `if (seq mode-targeting)` guard back with `(or (seq mode-targeting) card-targeting)`.
+**Round-1 revert (gap identified in first reviewer pass):** The original test did NOT go red on revert. `make test` reported 0 failures. The direct `build-chain-selection` call bypasses `set-pending-selection`, and in that path the `(seq mode-targeting)` result appeared to pass `vector?`. Filed as **fizzle-w6yi** for investigation.
 
-**Result: UNEXPECTED — test did NOT go red.** `make test` reported 0 failures after the revert. The `(is (vector? (:selection/target-requirements built)))` assertion passed even with the reverted code.
+**Round-2 fix (fizzle-7ydh round 2):** Added `(is (vector? (:selection/target-requirements selection)))` assertion to `rushing-river-kicked-chain-trace-test` in `rushing_river_test.cljs` (step 3: after sacrifice confirm → cast-time-targeting selection). This test goes through the full production path: `cast-with-mode` → `confirm-selection` → `confirm-selection-impl` → `set-pending-selection` spec chokepoint.
 
-**Analysis:** The test calls `build-chain-selection` directly (not via `confirm-selection-impl` → `set-pending-selection`). The spec chokepoint is never invoked. The direct `(vector? ...)` assertion is the only check — but it appears to pass. Possible causes:
-1. CLJS-specific: `(seq persistent-vector)` might return the original vector or an object that `vector?` accepts
-2. The dispatch may be routing to `:pre-cast-cost-to-targeting` parent method instead of `:sacrifice-cost`
-3. The `mode` in the test's synthesized state does not have `:mode/targeting` in a form that triggers the `(seq ...)` conversion
+**Round-2 revert verification (branch `sandbox/x40o-q3g4-revert-verify`):** Reverted `costs.cljs` to `(or (seq mode-targeting) card-targeting)`. Result: **RED as expected.**
 
-This is filed as **fizzle-w6yi** for investigation. The existing chain-trace test in `rushing-river-kicked-chain-trace-test` (which goes through `cast-with-mode` → `confirm-selection` → production path) likely provides stronger coverage of this code path.
+- `rushing-river-kicked-chain-trace-test` threw: `Error: set-pending-selection: invalid data: ({...} {:target/id :slot-b, ...}) - failed: vector? in: [:selection/target-requirements]`
+- `sacrifice-cost-chain-preserves-vector-type-for-target-requirements` also FAILED: `(not (vector? ({...} {...})))` (the original test now goes red too, consistent with fizzle-w6yi fix)
+- 1 failure, 5 errors reported
 
-**Verdict:** fizzle-q3g4 regression test has a design gap — direct `build-chain-selection` call bypasses the spec chokepoint, and the `vector?` assertion does not detect the regression. See fizzle-w6yi.
+**Verdict:** fizzle-q3g4 regression coverage is now verified. The chain-trace assertion in `rushing-river-kicked-chain-trace-test` goes through `set-pending-selection` and fails immediately when the `if`-guard is reverted. The `*throw-on-spec-failure*` enforcement also surfaces the error in 4 additional Rushing River kicked tests as ERRORs.
 
 ---
 
