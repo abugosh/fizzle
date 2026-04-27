@@ -96,3 +96,21 @@
               {:selection/mechanism :pick-from-zone}
               "test-label"))
           "validate-at-chokepoint! should throw on invalid data when binding is true"))))
+
+
+;; =====================================================
+;; D. Global default verification
+;;    Proves test_setup.cljs has wired the global true — no explicit binding.
+;; =====================================================
+
+(deftest mechanism-flip-globally-enabled
+  (testing "Without explicit binding, validate-at-chokepoint! still throws"
+    ;; Bug caught: if test_setup.cljs is not required transitively by
+    ;; test_helpers.cljs, *throw-on-spec-failure* stays false and spec
+    ;; violations only log (silent in CI). This test has NO binding form —
+    ;; it relies solely on the namespace-load side effect in test_setup.cljs.
+    (is (thrown? js/Error
+          (sel-spec/set-pending-selection
+            {:game/db (th/create-test-db)}
+            {:selection/mechanism :pick-from-zone}))
+        "Global default should be *throw-on-spec-failure* = true")))

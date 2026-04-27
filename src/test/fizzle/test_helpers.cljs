@@ -24,7 +24,8 @@
     [fizzle.events.resolution :as resolution]
     [fizzle.events.selection.core :as sel-core]
     [fizzle.events.selection.targeting :as sel-targeting]
-    [fizzle.history.core :as history]))
+    [fizzle.history.core :as history]
+    [fizzle.test-setup]))
 
 
 (defn create-test-db
