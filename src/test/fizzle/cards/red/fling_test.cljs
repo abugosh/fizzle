@@ -71,7 +71,7 @@
           [db creature-id] (th/add-card-to-zone db :nimble-mongoose :battlefield :player-1)
           [db fling-id] (th/add-card-to-zone db :fling :hand :player-1)
           ;; Cast Fling — shows sacrifice selection
-          app-db (casting/cast-spell-handler {:game/db db :game/selected-card fling-id})
+          app-db (casting/cast-spell-handler {:game/db db} {:object-id fling-id})
           sac-sel (:game/pending-selection app-db)
           ;; Confirm sacrifice, chains to targeting
           {:keys [db selection]} (th/confirm-selection (:game/db app-db) sac-sel #{creature-id})
@@ -120,7 +120,7 @@
           [db creature-id] (th/add-card-to-zone db :nimble-mongoose :battlefield :player-1)
           [db fling-id] (th/add-card-to-zone db :fling :hand :player-1)
           initial-storm (or (q/get-storm-count db :player-1) 0)
-          app-db (casting/cast-spell-handler {:game/db db :game/selected-card fling-id})
+          app-db (casting/cast-spell-handler {:game/db db} {:object-id fling-id})
           sac-sel (:game/pending-selection app-db)
           {:keys [db selection]} (th/confirm-selection (:game/db app-db) sac-sel #{creature-id})
           {:keys [db]} (th/confirm-selection db selection #{:player-2})
@@ -139,7 +139,7 @@
           db (th/add-opponent db)
           [db _creature-id] (th/add-card-to-zone db :nimble-mongoose :battlefield :player-1)
           [db fling-id] (th/add-card-to-zone db :fling :hand :player-1)
-          app-db (casting/cast-spell-handler {:game/db db :game/selected-card fling-id})
+          app-db (casting/cast-spell-handler {:game/db db} {:object-id fling-id})
           pending-sel (:game/pending-selection app-db)]
       (is (= :sacrifice-cost (:selection/domain pending-sel))
           "Should show sacrifice selection")
@@ -153,7 +153,7 @@
           db (th/add-opponent db)
           [db creature-id] (th/add-card-to-zone db :nimble-mongoose :battlefield :player-1)
           [db fling-id] (th/add-card-to-zone db :fling :hand :player-1)
-          app-db (casting/cast-spell-handler {:game/db db :game/selected-card fling-id})
+          app-db (casting/cast-spell-handler {:game/db db} {:object-id fling-id})
           sac-sel (:game/pending-selection app-db)
           {selection :selection} (th/confirm-selection (:game/db app-db) sac-sel #{creature-id})]
       (is (= :cast-time-targeting (:selection/domain selection))
@@ -234,7 +234,7 @@
           db (d/db-with db [[:db/add target-eid :object/toughness 5]])
           [db fling-id] (th/add-card-to-zone db :fling :hand :player-1)
           ;; Cast Fling
-          app-db (casting/cast-spell-handler {:game/db db :game/selected-card fling-id})
+          app-db (casting/cast-spell-handler {:game/db db} {:object-id fling-id})
           sac-sel (:game/pending-selection app-db)
           ;; Sacrifice sac-creature
           {:keys [db selection]} (th/confirm-selection (:game/db app-db) sac-sel #{sac-creature-id})
@@ -262,7 +262,7 @@
           target-eid (q/get-object-eid db target-creature-id)
           db (d/db-with db [[:db/add target-eid :object/toughness 10]])
           [db fling-id] (th/add-card-to-zone db :fling :hand :player-1)
-          app-db (casting/cast-spell-handler {:game/db db :game/selected-card fling-id})
+          app-db (casting/cast-spell-handler {:game/db db} {:object-id fling-id})
           sac-sel (:game/pending-selection app-db)
           {:keys [db selection]} (th/confirm-selection (:game/db app-db) sac-sel #{sac-creature-id})
           {:keys [db]} (th/confirm-selection db selection #{target-creature-id})
@@ -286,7 +286,7 @@
           ;; Phyrexian Devourer (1/1, no shroud) as target
           [db target-creature-id] (th/add-card-to-zone db :phyrexian-devourer :battlefield :player-2)
           [db fling-id] (th/add-card-to-zone db :fling :hand :player-1)
-          app-db (casting/cast-spell-handler {:game/db db :game/selected-card fling-id})
+          app-db (casting/cast-spell-handler {:game/db db} {:object-id fling-id})
           sac-sel (:game/pending-selection app-db)
           {:keys [db selection]} (th/confirm-selection (:game/db app-db) sac-sel #{sac-creature-id})
           {:keys [db]} (th/confirm-selection db selection #{target-creature-id})
@@ -307,7 +307,7 @@
           db (th/add-opponent db)
           [db creature-id] (th/add-card-to-zone db :nimble-mongoose :battlefield :player-1)
           [db fling-id] (th/add-card-to-zone db :fling :hand :player-1)
-          app-db (casting/cast-spell-handler {:game/db db :game/selected-card fling-id})
+          app-db (casting/cast-spell-handler {:game/db db} {:object-id fling-id})
           sac-sel (:game/pending-selection app-db)
           {:keys [db selection]} (th/confirm-selection (:game/db app-db) sac-sel #{creature-id})
           {:keys [db]} (th/confirm-selection db selection #{:player-2})
@@ -342,7 +342,7 @@
           [db creature-id] (th/add-card-to-zone db :nimble-mongoose :battlefield :player-1)
           [db fling-id] (th/add-card-to-zone db :fling :hand :player-1)
           ;; Cast Fling
-          app-db (casting/cast-spell-handler {:game/db db :game/selected-card fling-id})
+          app-db (casting/cast-spell-handler {:game/db db} {:object-id fling-id})
           sac-sel (:game/pending-selection app-db)
           ;; Sacrifice creature → chains to targeting
           {:keys [db selection]} (th/confirm-selection (:game/db app-db) sac-sel #{creature-id})

@@ -216,9 +216,8 @@
     (let [db (create-allocation-test-db)
           [db obj-id] (add-card-and-object db spell-with-generic :hand :player-1)
           db (mana/add-mana db :player-1 {:black 5 :blue 3})
-          app-db (-> (create-app-db db)
-                     (assoc :game/selected-card obj-id))
-          result (casting/cast-spell-handler app-db)
+          app-db (create-app-db db)
+          result (casting/cast-spell-handler app-db {:object-id obj-id})
           sel (:game/pending-selection result)]
       ;; Should enter allocation mode, not cast directly
       (is (some? sel) "Should have pending selection for allocation")
@@ -246,9 +245,8 @@
     (let [db (create-allocation-test-db)
           [db obj-id] (add-card-and-object db spell-no-generic :hand :player-1)
           db (mana/add-mana db :player-1 {:black 5})
-          app-db (-> (create-app-db db)
-                     (assoc :game/selected-card obj-id))
-          result (casting/cast-spell-handler app-db)]
+          app-db (create-app-db db)
+          result (casting/cast-spell-handler app-db {:object-id obj-id})]
       ;; No pending selection
       (is (nil? (:game/pending-selection result))
           "Should NOT enter allocation for pure colored cost")
@@ -267,9 +265,8 @@
     (let [db (create-allocation-test-db)
           [db obj-id] (add-card-and-object db spell-only-generic :hand :player-1)
           db (mana/add-mana db :player-1 {:black 3 :blue 2})
-          app-db (-> (create-app-db db)
-                     (assoc :game/selected-card obj-id))
-          result (casting/cast-spell-handler app-db)
+          app-db (create-app-db db)
+          result (casting/cast-spell-handler app-db {:object-id obj-id})
           sel (:game/pending-selection result)]
       (is (some? sel) "Should enter allocation mode")
       (is (= :mana-allocation (:selection/domain sel)))

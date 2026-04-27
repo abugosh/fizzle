@@ -87,10 +87,12 @@
 
 (defn- dispatch-cast-and-yield
   "Dispatch ::cast-and-yield through re-frame and return the resulting app-db.
-   Uses dispatch-sync which processes the event and any :fx dispatches synchronously."
+   Uses dispatch-sync which processes the event and any :fx dispatches synchronously.
+   Passes :game/selected-card from app-db as explicit :object-id (ADR-031 §2)."
   [app-db]
   (reset! rf-db/app-db app-db)
-  (rf/dispatch-sync [::priority-flow/cast-and-yield])
+  (rf/dispatch-sync [::priority-flow/cast-and-yield
+                     {:object-id (:game/selected-card app-db)}])
   @rf-db/app-db)
 
 

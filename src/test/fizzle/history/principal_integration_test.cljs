@@ -57,11 +57,10 @@
           game-db (:game/db app-db)
           [game-db' obj-id] (th/add-card-to-zone game-db :dark-ritual :hand :player-1)
           app-db' (-> app-db
-                      (assoc :game/db game-db')
-                      (assoc :game/selected-card obj-id))
+                      (assoc :game/db game-db'))
           _ (is (rules/can-cast? game-db' :player-1 obj-id)
                 "Precondition: can-cast? must be true for Dark Ritual with 1 black mana")
-          result (dispatch-event app-db' [::casting/cast-spell])
+          result (dispatch-event app-db' [::casting/cast-spell {:object-id obj-id}])
           entries (:history/main result)]
       (is (= 1 (count entries))
           "Exactly 1 history entry should be appended after cast-spell dispatch")
@@ -121,9 +120,8 @@
           game-db (:game/db app-db)
           [game-db' obj-id] (th/add-card-to-zone game-db :dark-ritual :hand :player-1)
           app-db' (-> app-db
-                      (assoc :game/db game-db')
-                      (assoc :game/selected-card obj-id))
-          result (dispatch-event app-db' [::casting/cast-spell])
+                      (assoc :game/db game-db'))
+          result (dispatch-event app-db' [::casting/cast-spell {:object-id obj-id}])
           entries (:history/main result)
           entry (first entries)]
       (is (= 1 (count entries))

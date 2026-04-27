@@ -669,8 +669,8 @@
           ;; Dark Ritual in hand — base cost {B}, effective cost {B}{1} with Sphere
           [db dr-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           db (mana/add-mana db :player-1 {:black 2})
-          app-db {:game/db db :game/selected-card dr-id}
-          result (casting/cast-spell-handler app-db)
+          app-db {:game/db db}
+          result (casting/cast-spell-handler app-db {:object-id dr-id})
           sel (:game/pending-selection result)]
       (is (= :mana-allocation (:selection/domain sel))
           "Selection type should be :mana-allocation")))
@@ -678,8 +678,8 @@
   (testing "Dark Ritual without Sphere casts immediately (no allocation needed)"
     (let [db (th/create-test-db {:mana {:black 1}})
           [db dr-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
-          app-db {:game/db db :game/selected-card dr-id}
-          result (casting/cast-spell-handler app-db)]
+          app-db {:game/db db}
+          result (casting/cast-spell-handler app-db {:object-id dr-id})]
       (is (nil? (:game/pending-selection result))
           "Should NOT have pending selection (no generic in base cost)")
       (is (= :stack (:object/zone (q/get-object (:game/db result) dr-id)))

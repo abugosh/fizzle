@@ -227,9 +227,8 @@
                  (h/add-opponent {:bot-archetype :goldfish}))
           [db' obj-id] (h/add-card-to-zone db :dark-ritual :hand :player-1)
           app-db (merge (history/init-history)
-                        {:game/db db'
-                         :game/selected-card obj-id})
-          result (dispatch-event app-db [::priority-flow/cast-and-yield])]
+                        {:game/db db'})
+          result (dispatch-event app-db [::priority-flow/cast-and-yield {:object-id obj-id}])]
       (is (= :graveyard (:object/zone (q/get-object (:game/db result) obj-id)))
           "Dark Ritual should be in graveyard after cast-and-yield")
       (is (= 3 (:black (q/get-mana-pool (:game/db result) :player-1)))
@@ -242,9 +241,8 @@
                  (h/add-opponent {:bot-archetype :goldfish}))
           [db' obj-id] (h/add-card-to-zone db :brain-freeze :hand :player-1)
           app-db (merge (history/init-history)
-                        {:game/db db'
-                         :game/selected-card obj-id})
-          result (dispatch-event app-db [::priority-flow/cast-and-yield])]
+                        {:game/db db'})
+          result (dispatch-event app-db [::priority-flow/cast-and-yield {:object-id obj-id}])]
       ;; Brain Freeze has targeting — should show targeting selection, not yield
       (is (some? (:game/pending-selection result))
           "Should have pending selection for targeted spell")

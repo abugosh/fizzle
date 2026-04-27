@@ -69,12 +69,11 @@
           game-db (:game/db app-db)
           [game-db' obj-id] (h/add-card-to-zone game-db :dark-ritual :hand :player-1)
           app-db' (-> app-db
-                      (assoc :game/db game-db')
-                      (assoc :game/selected-card obj-id))
+                      (assoc :game/db game-db'))
           ;; Precondition: can-cast? passes
           _ (is (rules/can-cast? game-db' :player-1 obj-id)
                 "Precondition: can-cast? must be true for Dark Ritual with 1 black mana")
-          result (dispatch-event app-db' [::casting/cast-spell])
+          result (dispatch-event app-db' [::casting/cast-spell {:object-id obj-id}])
           result-db (:game/db result)]
       ;; Spell moved from hand to stack
       (is (= :stack (:object/zone (q/get-object result-db obj-id)))
@@ -102,11 +101,10 @@
           game-db (:game/db app-db)
           [game-db' obj-id] (h/add-card-to-zone game-db :lightning-bolt :hand :player-1)
           app-db' (-> app-db
-                      (assoc :game/db game-db')
-                      (assoc :game/selected-card obj-id))
+                      (assoc :game/db game-db'))
           _ (is (rules/can-cast? game-db' :player-1 obj-id)
                 "Precondition: can-cast? must be true for Lightning Bolt with 1 red mana")
-          result (dispatch-event app-db' [::casting/cast-spell])
+          result (dispatch-event app-db' [::casting/cast-spell {:object-id obj-id}])
           sel (:game/pending-selection result)]
       ;; Should pause for targeting selection (two valid targets: player-1 and player-2)
       (is (some? sel)
@@ -132,11 +130,10 @@
           game-db (:game/db app-db)
           [game-db' obj-id] (h/add-card-to-zone game-db :vision-charm :hand :player-1)
           app-db' (-> app-db
-                      (assoc :game/db game-db')
-                      (assoc :game/selected-card obj-id))
+                      (assoc :game/db game-db'))
           _ (is (rules/can-cast? game-db' :player-1 obj-id)
                 "Precondition: can-cast? must be true for Vision Charm with 1 blue mana")
-          result (dispatch-event app-db' [::casting/cast-spell])
+          result (dispatch-event app-db' [::casting/cast-spell {:object-id obj-id}])
           sel (:game/pending-selection result)]
       ;; Modal spell: spell-mode selection should be created
       (is (some? sel)
@@ -167,11 +164,10 @@
           ;; Add cards to library so Flash of Insight has targets to look at
           [game-db'' _] (h/add-cards-to-library game-db' [:island :island :island] :player-1)
           app-db' (-> app-db
-                      (assoc :game/db game-db'')
-                      (assoc :game/selected-card obj-id))
+                      (assoc :game/db game-db''))
           _ (is (rules/can-cast? game-db'' :player-1 obj-id)
                 "Precondition: can-cast? must be true for Flash of Insight with sufficient mana")
-          result (dispatch-event app-db' [::casting/cast-spell])
+          result (dispatch-event app-db' [::casting/cast-spell {:object-id obj-id}])
           sel (:game/pending-selection result)]
       ;; Should pause for X mana selection
       (is (some? sel)
@@ -310,9 +306,8 @@
           game-db (:game/db app-db)
           [game-db' obj-id] (h/add-card-to-zone game-db :dark-ritual :hand :player-1)
           app-db' (-> app-db
-                      (assoc :game/db game-db')
-                      (assoc :game/selected-card obj-id))
-          result (dispatch-event app-db' [::casting/cast-spell])
+                      (assoc :game/db game-db'))
+          result (dispatch-event app-db' [::casting/cast-spell {:object-id obj-id}])
           history-entries (:history/main result)]
       ;; The interceptor moves pending-entry to history/main — check history/main
       (is (seq history-entries)
@@ -522,7 +517,7 @@
                 "Precondition: can-cast? must be true for test-dual-mode-adr023")
           _ (is (> (count (rules/get-casting-modes game-db :player-1 obj-id)) 1)
                 "Precondition: must have >1 castable mode")
-          result (dispatch-event app-db [::casting/cast-spell])
+          result (dispatch-event app-db [::casting/cast-spell {:object-id obj-id}])
           pending-sel (:game/pending-selection result)]
       ;; Standard selection pipeline: :game/pending-selection must be present
       (is (some? pending-sel)
@@ -539,8 +534,8 @@
 
 (deftest cast-spell-multi-mode-priority-gate-holds
   (testing "Priority is NOT yielded after casting multi-mode spell until mode is confirmed"
-    (let [[app-db _] (setup-multi-mode-app-db)
-          result (dispatch-event app-db [::casting/cast-spell])]
+    (let [[app-db obj-id] (setup-multi-mode-app-db)
+          result (dispatch-event app-db [::casting/cast-spell {:object-id obj-id}])]
       ;; A pending-selection blocks priority — stack must be empty
       (is (empty? (q/get-all-stack-items (:game/db result)))
           "Spell must not be on stack yet while awaiting mode selection")
@@ -553,7 +548,7 @@
   (testing "Confirming mode selection puts spell on stack via standard confirm-selection pipeline"
     (let [[app-db obj-id] (setup-multi-mode-app-db)
           ;; Cast to get pending-selection
-          after-cast (dispatch-event app-db [::casting/cast-spell])
+          after-cast (dispatch-event app-db [::casting/cast-spell {:object-id obj-id}])
           pending-sel (:game/pending-selection after-cast)
           _ (is (= :spell-mode (:selection/domain pending-sel))
                 "Precondition: pending-selection is spell-mode after cast")

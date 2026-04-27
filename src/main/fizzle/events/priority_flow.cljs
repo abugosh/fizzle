@@ -119,57 +119,62 @@
 
 
 (defn- cast-and-yield-handler
-  [db]
-  (let [pre-game-db (:game/db db)
-        player-id (queries/get-human-player-id pre-game-db)
-        after-cast (casting/cast-spell-handler db)]
-    (cond
-      ;; Pre-cast selection needed (mana allocation, targeting, etc.)
-      ;; Set on-complete continuation so auto-resolve happens after selection completes.
-      ;; Override deferred-entry to use :cast-and-yield type with correct pre-game-db.
-      (:game/pending-selection after-cast)
-      (let [db-with-continuation
-            (if (:selection/on-complete (:game/pending-selection after-cast))
-              after-cast
-              (assoc-in after-cast [:game/pending-selection :selection/on-complete]
-                        {:continuation/type :resolve-one-and-stop}))]
-        ;; Override or set deferred-entry for cast-and-yield semantics
-        {:db (assoc db-with-continuation :history/deferred-entry
-                    {:type :cast-and-yield
-                     :object-id (or (get-in after-cast [:game/pending-selection :selection/spell-id])
-                                    (:game/selected-card db)
-                                    (get-in after-cast [:history/deferred-entry :object-id]))
-                     :pre-game-db pre-game-db
-                     :principal player-id
-                     :event-type :fizzle.events.priority-flow/cast-and-yield})})
+  "Handle cast-and-yield event: cast the spell and auto-resolve.
+   Accepts optional opts map with :player-id, :object-id, :target.
+   :object-id MUST be provided explicitly; no implicit fallback to app-db.
+   Throws if :object-id is absent (fail-loud, ADR-031 §2)."
+  ([db] (cast-and-yield-handler db nil))
+  ([db opts]
+   (let [pre-game-db (:game/db db)
+         player-id (queries/get-human-player-id pre-game-db)
+         after-cast (casting/cast-spell-handler db opts)]
+     (cond
+       ;; Pre-cast selection needed (mana allocation, targeting, etc.)
+       ;; Set on-complete continuation so auto-resolve happens after selection completes.
+       ;; Override deferred-entry to use :cast-and-yield type with correct pre-game-db.
+       (:game/pending-selection after-cast)
+       (let [db-with-continuation
+             (if (:selection/on-complete (:game/pending-selection after-cast))
+               after-cast
+               (assoc-in after-cast [:game/pending-selection :selection/on-complete]
+                         {:continuation/type :resolve-one-and-stop}))]
+         ;; Override or set deferred-entry for cast-and-yield semantics
+         {:db (assoc db-with-continuation :history/deferred-entry
+                     {:type :cast-and-yield
+                      :object-id (or (get-in after-cast [:game/pending-selection :selection/spell-id])
+                                     (get-in after-cast [:history/deferred-entry :object-id])
+                                     (:object-id opts))
+                      :pre-game-db pre-game-db
+                      :principal player-id
+                      :event-type :fizzle.events.priority-flow/cast-and-yield})})
 
-      ;; Mode selection needed — no continuation (mode selection is a choice, not a cost).
-      ;; After ADR-030: mode selection uses :game/pending-selection with :selection/mechanism :pick-mode.
-      (= :pick-mode (:selection/mechanism (:game/pending-selection after-cast)))
-      {:db after-cast}
+       ;; Mode selection needed — no continuation (mode selection is a choice, not a cost).
+       ;; After ADR-030: mode selection uses :game/pending-selection with :selection/mechanism :pick-mode.
+       (= :pick-mode (:selection/mechanism (:game/pending-selection after-cast)))
+       {:db after-cast}
 
-      ;; Cast failed or nothing on stack
-      (not (seq (queries/get-all-stack-items (:game/db after-cast))))
-      {:db after-cast}
+       ;; Cast failed or nothing on stack
+       (not (seq (queries/get-all-stack-items (:game/db after-cast))))
+       {:db after-cast}
 
-      ;; Cast succeeded, stack has items — resolve just the top item, then stop.
-      ;; pending-entry from cast-spell-handler needs to be overridden with cast-and-yield desc.
-      :else
-      (let [db-without-cast-pending (dissoc after-cast :history/pending-entry)
-            object-id (or (get-in after-cast [:history/deferred-entry :object-id])
-                          (:game/selected-card db))
-            resolved (resolve-one-and-stop db-without-cast-pending)
-            game-db-after (:game/db resolved)
-            desc (descriptions/describe-cast-and-yield pre-game-db game-db-after object-id)]
-        {:db (assoc resolved :history/pending-entry
-                    (descriptions/build-pending-entry
-                      game-db-after
-                      :fizzle.events.priority-flow/cast-and-yield
-                      desc
-                      player-id))}))))
+       ;; Cast succeeded, stack has items — resolve just the top item, then stop.
+       ;; pending-entry from cast-spell-handler needs to be overridden with cast-and-yield desc.
+       :else
+       (let [db-without-cast-pending (dissoc after-cast :history/pending-entry)
+             object-id (or (get-in after-cast [:history/deferred-entry :object-id])
+                           (:object-id opts))
+             resolved (resolve-one-and-stop db-without-cast-pending)
+             game-db-after (:game/db resolved)
+             desc (descriptions/describe-cast-and-yield pre-game-db game-db-after object-id)]
+         {:db (assoc resolved :history/pending-entry
+                     (descriptions/build-pending-entry
+                       game-db-after
+                       :fizzle.events.priority-flow/cast-and-yield
+                       desc
+                       player-id))})))))
 
 
 (rf/reg-event-fx
   ::cast-and-yield
-  (fn [{:keys [db]} _]
-    (cast-and-yield-handler db)))
+  (fn [{:keys [db]} [_ opts]]
+    (cast-and-yield-handler db opts)))

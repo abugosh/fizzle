@@ -69,8 +69,8 @@
     (let [db (th/create-test-db)
           [db ritual-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
           db (mana/add-mana db :player-1 {:black 1})
-          app-db {:game/db db :game/selected-card ritual-id}
-          result (casting/cast-spell-handler app-db)]
+          app-db {:game/db db}
+          result (casting/cast-spell-handler app-db {:object-id ritual-id})]
       ;; Should cast directly — no pending selections
       (is (nil? (:game/pending-selection result)))
       (is (= :stack (:object/zone (q/get-object (:game/db result) ritual-id)))))))
@@ -87,8 +87,8 @@
           ;; Add Counterspell
           [db cs-id] (th/add-card-to-zone db :counterspell :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 2})
-          app-db {:game/db db :game/selected-card cs-id}
-          result (casting/cast-spell-handler app-db)]
+          app-db {:game/db db}
+          result (casting/cast-spell-handler app-db {:object-id cs-id})]
       ;; Should show targeting selection
       (is (some? (:game/pending-selection result)))
       (let [sel (:game/pending-selection result)]
@@ -111,8 +111,8 @@
           ;; Let me test with Merchant Scroll {1U} which has generic
           [db scroll-id] (th/add-card-to-zone db :merchant-scroll :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 1 :black 1})
-          app-db {:game/db db :game/selected-card scroll-id}
-          result (casting/cast-spell-handler app-db)]
+          app-db {:game/db db}
+          result (casting/cast-spell-handler app-db {:object-id scroll-id})]
       ;; Should show mana allocation selection (has 1 generic)
       (is (some? (:game/pending-selection result)))
       (let [sel (:game/pending-selection result)]

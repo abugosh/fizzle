@@ -34,9 +34,8 @@
           ;; Add REB to player's hand with mana
           [db reb-id] (th/add-card-to-zone db :red-elemental-blast :hand :player-1)
           db (mana/add-mana db :player-1 {:red 1})
-          app-db {:game/db db
-                  :game/selected-card reb-id}
-          result-db (casting/cast-spell-handler app-db)]
+          app-db {:game/db db}
+          result-db (casting/cast-spell-handler app-db {:object-id reb-id})]
       ;; Should show spell mode selection via standard selection system
       (is (some? (:game/pending-selection result-db))
           "Should show selection for modal card")
@@ -68,9 +67,8 @@
           [db _perm-id] (th/add-card-to-zone db :counterspell :battlefield :player-2)
           [db reb-id] (th/add-card-to-zone db :red-elemental-blast :hand :player-1)
           db (mana/add-mana db :player-1 {:red 1})
-          app-db {:game/db db
-                  :game/selected-card reb-id}
-          result-db (casting/cast-spell-handler app-db)]
+          app-db {:game/db db}
+          result-db (casting/cast-spell-handler app-db {:object-id reb-id})]
       ;; Should show only modes with valid targets
       (let [selection (:game/pending-selection result-db)
             candidates (:selection/candidates selection)]
@@ -93,9 +91,8 @@
           db (mana/add-mana db :player-1 {:red 1})
           chosen-mode (first (:card/modes reb/card))
           ;; Build spell-mode selection as cast-spell-handler would
-          app-db {:game/db db
-                  :game/selected-card reb-id}
-          app-db-with-sel (casting/cast-spell-handler app-db)
+          app-db {:game/db db}
+          app-db-with-sel (casting/cast-spell-handler app-db {:object-id reb-id})
           ;; Simulate toggle-selection (select the first mode)
           app-db-with-toggle (assoc-in app-db-with-sel
                                        [:game/pending-selection :selection/selected]
@@ -127,9 +124,8 @@
           ;; Add Counterspell
           [db cs-id] (th/add-card-to-zone db :counterspell :hand :player-1)
           db (mana/add-mana db :player-1 {:blue 2})
-          app-db {:game/db db
-                  :game/selected-card cs-id}
-          result-db (casting/cast-spell-handler app-db)]
+          app-db {:game/db db}
+          result-db (casting/cast-spell-handler app-db {:object-id cs-id})]
       ;; Should NOT show spell mode selection
       (is (not= :spell-mode (:selection/domain (:game/pending-selection result-db)))
           "Non-modal card should not trigger spell mode selection")

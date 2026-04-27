@@ -19,9 +19,11 @@
    - Bug-class regression: non-flashback graveyard card → cleared"
   (:require
     [cljs.test :refer-macros [deftest is testing]]
+    [fizzle.db.queries :as queries]
     [fizzle.events.casting :as casting]
     [fizzle.events.db-effect :as db-effect]
     [fizzle.events.lands :as land-events]
+    [fizzle.events.priority-flow :as priority-flow]
     [fizzle.events.ui-invariants :as ui-invariants]
     [fizzle.history.interceptor :as interceptor]
     [fizzle.test-helpers :as th]
@@ -228,3 +230,59 @@
       (let [result (dispatch-event app-db [::casting/cast-spell {:object-id dr-id}])]
         (is (nil? (:game/selected-card result))
             "interceptor must clear :game/selected-card for selection-routed cast (not flag — ADR-031 2B)")))))
+
+
+;; ============================================================
+;; Production-path: human-click cast dispatch shape (ADR-031 §2)
+;; ============================================================
+
+(deftest cast-spell-explicit-arg-from-controls
+  (testing "controls.cljs Cast button dispatch shape: [::cast-spell {:object-id id}]"
+    ;; Production-path test: after this task, controls.cljs dispatches
+    ;; [::casting/cast-spell {:object-id selected}] — not the no-arg form.
+    ;; This test characterizes the canonical dispatch shape.
+    ;; Passes BEFORE the controls.cljs change (explicit form already works),
+    ;; and continues to pass AFTER (it is the only form).
+    ;;
+    ;; Lotus Petal: CMC 0, no mana cost, resolves to graveyard after activation.
+    ;; cast-spell with explicit object-id → LP on stack → interceptor clears selection.
+    (let [base-db  (th/create-game-scenario {:bot-archetype :goldfish})
+          game-db  (:game/db base-db)
+          [game-db lp-id] (th/add-card-to-zone game-db :lotus-petal :hand :player-1)
+          app-db   (assoc base-db
+                          :game/db game-db
+                          :game/selected-card lp-id)]
+      ;; Dispatch the shape controls.cljs uses after this task
+      (let [result (dispatch-event app-db [::casting/cast-spell {:object-id lp-id}])]
+        ;; Lotus Petal casts immediately (no selection needed)
+        (is (= :stack (:object/zone (queries/get-object (:game/db result) lp-id)))
+            "Lotus Petal should be on stack after cast-spell dispatch")
+        ;; :game/selected-card cleared by interceptor (LP on stack → not actionable)
+        (is (nil? (:game/selected-card result))
+            ":game/selected-card cleared after cast-spell with explicit :object-id (ADR-031 §2)")))))
+
+
+(deftest cast-and-yield-explicit-arg-from-controls
+  (testing "controls.cljs Cast & Yield button dispatch shape: [::cast-and-yield {:object-id id}]"
+    ;; Production-path test: after this task, controls.cljs dispatches
+    ;; [::priority-flow/cast-and-yield {:object-id selected}] — not the no-arg form.
+    ;; This test characterizes the canonical dispatch shape.
+    ;; Passes BEFORE the controls.cljs change (explicit form will work after handler update),
+    ;; and continues to pass AFTER (it is the only form).
+    ;;
+    ;; Dark Ritual: costs {B}, resolves to graveyard.
+    ;; cast-and-yield with explicit object-id → DR resolves → interceptor clears selection.
+    (let [base-db  (th/create-game-scenario {:bot-archetype :goldfish :mana {:black 1}})
+          game-db  (:game/db base-db)
+          [game-db dr-id] (th/add-card-to-zone game-db :dark-ritual :hand :player-1)
+          app-db   (assoc base-db
+                          :game/db game-db
+                          :game/selected-card dr-id)]
+      ;; Dispatch the shape controls.cljs uses after this task
+      (let [result (dispatch-event app-db [::priority-flow/cast-and-yield {:object-id dr-id}])]
+        ;; Dark Ritual resolves (cast-and-yield = cast + auto-yield)
+        (is (= :graveyard (:object/zone (queries/get-object (:game/db result) dr-id)))
+            "Dark Ritual should be in graveyard after cast-and-yield dispatch")
+        ;; :game/selected-card cleared by interceptor (DR in graveyard, no flashback)
+        (is (nil? (:game/selected-card result))
+            ":game/selected-card cleared after cast-and-yield with explicit :object-id (ADR-031 §2)")))))

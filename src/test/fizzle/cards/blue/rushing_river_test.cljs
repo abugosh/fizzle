@@ -36,7 +36,7 @@
    Returns db after casting."
   [db rr-id land-id target-a-id target-b-id]
   (let [;; Step 1: cast-spell-handler → spell-mode selection pending
-        app-db (casting/cast-spell-handler {:game/db db :game/selected-card rr-id})
+        app-db (casting/cast-spell-handler {:game/db db} {:object-id rr-id})
         mode-sel (:game/pending-selection app-db)
         ;; Find the kicked mode from candidates
         kicked-mode (first (filter #(= :kicked (:mode/id %))

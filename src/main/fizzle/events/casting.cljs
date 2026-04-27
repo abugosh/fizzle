@@ -256,16 +256,16 @@
 (defn cast-spell-handler
   "Handle cast-spell event: check casting modes and either auto-cast,
    show mode selector, or initiate casting with X cost/targeting checks.
-   Accepts optional opts map with :player-id, :object-id, :target.
-   When opts provided, uses explicit values instead of human-pid/selected-card.
-   Pure function: (app-db, opts?) -> app-db"
+   Accepts opts map with :player-id, :object-id, :target.
+   :object-id must be provided explicitly (ADR-031 §2); callers that omit it
+   get a no-op (can-cast? returns false when object-id is nil).
+   Pure function: (app-db, opts) -> app-db"
   ([app-db] (cast-spell-handler app-db nil))
   ([app-db opts]
    (let [game-db-before (:game/db app-db)
          player-id (or (:player-id opts)
                        (queries/get-human-player-id game-db-before))
-         object-id (or (:object-id opts)
-                       (:game/selected-card app-db))
+         object-id (:object-id opts)
          target (:target opts)]
      (if (and object-id (rules/can-cast? game-db-before player-id object-id))
        (let [obj (queries/get-object game-db-before object-id)

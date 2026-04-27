@@ -59,12 +59,13 @@
     {:app-db app-db :ritual-id ritual-id}))
 
 
-;; === Test: No opts = existing behavior ===
+;; === Test: Explicit object-id required (ADR-031 §2) ===
 
-(deftest cast-spell-handler-no-opts-uses-human-player-and-selected-card
-  (testing "cast-spell-handler with no opts uses human-pid and selected-card"
-    (let [{:keys [app-db]} (setup-human-with-ritual)
-          result (casting/cast-spell-handler app-db)]
+(deftest cast-spell-handler-explicit-object-id-required
+  (testing "cast-spell-handler with explicit :object-id casts the spell"
+    (let [{:keys [app-db ritual-id]} (setup-human-with-ritual)
+          ;; Must provide explicit :object-id — no implicit fallback to :game/selected-card
+          result (casting/cast-spell-handler app-db {:object-id ritual-id})]
       ;; Dark Ritual should be on the stack
       (is (not (q/stack-empty? (:game/db result)))
           "Stack should have the ritual on it")
@@ -114,8 +115,8 @@
 
 (deftest cast-spell-handler-with-target-on-targeted-spell
   (testing "cast-spell-handler with target skips targeting selection and stores target"
-    (let [{:keys [app-db]} (setup-human-with-bolt)
-          result (casting/cast-spell-handler app-db {:target :player-2})]
+    (let [{:keys [app-db bolt-id]} (setup-human-with-bolt)
+          result (casting/cast-spell-handler app-db {:object-id bolt-id :target :player-2})]
       ;; Should NOT have pending-selection (target was pre-determined)
       (is (nil? (:game/pending-selection result))
           "Should not show targeting selection when target is provided")
@@ -135,8 +136,8 @@
 
 (deftest cast-spell-handler-targeted-spell-without-target-shows-selection
   (testing "cast-spell-handler on targeted spell without target shows selection UI"
-    (let [{:keys [app-db]} (setup-human-with-bolt)
-          result (casting/cast-spell-handler app-db)]
+    (let [{:keys [app-db bolt-id]} (setup-human-with-bolt)
+          result (casting/cast-spell-handler app-db {:object-id bolt-id})]
       ;; Should have pending-selection for targeting
       (is (some? (:game/pending-selection result))
           "Should show targeting selection when no target provided")

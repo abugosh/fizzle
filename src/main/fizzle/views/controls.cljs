@@ -58,14 +58,14 @@
      [:button {:class (btn-class play-enabled?)
                :disabled (not play-enabled?)
                :on-click (cond
-                           can-cast? #(rf/dispatch [::casting-events/cast-spell])
+                           can-cast? #(rf/dispatch [::casting-events/cast-spell {:object-id selected}])
                            can-play-land? #(rf/dispatch [::lands-events/play-land selected])
                            :else identity)}
       play-label]
      [:button {:class (btn-class play-enabled?)
                :disabled (not play-enabled?)
                :on-click (cond
-                           can-cast? #(rf/dispatch [::priority-flow-events/cast-and-yield])
+                           can-cast? #(rf/dispatch [::priority-flow-events/cast-and-yield {:object-id selected}])
                            can-play-land? #(rf/dispatch [::lands-events/play-land selected])
                            :else identity)}
       play-yield-label]

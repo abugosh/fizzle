@@ -37,7 +37,7 @@
    of target-player-id. Returns db with Fling on stack."
   [db creature-id target-player-id]
   (let [[db fling-id] (th/add-card-to-zone db :fling :hand :player-1)
-        app-db (casting/cast-spell-handler {:game/db db :game/selected-card fling-id})
+        app-db (casting/cast-spell-handler {:game/db db} {:object-id fling-id})
         sac-sel (:game/pending-selection app-db)
         ;; Confirm sacrifice — chains to targeting (lifecycle :chaining)
         {:keys [db selection]} (th/confirm-selection (:game/db app-db) sac-sel #{creature-id})
@@ -175,7 +175,7 @@
           ;; Only one creature on battlefield
           [db _creature-id] (th/add-card-to-zone db :nimble-mongoose :battlefield :player-1)
           [db fling-id] (th/add-card-to-zone db :fling :hand :player-1)
-          app-db (casting/cast-spell-handler {:game/db db :game/selected-card fling-id})
+          app-db (casting/cast-spell-handler {:game/db db} {:object-id fling-id})
           pending-sel (:game/pending-selection app-db)]
       (is (= :sacrifice-cost (:selection/domain pending-sel))
           "Should show sacrifice-permanent-cost selection")
@@ -265,7 +265,7 @@
           db (th/add-opponent db)
           [db creature-id] (th/add-card-to-zone db :nimble-mongoose :battlefield :player-1)
           [db fling-id] (th/add-card-to-zone db :fling :hand :player-1)
-          app-db (casting/cast-spell-handler {:game/db db :game/selected-card fling-id})
+          app-db (casting/cast-spell-handler {:game/db db} {:object-id fling-id})
           sac-sel (:game/pending-selection app-db)
           {:keys [db selection]} (th/confirm-selection (:game/db app-db) sac-sel #{creature-id})
           {:keys [db]} (th/confirm-selection db selection #{:player-2})
