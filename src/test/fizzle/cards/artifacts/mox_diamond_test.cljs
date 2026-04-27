@@ -388,3 +388,47 @@
           "Island should be a valid discard target")
       (is (= 1 (:selection/select-count discard-sel))
           "Should discard exactly 1 land (not all of them)"))))
+
+
+;; =====================================================
+;; H. Chain-trace: replacement-choice via production path
+;; =====================================================
+
+(deftest mox-diamond-replacement-choice-chain-trace-test
+  (testing "Cast Mox Diamond via production path → replacement-choice has :binary-choice mechanism"
+    ;; Chain-trace invariant: the replacement-choice selection produced after resolving
+    ;; Mox Diamond must pass through set-pending-selection (spec chokepoint), which
+    ;; requires :selection/mechanism. This test proves the chokepoint is reached via
+    ;; the production cast path (th/cast-and-yield, not rules/cast-spell bypass).
+    (let [db (th/create-test-db)
+          [db md-id] (th/add-card-to-zone db :mox-diamond :hand :player-1)
+          [db land-id] (th/add-card-to-zone db :forest :hand :player-1)
+          ;; Production cast path: cast-spell-handler → resolve → replacement-choice
+          {:keys [db selection]} (th/cast-and-yield db :player-1 md-id)
+          _ (is (some? selection)
+                "Resolving Mox Diamond with a land in hand MUST produce a pending selection")
+          ;; Chain-trace assertion 1: mechanism keyword equality (not some?)
+          _ (is (= :binary-choice (:selection/mechanism selection))
+                "Replacement-choice MUST have :selection/mechanism = :binary-choice (spec chokepoint reached)")
+          _ (is (= :replacement-choice (:selection/domain selection))
+                "Selection domain must be :replacement-choice")
+          ;; Chain-trace assertion 2: both choices are present (proceed + redirect)
+          _ (is (= 2 (count (:selection/choices selection)))
+                "Must have exactly 2 choices when a land is in hand")
+          _ (is (some #(= :proceed (:choice/action %)) (:selection/choices selection))
+                "Must have :proceed choice (discard land)")
+          _ (is (some #(= :redirect (:choice/action %)) (:selection/choices selection))
+                "Must have :redirect choice (bounce to graveyard)")
+          ;; Confirm proceed → land-discard selection → confirm land → Mox on battlefield
+          {:keys [db selection]} (th/confirm-selection db selection
+                                                       #{(first (filter #(= :proceed (:choice/action %))
+                                                                        (:selection/choices selection)))})
+          _ (is (some? selection) "After :proceed, land-discard selection must appear")
+          {:keys [db]} (th/confirm-selection db selection #{land-id})]
+      ;; Post-confirm state: Mox on battlefield, land in graveyard, hand size -1
+      (is (= :battlefield (:object/zone (q/get-object db md-id)))
+          "Mox Diamond must be on battlefield after discard-proceed")
+      (is (= :graveyard (:object/zone (q/get-object db land-id)))
+          "Discarded land must be in graveyard")
+      (is (= 0 (th/get-hand-count db :player-1))
+          "Player-1 hand must be empty (Mox moved to stack then BF; land discarded)"))))

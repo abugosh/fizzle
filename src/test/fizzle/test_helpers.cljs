@@ -380,6 +380,39 @@
     {:db (:game/db result) :selection sel}))
 
 
+(defn cast-and-yield
+  "Casts a spell via the full production path (cast-spell-handler) and resolves
+   the top stack item, yielding any post-resolve selection to the caller.
+
+   Use for spells that produce an interactive selection AFTER resolve —
+   e.g. Mox Diamond's replacement-choice, which fires on ETB during resolution.
+
+   Unlike cast-and-resolve, this helper does NOT assert that resolution produces
+   no selection. Instead it returns {:db db} when resolution is non-interactive,
+   or {:db db :selection sel} when a selection is pending after resolve.
+
+   Asserts: can-cast? passes; no pending selection exists immediately after cast
+   (pre-resolve selections like targeting or mode-pick indicate the wrong helper
+   was chosen — use cast-with-mode or cast-with-target for those flows).
+
+   Returns {:db db} or {:db db :selection sel}."
+  [db player-id obj-id]
+  (assert (rules/can-cast? db player-id obj-id)
+          (str "can-cast? returned false for " obj-id))
+  (let [result (casting/cast-spell-handler {:game/db db}
+                                           {:player-id player-id
+                                            :object-id obj-id})]
+    (assert (nil? (:game/pending-selection result))
+            (str "cast-and-yield: unexpected pre-resolve selection for " obj-id
+                 " — use cast-with-mode or cast-with-target for spells with pre-cast selections."
+                 " selection domain: "
+                 (:selection/domain (:game/pending-selection result))))
+    (let [resolve-result (resolution/resolve-one-item (:game/db result))]
+      (if-let [sel (:pending-selection resolve-result)]
+        {:db (:db resolve-result) :selection sel}
+        {:db (:db resolve-result)}))))
+
+
 (defn cast-mode-with-target
   "Casts a modal+targeted spell using the given spell mode and target through
    the full production selection pipeline. For spells like BEB/REB/Hydroblast
