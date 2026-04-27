@@ -20,9 +20,11 @@
 (deftest test-create-stack-item-basic
   (testing "Creates a spell stack-item with all attributes present in DB"
     (let [db (init-game-state)
+          src-uuid (random-uuid)
           db' (stack/create-stack-item db {:stack-item/type :spell
                                            :stack-item/controller :player-1
-                                           :stack-item/source :some-source
+                                           :stack-item/source src-uuid
+                                           :stack-item/object-ref 1
                                            :stack-item/effects [{:effect/type :add-mana}]
                                            :stack-item/description "Dark Ritual"})
           ;; Find the stack item
@@ -33,7 +35,7 @@
       (let [item (first items)]
         (is (= :spell (:stack-item/type item)))
         (is (= :player-1 (:stack-item/controller item)))
-        (is (= :some-source (:stack-item/source item)))
+        (is (= src-uuid (:stack-item/source item)))
         (is (= [{:effect/type :add-mana}] (:stack-item/effects item)))
         (is (= "Dark Ritual" (:stack-item/description item)))))))
 
@@ -41,9 +43,9 @@
 (deftest test-create-stack-item-auto-assigns-position
   (testing "Second stack-item has higher position than first"
     (let [db (init-game-state)
-          db' (stack/create-stack-item db {:stack-item/type :spell
+          db' (stack/create-stack-item db {:stack-item/type :declare-attackers
                                            :stack-item/controller :player-1})
-          db'' (stack/create-stack-item db' {:stack-item/type :spell
+          db'' (stack/create-stack-item db' {:stack-item/type :declare-attackers
                                              :stack-item/controller :player-1})
           items (d/q '[:find [(pull ?e [*]) ...]
                        :where [?e :stack-item/position _]]
@@ -57,14 +59,23 @@
 (deftest test-create-stack-item-different-types
   (testing "Different stack-item types stored correctly"
     (let [db (init-game-state)
+          uuid-a (random-uuid)
+          uuid-b (random-uuid)
+          uuid-c (random-uuid)
           db' (-> db
                   (stack/create-stack-item {:stack-item/type :spell
-                                            :stack-item/controller :player-1})
+                                            :stack-item/controller :player-1
+                                            :stack-item/source uuid-a
+                                            :stack-item/object-ref 1})
                   (stack/create-stack-item {:stack-item/type :storm-copy
                                             :stack-item/controller :player-1
+                                            :stack-item/source uuid-b
+                                            :stack-item/object-ref 2
                                             :stack-item/is-copy true})
                   (stack/create-stack-item {:stack-item/type :activated-ability
-                                            :stack-item/controller :player-1}))
+                                            :stack-item/controller :player-1
+                                            :stack-item/source uuid-c
+                                            :stack-item/effects []}))
           items (d/q '[:find [(pull ?e [*]) ...]
                        :where [?e :stack-item/position _]]
                      db')
@@ -78,10 +89,10 @@
 (deftest test-remove-stack-item
   (testing "Removes stack-item without affecting others"
     (let [db (init-game-state)
-          db' (stack/create-stack-item db {:stack-item/type :spell
+          db' (stack/create-stack-item db {:stack-item/type :test
                                            :stack-item/controller :player-1
                                            :stack-item/description "first"})
-          db'' (stack/create-stack-item db' {:stack-item/type :spell
+          db'' (stack/create-stack-item db' {:stack-item/type :test
                                              :stack-item/controller :player-1
                                              :stack-item/description "second"})
           ;; Find the first item (lower position)
@@ -104,13 +115,13 @@
   (testing "Returns the stack-item with highest position"
     (let [db (init-game-state)
           db' (-> db
-                  (stack/create-stack-item {:stack-item/type :spell
+                  (stack/create-stack-item {:stack-item/type :test
                                             :stack-item/controller :player-1
                                             :stack-item/description "first"})
-                  (stack/create-stack-item {:stack-item/type :spell
+                  (stack/create-stack-item {:stack-item/type :test
                                             :stack-item/controller :player-1
                                             :stack-item/description "second"})
-                  (stack/create-stack-item {:stack-item/type :spell
+                  (stack/create-stack-item {:stack-item/type :test
                                             :stack-item/controller :player-1
                                             :stack-item/description "third"}))
           top (stack/get-top-stack-item db')]
@@ -129,13 +140,13 @@
   (testing "Returns all stack-items in LIFO order (highest position first)"
     (let [db (init-game-state)
           db' (-> db
-                  (stack/create-stack-item {:stack-item/type :spell
+                  (stack/create-stack-item {:stack-item/type :test
                                             :stack-item/controller :player-1
                                             :stack-item/description "first"})
-                  (stack/create-stack-item {:stack-item/type :spell
+                  (stack/create-stack-item {:stack-item/type :test
                                             :stack-item/controller :player-1
                                             :stack-item/description "second"})
-                  (stack/create-stack-item {:stack-item/type :spell
+                  (stack/create-stack-item {:stack-item/type :test
                                             :stack-item/controller :player-1
                                             :stack-item/description "third"}))
           items (queries/get-all-stack-items db')]
@@ -150,7 +161,7 @@
   (testing "Returns true on fresh db, false after add, true after remove"
     (let [db (init-game-state)]
       (is (true? (queries/stack-empty? db)))
-      (let [db' (stack/create-stack-item db {:stack-item/type :spell
+      (let [db' (stack/create-stack-item db {:stack-item/type :declare-attackers
                                              :stack-item/controller :player-1})]
         (is (false? (queries/stack-empty? db')))
         (let [eid (:db/id (stack/get-top-stack-item db'))
@@ -176,7 +187,7 @@
                              :object/position 5
                              :object/tapped false}])
           ;; Add a stack-item (should get position 6, since object has 5)
-          db (stack/create-stack-item db {:stack-item/type :spell
+          db (stack/create-stack-item db {:stack-item/type :declare-attackers
                                           :stack-item/controller :player-1})
           ;; Next order should be 7 (max of object 5 and stack-item 6 is 6, +1 = 7)
           next-order (stack/get-next-stack-order db)
@@ -254,6 +265,7 @@
                        db)
           db' (stack/create-stack-item db {:stack-item/type :spell
                                            :stack-item/controller :player-1
+                                           :stack-item/source (random-uuid)
                                            :stack-item/object-ref obj-eid})
           result (stack/get-stack-item-by-object-ref db' obj-eid)]
       (is (= :spell (:stack-item/type result)))
@@ -476,7 +488,7 @@
       (is (true? (queries/stack-empty? db))
           "Fresh db has empty stack")
       ;; Add a stack-item
-      (let [db' (stack/create-stack-item db {:stack-item/type :spell
+      (let [db' (stack/create-stack-item db {:stack-item/type :declare-attackers
                                              :stack-item/controller :player-1})]
         (is (false? (queries/stack-empty? db'))
             "Stack-item makes stack non-empty")))))

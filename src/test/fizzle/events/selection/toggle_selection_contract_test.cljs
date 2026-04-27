@@ -58,12 +58,15 @@
 
 
 (deftest test-toggle-impl-throws-when-select-count-nil
-  (testing "toggle-selection-impl throws ex-info when :selection/select-count is nil"
+  (testing "toggle-selection-impl throws when :selection/select-count is nil"
+    ;; With *throw-on-spec-failure* true globally, the spec chokepoint fires before
+    ;; the pos-int? entry guard and throws a spec validation error — both behaviors
+    ;; (spec throw or guard throw) correctly reject nil select-count.
+    ;; Test only asserts a throw occurs, not the specific message.
     (let [sel (assoc (base-selection 2) :selection/select-count nil)
           app-db (app-db-with sel)]
-      (is (thrown-with-msg?
+      (is (thrown?
             js/Error
-            #"select-count must be a positive int"
             (selection-core/toggle-selection-impl app-db :card-a))
           "must throw when :selection/select-count is nil"))))
 
@@ -109,7 +112,9 @@
 
 (deftest test-toggle-impl-at-limit-returns-unchanged-app-db
   (testing "at-limit click (selecting beyond select-count) returns [app-db false] — NOT a throw"
-    (let [sel {:selection/lifecycle :standard
+    (let [sel {:selection/mechanism :pick-from-zone
+               :selection/domain    :discard
+               :selection/lifecycle :standard
                :selection/player-id :player-1
                :selection/selected #{:card-a :card-b}
                :selection/valid-targets [:card-a :card-b :card-c]
@@ -126,7 +131,9 @@
 
 (deftest test-toggle-impl-deselect-branch-preserved
   (testing "deselecting an already-selected item works correctly with pos-int? guard in place"
-    (let [sel {:selection/lifecycle :standard
+    (let [sel {:selection/mechanism :pick-from-zone
+               :selection/domain    :discard
+               :selection/lifecycle :standard
                :selection/player-id :player-1
                :selection/selected #{:card-a :card-b}
                :selection/valid-targets [:card-a :card-b :card-c]
@@ -143,7 +150,9 @@
 
 (deftest test-toggle-impl-single-select-replace-preserved
   (testing "single-select (select-count=1) replaces current selection with new id"
-    (let [sel {:selection/lifecycle :standard
+    (let [sel {:selection/mechanism :pick-from-zone
+               :selection/domain    :discard
+               :selection/lifecycle :standard
                :selection/player-id :player-1
                :selection/selected #{:card-a}
                :selection/valid-targets [:card-a :card-b]
@@ -158,7 +167,9 @@
 
 (deftest test-toggle-impl-unlimited-exact-false-preserved
   (testing "exact?=false (unlimited select) always adds new id beyond select-count"
-    (let [sel {:selection/lifecycle :standard
+    (let [sel {:selection/mechanism :pick-from-zone
+               :selection/domain    :discard
+               :selection/lifecycle :standard
                :selection/player-id :player-1
                :selection/selected #{:card-a :card-b :card-c}
                :selection/valid-targets [:card-a :card-b :card-c :card-d]
@@ -192,7 +203,9 @@
   (testing "explicit at-limit arm catches overshoot case (selected count > select-count)"
     ;; This state should not occur in practice but tests the at-limit arm handles
     ;; the (>= count select-count) condition generally — not just ==.
-    (let [sel {:selection/lifecycle :standard
+    (let [sel {:selection/mechanism :pick-from-zone
+               :selection/domain    :discard
+               :selection/lifecycle :standard
                :selection/player-id :player-1
                :selection/selected #{:card-a :card-b :card-c}  ; 3 selected
                :selection/select-count 2  ; limit is 2

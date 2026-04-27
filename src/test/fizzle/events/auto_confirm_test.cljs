@@ -102,7 +102,9 @@
           [game-db' [obj1 obj2 obj3]] (th/add-cards-to-library game-db
                                                                [:dark-ritual :cabal-ritual :brain-freeze]
                                                                :player-1)
-          pending {:selection/player-id :player-1
+          pending {:selection/mechanism :pick-from-zone
+                   :selection/domain    :tutor
+                   :selection/player-id :player-1
                    :selection/selected #{}
                    :selection/select-count 3
                    :selection/exact? true
@@ -127,7 +129,9 @@
           [game-db' [bf-id _dr-id]] (th/add-cards-to-library game-db
                                                              [:brain-freeze :dark-ritual]
                                                              :player-1)
-          pending {:selection/player-id :player-1
+          pending {:selection/mechanism :pick-from-zone
+                   :selection/domain    :tutor
+                   :selection/player-id :player-1
                    :selection/selected #{bf-id}
                    :selection/select-count 1
                    :selection/exact? true
@@ -153,6 +157,7 @@
     (let [game-db (create-game-db)
           pending {:selection/mechanism :n-slot-targeting
                    :selection/domain    :player-target
+                   :selection/lifecycle :finalized
                    :selection/player-id :player-1
                    :selection/selected #{}
                    :selection/select-count 1
@@ -175,7 +180,10 @@
 (deftest test-player-target-deselect-does-not-auto-confirm
   (testing "Deselecting player target does NOT auto-confirm"
     (let [game-db (create-game-db)
-          pending {:selection/player-id :player-1
+          pending {:selection/mechanism :n-slot-targeting
+                   :selection/domain    :player-target
+                   :selection/lifecycle :finalized
+                   :selection/player-id :player-1
                    :selection/selected #{:player-2}
                    :selection/select-count 1
                    :selection/valid-targets #{:player-1 :player-2}
@@ -197,7 +205,10 @@
 (deftest test-invalid-target-rejected
   (testing "Toggling an invalid target is rejected (no selection change)"
     (let [game-db (create-game-db)
-          pending {:selection/player-id :player-1
+          pending {:selection/mechanism :n-slot-targeting
+                   :selection/domain    :player-target
+                   :selection/lifecycle :finalized
+                   :selection/player-id :player-1
                    :selection/selected #{}
                    :selection/select-count 1
                    :selection/valid-targets #{:player-1 :player-2}
@@ -222,7 +233,9 @@
   (testing "Discard selection does NOT auto-confirm even with select-count=1"
     (let [game-db (create-game-db)
           [game-db' card-id] (th/add-card-to-zone game-db :dark-ritual :hand :player-1)
-          pending {:selection/player-id :player-1
+          pending {:selection/mechanism :pick-from-zone
+                   :selection/domain    :discard
+                   :selection/player-id :player-1
                    :selection/selected #{}
                    :selection/select-count 1
                    :selection/validation :exact
@@ -239,7 +252,9 @@
   (testing "Pile choice does NOT auto-confirm even with hand-count=1"
     (let [game-db (create-game-db)
           card-id (random-uuid)
-          pending {:selection/player-id :player-1
+          pending {:selection/mechanism :pick-from-zone
+                   :selection/domain    :pile-choice
+                   :selection/player-id :player-1
                    :selection/selected #{}
                    :selection/hand-count 1
                    :selection/select-count 1
@@ -259,7 +274,9 @@
   (testing "Graveyard return does NOT auto-confirm even with select-count=1"
     (let [game-db (create-game-db)
           [game-db' card-id] (th/add-card-to-zone game-db :dark-ritual :graveyard :player-1)
-          pending {:selection/player-id :player-1
+          pending {:selection/mechanism :pick-from-zone
+                   :selection/domain    :graveyard-return
+                   :selection/player-id :player-1
                    :selection/selected #{}
                    :selection/select-count 1
                    :selection/min-count 0

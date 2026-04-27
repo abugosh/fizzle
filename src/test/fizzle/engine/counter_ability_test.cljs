@@ -97,6 +97,7 @@
           ;; Create a spell stack-item
           db-with-spell (stack/create-stack-item db {:stack-item/type :spell
                                                      :stack-item/controller :player-1
+                                                     :stack-item/source (random-uuid)
                                                      :stack-item/object-ref (:db/id ritual-obj)
                                                      :stack-item/effects []})
           stack-items (get-all-stack-items db-with-spell)

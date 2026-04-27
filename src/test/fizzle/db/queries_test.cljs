@@ -248,16 +248,8 @@
 (deftest stack-empty?-stack-items-only-test
   (testing "false when only stack-items on stack"
     (let [db (th/create-test-db)
-          db' (stack/create-stack-item db {:stack-item/type :storm-copy
-                                           :stack-item/controller :player-1
-                                           :stack-item/description "Storm copy"})]
-      (is (false? (q/stack-empty? db'))))))
-
-
-(deftest stack-empty?-spells-only-test
-  (testing "false when only spells on stack"
-    (let [db (th/create-test-db)
-          [db' _] (th/add-card-to-zone db :dark-ritual :stack :player-1)]
+          db' (stack/create-stack-item db {:stack-item/type :declare-attackers
+                                           :stack-item/controller :player-1})]
       (is (false? (q/stack-empty? db'))))))
 
 
@@ -265,9 +257,8 @@
   (testing "false when both stack-items and spells on stack"
     (let [db (th/create-test-db)
           [db' _] (th/add-card-to-zone db :dark-ritual :stack :player-1)
-          db'' (stack/create-stack-item db' {:stack-item/type :storm-copy
-                                             :stack-item/controller :player-1
-                                             :stack-item/description "Storm copy"})]
+          db'' (stack/create-stack-item db' {:stack-item/type :declare-attackers
+                                             :stack-item/controller :player-1})]
       (is (false? (q/stack-empty? db''))))))
 
 

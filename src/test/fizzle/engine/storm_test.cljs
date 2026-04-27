@@ -40,6 +40,15 @@
    :card/effects []})
 
 
+(def storm-obj-1-id (random-uuid))
+(def non-storm-obj-1-id (random-uuid))
+(def non-storm-obj-2-id (random-uuid))
+(def ritual-1-id (random-uuid))
+(def ritual-2-id (random-uuid))
+(def brain-freeze-1-id (random-uuid))
+(def brain-freeze-obj-id (random-uuid))
+
+
 (defn init-storm-test-state
   "Create game state with storm spell in hand.
    Uses th/create-test-db as base (all registry cards + player-1 with turn-based triggers).
@@ -53,20 +62,20 @@
         player-eid (q/get-player-eid db :player-1)
         storm-eid (d/q '[:find ?e . :where [?e :card/id :storm-spell]] db)
         non-storm-eid (d/q '[:find ?e . :where [?e :card/id :non-storm-spell]] db)]
-    ;; Create objects in hand
-    (d/db-with db [{:object/id :storm-obj-1
+    ;; Create objects in hand using UUID object-ids (required by :stack-item/source spec)
+    (d/db-with db [{:object/id storm-obj-1-id
                     :object/card storm-eid
                     :object/zone :hand
                     :object/owner player-eid
                     :object/controller player-eid
                     :object/tapped false}
-                   {:object/id :non-storm-obj-1
+                   {:object/id non-storm-obj-1-id
                     :object/card non-storm-eid
                     :object/zone :hand
                     :object/owner player-eid
                     :object/controller player-eid
                     :object/tapped false}
-                   {:object/id :non-storm-obj-2
+                   {:object/id non-storm-obj-2-id
                     :object/card non-storm-eid
                     :object/zone :hand
                     :object/owner player-eid
@@ -79,19 +88,19 @@
 (deftest test-cast-storm-spell-creates-trigger
   (testing "Casting spell with :storm keyword creates storm stack-item on stack"
     (let [db (init-storm-test-state)
-          db' (rules/cast-spell db :player-1 :storm-obj-1)
+          db' (rules/cast-spell db :player-1 storm-obj-1-id)
           stack-items (q/get-all-stack-items db')
           storm-items (filter #(= :storm (:stack-item/type %)) stack-items)]
       ;; Should have spell + storm on stack
       (is (= 1 (count storm-items)) "Should have exactly 1 storm stack-item")
       (let [storm-trigger (first storm-items)]
-        (is (= :storm-obj-1 (:stack-item/source storm-trigger)))))))
+        (is (= storm-obj-1-id (:stack-item/source storm-trigger)))))))
 
 
 (deftest test-cast-non-storm-spell-no-trigger
   (testing "Casting spell without :storm keyword does NOT create storm stack-item"
     (let [db (init-storm-test-state)
-          db' (rules/cast-spell db :player-1 :non-storm-obj-1)
+          db' (rules/cast-spell db :player-1 non-storm-obj-1-id)
           stack-items (q/get-all-stack-items db')
           storm-items (filter #(= :storm (:stack-item/type %)) stack-items)]
       (is (= 0 (count storm-items)) "Non-storm spell should not create storm stack-item"))))
@@ -100,7 +109,7 @@
 (deftest test-storm-trigger-on-top-of-spell
   (testing "Storm trigger has higher stack-order than spell (resolves first)"
     (let [db (init-storm-test-state)
-          db' (rules/cast-spell db :player-1 :storm-obj-1)
+          db' (rules/cast-spell db :player-1 storm-obj-1-id)
           stack-items (q/get-all-stack-items db')
           storm-trigger (first (filter #(= :storm (:stack-item/type %)) stack-items))]
       ;; Trigger is first in LIFO order (highest stack-order)
@@ -115,12 +124,12 @@
     (let [db (init-storm-test-state)
           ;; Cast 2 non-storm spells first
           db' (-> db
-                  (rules/cast-spell :player-1 :non-storm-obj-1)
-                  (rules/cast-spell :player-1 :non-storm-obj-2))
+                  (rules/cast-spell :player-1 non-storm-obj-1-id)
+                  (rules/cast-spell :player-1 non-storm-obj-2-id))
           ;; Storm count is now 2
           _ (is (= 2 (q/get-storm-count db' :player-1)))
           ;; Cast storm spell (storm count becomes 3)
-          db'' (rules/cast-spell db' :player-1 :storm-obj-1)
+          db'' (rules/cast-spell db' :player-1 storm-obj-1-id)
           ;; Resolve the storm trigger (top of stack)
           db''' (:db (resolution/resolve-one-item db''))
           ;; Should have 2 copies on stack (spells cast before storm spell)
@@ -134,9 +143,9 @@
   (testing "Copies created by storm have :object/is-copy true"
     (let [db (init-storm-test-state)
           ;; Cast 1 non-storm spell first
-          db' (rules/cast-spell db :player-1 :non-storm-obj-1)
+          db' (rules/cast-spell db :player-1 non-storm-obj-1-id)
           ;; Cast storm spell
-          db'' (rules/cast-spell db' :player-1 :storm-obj-1)
+          db'' (rules/cast-spell db' :player-1 storm-obj-1-id)
           ;; Resolve the storm trigger (top of stack)
           db''' (:db (resolution/resolve-one-item db''))
           ;; Find copies (objects with :object/is-copy true)
@@ -150,10 +159,10 @@
   (testing "Storm copies are not cast, so storm count stays same"
     (let [db (init-storm-test-state)
           ;; Cast 1 non-storm spell first
-          db' (rules/cast-spell db :player-1 :non-storm-obj-1)
+          db' (rules/cast-spell db :player-1 non-storm-obj-1-id)
           _ (is (= 1 (q/get-storm-count db' :player-1)))
           ;; Cast storm spell (storm count becomes 2)
-          db'' (rules/cast-spell db' :player-1 :storm-obj-1)
+          db'' (rules/cast-spell db' :player-1 storm-obj-1-id)
           _ (is (= 2 (q/get-storm-count db'' :player-1)))
           ;; Resolve storm trigger (creates 1 copy)
           db''' (:db (resolution/resolve-one-item db''))]
@@ -169,7 +178,7 @@
     (let [db (init-storm-test-state)
           _ (is (= 0 (q/get-storm-count db :player-1)))
           ;; Cast storm spell first (no prior spells)
-          db' (rules/cast-spell db :player-1 :storm-obj-1)
+          db' (rules/cast-spell db :player-1 storm-obj-1-id)
           _ (is (= 1 (q/get-storm-count db' :player-1)))
           ;; Resolve storm trigger (top of stack)
           db'' (:db (resolution/resolve-one-item db'))
@@ -182,9 +191,9 @@
 (deftest test-storm-count-one-creates-one-copy
   (testing "Storm after 1 spell creates 1 copy"
     (let [db (init-storm-test-state)
-          db' (rules/cast-spell db :player-1 :non-storm-obj-1)
+          db' (rules/cast-spell db :player-1 non-storm-obj-1-id)
           _ (is (= 1 (q/get-storm-count db' :player-1)))
-          db'' (rules/cast-spell db' :player-1 :storm-obj-1)
+          db'' (rules/cast-spell db' :player-1 storm-obj-1-id)
           _ (is (= 2 (q/get-storm-count db'' :player-1)))
           db''' (:db (resolution/resolve-one-item db''))
           stack-objects (q/get-objects-in-zone db''' :player-1 :stack)
@@ -196,10 +205,10 @@
   (testing "Storm after 2 spells creates 2 copies"
     (let [db (init-storm-test-state)
           db' (-> db
-                  (rules/cast-spell :player-1 :non-storm-obj-1)
-                  (rules/cast-spell :player-1 :non-storm-obj-2))
+                  (rules/cast-spell :player-1 non-storm-obj-1-id)
+                  (rules/cast-spell :player-1 non-storm-obj-2-id))
           _ (is (= 2 (q/get-storm-count db' :player-1)))
-          db'' (rules/cast-spell db' :player-1 :storm-obj-1)
+          db'' (rules/cast-spell db' :player-1 storm-obj-1-id)
           _ (is (= 3 (q/get-storm-count db'' :player-1)))
           db''' (:db (resolution/resolve-one-item db''))
           stack-objects (q/get-objects-in-zone db''' :player-1 :stack)
@@ -210,11 +219,11 @@
 (deftest test-storm-source-missing-returns-unchanged-db
   (testing "If source object gone at resolution, return db unchanged"
     (let [db (init-storm-test-state)
-          ;; Create a storm stack-item with a source that doesn't exist
+          ;; Create a storm stack-item with a uuid source that doesn't exist as an object
           db' (stack/create-stack-item db
                                        {:stack-item/type :storm
                                         :stack-item/controller :player-1
-                                        :stack-item/source :nonexistent-obj
+                                        :stack-item/source (random-uuid)
                                         :stack-item/effects [{:effect/type :storm-copies
                                                               :effect/count 3}]
                                         :stack-item/description "Storm - create 3 copies"})
@@ -277,19 +286,19 @@
         brain-freeze-eid (d/q '[:find ?e . :where [?e :card/id :test-brain-freeze]] db)
         ritual-eid (d/q '[:find ?e . :where [?e :card/id :ritual]] db)
         ;; Create objects in player 1's hand
-        db (d/db-with db [{:object/id :ritual-1
+        db (d/db-with db [{:object/id ritual-1-id
                            :object/card ritual-eid
                            :object/zone :hand
                            :object/owner player1-eid
                            :object/controller player1-eid
                            :object/tapped false}
-                          {:object/id :ritual-2
+                          {:object/id ritual-2-id
                            :object/card ritual-eid
                            :object/zone :hand
                            :object/owner player1-eid
                            :object/controller player1-eid
                            :object/tapped false}
-                          {:object/id :brain-freeze-1
+                          {:object/id brain-freeze-1-id
                            :object/card brain-freeze-eid
                            :object/zone :hand
                            :object/owner player1-eid
@@ -339,15 +348,15 @@
           _ (is (= 0 (count-zone db :player-2 :graveyard)) "Opponent graveyard is empty")
 
           ;; Cast first ritual (storm count = 1)
-          db (rules/cast-spell db :player-1 :ritual-1)
+          db (rules/cast-spell db :player-1 ritual-1-id)
           _ (is (= 1 (q/get-storm-count db :player-1)) "Storm count = 1 after first ritual")
 
           ;; Cast second ritual (storm count = 2)
-          db (rules/cast-spell db :player-1 :ritual-2)
+          db (rules/cast-spell db :player-1 ritual-2-id)
           _ (is (= 2 (q/get-storm-count db :player-1)) "Storm count = 2 after second ritual")
 
           ;; Cast Brain Freeze (storm count = 3, creates storm trigger)
-          db (rules/cast-spell db :player-1 :brain-freeze-1)
+          db (rules/cast-spell db :player-1 brain-freeze-1-id)
           _ (is (= 3 (q/get-storm-count db :player-1)) "Storm count = 3 after Brain Freeze")
 
           ;; Get storm trigger from stack
@@ -382,9 +391,9 @@
   (testing "Storm copies get :object/position for correct stack ordering"
     (let [db (init-storm-test-state)
           ;; Cast non-storm spell first
-          db (rules/cast-spell db :player-1 :non-storm-obj-1)
+          db (rules/cast-spell db :player-1 non-storm-obj-1-id)
           ;; Cast storm spell (creates trigger)
-          db (rules/cast-spell db :player-1 :storm-obj-1)
+          db (rules/cast-spell db :player-1 storm-obj-1-id)
           ;; Resolve storm trigger (creates 1 copy)
           db (:db (resolution/resolve-one-item db))
           ;; Find copy
@@ -398,11 +407,11 @@
   (testing "Storm copies have higher stack position than original spell"
     (let [db (init-storm-test-state)
           ;; Cast non-storm spell first
-          db (rules/cast-spell db :player-1 :non-storm-obj-1)
+          db (rules/cast-spell db :player-1 non-storm-obj-1-id)
           ;; Cast storm spell
-          db (rules/cast-spell db :player-1 :storm-obj-1)
+          db (rules/cast-spell db :player-1 storm-obj-1-id)
           ;; Get original spell's position
-          original (q/get-object db :storm-obj-1)
+          original (q/get-object db storm-obj-1-id)
           original-pos (:object/position original)
           ;; Resolve storm trigger
           db (:db (resolution/resolve-one-item db))
@@ -417,11 +426,11 @@
   (testing "Spells and triggers share a unified stack order counter"
     (let [db (init-storm-test-state)
           ;; Cast non-storm spell (gets position 0)
-          db (rules/cast-spell db :player-1 :non-storm-obj-1)
-          spell-pos (:object/position (q/get-object db :non-storm-obj-1))
+          db (rules/cast-spell db :player-1 non-storm-obj-1-id)
+          spell-pos (:object/position (q/get-object db non-storm-obj-1-id))
           ;; Cast storm spell (gets position 1, trigger gets order 2)
-          db (rules/cast-spell db :player-1 :storm-obj-1)
-          storm-pos (:object/position (q/get-object db :storm-obj-1))
+          db (rules/cast-spell db :player-1 storm-obj-1-id)
+          storm-pos (:object/position (q/get-object db storm-obj-1-id))
           stack-items (q/get-all-stack-items db)
           storm-trigger (first (filter #(= :storm (:stack-item/type %)) stack-items))
           trigger-order (:stack-item/position storm-trigger)]
@@ -439,8 +448,8 @@
     (let [db (init-storm-combo-state)
           ;; Cast ritual + Brain Freeze (storm count = 2 before BF, creates 1 copy)
           db (-> db
-                 (rules/cast-spell :player-1 :ritual-1)
-                 (rules/cast-spell :player-1 :brain-freeze-1))
+                 (rules/cast-spell :player-1 ritual-1-id)
+                 (rules/cast-spell :player-1 brain-freeze-1-id))
           ;; Resolve storm trigger (creates 1 copy)
           db (:db (resolution/resolve-one-item db))
           ;; Find the copy on the stack
@@ -466,13 +475,13 @@
   (testing "Non-copy spells still go to graveyard after resolution"
     (let [db (init-storm-combo-state)
           ;; Cast Brain Freeze (no storm copies, storm count = 0)
-          db (rules/cast-spell db :player-1 :brain-freeze-1)
+          db (rules/cast-spell db :player-1 brain-freeze-1-id)
           ;; Resolve storm trigger (0 copies created)
           db (:db (resolution/resolve-one-item db))
           ;; Resolve original Brain Freeze
-          db (rules/resolve-spell db :player-1 :brain-freeze-1)]
+          db (rules/resolve-spell db :player-1 brain-freeze-1-id)]
       ;; Original spell should be in graveyard
-      (is (= :graveyard (:object/zone (q/get-object db :brain-freeze-1)))
+      (is (= :graveyard (:object/zone (q/get-object db brain-freeze-1-id)))
           "Original (non-copy) spell should go to graveyard after resolution"))))
 
 
@@ -494,7 +503,7 @@
         player2-eid (q/get-player-eid db :player-2)
         brain-freeze-eid (d/q '[:find ?e . :where [?e :card/id :test-brain-freeze]] db)
         ;; Create Brain Freeze in hand
-        db (d/db-with db [{:object/id :brain-freeze-obj
+        db (d/db-with db [{:object/id brain-freeze-obj-id
                            :object/card brain-freeze-eid
                            :object/zone :hand
                            :object/owner player1-eid
@@ -528,7 +537,7 @@
                 "Opponent should have 70 cards in library")
 
           ;; Cast Brain Freeze (storm count becomes 21)
-          db (rules/cast-spell db :player-1 :brain-freeze-obj)
+          db (rules/cast-spell db :player-1 brain-freeze-obj-id)
           _ (is (= 21 (q/get-storm-count db :player-1))
                 "Storm count should be 21 after casting")
 

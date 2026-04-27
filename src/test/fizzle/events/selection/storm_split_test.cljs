@@ -134,6 +134,7 @@
                                                  {:stack-item/type :storm
                                                   :stack-item/controller :player-1
                                                   :stack-item/source source-id
+                                                  :stack-item/description "Storm - create 3 copies"
                                                   :stack-item/effects [{:effect/type :storm-copies
                                                                         :effect/count 3}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
@@ -168,6 +169,7 @@
                                                  {:stack-item/type :storm
                                                   :stack-item/controller :player-1
                                                   :stack-item/source source-id
+                                                  :stack-item/description "Storm - create 0 copies"
                                                   :stack-item/effects [{:effect/type :storm-copies
                                                                         :effect/count 0}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
@@ -185,6 +187,7 @@
                                                  {:stack-item/type :storm
                                                   :stack-item/controller :player-1
                                                   :stack-item/source fake-source-id
+                                                  :stack-item/description "Storm - create 3 copies"
                                                   :stack-item/effects [{:effect/type :storm-copies
                                                                         :effect/count 3}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
@@ -201,6 +204,7 @@
                                                  {:stack-item/type :storm
                                                   :stack-item/controller :player-1
                                                   :stack-item/source source-id
+                                                  :stack-item/description "Storm - create 3 copies"
                                                   :stack-item/effects [{:effect/type :storm-copies
                                                                         :effect/count 3}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
@@ -284,6 +288,7 @@
                                                  {:stack-item/type :storm
                                                   :stack-item/controller :player-1
                                                   :stack-item/source source-id
+                                                  :stack-item/description "Storm - create 3 copies"
                                                   :stack-item/effects [{:effect/type :storm-copies
                                                                         :effect/count 3}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
@@ -308,6 +313,7 @@
                                                  {:stack-item/type :storm
                                                   :stack-item/controller :player-1
                                                   :stack-item/source source-id
+                                                  :stack-item/description "Storm - create 3 copies"
                                                   :stack-item/effects [{:effect/type :storm-copies
                                                                         :effect/count 3}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
@@ -337,6 +343,7 @@
                                                  {:stack-item/type :storm
                                                   :stack-item/controller :player-1
                                                   :stack-item/source source-id
+                                                  :stack-item/description "Storm - create 3 copies"
                                                   :stack-item/effects [{:effect/type :storm-copies
                                                                         :effect/count 3}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
@@ -360,6 +367,7 @@
                                                  {:stack-item/type :storm
                                                   :stack-item/controller :player-1
                                                   :stack-item/source source-id
+                                                  :stack-item/description "Storm - create 3 copies"
                                                   :stack-item/effects [{:effect/type :storm-copies
                                                                         :effect/count 3}]})
           storm-si (first (filter #(= :storm (:stack-item/type %))
@@ -415,6 +423,7 @@
                                                  {:stack-item/type :storm
                                                   :stack-item/controller :player-1
                                                   :stack-item/source source-id
+                                                  :stack-item/description "Storm - create 2 copies"
                                                   :stack-item/effects [{:effect/type :storm-copies
                                                                         :effect/count 2}]})
           result (resolution/resolve-one-item db-with-storm)]

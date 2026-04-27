@@ -355,7 +355,9 @@
     ;; (cond is ordered). Use select-count=5 so the exact?=false branch is reached.
     (let [db (th/create-test-db)
           ;; Create a selection with select-count=5 but exact?=false (unlimited multi-select)
-          sel {:selection/lifecycle :standard
+          sel {:selection/mechanism :pick-from-zone
+               :selection/domain    :discard
+               :selection/lifecycle :standard
                :selection/player-id :player-1
                :selection/selected #{}
                :selection/select-count 5       ; >1 so single-select branch doesn't fire
@@ -381,7 +383,9 @@
     ;; Bug caught: if exact?=false branch incorrectly triggered auto-confirm via the single-select
     ;; path, the selection would auto-complete after the first item, preventing multi-select.
     (let [db (th/create-test-db)
-          sel {:selection/lifecycle :standard
+          sel {:selection/mechanism :pick-from-zone
+               :selection/domain    :discard
+               :selection/lifecycle :standard
                :selection/player-id :player-1
                :selection/selected #{}
                :selection/select-count 5        ; >1 so single-select branch doesn't fire

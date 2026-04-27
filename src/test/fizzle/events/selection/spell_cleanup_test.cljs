@@ -70,6 +70,7 @@
           ;; Create a stack-item referencing the spell object via production path
           db (stack/create-stack-item db {:stack-item/type :spell
                                           :stack-item/controller :player-1
+                                          :stack-item/source obj-id
                                           :stack-item/object-ref obj-eid
                                           :stack-item/effects []})
           si (stack/get-stack-item-by-object-ref db obj-eid)

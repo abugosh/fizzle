@@ -43,14 +43,17 @@
 
 
 (deftest test-validate-default-no-throw
-  (testing "validate-at-chokepoint! does NOT throw when *throw-on-spec-failure* is false (default)"
-    ;; Default is false — invalid data should NOT throw, only console.error
-    (is (nil?
-          (stack-spec/validate-stack-item!
-            {:stack-item/type :spell
-             ;; Missing everything except type
-             }))
-        "Default mode should not throw even on invalid data")))
+  (testing "validate-at-chokepoint! does NOT throw when *throw-on-spec-failure* is explicitly false"
+    ;; When explicitly bound to false, invalid data should NOT throw, only console.error.
+    ;; (Global default is now true via fizzle.test-setup — this test uses explicit binding
+    ;; to verify the false-branch still works correctly.)
+    (binding [spec-util/*throw-on-spec-failure* false]
+      (is (nil?
+            (stack-spec/validate-stack-item!
+              {:stack-item/type :spell
+               ;; Missing everything except type
+               }))
+          "Explicitly-false binding should not throw even on invalid data"))))
 
 
 ;; =====================================================

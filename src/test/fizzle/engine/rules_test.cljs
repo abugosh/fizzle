@@ -9,6 +9,7 @@
     [fizzle.engine.grants :as grants]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
+    [fizzle.engine.spec-util :as spec-util]
     [fizzle.engine.triggers]
     [fizzle.engine.zones :as zones]
     [fizzle.test-helpers :as th]))
@@ -144,7 +145,8 @@
                         :where [?e :card/id :dark-ritual]]
                       db)]
     ;; Add a second Dark Ritual object in hand
-    (d/db-with db [{:object/id :dr-2
+    ;; Use random-uuid so cast-spell produces a valid :stack-item/source (uuid? spec)
+    (d/db-with db [{:object/id (random-uuid)
                     :object/card card-eid
                     :object/zone :hand
                     :object/owner player-eid
@@ -346,22 +348,26 @@
                             :object/tapped false}])]))
 
 
+^:fizzle-x40o-triage
+;; Skipped: fizzle-euq5 — intentional negative cost violates mana-spec; throw-on-spec-failure true now catches it
 (deftest test-cast-negative-cost
   (testing "cast-spell handles malformed card with negative mana cost"
-    (let [db (init-game-state)
-          [obj-id db] (add-malformed-card-to-hand db :player-1)
-          initial-black (:black (q/get-mana-pool db :player-1))
-          ;; Cast the malformed card (no mana needed since cost is negative)
-          db' (rules/cast-spell db :player-1 obj-id)
-          final-black (:black (q/get-mana-pool db' :player-1))]
-      ;; Verify spell was cast (moved to stack)
-      (is (= 1 (count (q/get-objects-in-zone db' :player-1 :stack)))
-          "Card should be on stack")
-      ;; With negative cost {:black -1}, subtracting negative adds mana
-      ;; This documents the current behavior - not necessarily desired
-      ;; but the test ensures we know what happens with bad data
-      (is (= (+ initial-black 1) final-black)
-          "Negative cost subtracts negative (adds mana) - documents malformed behavior"))))
+    ;; NOTE: binding false because spec rejects negative mana cost; see fizzle-euq5 for fix.
+    (binding [spec-util/*throw-on-spec-failure* false]
+      (let [db (init-game-state)
+            [obj-id db] (add-malformed-card-to-hand db :player-1)
+            initial-black (:black (q/get-mana-pool db :player-1))
+            ;; Cast the malformed card (no mana needed since cost is negative)
+            db' (rules/cast-spell db :player-1 obj-id)
+            final-black (:black (q/get-mana-pool db' :player-1))]
+        ;; Verify spell was cast (moved to stack)
+        (is (= 1 (count (q/get-objects-in-zone db' :player-1 :stack)))
+            "Card should be on stack")
+        ;; With negative cost {:black -1}, subtracting negative adds mana
+        ;; This documents the current behavior - not necessarily desired
+        ;; but the test ensures we know what happens with bad data
+        (is (= (+ initial-black 1) final-black)
+            "Negative cost subtracts negative (adds mana) - documents malformed behavior")))))
 
 
 ;; === Permanent type resolution tests ===

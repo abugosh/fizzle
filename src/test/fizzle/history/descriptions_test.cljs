@@ -439,6 +439,7 @@
     (let [db (make-db)
           pre-db (stack/create-stack-item db {:stack-item/type :storm
                                               :stack-item/controller :player-1
+                                              :stack-item/source (random-uuid)
                                               :stack-item/effects [{:effect/type :storm-copies
                                                                     :effect/count 5}]
                                               :stack-item/description "Storm — create 5 copies"})]

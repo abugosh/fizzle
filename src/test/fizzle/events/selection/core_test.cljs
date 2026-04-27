@@ -323,7 +323,9 @@
 (deftest test-toggle-impl-auto-confirm-true-on-single-select
   (testing "toggle with select-count 1 and auto-confirm? true signals auto-confirm"
     (let [db (th/create-test-db)
-          sel {:selection/lifecycle :finalized
+          sel {:selection/mechanism :pick-from-zone
+               :selection/domain    :discard
+               :selection/lifecycle :finalized
                :selection/player-id :player-1
                :selection/selected #{}
                :selection/candidates #{:a :b}
@@ -341,7 +343,9 @@
 (deftest test-toggle-impl-auto-confirm-false-on-deselect
   (testing "deselecting an already-selected item does not signal auto-confirm"
     (let [db (th/create-test-db)
-          sel {:selection/lifecycle :finalized
+          sel {:selection/mechanism :pick-from-zone
+               :selection/domain    :discard
+               :selection/lifecycle :finalized
                :selection/player-id :player-1
                :selection/selected #{:a}
                :selection/candidates #{:a :b}
@@ -357,7 +361,9 @@
 (deftest test-toggle-impl-auto-confirm-false-on-multi-select
   (testing "toggle with select-count 3 does not signal auto-confirm even after adding item"
     (let [db (th/create-test-db)
-          sel {:selection/lifecycle :finalized
+          sel {:selection/mechanism :pick-from-zone
+               :selection/domain    :discard
+               :selection/lifecycle :finalized
                :selection/player-id :player-1
                :selection/selected #{}
                :selection/candidates #{:a :b :c}
@@ -373,7 +379,9 @@
 (deftest test-toggle-impl-auto-confirm-false-when-at-limit-rejected
   (testing "toggling a new item when at limit is rejected and does not signal auto-confirm"
     (let [db (th/create-test-db)
-          sel {:selection/lifecycle :finalized
+          sel {:selection/mechanism :pick-from-zone
+               :selection/domain    :discard
+               :selection/lifecycle :finalized
                :selection/player-id :player-1
                :selection/selected #{:a :b}
                :selection/candidates #{:a :b :c}
@@ -391,7 +399,9 @@
 (deftest test-toggle-impl-rejects-invalid-target
   (testing "toggling an id not in valid-targets does not change app-db and returns false auto-confirm"
     (let [db (th/create-test-db)
-          sel {:selection/lifecycle :finalized
+          sel {:selection/mechanism :n-slot-targeting
+               :selection/domain    :player-target
+               :selection/lifecycle :finalized
                :selection/player-id :player-1
                :selection/selected #{}
                :selection/valid-targets [:a :b]

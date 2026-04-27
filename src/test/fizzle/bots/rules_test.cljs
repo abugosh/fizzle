@@ -80,7 +80,7 @@
 
 (deftest stack-empty-false-when-spell-on-stack
   (let [db (th/create-test-db)
-        db (stack/create-stack-item db {:stack-item/type :spell
+        db (stack/create-stack-item db {:stack-item/type :test
                                         :stack-item/controller :player-1
                                         :stack-item/description "test spell"})
         ctx {:db db :player-id :player-1}]
@@ -173,7 +173,7 @@
 
 (deftest stack-has-false-when-wrong-type
   (let [db (th/create-test-db)
-        db (stack/create-stack-item db {:stack-item/type :spell
+        db (stack/create-stack-item db {:stack-item/type :test
                                         :stack-item/controller :player-1
                                         :stack-item/description "spell"})
         ctx {:db db :player-id :player-1}]
@@ -187,7 +187,8 @@
                (th/add-opponent))
         db (stack/create-stack-item db {:stack-item/type :spell
                                         :stack-item/controller :player-2
-                                        :stack-item/description "opponent spell"})
+                                        :stack-item/source (random-uuid)
+                                        :stack-item/object-ref 1})
         ctx {:db db :player-id :player-1}]
     (is (true? (rules/evaluate-condition
                  {:check :stack-has :owner :opponent :type :spell}
@@ -410,7 +411,8 @@
                (th/add-opponent))
         db (stack/create-stack-item db {:stack-item/type :spell
                                         :stack-item/controller :player-2
-                                        :stack-item/description "opponent spell"})
+                                        :stack-item/source (random-uuid)
+                                        :stack-item/object-ref 1})
         [db _] (th/add-card-to-zone db :island :hand :player-1)
         ctx {:db db :player-id :player-1}
         result (rules/match-priority-rule (:bot/priority-rules counterspell-spec) ctx)]
@@ -425,7 +427,8 @@
                (th/add-opponent))
         db (stack/create-stack-item db {:stack-item/type :spell
                                         :stack-item/controller :player-2
-                                        :stack-item/description "opponent spell"})
+                                        :stack-item/source (random-uuid)
+                                        :stack-item/object-ref 1})
         ctx {:db db :player-id :player-1}]
     (is (true? (rules/evaluate-condition
                  {:check :stack-has :owner :opponent :type :spell}

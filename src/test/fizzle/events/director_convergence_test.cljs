@@ -183,9 +183,10 @@
           db (d/db-with db [[:db/add game-eid :game/active-player opp-eid]
                             [:db/add game-eid :game/phase :main1]
                             [:db/add game-eid :game/priority opp-eid]])
-          ;; Manually activate CoB for :any mana — this is the same call bot-act makes.
+          ;; Manually activate CoB choosing :blue mana — this is the same call bot-act makes.
+          ;; CoB produces {:any 1} resolved to chosen color; :blue is a valid choice.
           ;; It fires the :permanent-tapped chokepoint → trigger goes on the stack.
-          db-after-tap (mana-activation/activate-mana-ability db :player-2 cob-id :any)
+          db-after-tap (mana-activation/activate-mana-ability db :player-2 cob-id :blue)
           ;; Now the CoB trigger is a :permanent-tapped stack-item waiting to resolve.
           ;; Run director (yield-all? true) to resolve the trigger:
           ;;   - human auto-passes (yield-all?)

@@ -222,6 +222,7 @@
                                        {:stack-item/type :storm
                                         :stack-item/controller :player-1
                                         :stack-item/source src-id
+                                        :stack-item/description "Storm — create 2 copies"
                                         :stack-item/effects [{:effect/type :storm-copies
                                                               :effect/count 2}]})
           items-before (queries/get-all-stack-items db')]
@@ -343,6 +344,7 @@
                                       {:stack-item/type :storm
                                        :stack-item/controller :player-1
                                        :stack-item/source src-id
+                                       :stack-item/description "Storm — create 2 copies"
                                        :stack-item/effects [{:effect/type :storm-copies
                                                              :effect/count 2}]})
           items-before (queries/get-all-stack-items db)]
