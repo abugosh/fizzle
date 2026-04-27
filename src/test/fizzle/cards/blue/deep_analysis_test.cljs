@@ -457,6 +457,13 @@
           initial-life-p1 (q/get-life-total db :player-1)
           initial-hand-p2 (th/get-hand-count db :player-2)
 
+          ;; NOTE: No :pick-mode selection step.
+          ;; Deep Analysis cast from graveyard has exactly one available casting mode (flashback).
+          ;; When only one mode is castable, cast-spell-handler calls initiate-cast-with-mode
+          ;; directly — the spell-mode picker is bypassed via single-mode auto-select.
+          ;; Multi-mode cards (e.g. Rushing River with both primary+kicker available) DO produce
+          ;; a :pick-mode step; the absence here is correct, not a gap in chain coverage.
+
           ;; === Step 1: Cast via production pipeline ===
           ;; Single flashback mode + 2 valid player targets
           ;; → interactive cast-time targeting selection (spec chokepoint traversed via set-pending-selection)

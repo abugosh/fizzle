@@ -1502,8 +1502,8 @@
   (testing "Primary mode has a non-nil :mode/label so spell-mode-selection-modal can render + key"
     (let [card {:card/id :foo :card/name "Foo" :card/mana-cost {:blue 1} :card/types #{:instant}}
           mode (#'rules/get-primary-mode card)]
-      (is (some? (:mode/label mode)))
-      (is (string? (:mode/label mode))))))
+      (is (= "Cast" (:mode/label mode))
+          "get-primary-mode must produce :mode/label \"Cast\" (fizzle-8mfo fix)"))))
 
 
 (deftest alternate-to-mode-uses-authored-label-when-present
