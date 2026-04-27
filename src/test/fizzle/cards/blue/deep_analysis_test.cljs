@@ -440,3 +440,77 @@
       ;; Mode should be flashback
       (is (= :flashback (:mode/id (:selection/mode (:pending-target-selection result))))
           "Mode should be flashback"))))
+
+
+;; === Chain-Trace Integration Test ===
+
+(deftest deep-analysis-flashback-chain-trace-test
+  (testing "Flashback chain-trace: cast-with-mode → confirm targeting → confirm mana-allocation → resolve"
+    (let [db (th/create-test-db)
+          ;; Add opponent so there are 2 valid player targets → interactive targeting selection
+          ;; (single player target auto-resolves; 2 players forces interactive selection)
+          db (th/add-opponent db)
+          [db obj-id] (th/add-card-to-zone db :deep-analysis :graveyard :player-1)
+          db (mana/add-mana db :player-1 {:colorless 1 :blue 1})
+          ;; Give player-2 (the chosen target) library cards to draw from
+          [db _lib-ids] (th/add-cards-to-library db [:dark-ritual :dark-ritual :dark-ritual] :player-2)
+          initial-life-p1 (q/get-life-total db :player-1)
+          initial-hand-p2 (th/get-hand-count db :player-2)
+
+          ;; === Step 1: Cast via production pipeline ===
+          ;; Single flashback mode + 2 valid player targets
+          ;; → interactive cast-time targeting selection (spec chokepoint traversed via set-pending-selection)
+          {:keys [db selection]} (th/cast-with-mode db :player-1 obj-id)
+
+          ;; Chain-trace assertion 1: mechanism is :n-slot-targeting (spec chokepoint validates this)
+          _ (is (= :n-slot-targeting (:selection/mechanism selection))
+                "cast-time targeting selection MUST have :selection/mechanism = :n-slot-targeting (spec chokepoint reached)")
+          ;; Chain-trace assertion 2: domain is :cast-time-targeting
+          _ (is (= :cast-time-targeting (:selection/domain selection))
+                "selection domain must be :cast-time-targeting (flashback via initiate-cast-with-mode)")
+          ;; Chain-trace assertion 3: flashback mode stored on selection
+          _ (is (= :flashback (:mode/id (:selection/mode selection)))
+                "selection/mode must be the :flashback casting mode")
+
+          ;; === Step 2: Confirm target player-2 ===
+          ;; Flashback has colorless mana (1U cost) → lifecycle :chaining → chains to mana-allocation
+          {:keys [db selection]} (th/confirm-selection db selection [:player-2])
+
+          ;; Chain-trace assertion 4: chained to mana-allocation selection
+          _ (is (= :allocate-resource (:selection/mechanism selection))
+                "targeting confirm must chain to :allocate-resource selection (colorless mana allocation)")
+          _ (is (= :mana-allocation (:selection/domain selection))
+                "chained selection domain must be :mana-allocation")
+
+          ;; === Step 3: Confirm mana allocation ===
+          ;; Auto-confirm? true — player has 1 colorless in pool, auto-allocate
+          ;; Pass empty allocation to use production auto-confirm path
+          {:keys [db]} (th/confirm-selection db selection #{})
+
+          ;; Chain-trace assertion 5: spell is on stack after mana allocation completes
+          spell-obj (q/get-object db obj-id)
+          top-item (q/get-top-stack-item db)
+          _ (is (= :stack (:object/zone spell-obj))
+                "spell must be on stack after mana-allocation confirm")
+          ;; Chain-trace assertion 6: object/cast-mode stores :flashback (exile-on-resolve is armed)
+          _ (is (= :flashback (:mode/id (:object/cast-mode spell-obj)))
+                "object/cast-mode must be :flashback — confirms exile-on-resolve is armed")
+          ;; Chain-trace assertion 7: stack-item targets stored at cast time (cast-time-targeting chokepoint traversed)
+          _ (is (= {:player :player-2} (:stack-item/targets top-item))
+                "stack-item/targets must be {:player :player-2} — confirms cast-time-targeting spec chokepoint traversed")
+          ;; Chain-trace assertion 8: flashback additional life cost was paid at cast time
+          _ (is (= (- initial-life-p1 3) (q/get-life-total db :player-1))
+                "caster must have lost 3 life (flashback :pay-life cost paid at cast time via cast-spell-mode)")
+
+          ;; === Step 4: Resolve ===
+          ;; Uses stored :stack-item/targets; no pending selection expected (target already at cast-time)
+          {:keys [db selection]} (th/resolve-top db)
+          _ (is (nil? selection)
+                "resolve must NOT produce a pending selection (target was stored at cast time)")]
+
+      ;; Post-resolve assertion 9: target player-2 drew 2 cards
+      (is (= (+ initial-hand-p2 2) (th/get-hand-count db :player-2))
+          "target player-2 must have drawn 2 cards after resolution")
+      ;; Post-resolve assertion 10: Deep Analysis is in EXILE (flashback :alternate/on-resolve :exile)
+      (is (= :exile (:object/zone (q/get-object db obj-id)))
+          "flashback spell must be in exile after resolution (not graveyard)"))))
