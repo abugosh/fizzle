@@ -216,3 +216,22 @@ Every card must have a dedicated test file (`src/test/fizzle/cards/<card>_test.c
 - `cast-mode-with-target` — modal+targeted spells: validates mode has targets, casts with explicit mode
 - `resolve-top` — resolve top stack item, returns `{:db}` or `{:db :selection}`
 - `confirm-selection` — confirm interactive selection, returns `{:db}` or chains to next selection
+
+### Spec chokepoint enforcement
+
+Tests run with `*throw-on-spec-failure*` bound to `true` globally (via
+`fizzle.test-setup`, required by `test-helpers`). Selection-spec violations
+throw `js/Error` instead of logging silently.
+
+**Negative-path tests** (intentionally feeding invalid data to verify throw
+behavior): no opt-out needed — the binding is already `true`; just use
+`(is (thrown? js/Error ...))` directly.
+
+**Tests verified broken by the spec flip but not yet fixed**: temporarily
+silence the throw inside the test body:
+
+    (binding [spec-util/*throw-on-spec-failure* false]
+      ...)
+
+Every such opt-out MUST have a linked bd issue and the
+`^:fizzle-x40o-triage` metadata tag on the deftest.
