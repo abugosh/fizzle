@@ -573,7 +573,19 @@
 
 ;; =====================================================
 ;; Regression: :selection/target-requirements must be a vector, not a list.
-;; (seq vector?) returns a list and silently breaks spec validation downstream.
+;; fizzle-q3g4: (or (seq vec) ...) converts a vector to a CLJS IndexedSeq,
+;; violating the vector? spec at set-pending-selection.
+;;
+;; This is a direct unit test of build-chain-selection's output contract.
+;; It calls build-chain-selection directly (not via confirm-selection → set-pending-selection),
+;; so it does NOT test spec enforcement — it tests the return value shape.
+;;
+;; CLJS behavior: (seq persistent-vector) returns IndexedSeq (NOT the original vector).
+;; Therefore (vector? (seq some-vec)) = false, and this test correctly catches the regression.
+;;
+;; Production-path coverage for this same bug lives in rushing_river_test.cljs:
+;;   rushing-river-kicked-chain-trace-test asserts (vector? :selection/target-requirements)
+;;   after th/confirm-selection (sacrifice step), which goes through set-pending-selection.
 ;; =====================================================
 
 (deftest sacrifice-cost-chain-preserves-vector-type-for-target-requirements
@@ -592,7 +604,10 @@
                         :target/required true}]
           mode {:mode/id :kicked :mode/mana-cost {:colorless 2 :blue 1}
                 :mode/targeting target-reqs}
-          ;; Synthesize the post-sacrifice selection state that triggers the chain
+          ;; Synthesize the post-sacrifice selection state that triggers the chain.
+          ;; NOTE: this bypasses set-pending-selection intentionally — it tests the
+          ;; output contract of build-chain-selection, not the spec chokepoint.
+          ;; For spec enforcement coverage, see rushing-river-kicked-chain-trace-test.
           sac-selection {:selection/mechanism :n-slot-targeting
                          :selection/domain :sacrifice-cost
                          :selection/source-type :spell
@@ -601,7 +616,7 @@
                          :selection/mode mode}
           built (sel-core/build-chain-selection db3 sac-selection)]
       (is (vector? (:selection/target-requirements built))
-          ":selection/target-requirements MUST be a vector — spec rejects lists.
-           Common cause: (seq some-vec) returns a list. Use (if (seq v) v fallback) instead.")
+          ":selection/target-requirements MUST be a vector — (seq vec) in CLJS returns IndexedSeq.
+           Use (if (seq v) v fallback) instead of (or (seq v) fallback).")
       (is (= 2 (:selection/select-count built))
           "select-count derived from N target-reqs"))))

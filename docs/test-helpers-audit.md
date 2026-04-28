@@ -95,17 +95,22 @@ Both `(is (some? (:mode/label mode)))` and `(is (string? (:mode/label mode)))` f
 
 **Original regression test:** `sacrifice-cost-chain-preserves-vector-type-for-target-requirements` in `targeting_test.cljs`. The test calls `sel-core/build-chain-selection` directly with a synthesized `sac-selection` map, then asserts `(is (vector? (:selection/target-requirements built)))`.
 
-**Round-1 revert (gap identified in first reviewer pass):** The original test did NOT go red on revert. `make test` reported 0 failures. The direct `build-chain-selection` call bypasses `set-pending-selection`, and in that path the `(seq mode-targeting)` result appeared to pass `vector?`. Filed as **fizzle-w6yi** for investigation.
+**Round-1 revert (apparent gap identified in first reviewer pass):** The round-1 executor reported the test did NOT go red on revert. Filed as **fizzle-w6yi** for investigation.
+
+**fizzle-w6yi investigation (2026-04-27, branch `sandbox/w6yi-investigation`):** The round-1 report was a stash accident — the executor dropped their stash mid-investigation and had to re-apply edits, meaning the revert may not have been applied cleanly. The actual CLJS behavior is: `(seq persistent-vector)` returns an `IndexedSeq` (not the original vector). `(vector? indexed-seq)` = `false`. So the `(is (vector? (:selection/target-requirements built)))` assertion **does catch the regression** when the `if`-guard is reverted to `(or (seq mode-targeting) ...)`.
+
+**Analysis of why the direct-call test works:** `build-chain-selection` returns a map with `:selection/target-requirements targeting-reqs`. When `targeting-reqs` is `(seq some-vector)` = `IndexedSeq`, the `(vector? ...)` assertion on the return value of `build-chain-selection` correctly detects the type violation. This is a valid unit-test of the function's output contract, even though it bypasses `set-pending-selection`.
 
 **Round-2 fix (fizzle-7ydh round 2):** Added `(is (vector? (:selection/target-requirements selection)))` assertion to `rushing-river-kicked-chain-trace-test` in `rushing_river_test.cljs` (step 3: after sacrifice confirm → cast-time-targeting selection). This test goes through the full production path: `cast-with-mode` → `confirm-selection` → `confirm-selection-impl` → `set-pending-selection` spec chokepoint.
 
-**Round-2 revert verification (branch `sandbox/x40o-q3g4-revert-verify`):** Reverted `costs.cljs` to `(or (seq mode-targeting) card-targeting)`. Result: **RED as expected.**
+**Final revert verification (branch `sandbox/w6yi-investigation`, fizzle-w6yi):** Reverted `costs.cljs` to `(or (seq mode-targeting) card-targeting)`. Result: **RED as expected.**
 
-- `rushing-river-kicked-chain-trace-test` threw: `Error: set-pending-selection: invalid data: ({...} {:target/id :slot-b, ...}) - failed: vector? in: [:selection/target-requirements]`
-- `sacrifice-cost-chain-preserves-vector-type-for-target-requirements` also FAILED: `(not (vector? ({...} {...})))` (the original test now goes red too, consistent with fizzle-w6yi fix)
-- 1 failure, 5 errors reported
+- `sacrifice-cost-chain-preserves-vector-type-for-target-requirements` **FAILED** (FAIL in targeting_test.cljs:603): `(not (vector? ({:target/id :slot-a, ...} {:target/id :slot-b, ...})))` — the direct-call test catches the type violation
+- `rushing-river-kicked-chain-trace-test` threw: `Error: set-pending-selection: invalid data: ({...}) - failed: vector? in: [:selection/target-requirements]` — spec chokepoint also catches it
+- 4 additional Rushing River kicked tests errored (same spec failure propagated)
+- Total: 1 failure, 5 errors
 
-**Verdict:** fizzle-q3g4 regression coverage is now verified. The chain-trace assertion in `rushing-river-kicked-chain-trace-test` goes through `set-pending-selection` and fails immediately when the `if`-guard is reverted. The `*throw-on-spec-failure*` enforcement also surfaces the error in 4 additional Rushing River kicked tests as ERRORs.
+**Verdict:** fizzle-q3g4 has dual regression coverage. (1) The direct-call unit test in `targeting_test.cljs` catches the data-shape contract violation from `build-chain-selection`. (2) The production-path chain-trace in `rushing-river-kicked-chain-trace-test` catches it via spec enforcement at `set-pending-selection`. Both tests go red on revert. fizzle-w6yi is resolved — no test rewrite needed.
 
 ---
 
@@ -114,7 +119,7 @@ Both `(is (some? (:mode/label mode)))` and `(is (string? (:mode/label mode)))` f
 | Issue | Priority | Description |
 |-------|----------|-------------|
 | **fizzle-x6ew** | P2 | Migrate `cast-mode-with-target` helper to production path via `cast-spell-handler` |
-| **fizzle-w6yi** | P2 | Investigate q3g4 regression test: `vector?` assertion not catching seq-vs-vector bug on revert |
+| **fizzle-w6yi** | P2 | ~~Investigate q3g4 regression test: `vector?` assertion not catching seq-vs-vector bug on revert~~ **RESOLVED** — Round-1 stash accident. Direct-call test DOES go red on revert. Dual coverage confirmed. |
 | **fizzle-2qcs** | P3 | Strengthen `cast-and-resolve` to use `cast-spell-handler` (events layer) instead of `rules/cast-spell` (engine layer) |
 
 ---
@@ -123,6 +128,6 @@ Both `(is (some? (:mode/label mode)))` and `(is (string? (:mode/label mode)))` f
 
 1. **Migrate `cast-mode-with-target` (fizzle-x6ew):** This is the highest-priority bypass. The Vision Charm tests currently use it; migrate them to `cast-with-mode` + two `confirm-selection` calls, then delete or reimplement the helper.
 
-2. **Investigate and fix q3g4 regression test (fizzle-w6yi):** The `sacrifice-cost-chain-preserves-vector-type-for-target-requirements` test does not provide the regression protection it was designed for. Replace it or augment it with a production-path chain-trace test.
+2. ~~**Investigate and fix q3g4 regression test (fizzle-w6yi):**~~ **RESOLVED** — The `sacrifice-cost-chain-preserves-vector-type-for-target-requirements` direct-call test does catch the regression (CLJS `(seq vec)` returns `IndexedSeq`, not a vector). Dual coverage exists: direct-call unit test in `targeting_test.cljs` + production-path chain-trace assertion in `rushing-river-kicked-chain-trace-test`. No rewrite needed.
 
 3. **Long-term: migrate `cast-and-resolve` (fizzle-2qcs):** Lower priority since the guarded subset it handles is safe, but full production-path equivalence requires using `cast-spell-handler`.
