@@ -57,7 +57,10 @@ coverage:
 	  echo "Running instrumented tests (8GB heap)..."; \
 	  node --max-old-space-size=8192 coverage-runner.js; \
 	  wait $$CLJ_PID || true; \
-	  echo "Coverage report written to coverage/html/"
+	  echo "Extracting coverage/baseline.edn..."; \
+	  node scripts/extract-coverage-baseline.js; \
+	  echo "Coverage report written to coverage/html/"; \
+	  echo "Baseline written to coverage/baseline.edn"
 
 build-css:
 	mkdir -p resources/public/css

@@ -28,6 +28,26 @@ npx shadow-cljs release app
 npx shadow-cljs cljs-repl app
 ```
 
+## Test Coverage
+
+Fizzle uses [Clofidence](https://github.com/flow-storm/clofidence) for form-level test coverage, measuring which production code forms are actually executed by the test suite (not just loaded).
+
+```bash
+make coverage    # Run instrumented tests, produce HTML report + baseline
+```
+
+**Prerequisites:** Java and `clj` (Clojure CLI). Install: `brew install clojure/tools/clojure`
+
+**Artifacts:**
+- `coverage/html/` — per-namespace HTML drilldown (gitignored, for local review)
+- `coverage/baseline.edn` — committed summary (diff-friendly for PR review)
+
+**Overhead:** ~8-10% wall-clock over `make test`; ~300MB additional peak RSS. Isolated in a separate build target — `make test` is unaffected.
+
+**Expectation:** New card files must exercise their effect dispatchers — verify in the Clofidence report that the card's effect-handling forms show as hit (green), not just loaded (gray).
+
+**Note:** Assertion counts vary between runs due to generative tests (`spec_generative_test.cljs`). Test count (3981) and failure/error counts (0/0) are deterministic and should match between `make test` and `make coverage`.
+
 ## Development Commands
 
 Use these make commands instead of hand-rolling shadow-cljs calls:
