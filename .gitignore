@@ -21,3 +21,7 @@ out/
 
 .hgignore
 .hg/
+
+# Coverage artifacts (HTML report is gitignored; baseline.edn is committed)
+coverage/html/
+out/test-coverage.js

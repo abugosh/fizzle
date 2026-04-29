@@ -1,0 +1,38 @@
+{;; Clofidence coverage aliases.
+ ;; :clofidence-compile — adds flow-storm ClojureScript fork + instrumentation JVM opts.
+ ;;   Used when compiling the :test-coverage shadow-cljs build target.
+ ;; :clofidence-server — starts the Clofidence report server on port 7799.
+ ;;   The server receives trace data from the running node tests and writes coverage/html/.
+ :aliases
+ {:clofidence-compile
+  {:classpath-overrides {org.clojure/clojurescript nil}
+   ;; Source paths must be declared here (not just shadow-cljs.edn) when invoking
+   ;; shadow-cljs via "clj -M -m shadow.cljs.devtools.cli". When deps.edn is present,
+   ;; shadow-cljs ignores :source-paths in shadow-cljs.edn and uses deps.edn's paths instead.
+   :paths ["src/dev" "src/main" "src/test"]
+   :extra-deps {thheller/shadow-cljs {:mvn/version "3.3.5"
+                                      :exclusions [org.clojure/clojurescript]}
+                com.github.flow-storm/clojurescript {:mvn/version "1.12.134-3"}
+                com.github.flow-storm/clofidence {:mvn/version "0.4.2"}
+                ;; Pin closure-compiler to the version flow-storm clojurescript 1.12.134-3
+                ;; was built against. Without this override Clojure's dep resolution picks
+                ;; a newer version (v20250820) that removed the PARSE_RESULTS field referenced
+                ;; by shadow-cljs's JsInspector, causing a NoSuchFieldError at compile time.
+                com.google.javascript/closure-compiler {:mvn/version "v20250407"}
+                ;; Project CLJS dependencies (mirrors shadow-cljs.edn :dependencies).
+                ;; Required when invoking shadow-cljs via "clj -M -m shadow.cljs.devtools.cli"
+                ;; because shadow-cljs skips its own classpath.edn dependency management
+                ;; and relies entirely on the JVM classpath provided by clj.
+                datascript/datascript {:mvn/version "1.7.3"}
+                reagent/reagent {:mvn/version "1.2.0"}
+                re-frame/re-frame {:mvn/version "1.4.3"}
+                org.clojure/test.check {:mvn/version "1.1.1"}}
+   :jvm-opts ["-Dcljs.storm.instrumentOnlyPrefixes=fizzle"
+              "-Dcljs.storm.instrumentSkipRegex=.*-test$"
+              "-Dcljs.storm.instrumentEnable=true"]}
+
+  :clofidence-server
+  {:extra-deps {com.github.flow-storm/clofidence {:mvn/version "0.4.2"}}
+   :exec-fn clofidence.main/run-cljs
+   :exec-args {:report-name "Fizzle"
+               :output-folder "coverage/html"}}}}

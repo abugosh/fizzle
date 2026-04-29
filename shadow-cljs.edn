@@ -24,4 +24,14 @@
   {:target :node-test
    :output-to "out/test.js"
    :ns-regexp "-test$"
-   :autorun true}}}
+   :autorun true}
+
+  ;; Coverage build: mirrors :test but uses Clofidence instrumentation via flow-storm ClojureScript.
+  ;; Requires the JVM Clofidence server running on port 7799 (started by make coverage).
+  ;; Do NOT modify the :test target or make test — this target is intentionally isolated.
+  :test-coverage
+  {:target :node-test
+   :output-to "out/test-coverage.js"
+   :ns-regexp "-test$"
+   :main clofidence.shadow-test.node/main
+   :devtools {:preloads [clofidence.storm]}}}}

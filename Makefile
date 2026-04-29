@@ -1,4 +1,4 @@
-.PHONY: repl dev test clean help lint fmt-check fmt validate build-css lint-test-paths lint-pending-selection release arch
+.PHONY: repl dev test coverage clean help lint fmt-check fmt validate build-css lint-test-paths lint-pending-selection release arch
 
 # Detect Java - try common locations
 JAVA_HOME ?= $(shell \
@@ -17,6 +17,7 @@ help:
 	@echo "  make repl      - Start ClojureScript REPL (node)"
 	@echo "  make dev       - Start browser dev server + Tailwind watcher"
 	@echo "  make test      - Run all tests"
+	@echo "  make coverage  - Run tests with Clofidence coverage instrumentation"
 	@echo "  make lint      - Run clj-kondo linter"
 	@echo "  make fmt-check - Check code formatting"
 	@echo "  make fmt       - Auto-fix code formatting"
@@ -34,6 +35,29 @@ dev:
 
 test:
 	npx shadow-cljs compile test && node out/test.js
+
+# Coverage: compile with Clofidence instrumentation and run the full suite.
+# Requires: clj (Clojure CLI) and Java installed. Run: brew install clojure/tools/clojure
+# Output: coverage/html/ (gitignored HTML report), coverage/baseline.edn (committed baseline).
+# Do NOT use for regular test runs — instrumentation adds overhead.
+# Architecture: server runs in background on port 7799; compilation uses flow-storm CLJS fork;
+# node process POSTs trace data to server; server writes HTML report and exits.
+# Note: coverage-runner.js wraps out/test-coverage.js to handle stray post-test async
+# re-frame dispatches (uncaught exceptions) that would otherwise crash Node before the
+# Clofidence fetch POST can complete.
+coverage:
+	@mkdir -p coverage/html
+	@echo "Starting Clofidence report server on port 7799 (background)..."
+	@clj -X:clofidence-server & \
+	  CLJ_PID=$$!; \
+	  echo "Waiting for Clofidence server (pid $$CLJ_PID)..."; \
+	  until nc -z localhost 7799 2>/dev/null; do sleep 1; done; \
+	  echo "Clofidence server ready. Compiling :test-coverage with flow-storm CLJS fork..."; \
+	  clj -A:clofidence-compile -M -m shadow.cljs.devtools.cli compile test-coverage; \
+	  echo "Running instrumented tests (8GB heap)..."; \
+	  node --max-old-space-size=8192 coverage-runner.js; \
+	  wait $$CLJ_PID || true; \
+	  echo "Coverage report written to coverage/html/"
 
 build-css:
 	mkdir -p resources/public/css
