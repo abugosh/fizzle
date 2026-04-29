@@ -128,6 +128,26 @@
 ;; H. Chain-Trace Integration (Phase 3A — modal+target)
 ;; =====================================================
 
+(deftest vision-charm-cast-with-mode-intermediate-selection-test
+  (testing "cast-with-mode returns spec-validated intermediate mode-pick selection
+            with :pick-mode mechanism (confirms set-pending-selection spec chokepoint
+            was traversed — production path, not bypass)"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db _] (th/add-cards-to-library db (vec (repeat 4 :dark-ritual)) :player-2)
+          [db vc-id] (th/add-card-to-zone db :vision-charm :hand :player-1)
+          db (mana/add-mana db :player-1 {:blue 1})
+          {:keys [selection]} (th/cast-with-mode db :player-1 vc-id)]
+      (is (= :pick-mode (:selection/mechanism selection))
+          "Intermediate mode-pick selection must have :pick-mode mechanism — confirms set-pending-selection spec chokepoint traversed")
+      (is (= :spell-mode (:selection/domain selection))
+          "Intermediate selection domain must be :spell-mode")
+      (is (= 2 (count (:selection/candidates selection)))
+          "Vision Charm has 2 valid modes when player-2 has library cards (mode 1: mill player; mode 3: target artifact — mode 3 unavailable without artifacts, mode 2: no targeting)")
+      (is (some? (:selection/on-complete selection))
+          "Intermediate selection must have on-complete continuation"))))
+
+
 (deftest vision-charm-mode1-chain-trace-test
   (testing "Mode 1 cast via production path: stack-item has correct targets and object has correct chosen-mode"
     (let [db (th/create-test-db)

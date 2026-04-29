@@ -23,7 +23,6 @@
     [fizzle.events.casting :as casting]
     [fizzle.events.resolution :as resolution]
     [fizzle.events.selection.core :as sel-core]
-    [fizzle.events.selection.targeting :as sel-targeting]
     [fizzle.history.core :as history]
     [fizzle.test-setup]))
 
@@ -343,18 +342,6 @@
       (:game/db result))))
 
 
-(defn- spell-mode-has-valid-targets?
-  "Check if a spell mode's required targeting has valid targets.
-   Mirrors get-valid-spell-modes in events/game.cljs."
-  [db player-id spell-mode]
-  (let [targeting-reqs (or (:mode/targeting spell-mode) [])]
-    (every? (fn [req]
-              (if (:target/required req)
-                (seq (targeting/find-valid-targets db player-id req))
-                true))
-            targeting-reqs)))
-
-
 (defn cast-with-mode
   "Initiates casting a multi-mode spell through the full production pipeline via
    cast-spell-handler. Returns {:db db :selection sel} where sel is the mode-pick
@@ -364,7 +351,7 @@
    alternate-cost) that require more than one selection step after mode choice —
    e.g., kicked Rushing River: mode → sacrifice → 2-slot targeting.
 
-   For spells with only mode + single target, prefer cast-mode-with-target instead.
+   For spells with only mode + single target, use cast-mode-with-target (which composes this helper).
 
    Asserts: can-cast? passes before entering the pipeline."
   [db player-id obj-id]
@@ -413,59 +400,6 @@
         {:db (:db resolve-result)}))))
 
 
-(defn cast-mode-with-target
-  "Casts a modal+targeted spell using the given spell mode and target through
-   the full production selection pipeline. For spells like BEB/REB/Hydroblast
-   that require both mode selection and targeting.
-
-   Pipeline: build-spell-mode-selection → set :selection/selected → confirm-selection-impl
-   (spell-mode executor sets :object/chosen-mode, cast-after-spell-mode continuation
-   initiates casting with targeting selection).
-
-   spell-mode: the card mode from (:card/modes card), e.g. counter or destroy
-   Validates can-cast?, spell mode has valid targets, and target is valid.
-   Returns db with spell on stack, chosen-mode set, and target assigned."
-  [db player-id obj-id spell-mode target-id]
-  (assert (rules/can-cast? db player-id obj-id)
-          (str "can-cast? returned false for " obj-id))
-  ;; Validate spell mode has valid targets (mirrors get-valid-spell-modes in cast-spell-handler)
-  (assert (spell-mode-has-valid-targets? db player-id spell-mode)
-          (str "Spell mode has no valid targets: " (:mode/label spell-mode)))
-  ;; Build spell-mode selection via production builder, then confirm with chosen mode.
-  ;; This exercises the full :spell-mode pipeline including the :object/chosen-mode executor.
-  (let [card (q/get-card db obj-id)
-        card-modes (:card/modes card)
-        sel (casting/build-spell-mode-selection player-id obj-id card-modes)
-        sel-with-selected (assoc sel :selection/selected #{spell-mode})
-        app-db {:game/db db :game/pending-selection sel-with-selected}
-        ;; confirm-selection-impl validates candidates + executes :spell-mode executor
-        ;; which sets :object/chosen-mode on the object, then applies cast-after-spell-mode
-        ;; continuation which initiates casting and sets up the targeting selection.
-        after-mode (sel-core/confirm-selection-impl app-db)
-        db-after-mode (:game/db after-mode)
-        ;; Targeting selection is now pending (set by cast-after-spell-mode continuation)
-        targeting-sel (:game/pending-selection after-mode)]
-    (assert targeting-sel
-            (str "Expected targeting selection after spell-mode confirm for " obj-id))
-    (assert (some #{target-id} (:selection/valid-targets targeting-sel))
-            (str target-id " not in valid targets: " (:selection/valid-targets targeting-sel)))
-    ;; Confirm the targeting selection using the production path
-    (sel-targeting/confirm-cast-time-target
-      db-after-mode
-      (assoc targeting-sel :selection/selected #{target-id}))))
-
-
-(defn resolve-top
-  "Resolves the topmost stack item via production path.
-   Returns {:db db} for non-interactive effects,
-   or {:db db :selection sel} for interactive effects."
-  [db]
-  (let [result (resolution/resolve-one-item db)]
-    (if-let [sel (:pending-selection result)]
-      {:db (:db result) :selection sel}
-      {:db (:db result)})))
-
-
 (defn confirm-selection
   "Confirms a pending selection with the given selected items.
    Routes through confirm-selection-impl which handles lifecycle routing
@@ -489,3 +423,82 @@
       (if-let [next-sel (:game/pending-selection result)]
         {:db (:game/db result) :selection next-sel}
         {:db (:game/db result)}))))
+
+
+(defn- auto-compute-mana-allocation
+  "Compute an allocation map that covers the generic-remaining cost of a
+   mana-allocation selection by draining greedily from :selection/remaining-pool.
+   Used by cast-mode-with-target to auto-confirm the chained mana-allocation step
+   for spells with colorless mana costs (e.g. Turnabout: {2}{U}{U})."
+  [selection]
+  (let [generic-needed (:selection/generic-remaining selection 0)
+        pool (:selection/remaining-pool selection {})]
+    (loop [needed generic-needed
+           colors (seq pool)
+           allocation {}]
+      (if (or (zero? needed) (nil? colors))
+        allocation
+        (let [[color amount] (first colors)
+              take-amount (min needed (max 0 amount))
+              new-needed (- needed take-amount)]
+          (recur new-needed
+                 (next colors)
+                 (if (pos? take-amount)
+                   (assoc allocation color take-amount)
+                   allocation)))))))
+
+
+(defn cast-mode-with-target
+  "Casts a modal+targeted spell using the given spell mode and target through
+   the full production selection pipeline via cast-spell-handler.
+
+   Pipeline: cast-with-mode → confirm-selection (mode step) → confirm-selection (target step).
+   Both confirm-selection calls go through set-pending-selection spec chokepoint,
+   validating :selection/mechanism and all required selection fields.
+
+   For spells with colorless mana (e.g. Turnabout: {2}{U}{U}), the targeting step
+   chains to a mana-allocation selection (lifecycle :chaining). An additional
+   auto-confirm step resolves it using auto-compute-mana-allocation.
+
+   spell-mode: the card mode from (:card/modes card), matched by value equality
+   target-id: the target EID or player keyword
+
+   Validates can-cast? and that the chosen mode exists in candidates.
+   Returns db with spell on stack, chosen-mode set, and target assigned."
+  [db player-id obj-id spell-mode target-id]
+  (let [{:keys [db selection]} (cast-with-mode db player-id obj-id)
+        ;; Match by full map equality: candidates are the raw card-mode maps from
+        ;; get-valid-spell-modes (filterv over :card/modes), which are the same
+        ;; values as the caller's spell-mode. Value equality (=) is correct here.
+        ;; Do NOT match by :mode/id alone: Vision Charm modes have no :mode/id,
+        ;; so nil-matching would incorrectly pick the first candidate.
+        candidates (:selection/candidates selection)
+        candidate (first (filter #(= % spell-mode) candidates))
+        _ (assert candidate
+                  (str "cast-mode-with-target: spell-mode not found in candidates. "
+                       "spell-mode: " spell-mode " | "
+                       "candidates: " candidates))
+        {:keys [db selection]} (confirm-selection db selection #{candidate})
+        _ (assert selection
+                  (str "cast-mode-with-target: expected targeting selection after mode confirm for " obj-id))
+        {:keys [db selection]} (confirm-selection db selection #{target-id})]
+    ;; For spells with colorless mana cost (e.g. Turnabout {2}{U}{U}), targeting
+    ;; selection has lifecycle :chaining and chains to mana-allocation. Auto-confirm
+    ;; with a greedy allocation from the remaining pool.
+    (if (= :mana-allocation (:selection/domain selection))
+      (let [allocation (auto-compute-mana-allocation selection)
+            sel-with-alloc (assoc selection :selection/allocation allocation)
+            {:keys [db]} (confirm-selection db sel-with-alloc #{})]
+        db)
+      db)))
+
+
+(defn resolve-top
+  "Resolves the topmost stack item via production path.
+   Returns {:db db} for non-interactive effects,
+   or {:db db :selection sel} for interactive effects."
+  [db]
+  (let [result (resolution/resolve-one-item db)]
+    (if-let [sel (:pending-selection result)]
+      {:db (:db result) :selection sel}
+      {:db (:db result)})))

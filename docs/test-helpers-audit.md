@@ -51,7 +51,7 @@ These helpers initialize game state or read state for assertions. They do not mo
 | `cast-with-target` | **(a) verified production-path** | Calls `casting/cast-spell-handler` with full pre-cast pipeline. Validated that `set-pending-selection` spec chokepoint is reached for any selection produced. |
 | `cast-with-mode` | **(a) verified production-path** | Calls `casting/cast-spell-handler`. Returns `{:db :selection}` where selection was produced by `set-pending-selection`. Added in fizzle-dc1u as production-path alternative to deleted `cast-kicked` bypass. |
 | `cast-and-yield` | **(a) verified production-path** | Calls `casting/cast-spell-handler` + `resolution/resolve-one-item`. Returns post-resolve selection produced by `set-pending-selection`. Added in fizzle-y63h. |
-| `cast-mode-with-target` | **(b) bypass-helper — see fizzle-x6ew** | Manually calls `casting/build-spell-mode-selection` to construct the mode-pick selection, then assocs it directly to `app-db` WITHOUT going through `sel-spec/set-pending-selection`. The spec chokepoint that validates `:selection/mechanism` is never called. A missing `:selection/mechanism` on the mode-pick selection would NOT be caught by this helper. |
+| `cast-mode-with-target` | **(a) verified production-path — fizzle-x6ew RESOLVED** | Now composes `cast-with-mode` + `confirm-selection` (mode step) + `confirm-selection` (targeting step). Both confirm-selection calls route through `sel-spec/set-pending-selection` spec chokepoint. For spells with colorless mana cost (e.g. Turnabout `{2}{U}{U}`), targeting has lifecycle `:chaining` and chains to mana-allocation; an additional auto-confirm step resolves it via greedy pool drain. Mode matching uses value equality (`=`) not `:mode/id` — Vision Charm modes have no `:mode/id` field. A probe test in `vision_charm_test.cljs` asserts `:pick-mode` mechanism on the intermediate selection as a regression guard. |
 | `resolve-top` | **(a) verified production-path** | Calls `resolution/resolve-one-item` (same as production). Returns `{:db}` or `{:db :selection}`. |
 | `confirm-selection` | **(a) verified production-path** | Calls `sel-core/confirm-selection-impl` (same as production). Includes `validation/validate-selection` guard before confirm. |
 
@@ -59,10 +59,10 @@ These helpers initialize game state or read state for assertions. They do not mo
 
 ## Bypass Helpers Summary
 
-| Helper | BD Issue | Migration Path |
-|--------|----------|---------------|
-| `cast-mode-with-target` | **fizzle-x6ew** | Replace with `cast-with-mode` + `confirm-selection` (mode step) + `confirm-selection` (targeting step) |
-| `cast-and-resolve` (partial) | **fizzle-2qcs** (P3) | Replace `rules/cast-spell` call with `casting/cast-spell-handler` + extract game-db |
+| Helper | BD Issue | Status |
+|--------|----------|--------|
+| `cast-mode-with-target` | **fizzle-x6ew** | **RESOLVED** — Migrated to production-path composition in fizzle-x6ew. Now uses `cast-with-mode` + `confirm-selection` × 2 (+ optional mana-alloc confirm for colorless-cost spells). |
+| `cast-and-resolve` (partial) | **fizzle-2qcs** (P3) | Open — Replace `rules/cast-spell` call with `casting/cast-spell-handler` + extract game-db |
 
 ---
 
@@ -118,7 +118,7 @@ Both `(is (some? (:mode/label mode)))` and `(is (string? (:mode/label mode)))` f
 
 | Issue | Priority | Description |
 |-------|----------|-------------|
-| **fizzle-x6ew** | P2 | Migrate `cast-mode-with-target` helper to production path via `cast-spell-handler` |
+| **fizzle-x6ew** | P2 | ~~Migrate `cast-mode-with-target` helper to production path via `cast-spell-handler`~~ **RESOLVED** — Migrated in fizzle-x6ew. See Recommendations #1. |
 | **fizzle-w6yi** | P2 | ~~Investigate q3g4 regression test: `vector?` assertion not catching seq-vs-vector bug on revert~~ **RESOLVED** — Round-1 stash accident. Direct-call test DOES go red on revert. Dual coverage confirmed. |
 | **fizzle-2qcs** | P3 | Strengthen `cast-and-resolve` to use `cast-spell-handler` (events layer) instead of `rules/cast-spell` (engine layer) |
 
@@ -126,7 +126,7 @@ Both `(is (some? (:mode/label mode)))` and `(is (string? (:mode/label mode)))` f
 
 ## Recommendations
 
-1. **Migrate `cast-mode-with-target` (fizzle-x6ew):** This is the highest-priority bypass. The Vision Charm tests currently use it; migrate them to `cast-with-mode` + two `confirm-selection` calls, then delete or reimplement the helper.
+1. ~~**Migrate `cast-mode-with-target` (fizzle-x6ew):**~~ **RESOLVED** — Migrated in fizzle-x6ew. The helper now composes `cast-with-mode` + `confirm-selection` × 2, routing both the mode-pick step and the targeting step through `set-pending-selection` (the spec chokepoint). For spells with colorless mana (e.g. Turnabout `{2}{U}{U}`), the targeting selection chains to mana-allocation via lifecycle `:chaining`; an additional auto-confirm step resolves it. Helper signature preserved — all 40 call sites continue to work unchanged. Mode matching uses value equality (`=`), not `:mode/id` — Vision Charm modes have no `:mode/id` field; id-matching would nil-match. A probe test in `vision_charm_test.cljs` asserts `:pick-mode` mechanism on the intermediate mode-pick selection as a regression guard against future bypass.
 
 2. ~~**Investigate and fix q3g4 regression test (fizzle-w6yi):**~~ **RESOLVED** — The `sacrifice-cost-chain-preserves-vector-type-for-target-requirements` direct-call test does catch the regression (CLJS `(seq vec)` returns `IndexedSeq`, not a vector). Dual coverage exists: direct-call unit test in `targeting_test.cljs` + production-path chain-trace assertion in `rushing-river-kicked-chain-trace-test`. No rewrite needed.
 
