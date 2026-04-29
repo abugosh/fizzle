@@ -214,7 +214,7 @@ Every card must have a dedicated test file (`src/test/fizzle/cards/<card>_test.c
 - `cast-and-resolve` — simple spells: asserts `can-cast?`, casts, resolves, returns db
 - `cast-with-target` — targeted spells: asserts valid target, uses production targeting flow
 - `cast-with-mode` — multi-step modal flows: casts with explicit mode, captures post-cast selection (added in fizzle-dc1u)
-- `cast-mode-with-target` — modal+targeted spells: validates mode has targets, casts with explicit mode
+- `cast-mode-with-target` — modal+targeted spells: composes `cast-with-mode` + `confirm-selection` × 2 (mode + target), with optional auto-confirm of chained mana-allocation for colorless-cost spells (migrated to production path in fizzle-x6ew)
 - `cast-and-yield` — cast + resolve, captures post-resolve selection for spells that produce selections after resolution (e.g. ETB replacements); added in fizzle-y63h
 - `resolve-top` — resolve top stack item, returns `{:db}` or `{:db :selection}`
 - `confirm-selection` — confirm interactive selection, returns `{:db}` or chains to next selection
