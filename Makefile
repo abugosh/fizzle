@@ -1,4 +1,4 @@
-.PHONY: repl dev test coverage clean help lint fmt-check fmt validate build-css lint-test-paths lint-pending-selection release arch
+.PHONY: repl dev test test-watch test-run coverage clean help lint fmt-check fmt validate build-css lint-test-paths lint-pending-selection release arch
 
 # Detect Java - try common locations
 JAVA_HOME ?= $(shell \
@@ -17,6 +17,8 @@ help:
 	@echo "  make repl      - Start ClojureScript REPL (node)"
 	@echo "  make dev       - Start browser dev server + Tailwind watcher"
 	@echo "  make test      - Run all tests"
+	@echo "  make test-watch - Start test watcher (re-runs on file change)"
+	@echo "  make test-run   - Run pre-compiled tests (use with test-watch)"
 	@echo "  make coverage  - Run tests with Clofidence coverage instrumentation"
 	@echo "  make lint      - Run clj-kondo linter"
 	@echo "  make fmt-check - Check code formatting"
@@ -34,7 +36,13 @@ dev:
 	  "npx postcss src/css/app.css -o resources/public/css/app.css --watch"
 
 test:
-	npx shadow-cljs compile test && node out/test.js
+	npx shadow-cljs compile test --config-merge '{:autorun false}' && node out/test.js
+
+test-watch:
+	npx shadow-cljs watch test
+
+test-run:
+	node out/test.js
 
 # Coverage: compile with Clofidence instrumentation and run the full suite.
 # Requires: clj (Clojure CLI) and Java installed. Run: brew install clojure/tools/clojure
