@@ -121,10 +121,9 @@
         target-type (:target/type target-req)]
     (case (:selection/domain s)
       :player-target         [custom/player-target-modal s ::selection-events/confirm-selection]
-      :cast-time-targeting   (if (= :player target-type)
-                               [custom/player-target-modal s ::selection-events/confirm-selection]
-                               ;; N-slot: use computed labels for both 1-slot and N-slot cases.
-                               ;; Auto-confirm (Lightning Bolt etc.) bypasses this modal entirely.
+      :cast-time-targeting   (case target-type
+                               :player [custom/player-target-modal s ::selection-events/confirm-selection]
+                               :any    [custom/any-target-modal s c ::selection-events/confirm-selection]
                                (let [{:keys [selected-label unselected-label]}
                                      (cast-time-targeting-labels s)]
                                  (object-target s c :battlefield selected-label unselected-label)))
