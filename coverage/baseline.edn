@@ -1,7 +1,7 @@
 {:total-forms-hit 920
- :total-forms 1022
- :total-sub-forms-hit 15916
- :total-sub-forms 18600
+ :total-forms 1021
+ :total-sub-forms-hit 15919
+ :total-sub-forms 18599
  :namespaces
  [{:ns "fizzle.bots.action-spec" :sub-forms-hit 12 :sub-forms 11}
  {:ns "fizzle.bots.decisions" :sub-forms-hit 160 :sub-forms 173}
@@ -39,9 +39,9 @@
  {:ns "fizzle.engine.probability" :sub-forms-hit 284 :sub-forms 287}
  {:ns "fizzle.engine.replacement-db" :sub-forms-hit 61 :sub-forms 71}
  {:ns "fizzle.engine.resolution" :sub-forms-hit 354 :sub-forms 397}
- {:ns "fizzle.engine.rules" :sub-forms-hit 624 :sub-forms 642}
+ {:ns "fizzle.engine.rules" :sub-forms-hit 624 :sub-forms 641}
  {:ns "fizzle.engine.sorting" :sub-forms-hit 44 :sub-forms 44}
- {:ns "fizzle.engine.spec-generators" :sub-forms-hit 389 :sub-forms 779}
+ {:ns "fizzle.engine.spec-generators" :sub-forms-hit 392 :sub-forms 779}
  {:ns "fizzle.engine.spec-util" :sub-forms-hit 14 :sub-forms 14}
  {:ns "fizzle.engine.stack" :sub-forms-hit 75 :sub-forms 75}
  {:ns "fizzle.engine.stack-spec" :sub-forms-hit 42 :sub-forms 41}
