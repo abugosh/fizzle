@@ -54,11 +54,13 @@ Use these make commands instead of hand-rolling shadow-cljs calls:
 
 ```bash
 # Development
-make repl      # Start node REPL - ready to eval immediately
-make dev       # Start browser dev server with hot reload
-make test      # Run all tests
-make clean     # Remove build artifacts (out/, .shadow-cljs/)
-make arch      # Start LikeC4 architecture diagram server (docs/arch/)
+make repl       # Start node REPL - ready to eval immediately
+make dev        # Start browser dev server with hot reload
+make test       # Run all tests
+make test-watch # Start test watcher (re-runs all tests on file change)
+make test-run   # Run pre-compiled tests (use when test-watch is running)
+make clean      # Remove build artifacts (out/, .shadow-cljs/)
+make arch       # Start LikeC4 architecture diagram server (docs/arch/)
 
 # Validation
 make lint      # Run clj-kondo linter
@@ -68,6 +70,8 @@ make validate  # Run lint + format-check + tests
 ```
 
 **IMPORTANT**: Always use `make test` instead of raw shadow-cljs commands.
+
+**For TDD, run `make test-watch` in a separate terminal; for agents, use `make test-run` when watch is already running.**
 
 ## Tech Stack
 
