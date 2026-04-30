@@ -64,6 +64,7 @@
     [fizzle.cards.green.hunting-pack :as hunting-pack]
     [fizzle.cards.green.nimble-mongoose :as nimble-mongoose]
     [fizzle.cards.green.xantid-swarm :as xantid-swarm]
+    [fizzle.cards.lands.ancient-tomb :as ancient-tomb]
     [fizzle.cards.lands.basic-lands :as basic-lands]
     [fizzle.cards.lands.cephalid-coliseum :as cephalid-coliseum]
     [fizzle.cards.lands.city-of-brass :as city-of-brass]
@@ -139,6 +140,7 @@
        recoup/card
        pyroblast/card
        red-elemental-blast/card
+       ancient-tomb/card
        city-of-brass/card
        city-of-traitors/card
        crystal-vein/card
