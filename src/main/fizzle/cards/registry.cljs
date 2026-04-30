@@ -80,6 +80,7 @@
     [fizzle.cards.red.goblin-welder :as goblin-welder]
     [fizzle.cards.red.lightning-bolt :as lightning-bolt]
     [fizzle.cards.red.pyroblast :as pyroblast]
+    [fizzle.cards.red.pyroclasm :as pyroclasm]
     [fizzle.cards.red.recoup :as recoup]
     [fizzle.cards.red.red-elemental-blast :as red-elemental-blast]
     [fizzle.cards.white.abeyance :as abeyance]
@@ -139,6 +140,7 @@
        lightning-bolt/card
        recoup/card
        pyroblast/card
+       pyroclasm/card
        red-elemental-blast/card
        ancient-tomb/card
        city-of-brass/card

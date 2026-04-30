@@ -23,7 +23,7 @@
     :peek-random-hand :grant-mana-ability :create-token :apply-pt-modifier
     :welder-swap :untap-lands :tap-all :untap-all
     :lose-life-equal-to-toughness :phase-out :change-land-types
-    :shuffle-from-graveyard-to-library})
+    :shuffle-from-graveyard-to-library :deal-damage-each-creature})
 
 
 (def valid-cost-types
@@ -141,6 +141,10 @@
 (defmethod effect-type-spec :deal-damage [_]
   (s/keys :req [:effect/type :effect/amount]
           :opt [:effect/target :effect/target-ref :effect/condition]))
+
+
+(defmethod effect-type-spec :deal-damage-each-creature [_]
+  (s/keys :req [:effect/type :effect/amount]))
 
 
 (defmethod effect-type-spec :lose-life [_]
@@ -357,6 +361,7 @@
    :mill                  {:effect/type :mill :effect/amount 1}
    :draw                  {:effect/type :draw :effect/amount 1}
    :deal-damage           {:effect/type :deal-damage :effect/amount 1 :effect/target :opponent}
+   :deal-damage-each-creature {:effect/type :deal-damage-each-creature :effect/amount 2}
    :discard               {:effect/type :discard :effect/count 1 :effect/selection :player}
    :return-from-graveyard {:effect/type :return-from-graveyard :effect/count 1 :effect/selection :player}
    :exile-self            {:effect/type :exile-self}

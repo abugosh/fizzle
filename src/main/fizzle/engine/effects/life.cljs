@@ -63,6 +63,20 @@
         :else db))))
 
 
+(defmethod effects/execute-effect-impl :deal-damage-each-creature
+  [db _player-id effect _object-id]
+  (let [amount (:effect/amount effect)
+        bf-objects (q/get-all-objects-in-zone db :battlefield)
+        creatures (filterv (fn [obj]
+                             (contains? (set (get-in obj [:object/card :card/types] #{}))
+                                        :creature))
+                           bf-objects)]
+    (reduce (fn [db' obj]
+              (combat/mark-damage db' (:object/id obj) amount))
+            db
+            creatures)))
+
+
 (defmethod effects/execute-effect-impl :gain-life-equal-to-cmc
   [db _player-id effect _object-id]
   (let [target-id (:effect/target effect)]
