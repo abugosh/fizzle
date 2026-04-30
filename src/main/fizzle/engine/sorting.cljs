@@ -45,3 +45,26 @@
     {:creatures (vec (or (get grouped :creatures) []))
      :other (vec (or (get grouped :other) []))
      :lands (vec (or (get grouped :lands) []))}))
+
+
+(defn group-by-cmc
+  "Split game objects into a vector of pairs for rendering grouped columns.
+   Returns [[:lands [land-objs...]] [0 [cmc-0-objs...]] [1 [cmc-1-objs...]] ...]
+   - :lands pair comes first (if non-empty)
+   - Integer CMC pairs follow in ascending order (only non-empty groups)
+   - An object is a land if its :card/types set contains :land
+   - Objects without :card/cmc default to CMC 0
+   - Objects without :card/types are treated as non-lands
+   - Empty buckets are omitted entirely"
+  [objects]
+  (let [land? #(contains? (set (get-in % [:object/card :card/types])) :land)
+        {lands true non-lands false} (group-by land? objects)
+        lands-vec (vec (or lands []))
+        cmc-pairs (->> (or non-lands [])
+                       (group-by #(get-in % [:object/card :card/cmc] 0))
+                       (filter #(seq (second %)))
+                       (sort-by first)
+                       (mapv (fn [[cmc objs]] [cmc (vec objs)])))]
+    (if (seq lands-vec)
+      (into [[:lands lands-vec]] cmc-pairs)
+      cmc-pairs)))

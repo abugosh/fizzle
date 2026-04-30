@@ -269,3 +269,75 @@
       (is (= [] (:creatures result)))
       (is (= 1 (count (:other result))))
       (is (= [] (:lands result))))))
+
+
+;; === CMC grouping tests ===
+
+(deftest test-group-by-cmc-empty
+  (testing "empty vector returns empty vector"
+    (is (= [] (sorting/group-by-cmc [])))))
+
+
+(deftest test-group-by-cmc-all-lands
+  (testing "all-lands input returns single :lands pair"
+    (let [swamp (make-obj "Swamp" 0 #{:land})
+          island (make-obj "Island" 0 #{:land})
+          result (sorting/group-by-cmc [swamp island])]
+      (is (= 1 (count result)))
+      (is (= :lands (first (first result))))
+      (is (= #{swamp island} (set (second (first result))))))))
+
+
+(deftest test-group-by-cmc-mixed
+  (testing "mixed input returns :lands first, then CMC buckets ascending"
+    (let [swamp  (make-obj "Swamp" 0 #{:land})
+          led    (make-obj "Lion's Eye Diamond" 0 #{:artifact})
+          ritual (make-obj "Dark Ritual" 1)
+          tutor  (make-obj "Vampiric Tutor" 2)
+          result (sorting/group-by-cmc [swamp led ritual tutor])]
+      (is (= 4 (count result)))
+      (is (= :lands (ffirst result)))
+      (is (= #{swamp} (set (second (first result)))))
+      (is (= [0 [led]] (second result)))
+      (is (= [1 [ritual]] (nth result 2)))
+      (is (= [2 [tutor]] (nth result 3))))))
+
+
+(deftest test-group-by-cmc-no-lands
+  (testing "non-land only input returns no :lands pair"
+    (let [led    (make-obj "Lion's Eye Diamond" 0 #{:artifact})
+          ritual (make-obj "Dark Ritual" 1)
+          result (sorting/group-by-cmc [led ritual])]
+      (is (= 2 (count result)))
+      (is (= [0 [led]] (first result)))
+      (is (= [1 [ritual]] (second result))))))
+
+
+(deftest test-group-by-cmc-preserves-order
+  (testing "objects within same CMC bucket maintain input order"
+    (let [dr (make-obj "Dark Ritual" 1)
+          sac (make-obj "Sacrifice" 1)
+          result (sorting/group-by-cmc [dr sac])]
+      (is (= 1 (count result)))
+      (is (= 1 (first (first result))))
+      ;; Input order: dr then sac
+      (is (= [dr sac] (second (first result)))))))
+
+
+(deftest test-group-by-cmc-nil-cmc-defaults-to-zero
+  (testing "object without :card/cmc goes in 0 bucket"
+    (let [no-cmc {:object/id (random-uuid)
+                  :object/card {:card/name "Mystery Card"}}
+          result (sorting/group-by-cmc [no-cmc])]
+      (is (= 1 (count result)))
+      (is (= 0 (first (first result))))
+      (is (= [no-cmc] (second (first result)))))))
+
+
+(deftest test-group-by-cmc-nil-types-not-land
+  (testing "object without :card/types goes in CMC bucket, not :lands"
+    (let [no-types (make-obj "Mystery Card" 1)
+          result (sorting/group-by-cmc [no-types])]
+      (is (= 1 (count result)))
+      (is (= 1 (first (first result))))
+      (is (= [no-types] (second (first result)))))))
