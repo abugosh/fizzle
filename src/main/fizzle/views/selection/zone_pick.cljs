@@ -2,6 +2,7 @@
   "Generic zone-pick modal component for card-grid selections.
    Data-driven: selection state fields drive title, counter, and buttons."
   (:require
+    [fizzle.engine.sorting :as sorting]
     [fizzle.events.selection :as selection-events]
     [fizzle.events.selection.costs :as cost-events]
     [fizzle.subs.game :as subs]
@@ -95,18 +96,23 @@
       [:p {:class (str "m-0 mb-4 text-sm "
                        (if (or valid? always-good?) "text-health-good" "text-health-danger"))}
        (counter-text selection)]
-      [:div {:class "flex flex-wrap gap-2.5 mb-5 min-h-[60px]"}
-       (if (seq cards)
-         (for [obj cards]
-           ^{:key (:object/id obj)}
-           [common/selection-card-view obj
-            (contains? (:selection/selected selection) (:object/id obj))
-            ::selection-events/toggle-selection
-            (if (and has-reveal? valid-targets)
-              (contains? valid-targets (:object/id obj))
-              true)])
-         [:div {:class "text-perm-text-tapped"}
-          (or (:empty-text config) "No cards available")])]
+      (if (seq cards)
+        [:div {:class "flex flex-row gap-4 mb-5 min-h-[60px] flex-wrap"}
+         (for [[group-key group-cards] (sorting/group-by-cmc cards)]
+           ^{:key group-key}
+           [:div {:class "flex flex-col gap-1"}
+            [:span {:class "text-xs text-gray-400 mb-1"}
+             (if (= :lands group-key) "Lands" (str group-key))]
+            (for [obj group-cards]
+              ^{:key (:object/id obj)}
+              [common/selection-card-view obj
+               (contains? (:selection/selected selection) (:object/id obj))
+               ::selection-events/toggle-selection
+               (if (and has-reveal? valid-targets)
+                 (contains? valid-targets (:object/id obj))
+                 true)])])]
+        [:div {:class "mb-5 min-h-[60px] text-perm-text-tapped"}
+         (or (:empty-text config) "No cards available")])
       [:div {:class "flex justify-end gap-3"}
        [secondary-button sel-domain]
        [common/confirm-button
