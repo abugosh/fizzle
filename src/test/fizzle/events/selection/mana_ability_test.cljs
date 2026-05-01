@@ -23,8 +23,8 @@
           result (mana-ability/open-mana-allocation-for-mana-ability
                    db :player-1 obj-id :blue ability-ref)
           sel (:pending-selection result)]
-      (is (some? sel)
-          "Pending selection should be non-nil for a generic-cost ability")
+      (is (= :mana-allocation (:selection/domain sel))
+          "Pending selection domain must be :mana-allocation for a generic-cost ability")
       (is (= :blue (get-in sel [:selection/context :mana-ability/chosen-color]))
           "Context must store the player's chosen output color (:blue)"))))
 
@@ -61,8 +61,8 @@
           db-after (:db result)]
       (is (= :graveyard (th/get-object-zone db-after obj-id))
           "Sphere must be in graveyard after non-mana costs paid (tap + sacrifice-self)")
-      (is (some? (:pending-selection result))
-          "Pending selection must be non-nil after costs paid"))))
+      (is (= :mana-allocation (:selection/domain (:pending-selection result)))
+          "Pending selection domain must be :mana-allocation after costs paid"))))
 
 
 (deftest test-open-returns-nil-selection-when-no-generic-cost
@@ -132,8 +132,8 @@
           ability-ref {:source :card :index 0}
           result (mana-ability/activate-mana-ability-with-generic-mana
                    db :player-1 obj-id :blue ability-ref)]
-      (is (some? (:pending-selection result))
-          "Chromatic Sphere (generic cost) must route to selection, not direct engine")
+      (is (= :mana-allocation (:selection/domain (:pending-selection result)))
+          "Chromatic Sphere (generic cost) must route to :mana-allocation selection")
       (is (= :mana-allocation (:selection/domain (:pending-selection result)))
           "Selection type must be :mana-allocation"))))
 

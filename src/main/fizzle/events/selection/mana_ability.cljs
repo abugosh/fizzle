@@ -187,15 +187,24 @@
 
    ability-ref: {:source :card :index N} or {:source :grant :grant-id uuid}
 
+   When ability-ref is non-nil but resolve-ability returns nil (ability not found or
+   not a :mana type), fail closed — return {:db db :pending-selection nil} immediately.
+   When ability-ref is nil (bot path), proceed to engine's color-based fallback.
+
    Pure: (db, player-id, object-id, mana-color, ability-ref) -> {:db :pending-selection-or-nil}"
   [db player-id object-id mana-color ability-ref]
   (let [obj (q/get-object db object-id)
-        ability (engine-mana/resolve-ability obj ability-ref)
-        mana-cost (:mana (:ability/cost ability))
-        generic (get mana-cost :colorless 0)]
-    (if (pos? generic)
-      ;; Generic cost path: open mana-allocation selection
-      (open-mana-allocation-for-mana-ability db player-id object-id mana-color ability-ref)
-      ;; Simple path: delegate to engine fn directly (no selection)
-      {:db (engine-mana/activate-mana-ability db player-id object-id mana-color ability-ref)
-       :pending-selection nil})))
+        ability (engine-mana/resolve-ability obj ability-ref)]
+    ;; Guard: if ability-ref was given but resolve-ability returned nil, fail closed.
+    ;; This prevents nil-punning through (:ability/cost nil) -> nil -> (:mana nil) -> nil.
+    ;; The nil ability-ref case (bot path) is excluded — bots rely on color-based fallback.
+    (if (and (some? ability-ref) (nil? ability))
+      {:db db :pending-selection nil}
+      (let [mana-cost (:mana (:ability/cost ability))
+            generic (get mana-cost :colorless 0)]
+        (if (pos? generic)
+          ;; Generic cost path: open mana-allocation selection
+          (open-mana-allocation-for-mana-ability db player-id object-id mana-color ability-ref)
+          ;; Simple path: delegate to engine fn directly (no selection)
+          {:db (engine-mana/activate-mana-ability db player-id object-id mana-color ability-ref)
+           :pending-selection nil})))))

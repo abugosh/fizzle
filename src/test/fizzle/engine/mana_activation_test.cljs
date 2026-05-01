@@ -7,12 +7,15 @@
    C. Helper isolation: produces-any resolution, :self target, effects ordering
    D. Regression guards: priority phase, wrong controller, not on battlefield
    E. No-regression scenarios: Lotus Petal, Mountain, Mind Stone ability 0, Gemstone Mine
+   F. resolve-ability edge cases: nil ref, out-of-bounds, nonexistent grant, non-mana type, valid paths
 
    TDD: every test was written RED (failing) before production code was added."
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [datascript.core :as d]
+    [fizzle.cards.lands.cephalid-coliseum]
     [fizzle.db.queries :as q]
+    [fizzle.engine.grants :as grants]
     [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.test-helpers :as th]))
 
@@ -257,6 +260,90 @@
           "Pool must not change when Chromatic Sphere is in graveyard")
       (is (= :graveyard (th/get-object-zone db-after obj-id))
           "Sphere must remain in graveyard"))))
+
+
+;; ============================================================
+;; F. resolve-ability edge cases
+;; ============================================================
+
+(deftest test-resolve-ability-nil-ref-returns-nil
+  ;; Catches: missing nil-guard in resolve-ability when ability-ref is nil.
+  (testing "resolve-ability returns nil when ability-ref is nil"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :swamp :battlefield :player-1)
+          obj (engine-mana/resolve-ability (q/get-object db obj-id) nil)]
+      (is (nil? obj)
+          "resolve-ability must return nil when ability-ref is nil"))))
+
+
+(deftest test-resolve-ability-card-out-of-bounds-returns-nil
+  ;; Catches: out-of-bounds index not guarded — nth returns nil, spec doesn't see a :mana type.
+  (testing "resolve-ability returns nil for {:source :card :index 99} (out of bounds)"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :swamp :battlefield :player-1)
+          result (engine-mana/resolve-ability (q/get-object db obj-id)
+                                              {:source :card :index 99})]
+      (is (nil? result)
+          "resolve-ability must return nil for out-of-bounds :card :index"))))
+
+
+(deftest test-resolve-ability-grant-nonexistent-uuid-returns-nil
+  ;; Catches: nonexistent grant-id returns nil (filter finds nothing → grant nil → ability nil).
+  (testing "resolve-ability returns nil for {:source :grant :grant-id <nonexistent-uuid>}"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :swamp :battlefield :player-1)
+          result (engine-mana/resolve-ability (q/get-object db obj-id)
+                                              {:source :grant :grant-id (random-uuid)})]
+      (is (nil? result)
+          "resolve-ability must return nil when grant-id doesn't match any grant"))))
+
+
+(deftest test-resolve-ability-non-mana-ability-returns-nil
+  ;; Catches: resolve-ability must filter out non-:mana abilities even at valid index.
+  ;; Cephalid Coliseum index 1 is :activated (not :mana) — must return nil.
+  (testing "resolve-ability returns nil when ability at index is not :mana type"
+    (let [db (th/create-test-db {:mana {:blue 1}})
+          [db obj-id] (th/add-card-to-zone db :cephalid-coliseum :battlefield :player-1)
+          ;; Index 1 on Cephalid Coliseum is the :activated threshold ability
+          result (engine-mana/resolve-ability (q/get-object db obj-id)
+                                              {:source :card :index 1})]
+      (is (nil? result)
+          "resolve-ability must return nil for non-:mana ability at index 1"))))
+
+
+(deftest test-resolve-ability-valid-card-ref-returns-ability
+  ;; Catches: regression — valid :card source resolve must return the ability map.
+  (testing "resolve-ability returns ability map for valid {:source :card :index 0}"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :swamp :battlefield :player-1)
+          result (engine-mana/resolve-ability (q/get-object db obj-id)
+                                              {:source :card :index 0})]
+      (is (map? result)
+          "resolve-ability must return a map for valid :card source")
+      (is (= :mana (:ability/type result))
+          "returned ability must be :mana type"))))
+
+
+(deftest test-resolve-ability-valid-grant-ref-returns-ability
+  ;; Catches: regression — valid :grant source resolve must return the ability map.
+  (testing "resolve-ability returns ability map for valid {:source :grant :grant-id uuid}"
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :swamp :battlefield :player-1)
+          grant-id (random-uuid)
+          grant {:grant/id grant-id
+                 :grant/type :ability
+                 :grant/source (random-uuid)
+                 :grant/data {:ability/type :mana
+                              :ability/cost {:tap true}
+                              :ability/effects [{:effect/type :add-mana
+                                                 :effect/mana {:red 1}}]}}
+          db (grants/add-grant db obj-id grant)
+          result (engine-mana/resolve-ability (q/get-object db obj-id)
+                                              {:source :grant :grant-id grant-id})]
+      (is (map? result)
+          "resolve-ability must return a map for valid :grant source")
+      (is (= :mana (:ability/type result))
+          "returned ability from grant must be :mana type"))))
 
 
 ;; ============================================================

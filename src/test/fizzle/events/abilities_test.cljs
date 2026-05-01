@@ -148,6 +148,60 @@
           ":game/selected-card should be dissoc'd unconditionally (mirrors ::activate-ability)"))))
 
 
+;; Test 4c: grant activation via dispatch creates :history/pending-entry
+(deftest activate-mana-ability-grant-creates-history-entry
+  (testing "::activate-mana-ability with {:source :grant ...} ability-ref creates :history/pending-entry"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          ;; Add a swamp to battlefield — the grant gives it an extra tap-for-red mana ability
+          [game-db' obj-id] (h/add-card-to-zone game-db :swamp :battlefield :player-1)
+          grant-id (random-uuid)
+          grant {:grant/id grant-id
+                 :grant/type :ability
+                 :grant/source (random-uuid)
+                 :grant/data {:ability/type :mana
+                              :ability/cost {:tap true}
+                              :ability/effects [{:effect/type :add-mana
+                                                 :effect/mana {:red 1}}]}}
+          game-db-with-grant (grants/add-grant game-db' obj-id grant)
+          app-db' (assoc app-db :game/db game-db-with-grant)
+          ability-ref {:source :grant :grant-id grant-id}
+          result (dispatch-event app-db' [::abilities/activate-mana-ability obj-id :red nil ability-ref])]
+      ;; The interceptor moves :history/pending-entry to :history/main after dispatch
+      (is (seq (:history/main result))
+          "history/main must have entries after grant mana ability dispatch")
+      (let [last-entry (last (:history/main result))]
+        (is (= ::abilities/activate-mana-ability (:entry/event-type last-entry))
+            "last history entry event-type must be ::abilities/activate-mana-ability")))))
+
+
+;; Test 4d: grant activation blocked by can-activate? when condition not met
+(deftest activate-mana-ability-grant-blocked-by-condition
+  (testing "grant mana ability with :ability/condition not met returns db unchanged"
+    (let [db (h/create-test-db)
+          [db obj-id] (h/add-card-to-zone db :swamp :battlefield :player-1)
+          grant-id (random-uuid)
+          ;; Grant a :mana ability with a :threshold condition
+          grant {:grant/id grant-id
+                 :grant/type :ability
+                 :grant/source (random-uuid)
+                 :grant/data {:ability/type :mana
+                              :ability/condition {:condition/type :threshold}
+                              :ability/cost {:tap true}
+                              :ability/effects [{:effect/type :add-mana
+                                                 :effect/mana {:red 1}}]}}
+          db-with-grant (grants/add-grant db obj-id grant)
+          ;; Precondition: graveyard is empty (threshold requires 7+ cards)
+          gy-count (count (q/get-objects-in-zone db-with-grant :player-1 :graveyard))
+          _ (is (< gy-count 7)
+                "Precondition: graveyard must have fewer than 7 cards (threshold not met)")
+          ability-ref {:source :grant :grant-id grant-id}
+          ;; Call engine directly — unit test proving can-activate? blocks the grant
+          result (engine-mana/activate-mana-ability db-with-grant :player-1 obj-id :red ability-ref)]
+      (is (= db-with-grant result)
+          "db must be unchanged when granted ability has unsatisfied :ability/condition"))))
+
+
 ;; ============================================================
 ;; Unit Tests (direct function calls on pure functions)
 ;; ============================================================
