@@ -148,7 +148,7 @@
           app-db (assoc game-scenario :game/db game-db)
           ;; Dispatch activate-mana-ability through full re-frame chain
           _ (reset! rf-db/app-db app-db)
-          _ (rf/dispatch-sync [::ability-events/activate-mana-ability obj-id :blue nil 0])
+          _ (rf/dispatch-sync [::ability-events/activate-mana-ability obj-id :blue nil {:source :card :index 0}])
           app-db-after-dispatch @rf-db/app-db
           pending-sel (:game/pending-selection app-db-after-dispatch)
           _ (is (some? pending-sel)
@@ -181,7 +181,7 @@
           [game-db _] (th/add-cards-to-library game-db [:island :island :island] :player-1)
           app-db (assoc game-scenario :game/db game-db)
           _ (reset! rf-db/app-db app-db)
-          _ (rf/dispatch-sync [::ability-events/activate-mana-ability obj-id :red nil 0])
+          _ (rf/dispatch-sync [::ability-events/activate-mana-ability obj-id :red nil {:source :card :index 0}])
           app-db-after @rf-db/app-db
           pending-sel (:game/pending-selection app-db-after)
           _ (is (some? pending-sel)
@@ -210,7 +210,7 @@
           [game-db obj-id] (th/add-card-to-zone game-db :chromatic-sphere :battlefield :player-1)
           app-db (assoc game-scenario :game/db game-db)
           _ (reset! rf-db/app-db app-db)
-          _ (rf/dispatch-sync [::ability-events/activate-mana-ability obj-id :blue nil 0])
+          _ (rf/dispatch-sync [::ability-events/activate-mana-ability obj-id :blue nil {:source :card :index 0}])
           app-db-after @rf-db/app-db]
       (is (nil? (:game/pending-selection app-db-after))
           "No selection should open when pool is empty (can-activate? check)")
@@ -234,7 +234,7 @@
                 "Precondition: storm is 0")
           app-db (assoc game-scenario :game/db game-db)
           _ (reset! rf-db/app-db app-db)
-          _ (rf/dispatch-sync [::ability-events/activate-mana-ability obj-id :green nil 0])
+          _ (rf/dispatch-sync [::ability-events/activate-mana-ability obj-id :green nil {:source :card :index 0}])
           app-db-after @rf-db/app-db
           _ (reset! rf-db/app-db app-db-after)
           _ (rf/dispatch-sync [::sel-costs/allocate-mana-color :colorless])

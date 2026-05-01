@@ -28,48 +28,64 @@
 (def ^:private all-colors [:white :blue :black :red :green])
 
 
-(defn get-mana-ability-buttons
-  "Return one button spec per distinct mana ability activation path.
+(defn- extract-mana-button-specs
+  "Expand a mana-map into button spec entries, one per color.
+   {:any N} expands to all 5 WUBRG colors. Returns a seq of partial specs."
+  [mana-map sac? ability-ref]
+  (if (contains? mana-map :any)
+    (let [amount (:any mana-map)]
+      (for [color all-colors]
+        {:ability-ref ability-ref :color color :amount amount :sac? sac?}))
+    (for [[color amount] mana-map]
+      {:ability-ref ability-ref :color color :amount amount :sac? sac?})))
 
-   Each entry is a map {:ability-index :color :amount :sac?}. Multiple mana
-   abilities that produce the same color get separate entries (e.g. Crystal
-   Vein's tap-for-{C} and tap+sac-for-{C}{C}). Abilities that produce
-   {:any N} via an :add-mana effect expand into one entry per color (W/U/B/R/G).
 
-   The UI uses these to render distinguishable buttons and to dispatch
-   activation with an explicit ability-index, which is required when two
-   mana abilities on the same permanent produce the same color."
+(defn get-all-mana-ability-buttons
+  "Return one button spec per distinct mana ability activation path, from both
+   card abilities (:card/abilities) and grants (:object/grants).
+
+   Each entry is a map {:ability-ref :color :amount :sac?} where :ability-ref is
+   either {:source :card :index N} for card abilities or
+   {:source :grant :grant-id uuid} for granted abilities.
+
+   Abilities that produce {:any N} expand into one entry per WUBRG color.
+   Card abilities appear first, followed by grant abilities."
   [obj]
   (let [abilities (get-in obj [:object/card :card/abilities])
-        mana-abilities (->> abilities
+        grants (or (:object/grants obj) [])
+        card-specs (vec
+                     (mapcat
+                       (fn [[idx ability]]
+                         (let [mana-map (or (->> (:ability/effects ability)
+                                                 (filter #(= :add-mana (:effect/type %)))
+                                                 first
+                                                 :effect/mana)
+                                            {})
+                               sac? (boolean (get-in ability [:ability/cost :sacrifice-self]))
+                               ability-ref {:source :card :index idx}]
+                           (extract-mana-button-specs mana-map sac? ability-ref)))
+                       (->> abilities
                             (map-indexed vector)
-                            (filter (fn [[_ a]] (= :mana (:ability/type a)))))]
-    (vec
-      (mapcat
-        (fn [[idx ability]]
-          (let [mana-map (or (->> (:ability/effects ability)
-                                  (filter #(= :add-mana (:effect/type %)))
-                                  first
-                                  :effect/mana)
-                             {})
-                sac? (boolean (get-in ability [:ability/cost :sacrifice-self]))]
-            (if (contains? mana-map :any)
-              (let [amount (:any mana-map)]
-                (for [color all-colors]
-                  {:ability-index idx :color color :amount amount :sac? sac?}))
-              (for [[color amount] mana-map]
-                {:ability-index idx :color color :amount amount :sac? sac?}))))
-        mana-abilities))))
-
-
-(defn get-granted-mana-abilities
-  "Get granted mana abilities from object grants.
-   Returns vector of grant maps with :grant/type :ability and mana ability data."
-  [obj]
-  (->> (or (:object/grants obj) [])
-       (filterv (fn [grant]
-                  (and (= :ability (:grant/type grant))
-                       (= :mana (:ability/type (:grant/data grant))))))))
+                            (filter (fn [[_ a]] (= :mana (:ability/type a)))))))
+        grant-specs (vec
+                      (mapcat
+                        (fn [grant]
+                          (let [data (:grant/data grant)
+                                effects (:ability/effects data)
+                                mana-map (when (seq effects)
+                                           (->> effects
+                                                (filter #(= :add-mana (:effect/type %)))
+                                                first
+                                                :effect/mana))
+                                sac? (boolean (get-in data [:ability/cost :sacrifice-self]))
+                                ability-ref {:source :grant :grant-id (:grant/id grant)}]
+                            (when mana-map
+                              (extract-mana-button-specs mana-map sac? ability-ref))))
+                        (filter (fn [grant]
+                                  (and (= :ability (:grant/type grant))
+                                       (= :mana (:ability/type (:grant/data grant)))))
+                                grants)))]
+    (into card-specs grant-specs)))
 
 
 (defn get-activated-abilities
@@ -82,37 +98,27 @@
          (into []))))
 
 
+(defn mana-button-class
+  "Returns the Tailwind class string for a mana button, given spec and tapped? state.
+   Public for testing."
+  [{:keys [color sac?]} tapped?]
+  (str "py-0.5 px-1.5 mx-0.5 border rounded text-[11px] font-bold "
+       (if tapped?
+         "cursor-default border-border bg-surface-dim text-border"
+         (str "cursor-pointer "
+              (mana-bg-class color) " "
+              (if sac? "border-amber-500 border-2" "border-border")))))
+
+
 (defn- mana-button
-  [object-id {:keys [ability-index color amount sac?]} tapped?]
+  [object-id {:keys [ability-ref color amount] :as spec} tapped?]
   (let [symbol (get mana-symbols color (name color))
-        symbols (apply str (repeat amount symbol))
-        label (if sac? (str "Sac: " symbols) symbols)]
-    [:button {:class (str "py-0.5 px-1.5 mx-0.5 border rounded text-[11px] font-bold "
-                          (if tapped?
-                            "cursor-default border-border bg-surface-dim text-border"
-                            (str "cursor-pointer "
-                                 (if sac?
-                                   "border-amber-500 bg-amber-100 text-amber-800"
-                                   (str "border-border " (mana-bg-class color))))))
+        label (apply str (repeat amount symbol))]
+    [:button {:class (mana-button-class spec tapped?)
               :disabled tapped?
               :on-click #(rf/dispatch [::ability-events/activate-mana-ability
-                                       object-id color nil ability-index])}
+                                       object-id color nil ability-ref])}
      label]))
-
-
-(defn- granted-ability-button
-  [object-id grant]
-  (let [ability (:grant/data grant)
-        mana-map (->> (:ability/effects ability)
-                      (filter #(= :add-mana (:effect/type %)))
-                      first
-                      :effect/mana)
-        color (first (keys mana-map))
-        symbol (get mana-symbols color (name color))]
-    [:button {:class "py-0.5 px-1.5 mx-0.5 border border-amber-500 rounded text-[11px] font-bold cursor-pointer bg-amber-100 text-amber-800"
-              :on-click #(rf/dispatch [::ability-events/activate-granted-mana-ability
-                                       object-id (:grant/id grant)])}
-     (str "Sac: " symbol)]))
 
 
 (defn- ability-button
@@ -143,9 +149,8 @@
          object-id (:object/id obj)
          tapped? (:object/tapped obj)
          counters (:object/counters obj)
-         mana-buttons (get-mana-ability-buttons obj)
+         mana-buttons (get-all-mana-ability-buttons obj)
          activated-abilities (get-activated-abilities obj)
-         granted-abilities (get-granted-mana-abilities obj)
          card-types (get-in obj [:object/card :card/types])
          card-colors (get-in obj [:object/card :card/colors])
          border-class (card-styles/get-type-border-class card-types tapped?)
@@ -199,12 +204,7 @@
                                desc))
                            "Activate")]
              ^{:key idx}
-             [ability-button object-id idx label tapped?]))])
-      (when (and show-buttons? (seq granted-abilities))
-        [:div {:class "flex justify-center flex-wrap mt-1"}
-         (for [grant granted-abilities]
-           ^{:key (:grant/id grant)}
-           [granted-ability-button object-id grant])])])))
+             [ability-button object-id idx label tapped?]))])])))
 
 
 (defn- empty-row-placeholder

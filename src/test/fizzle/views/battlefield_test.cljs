@@ -1,6 +1,7 @@
 (ns fizzle.views.battlefield-test
   (:require
     [cljs.test :refer-macros [deftest testing is]]
+    [clojure.string :as str]
     [fizzle.views.battlefield :as battlefield]
     [fizzle.views.card-styles :as card-styles]))
 
@@ -23,7 +24,7 @@
     (is (= "bg-surface-dim text-mana-colorless" (battlefield/mana-bg-class :phyrexian)))))
 
 
-;; === get-mana-ability-buttons ===
+;; === get-all-mana-ability-buttons (card-only shapes, migrated from get-mana-ability-buttons) ===
 
 (deftest get-mana-ability-buttons-single-produces
   (testing "permanent with :add-mana {:black 1} effect returns one button at index 0"
@@ -32,8 +33,8 @@
                                   :ability/cost {:tap true}
                                   :ability/effects [{:effect/type :add-mana
                                                      :effect/mana {:black 1}}]}]}}]
-      (is (= [{:ability-index 0 :color :black :amount 1 :sac? false}]
-             (battlefield/get-mana-ability-buttons obj))))))
+      (is (= [{:ability-ref {:source :card :index 0} :color :black :amount 1 :sac? false}]
+             (battlefield/get-all-mana-ability-buttons obj))))))
 
 
 (deftest get-mana-ability-buttons-any-mana
@@ -43,12 +44,12 @@
                                   :ability/cost {:tap true :sacrifice-self true}
                                   :ability/effects [{:effect/type :add-mana
                                                      :effect/mana {:any 1}}]}]}}]
-      (is (= [{:ability-index 0 :color :white :amount 1 :sac? true}
-              {:ability-index 0 :color :blue :amount 1 :sac? true}
-              {:ability-index 0 :color :black :amount 1 :sac? true}
-              {:ability-index 0 :color :red :amount 1 :sac? true}
-              {:ability-index 0 :color :green :amount 1 :sac? true}]
-             (battlefield/get-mana-ability-buttons obj))))))
+      (is (= [{:ability-ref {:source :card :index 0} :color :white :amount 1 :sac? true}
+              {:ability-ref {:source :card :index 0} :color :blue :amount 1 :sac? true}
+              {:ability-ref {:source :card :index 0} :color :black :amount 1 :sac? true}
+              {:ability-ref {:source :card :index 0} :color :red :amount 1 :sac? true}
+              {:ability-ref {:source :card :index 0} :color :green :amount 1 :sac? true}]
+             (battlefield/get-all-mana-ability-buttons obj))))))
 
 
 (deftest get-mana-ability-buttons-from-effect
@@ -58,8 +59,8 @@
                                   :ability/cost {:tap true}
                                   :ability/effects [{:effect/type :add-mana
                                                      :effect/mana {:red 3}}]}]}}]
-      (is (= [{:ability-index 0 :color :red :amount 3 :sac? false}]
-             (battlefield/get-mana-ability-buttons obj))))))
+      (is (= [{:ability-ref {:source :card :index 0} :color :red :amount 3 :sac? false}]
+             (battlefield/get-all-mana-ability-buttons obj))))))
 
 
 (deftest get-mana-ability-buttons-no-mana-abilities
@@ -67,13 +68,13 @@
     (let [obj {:object/card
                {:card/abilities [{:ability/type :activated
                                   :ability/name "Sacrifice"}]}}]
-      (is (= [] (battlefield/get-mana-ability-buttons obj))))))
+      (is (= [] (battlefield/get-all-mana-ability-buttons obj))))))
 
 
 (deftest get-mana-ability-buttons-no-abilities
   (testing "permanent with no abilities returns empty"
     (let [obj {:object/card {:card/abilities []}}]
-      (is (= [] (battlefield/get-mana-ability-buttons obj))))))
+      (is (= [] (battlefield/get-all-mana-ability-buttons obj))))))
 
 
 (deftest get-mana-ability-buttons-multi-ability-same-color
@@ -90,9 +91,9 @@
                                   :ability/cost {:tap true :sacrifice-self true}
                                   :ability/effects [{:effect/type :add-mana
                                                      :effect/mana {:colorless 2}}]}]}}]
-      (is (= [{:ability-index 0 :color :colorless :amount 1 :sac? false}
-              {:ability-index 1 :color :colorless :amount 2 :sac? true}]
-             (battlefield/get-mana-ability-buttons obj))))))
+      (is (= [{:ability-ref {:source :card :index 0} :color :colorless :amount 1 :sac? false}
+              {:ability-ref {:source :card :index 1} :color :colorless :amount 2 :sac? true}]
+             (battlefield/get-all-mana-ability-buttons obj))))))
 
 
 (deftest get-mana-ability-buttons-multi-ability-different-colors
@@ -111,10 +112,10 @@
                                   :ability/cost {:tap true}
                                   :ability/effects [{:effect/type :add-mana
                                                      :effect/mana {:blue 1}}]}]}}]
-      (is (= [{:ability-index 0 :color :colorless :amount 1 :sac? false}
-              {:ability-index 1 :color :white :amount 1 :sac? false}
-              {:ability-index 2 :color :blue :amount 1 :sac? false}]
-             (battlefield/get-mana-ability-buttons obj))))))
+      (is (= [{:ability-ref {:source :card :index 0} :color :colorless :amount 1 :sac? false}
+              {:ability-ref {:source :card :index 1} :color :white :amount 1 :sac? false}
+              {:ability-ref {:source :card :index 2} :color :blue :amount 1 :sac? false}]
+             (battlefield/get-all-mana-ability-buttons obj))))))
 
 
 ;; === get-activated-abilities ===
@@ -226,6 +227,103 @@
     (is (= "bg-identity-colorless" (card-styles/get-color-identity-bg-class #{} #{:artifact})))
     (is (= "bg-identity-colorless" (card-styles/get-color-identity-bg-class #{} nil)))
     (is (= "bg-identity-colorless" (card-styles/get-color-identity-bg-class nil nil)))))
+
+
+;; === get-all-mana-ability-buttons ===
+
+(deftest get-all-mana-ability-buttons-card-ability
+  (testing "object with card mana ability returns spec with :source :card :index N"
+    (let [obj {:object/card
+               {:card/abilities [{:ability/type :mana
+                                  :ability/cost {:tap true}
+                                  :ability/effects [{:effect/type :add-mana
+                                                     :effect/mana {:black 1}}]}]}}]
+      (is (= [{:ability-ref {:source :card :index 0}
+               :color :black :amount 1 :sac? false}]
+             (battlefield/get-all-mana-ability-buttons obj))))))
+
+
+(deftest get-all-mana-ability-buttons-grant-ability
+  (testing "object with granted mana ability returns spec with :source :grant :grant-id uuid"
+    (let [grant-id #uuid "00000000-0000-0000-0000-000000000001"
+          obj {:object/card {:card/abilities []}
+               :object/grants [{:grant/id grant-id
+                                :grant/type :ability
+                                :grant/data {:ability/type :mana
+                                             :ability/cost {:sacrifice-self true}
+                                             :ability/effects [{:effect/type :add-mana
+                                                                :effect/mana {:black 1}}]}}]}]
+      (is (= [{:ability-ref {:source :grant :grant-id grant-id}
+               :color :black :amount 1 :sac? true}]
+             (battlefield/get-all-mana-ability-buttons obj))))))
+
+
+(deftest get-all-mana-ability-buttons-any-grant-expands
+  (testing "grant with {:any 1} expands into 5 WUBRG color buttons"
+    (let [grant-id #uuid "00000000-0000-0000-0000-000000000002"
+          obj {:object/card {:card/abilities []}
+               :object/grants [{:grant/id grant-id
+                                :grant/type :ability
+                                :grant/data {:ability/type :mana
+                                             :ability/cost {:sacrifice-self true}
+                                             :ability/effects [{:effect/type :add-mana
+                                                                :effect/mana {:any 1}}]}}]}]
+      (is (= [{:ability-ref {:source :grant :grant-id grant-id} :color :white :amount 1 :sac? true}
+              {:ability-ref {:source :grant :grant-id grant-id} :color :blue :amount 1 :sac? true}
+              {:ability-ref {:source :grant :grant-id grant-id} :color :black :amount 1 :sac? true}
+              {:ability-ref {:source :grant :grant-id grant-id} :color :red :amount 1 :sac? true}
+              {:ability-ref {:source :grant :grant-id grant-id} :color :green :amount 1 :sac? true}]
+             (battlefield/get-all-mana-ability-buttons obj))))))
+
+
+(deftest get-all-mana-ability-buttons-card-and-grant-merged
+  (testing "object with both card and grant abilities returns card-first merged vector"
+    (let [grant-id #uuid "00000000-0000-0000-0000-000000000003"
+          obj {:object/card
+               {:card/abilities [{:ability/type :mana
+                                  :ability/cost {:tap true}
+                                  :ability/effects [{:effect/type :add-mana
+                                                     :effect/mana {:red 1}}]}]}
+               :object/grants [{:grant/id grant-id
+                                :grant/type :ability
+                                :grant/data {:ability/type :mana
+                                             :ability/cost {:sacrifice-self true}
+                                             :ability/effects [{:effect/type :add-mana
+                                                                :effect/mana {:blue 1}}]}}]}]
+      (is (= [{:ability-ref {:source :card :index 0} :color :red :amount 1 :sac? false}
+              {:ability-ref {:source :grant :grant-id grant-id} :color :blue :amount 1 :sac? true}]
+             (battlefield/get-all-mana-ability-buttons obj))))))
+
+
+(deftest get-all-mana-ability-buttons-empty
+  (testing "object with no mana abilities returns empty vector"
+    (let [obj {:object/card {:card/abilities []}}]
+      (is (= [] (battlefield/get-all-mana-ability-buttons obj))))))
+
+
+;; === mana-button styling ===
+
+(deftest mana-button-sac-uses-color-fill
+  (testing "sac button uses mana-bg-class color fill, not amber"
+    (let [spec {:ability-ref {:source :card :index 0} :color :black :amount 1 :sac? true}
+          rendered (battlefield/mana-button-class spec false)]
+      (is (str/includes? rendered "bg-mana-bg-black"))
+      (is (not (str/includes? rendered "bg-amber"))))))
+
+
+(deftest mana-button-sac-has-amber-border
+  (testing "sac button has border-amber-500 border-2"
+    (let [spec {:ability-ref {:source :card :index 0} :color :black :amount 1 :sac? true}
+          rendered (battlefield/mana-button-class spec false)]
+      (is (str/includes? rendered "border-amber-500"))
+      (is (str/includes? rendered "border-2")))))
+
+
+(deftest mana-button-non-sac-has-default-border
+  (testing "non-sac button has border-border class"
+    (let [spec {:ability-ref {:source :card :index 0} :color :black :amount 1 :sac? false}
+          rendered (battlefield/mana-button-class spec false)]
+      (is (str/includes? rendered "border-border")))))
 
 
 ;; === pt-text-class ===

@@ -26,13 +26,9 @@
 
 (rf/reg-event-db
   ::activate-mana-ability
-  (fn [db [_ object-id mana-color player-id ability-index]]
+  (fn [db [_ object-id mana-color player-id ability-ref]]
     (let [game-db (:game/db db)
           pid (or player-id (queries/get-human-player-id game-db))
-          ;; Convert integer ability-index to ability-ref map (backward compat with render/tests).
-          ;; nil ability-index → nil ability-ref (bot/color-based fallback path).
-          ability-ref (when (some? ability-index)
-                        {:source :card :index ability-index})
           result (mana-ability/activate-mana-ability-with-generic-mana
                    game-db pid object-id mana-color ability-ref)
           game-db-after (:db result)
@@ -357,30 +353,3 @@
         next-req
         chosen-targets
         next-remaining))))
-
-
-;; === Activate Granted Mana Ability (compat shim — views updated in Task 3) ===
-;;
-;; ::activate-granted-mana-ability is kept as a compat shim while the render layer
-;; still dispatches with (object-id grant-id). Task 3 will update the view to dispatch
-;; ::activate-mana-ability with an ability-ref {:source :grant :grant-id uuid} instead,
-;; at which point this handler can be removed.
-
-(rf/reg-event-db
-  ::activate-granted-mana-ability
-  (fn [db [_ object-id grant-id]]
-    (let [game-db (:game/db db)
-          pid (queries/get-human-player-id game-db)
-          ability-ref {:source :grant :grant-id grant-id}
-          result (mana-ability/activate-mana-ability-with-generic-mana
-                   game-db pid object-id nil ability-ref)
-          game-db-after (:db result)
-          pending-sel (:pending-selection result)
-          description (descriptions/describe-activate-mana object-id nil game-db)
-          base (-> db
-                   (assoc :game/db game-db-after)
-                   (assoc :history/pending-entry
-                          (descriptions/build-pending-entry game-db-after ::activate-mana-ability description pid)))]
-      (if pending-sel
-        (sel-spec/set-pending-selection base pending-sel)
-        base))))
