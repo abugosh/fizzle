@@ -3,7 +3,6 @@
     [datascript.core :as d]
     [fizzle.db.queries :as queries]
     [fizzle.engine.abilities :as abilities]
-    [fizzle.engine.effects :as effects]
     [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.engine.priority :as priority]
     [fizzle.engine.rules :as rules]
@@ -30,8 +29,12 @@
   (fn [db [_ object-id mana-color player-id ability-index]]
     (let [game-db (:game/db db)
           pid (or player-id (queries/get-human-player-id game-db))
+          ;; Convert integer ability-index to ability-ref map (backward compat with render/tests).
+          ;; nil ability-index → nil ability-ref (bot/color-based fallback path).
+          ability-ref (when (some? ability-index)
+                        {:source :card :index ability-index})
           result (mana-ability/activate-mana-ability-with-generic-mana
-                   game-db pid object-id mana-color ability-index)
+                   game-db pid object-id mana-color ability-ref)
           game-db-after (:db result)
           pending-sel (:pending-selection result)
           description (descriptions/describe-activate-mana object-id mana-color game-db)
@@ -356,44 +359,28 @@
         next-remaining))))
 
 
-;; === Activate Granted Mana Ability ===
-
-(defn activate-granted-mana-ability
-  "Activate a granted mana ability on a permanent.
-   Granted abilities are stored in :object/grants with :grant/type :ability.
-   Pure function: (db, player-id, object-id, grant-id) -> db
-
-   Unlike native mana abilities, granted abilities ignore tapped state
-   (no :tap cost). The grant's :ability/cost (e.g., :sacrifice-self)
-   determines what must be paid."
-  [db player-id object-id grant-id]
-  (if-not (priority/in-priority-phase? (:game/phase (queries/get-game-state db)))
-    db
-    (let [obj (queries/get-object db object-id)
-          player-eid (queries/get-player-eid db player-id)]
-      (if-not (and obj
-                   player-eid
-                   (= (:object/zone obj) :battlefield)
-                   (= (:db/id (:object/controller obj)) player-eid))
-        db
-        (let [grants (or (:object/grants obj) [])
-              grant (first (filter #(= grant-id (:grant/id %)) grants))
-              ability (:grant/data grant)]
-          (if-not (and grant ability (= :mana (:ability/type ability)))
-            db
-            ;; Pay costs (sacrifice-self, etc.) — skip can-activate? tap check
-            (if-let [db-after-costs (abilities/pay-all-costs db object-id (:ability/cost ability))]
-              ;; Execute effects (add-mana)
-              (reduce (fn [db' effect]
-                        (effects/execute-effect db' player-id effect))
-                      db-after-costs
-                      (:ability/effects ability []))
-              db)))))))
-
+;; === Activate Granted Mana Ability (compat shim — views updated in Task 3) ===
+;;
+;; ::activate-granted-mana-ability is kept as a compat shim while the render layer
+;; still dispatches with (object-id grant-id). Task 3 will update the view to dispatch
+;; ::activate-mana-ability with an ability-ref {:source :grant :grant-id uuid} instead,
+;; at which point this handler can be removed.
 
 (rf/reg-event-db
   ::activate-granted-mana-ability
   (fn [db [_ object-id grant-id]]
     (let [game-db (:game/db db)
-          pid (queries/get-human-player-id game-db)]
-      (assoc db :game/db (activate-granted-mana-ability game-db pid object-id grant-id)))))
+          pid (queries/get-human-player-id game-db)
+          ability-ref {:source :grant :grant-id grant-id}
+          result (mana-ability/activate-mana-ability-with-generic-mana
+                   game-db pid object-id nil ability-ref)
+          game-db-after (:db result)
+          pending-sel (:pending-selection result)
+          description (descriptions/describe-activate-mana object-id nil game-db)
+          base (-> db
+                   (assoc :game/db game-db-after)
+                   (assoc :history/pending-entry
+                          (descriptions/build-pending-entry game-db-after ::activate-mana-ability description pid)))]
+      (if pending-sel
+        (sel-spec/set-pending-selection base pending-sel)
+        base))))

@@ -19,8 +19,9 @@
   (testing "open stores the mana-color the player chose in :selection/context"
     (let [db (th/create-test-db {:mana {:black 1}})
           [db obj-id] (th/add-card-to-zone db :chromatic-sphere :battlefield :player-1)
+          ability-ref {:source :card :index 0}
           result (mana-ability/open-mana-allocation-for-mana-ability
-                   db :player-1 obj-id :blue 0)
+                   db :player-1 obj-id :blue ability-ref)
           sel (:pending-selection result)]
       (is (some? sel)
           "Pending selection should be non-nil for a generic-cost ability")
@@ -33,13 +34,14 @@
   (testing "open stores all four required namespaced context keys"
     (let [db (th/create-test-db {:mana {:black 1}})
           [db obj-id] (th/add-card-to-zone db :chromatic-sphere :battlefield :player-1)
+          ability-ref {:source :card :index 0}
           result (mana-ability/open-mana-allocation-for-mana-ability
-                   db :player-1 obj-id :green 0)
+                   db :player-1 obj-id :green ability-ref)
           ctx (get-in result [:pending-selection :selection/context])]
       (is (= obj-id (:mana-ability/object-id ctx))
           "Context must contain :mana-ability/object-id")
-      (is (= 0 (:mana-ability/ability-index ctx))
-          "Context must contain :mana-ability/ability-index = 0")
+      (is (= ability-ref (:mana-ability/ability-ref ctx))
+          "Context must contain :mana-ability/ability-ref = {:source :card :index 0}")
       (is (= :green (:mana-ability/chosen-color ctx))
           "Context must contain :mana-ability/chosen-color = :green")
       (is (= 1 (:mana-ability/generic-count ctx))
@@ -53,8 +55,9 @@
           [db obj-id] (th/add-card-to-zone db :chromatic-sphere :battlefield :player-1)
           _ (is (= :battlefield (th/get-object-zone db obj-id))
                 "Precondition: Sphere is on battlefield")
+          ability-ref {:source :card :index 0}
           result (mana-ability/open-mana-allocation-for-mana-ability
-                   db :player-1 obj-id :red 0)
+                   db :player-1 obj-id :red ability-ref)
           db-after (:db result)]
       (is (= :graveyard (th/get-object-zone db-after obj-id))
           "Sphere must be in graveyard after non-mana costs paid (tap + sacrifice-self)")
@@ -67,8 +70,9 @@
   (testing "open returns nil pending-selection for a mana ability without generic cost"
     (let [db (th/create-test-db)
           [db obj-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-1)
+          ability-ref {:source :card :index 0}
           result (mana-ability/open-mana-allocation-for-mana-ability
-                   db :player-1 obj-id :blue 0)]
+                   db :player-1 obj-id :blue ability-ref)]
       (is (nil? (:pending-selection result))
           "No selection should open for a free (no generic cost) mana ability"))))
 
@@ -79,7 +83,7 @@
   ;; Catches: confirm blowing up or silently producing wrong state when context is incomplete.
   (testing "confirm returns db unchanged when required context keys are missing"
     (let [db (th/create-test-db {:mana {:black 1}})
-          ;; Build a selection with only chosen-color — missing object-id, ability-index, generic-count
+          ;; Build a selection with only chosen-color — missing object-id, ability-ref, generic-count
           incomplete-selection {:selection/player-id :player-1
                                 :selection/allocation {:black 1}
                                 :selection/original-cost {:colorless 1}
@@ -96,9 +100,10 @@
     (let [db (th/create-test-db {:mana {:black 1}})
           [db obj-id] (th/add-card-to-zone db :chromatic-sphere :battlefield :player-1)
           [db _] (th/add-cards-to-library db [:island :island :island] :player-1)
+          ability-ref {:source :card :index 0}
           ;; First call open to pay non-mana costs (tap + sac)
           open-result (mana-ability/open-mana-allocation-for-mana-ability
-                        db :player-1 obj-id :blue 0)
+                        db :player-1 obj-id :blue ability-ref)
           db-after-open (:db open-result)
           sel (:pending-selection open-result)
           ;; Simulate the player allocating :black toward the {1} generic cost
@@ -124,8 +129,9 @@
   (testing "activate-mana-ability-with-generic-mana opens selection for Chromatic Sphere"
     (let [db (th/create-test-db {:mana {:black 1}})
           [db obj-id] (th/add-card-to-zone db :chromatic-sphere :battlefield :player-1)
+          ability-ref {:source :card :index 0}
           result (mana-ability/activate-mana-ability-with-generic-mana
-                   db :player-1 obj-id :blue 0)]
+                   db :player-1 obj-id :blue ability-ref)]
       (is (some? (:pending-selection result))
           "Chromatic Sphere (generic cost) must route to selection, not direct engine")
       (is (= :mana-allocation (:selection/domain (:pending-selection result)))
@@ -140,8 +146,9 @@
           [db obj-id] (th/add-card-to-zone db :lotus-petal :battlefield :player-1)
           _ (is (= 0 (get (q/get-mana-pool db :player-1) :blue 0))
                 "Precondition: no blue mana in pool")
+          ability-ref {:source :card :index 0}
           result (mana-ability/activate-mana-ability-with-generic-mana
-                   db :player-1 obj-id :blue 0)
+                   db :player-1 obj-id :blue ability-ref)
           pool (q/get-mana-pool (:db result) :player-1)]
       (is (nil? (:pending-selection result))
           "Simple mana ability (no generic cost) must not open selection")

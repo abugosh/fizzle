@@ -7,12 +7,12 @@
     [fizzle.engine.creatures :as creatures]
     [fizzle.engine.effects :as fx]
     [fizzle.engine.grants :as grants]
+    [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.engine.objects :as objects]
     [fizzle.engine.spec-util :as spec-util]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.state-based :as sba]
     [fizzle.engine.zones :as zones]
-    [fizzle.events.abilities :as ability-events]
     [fizzle.test-helpers :as th]))
 
 
@@ -1970,7 +1970,7 @@
                   :effect/ability rain-of-filth-ability}
           db' (fx/execute-effect db :player-1 effect)
           grant-id (:grant/id (first (q/get-grants db' land-id)))
-          db'' (ability-events/activate-granted-mana-ability db' :player-1 land-id grant-id)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 land-id nil {:source :grant :grant-id grant-id})]
       ;; Land should be in graveyard (sacrificed)
       (is (= :graveyard (:object/zone (q/get-object db'' land-id))))
       ;; Mana pool should have black mana
@@ -1990,7 +1990,7 @@
                   :effect/ability rain-of-filth-ability}
           db' (fx/execute-effect db :player-1 effect)
           grant-id (:grant/id (first (q/get-grants db' land-id)))
-          db'' (ability-events/activate-granted-mana-ability db' :player-1 land-id grant-id)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 land-id nil {:source :grant :grant-id grant-id})]
       ;; Should work even though tapped
       (is (= :graveyard (:object/zone (q/get-object db'' land-id))))
       (is (= 1 (:black (q/get-mana-pool db'' :player-1)))))))
@@ -2007,7 +2007,7 @@
           db' (fx/execute-effect db :player-1 effect)
           ;; Activate granted ability on first land
           grant1-id (:grant/id (first (q/get-grants db' land1-id)))
-          db'' (ability-events/activate-granted-mana-ability db' :player-1 land1-id grant1-id)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 land1-id nil {:source :grant :grant-id grant1-id})]
       ;; First land in graveyard
       (is (= :graveyard (:object/zone (q/get-object db'' land1-id))))
       ;; Second land still on battlefield with its grant intact

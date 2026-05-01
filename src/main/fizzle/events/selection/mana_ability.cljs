@@ -8,9 +8,10 @@
    When a :mana-allocation selection is opened for a mana ability, the
    :selection/context map MUST carry all four namespaced keys:
 
-     :mana-ability/object-id     <UUID>    — source permanent (before sacrifice)
-     :mana-ability/ability-index <integer> — index into :card/abilities
-     :mana-ability/chosen-color  <keyword> — the color to ADD (:white :blue :black :red :green)
+     :mana-ability/object-id    <UUID>    — source permanent (before sacrifice)
+     :mana-ability/ability-ref  <map>     — ability-ref map {:source :card :index N}
+                                            or {:source :grant :grant-id uuid}
+     :mana-ability/chosen-color <keyword> — the color to ADD (:white :blue :black :red :green)
      :mana-ability/generic-count <integer> — N from :colorless N (for UI display and validation)
 
    Reason for namespaced keys: prevents collision with context from other source-types
@@ -19,7 +20,7 @@
    ## Dependency direction
 
    This module depends on:
-   - engine/mana-activation (execute-mana-ability-production-and-effects)
+   - engine/mana-activation (execute-mana-ability-production-and-effects, resolve-ability)
    - engine/mana (pay-mana-with-allocation)
    - engine/abilities (can-activate?, pay-all-costs)
    - db/queries (get-object, get-mana-pool)
@@ -77,7 +78,9 @@
    mana-ability source-type. The selection stashes everything the confirm
    executor needs to produce mana + run effects.
 
-   Pure: (db, player-id, object-id, mana-color, ability-index) -> {:db :pending-selection}
+   Pure: (db, player-id, object-id, mana-color, ability-ref) -> {:db :pending-selection}
+
+   ability-ref: {:source :card :index N} or {:source :grant :grant-id uuid}
 
    Returns:
      :db               — db with non-mana costs paid (tap, sacrifice-self, remove-counter, etc.)
@@ -85,12 +88,11 @@
                           and all four required :mana-ability/* context keys set.
                           nil if the ability has no generic cost (caller should delegate
                           to engine-mana directly in that case)."
-  [db player-id object-id mana-color ability-index]
+  [db player-id object-id mana-color ability-ref]
   (let [obj (q/get-object db object-id)
-        card (:object/card obj)
-        ability (nth (:card/abilities card) ability-index nil)]
-    ;; Guard: ability must exist and be a :mana type
-    (if-not (and ability (= :mana (:ability/type ability)))
+        ability (engine-mana/resolve-ability obj ability-ref)]
+    ;; Guard: ability must exist and be a :mana type (resolve-ability already checks)
+    (if-not ability
       {:db db :pending-selection nil}
       ;; Guard: can-activate? before paying any costs
       (if-not (abilities/can-activate? db object-id ability player-id)
@@ -126,9 +128,9 @@
                                                  :selection/source-type :mana-ability
                                                  :selection/context
                                                  {:mana-ability/object-id     object-id
-                                                  :mana-ability/ability-index  ability-index
-                                                  :mana-ability/chosen-color   mana-color
-                                                  :mana-ability/generic-count  generic})})))))))))))
+                                                  :mana-ability/ability-ref   ability-ref
+                                                  :mana-ability/chosen-color  mana-color
+                                                  :mana-ability/generic-count generic})})))))))))))
 
 
 (defn confirm-mana-ability-mana-allocation
@@ -136,7 +138,7 @@
    Called by execute-confirmed-selection :mana-allocation dispatch when
    source-type is :mana-ability.
 
-   Reads :selection/context to extract: object-id, ability-index, chosen-color.
+   Reads :selection/context to extract: object-id, ability-ref, chosen-color.
    Deducts allocated mana from pool via pay-mana-with-allocation, then calls
    execute-mana-ability-production-and-effects to add produced mana + run effects.
 
@@ -147,12 +149,12 @@
   [db selection]
   (let [ctx (:selection/context selection)
         object-id (:mana-ability/object-id ctx)
-        ability-index (:mana-ability/ability-index ctx)
+        ability-ref (:mana-ability/ability-ref ctx)
         chosen-color (:mana-ability/chosen-color ctx)
         generic-count (:mana-ability/generic-count ctx)]
     ;; Guard: all four context keys must be present — fail closed if any missing
     (if-not (and (some? object-id)
-                 (some? ability-index)
+                 (some? ability-ref)
                  (some? chosen-color)
                  (some? generic-count))
       {:db db}
@@ -162,13 +164,12 @@
             ;; Deduct the generic portion: pay-mana-with-allocation handles both
             ;; colored and colorless deductions (allocation covers the :colorless cost)
             db-after-mana (mana/pay-mana-with-allocation db player-id mana-cost allocation)
-            ;; Look up the ability from the object's card data.
+            ;; Look up the ability from the object.
             ;; Object may now be in graveyard after sacrifice — q/get-object works by UUID
             ;; regardless of zone, so this is safe.
             obj (q/get-object db-after-mana object-id)
-            card (:object/card obj)
-            ability (nth (:card/abilities card) ability-index nil)]
-        ;; Guard: ability must still be resolvable (card data is stable)
+            ability (engine-mana/resolve-ability obj ability-ref)]
+        ;; Guard: ability must still be resolvable
         (if-not ability
           {:db db}
           ;; Run production (add produced mana to pool) + ability effects (draw, etc.)
@@ -179,24 +180,22 @@
 (defn activate-mana-ability-with-generic-mana
   "Event-handler helper: detect generic cost and route.
 
-   If the ability at ability-index has a generic (:colorless) mana cost component:
+   If the ability identified by ability-ref has a generic (:colorless) mana cost component:
      → call open-mana-allocation-for-mana-ability to collect allocation.
    If not (simple ability like Mountain, Lotus Petal, basic lands):
-     → delegate directly to engine-mana/activate-mana-ability 5-arity (simple path).
+     → delegate directly to engine-mana/activate-mana-ability (simple path).
 
-   Pure: (db, player-id, object-id, mana-color, ability-index) -> {:db :pending-selection-or-nil}"
-  [db player-id object-id mana-color ability-index]
+   ability-ref: {:source :card :index N} or {:source :grant :grant-id uuid}
+
+   Pure: (db, player-id, object-id, mana-color, ability-ref) -> {:db :pending-selection-or-nil}"
+  [db player-id object-id mana-color ability-ref]
   (let [obj (q/get-object db object-id)
-        card (:object/card obj)
-        ability (when card
-                  (if ability-index
-                    (nth (:card/abilities card) ability-index nil)
-                    (first (filter #(= :mana (:ability/type %)) (:card/abilities card)))))
+        ability (engine-mana/resolve-ability obj ability-ref)
         mana-cost (:mana (:ability/cost ability))
         generic (get mana-cost :colorless 0)]
     (if (pos? generic)
       ;; Generic cost path: open mana-allocation selection
-      (open-mana-allocation-for-mana-ability db player-id object-id mana-color ability-index)
+      (open-mana-allocation-for-mana-ability db player-id object-id mana-color ability-ref)
       ;; Simple path: delegate to engine fn directly (no selection)
-      {:db (engine-mana/activate-mana-ability db player-id object-id mana-color ability-index)
+      {:db (engine-mana/activate-mana-ability db player-id object-id mana-color ability-ref)
        :pending-selection nil})))

@@ -80,11 +80,11 @@
 
 
 (deftest test-crystal-vein-tap-ability-0-by-explicit-index
-  ;; Engine contract: passing ability-index 0 is equivalent to color-based dispatch.
-  (testing "Activating ability 0 explicitly by index matches color-based dispatch"
+  ;; Engine contract: passing ability-ref {:source :card :index 0} explicitly selects ability 0.
+  (testing "Activating ability 0 explicitly by ability-ref matches color-based dispatch"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :crystal-vein :battlefield :player-1)
-          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id :colorless 0)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id :colorless {:source :card :index 0})]
       (is (= 1 (:colorless (q/get-mana-pool db'' :player-1)))
           "Ability 0 should produce 1 colorless")
       (is (= :battlefield (th/get-object-zone db'' obj-id))
@@ -100,7 +100,7 @@
           [db' obj-id] (th/add-card-to-zone db :crystal-vein :battlefield :player-1)
           _ (is (= 0 (:colorless (q/get-mana-pool db' :player-1)))
                 "Precondition: colorless mana is 0")
-          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id :colorless 1)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 obj-id :colorless {:source :card :index 1})]
       (is (= 2 (:colorless (q/get-mana-pool db'' :player-1)))
           "Colorless mana should be 2 after tap+sacrifice")
       (is (= :graveyard (th/get-object-zone db'' obj-id))
@@ -126,7 +126,7 @@
           [db' obj-id] (th/add-card-to-zone db :crystal-vein :battlefield :player-1)
           obj-eid (d/q '[:find ?e . :in $ ?oid :where [?e :object/id ?oid]] db' obj-id)
           db-tapped (d/db-with db' [[:db/add obj-eid :object/tapped true]])
-          db-after (engine-mana/activate-mana-ability db-tapped :player-1 obj-id :colorless 1)]
+          db-after (engine-mana/activate-mana-ability db-tapped :player-1 obj-id :colorless {:source :card :index 1})]
       (is (= 0 (:colorless (q/get-mana-pool db-after :player-1)))
           "No mana should be added when already tapped")
       (is (= :battlefield (th/get-object-zone db-after obj-id))
@@ -140,7 +140,7 @@
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :crystal-vein :graveyard :player-1)
           db-a0 (engine-mana/activate-mana-ability db' :player-1 obj-id :colorless)
-          db-a1 (engine-mana/activate-mana-ability db' :player-1 obj-id :colorless 1)]
+          db-a1 (engine-mana/activate-mana-ability db' :player-1 obj-id :colorless {:source :card :index 1})]
       (is (= 0 (:colorless (q/get-mana-pool db-a0 :player-1)))
           "Ability 0 should not fire from graveyard")
       (is (= 0 (:colorless (q/get-mana-pool db-a1 :player-1)))
@@ -161,12 +161,12 @@
 ;; === F. Out-of-Range ability-index ===
 
 (deftest test-crystal-vein-out-of-range-ability-index-is-noop
-  ;; Engine contract: passing an ability-index that doesn't resolve to a mana
-  ;; ability leaves the db unchanged rather than silently firing the wrong one.
-  (testing "Passing out-of-range ability-index produces no mana and does not tap"
+  ;; Engine contract: passing an ability-ref with out-of-range index that doesn't resolve
+  ;; to a mana ability leaves the db unchanged rather than silently firing the wrong one.
+  (testing "Passing out-of-range ability-ref produces no mana and does not tap"
     (let [db (th/create-test-db)
           [db' obj-id] (th/add-card-to-zone db :crystal-vein :battlefield :player-1)
-          db-after (engine-mana/activate-mana-ability db' :player-1 obj-id :colorless 99)]
+          db-after (engine-mana/activate-mana-ability db' :player-1 obj-id :colorless {:source :card :index 99})]
       (is (= 0 (:colorless (q/get-mana-pool db-after :player-1)))
           "No mana should be added for out-of-range index")
       (is (false? (boolean (:object/tapped (q/get-object db-after obj-id))))

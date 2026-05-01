@@ -12,6 +12,7 @@
     [fizzle.cards.red.lightning-bolt]
     [fizzle.db.queries :as q]
     [fizzle.engine.grants :as grants]
+    [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.events.abilities :as abilities]
     [fizzle.events.casting :as casting]
     [fizzle.events.db-effect :as db-effect]
@@ -227,27 +228,29 @@
           "Should return unchanged db when land is already tapped"))))
 
 
-;; Test 11: activate-granted-mana-ability wrong zone returns unchanged
+;; Test 11: grant activation - wrong zone returns unchanged db
 (deftest activate-granted-mana-ability-wrong-zone
-  (testing "activate-granted-mana-ability with object not on battlefield returns db unchanged"
+  (testing "grant activation with object not on battlefield returns db unchanged"
     (let [db (h/create-test-db)
           [db' obj-id] (h/add-card-to-zone db :swamp :hand :player-1)
           grant-id (random-uuid)
-          result (abilities/activate-granted-mana-ability db' :player-1 obj-id grant-id)]
+          ability-ref {:source :grant :grant-id grant-id}
+          result (engine-mana/activate-mana-ability db' :player-1 obj-id nil ability-ref)]
       (is (= db' result)
           "Should return unchanged db when object is not on battlefield"))))
 
 
-;; Test 12: activate-granted-mana-ability in non-priority phase returns unchanged
+;; Test 12: grant activation - non-priority phase returns unchanged db
 (deftest activate-granted-mana-ability-not-priority
-  (testing "activate-granted-mana-ability returns db unchanged in non-priority phase"
+  (testing "grant activation returns db unchanged in non-priority phase"
     (let [db (h/create-test-db)
           [db' obj-id] (h/add-card-to-zone db :swamp :battlefield :player-1)
           ;; Set game phase to :untap (not a priority phase)
           game-eid (d/q '[:find ?e . :where [?e :game/id _]] db')
           db-untap (d/db-with db' [[:db/add game-eid :game/phase :untap]])
           grant-id (random-uuid)
-          result (abilities/activate-granted-mana-ability db-untap :player-1 obj-id grant-id)]
+          ability-ref {:source :grant :grant-id grant-id}
+          result (engine-mana/activate-mana-ability db-untap :player-1 obj-id nil ability-ref)]
       (is (= db-untap result)
           "Should return unchanged db in non-priority phase"))))
 

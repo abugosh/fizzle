@@ -17,8 +17,8 @@
     [fizzle.cards.black.rain-of-filth :as rain-of-filth]
     [fizzle.db.queries :as q]
     [fizzle.engine.grants :as grants]
+    [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.abilities :as ability-events]
     [fizzle.test-helpers :as th]))
 
 
@@ -119,7 +119,7 @@
       (is (= 1 (count (q/get-grants db' land-id))))
       ;; Activate the granted ability (should work despite being tapped)
       (let [grant-id (:grant/id (first (q/get-grants db' land-id)))
-            db'' (ability-events/activate-granted-mana-ability db' :player-1 land-id grant-id)]
+            db'' (engine-mana/activate-mana-ability db' :player-1 land-id nil {:source :grant :grant-id grant-id})]
         ;; Land should be sacrificed (in graveyard)
         (is (= :graveyard (th/get-object-zone db'' land-id)))
         ;; Should have produced black mana
@@ -133,7 +133,7 @@
           [db rof-id] (th/add-card-to-zone db :rain-of-filth :hand :player-1)
           db' (th/cast-and-resolve db :player-1 rof-id)
           grant-id (:grant/id (first (q/get-grants db' land-id)))
-          db'' (ability-events/activate-granted-mana-ability db' :player-1 land-id grant-id)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 land-id nil {:source :grant :grant-id grant-id})]
       (is (= :graveyard (th/get-object-zone db'' land-id)))
       (is (= 1 (:black (q/get-mana-pool db'' :player-1)))))))
 
@@ -148,7 +148,7 @@
           db' (th/cast-and-resolve db :player-1 rof-id)
           ;; Activate on first land
           grant1-id (:grant/id (first (q/get-grants db' land1-id)))
-          db'' (ability-events/activate-granted-mana-ability db' :player-1 land1-id grant1-id)]
+          db'' (engine-mana/activate-mana-ability db' :player-1 land1-id nil {:source :grant :grant-id grant1-id})]
       ;; First land sacrificed
       (is (= :graveyard (th/get-object-zone db'' land1-id)))
       ;; Other lands still on battlefield with grants
@@ -185,11 +185,11 @@
           _ (is (= 1 (:black (q/get-mana-pool db' :player-1))))
           ;; Sacrifice land 1
           grant1-id (:grant/id (first (q/get-grants db' land1-id)))
-          db'' (ability-events/activate-granted-mana-ability db' :player-1 land1-id grant1-id)
+          db'' (engine-mana/activate-mana-ability db' :player-1 land1-id nil {:source :grant :grant-id grant1-id})
           _ (is (= 2 (:black (q/get-mana-pool db'' :player-1))))
           ;; Sacrifice land 2
           grant2-id (:grant/id (first (q/get-grants db'' land2-id)))
-          db''' (ability-events/activate-granted-mana-ability db'' :player-1 land2-id grant2-id)]
+          db''' (engine-mana/activate-mana-ability db'' :player-1 land2-id nil {:source :grant :grant-id grant2-id})]
       ;; Should have 3 black mana total (1 remaining + 2 from sacrifices)
       (is (= 3 (:black (q/get-mana-pool db''' :player-1))))
       ;; Both lands in graveyard

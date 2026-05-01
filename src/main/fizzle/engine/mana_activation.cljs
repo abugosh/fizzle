@@ -93,31 +93,65 @@
 
 ;; === Main activation function ===
 
+;; === Ability resolution helpers ===
+
+(defn resolve-ability
+  "Resolve an ability map from an object using an ability-ref.
+
+   ability-ref shapes:
+     {:source :card :index N}        — resolves from :card/abilities at index N
+     {:source :grant :grant-id uuid} — resolves from :object/grants by :grant/id
+
+   Returns the ability map if found and it is a :mana type ability, else nil.
+   Returns nil for: out-of-bounds index, grant not found, non-:mana ability type."
+  [obj ability-ref]
+  (when (and obj ability-ref)
+    (let [source (:source ability-ref)]
+      (cond
+        (= :card source)
+        (let [idx (:index ability-ref)
+              candidate (nth (get-in obj [:object/card :card/abilities]) idx nil)]
+          (when (= :mana (:ability/type candidate))
+            candidate))
+
+        (= :grant source)
+        (let [grant-id (:grant-id ability-ref)
+              grants (or (:object/grants obj) [])
+              grant (first (filter #(= grant-id (:grant/id %)) grants))
+              ability (:grant/data grant)]
+          (when (= :mana (:ability/type ability))
+            ability))
+
+        :else nil))))
+
+
+;; === Main activation function ===
+
 (defn activate-mana-ability
   "Activate a mana ability on a permanent.
-   Pure function: (db, player-id, object-id, mana-color[, ability-index[, allocation]]) -> db
+   Pure function: (db, player-id, object-id, mana-color[, ability-ref[, allocation]]) -> db
 
    Arguments:
-     db           - Datascript database value
-     player-id    - The player activating the ability
-     object-id    - The permanent to activate
-     mana-color   - The color of mana to produce (:white :blue :black :red :green :colorless)
-     ability-index - (optional) Index into :card/abilities of the mana ability to
-                     activate. Required when a permanent has multiple mana abilities
-                     producing the same color (e.g. Crystal Vein). When omitted,
-                     falls back to color-based lookup.
-     allocation   - (optional) Map {:color amount} covering the GENERIC portion of the
-                    ability's mana cost. Required when the ability has a generic (:colorless)
-                    mana cost component. Ignored for abilities without generic cost.
-                    Example: {:black 1} to spend 1 black covering a {1} generic cost.
-                    The allocation is NOT via pay-cost :mana — it is deducted directly,
-                    so the caller (or events layer) must have already verified the pool.
+     db          - Datascript database value
+     player-id   - The player activating the ability
+     object-id   - The permanent to activate
+     mana-color  - The color of mana to produce (:white :blue :black :red :green :colorless)
+     ability-ref - (optional) Map identifying which ability to activate:
+                     {:source :card :index N}        — from :card/abilities at index N
+                     {:source :grant :grant-id uuid} — from :object/grants by :grant/id
+                   When nil, falls back to color-based lookup (bot path).
+     allocation  - (optional) Map {:color amount} covering the GENERIC portion of the
+                   ability's mana cost. Required when the ability has a generic (:colorless)
+                   mana cost component. Ignored for abilities without generic cost.
+                   Example: {:black 1} to spend 1 black covering a {1} generic cost.
+                   The allocation is NOT via pay-cost :mana — it is deducted directly,
+                   so the caller (or events layer) must have already verified the pool.
 
    Flow:
      1. Priority-phase guard
      2. Controller and zone guards
-     3. Find mana ability from card data (with override grant support)
-     4. can-activate? check
+     3. Resolve ability from ability-ref (card or grant) or color-based fallback
+     4. can-activate? check (applied to ALL paths including grants)
      5. Allocation validation (if generic cost present)
      6. Deduct generic allocation from pool (if valid)
      7. Pay non-generic costs via pay-all-costs (tap, sacrifice-self, remove-counter,
@@ -129,12 +163,12 @@
 
    Returns unchanged db if any step fails (fail closed — no silent wrong-state)."
   ([db player-id object-id mana-color]
-   ;; Guard: delegate to 6-arity with no ability-index and no allocation
+   ;; Guard: delegate to 6-arity with no ability-ref and no allocation (bot path)
    (activate-mana-ability db player-id object-id mana-color nil nil))
-  ([db player-id object-id mana-color ability-index]
+  ([db player-id object-id mana-color ability-ref]
    ;; Guard: delegate to 6-arity with no allocation
-   (activate-mana-ability db player-id object-id mana-color ability-index nil))
-  ([db player-id object-id mana-color ability-index allocation]
+   (activate-mana-ability db player-id object-id mana-color ability-ref nil))
+  ([db player-id object-id mana-color ability-ref allocation]
    ;; Guard: must be in a priority phase
    (if-not (priority/in-priority-phase? (:game/phase (q/get-game-state db)))
      db
@@ -146,18 +180,18 @@
                 player-eid
                 (= (:object/zone obj) :battlefield)
                 (= (:db/id (:object/controller obj)) player-eid))
-         ;; Find mana ability from card data (with override grant support)
-         (let [card (:object/card obj)
+         ;; Resolve ability based on ability-ref source
+         (let [;; For :card source or nil ability-ref: apply :land-type-override grants
+               ;; For :grant source: skip override (grant has its own effects)
+               grant-source? (= :grant (:source ability-ref))
+               card (:object/card obj)
                card-abilities (:card/abilities card)
                ;; Check for :land-type-override grants — applies when Vision Charm
                ;; or similar effects change what a land produces until EOT.
-               ;; If present, replace each mana ability's :ability/effects with a
-               ;; single :add-mana effect for the new-produces value.
-               ;; Note: this replaces the entire effects vector, which is correct
-               ;; because :land-type-override means "change what this land produces"
-               ;; and basic lands (the primary target) have no other effects.
-               override-grants (filterv #(= :land-type-override (:grant/type %))
-                                        (or (:object/grants obj) []))
+               ;; Skip override logic for grant-source activations.
+               override-grants (when-not grant-source?
+                                 (filterv #(= :land-type-override (:grant/type %))
+                                          (or (:object/grants obj) [])))
                effective-abilities (if (seq override-grants)
                                      (let [override (first override-grants)
                                            new-produces (get-in override [:grant/data :new-produces])]
@@ -168,43 +202,49 @@
                                                  ability))
                                              card-abilities))
                                      card-abilities)
-               ;; When ability-index is provided, resolve it against :card/abilities
-               ;; and verify the entry is a mana ability. Otherwise fall back to
-               ;; color-based lookup over the mana-ability-only subset.
-               indexed-ability (when ability-index
-                                 (let [candidate (nth effective-abilities ability-index nil)]
-                                   (when (= :mana (:ability/type candidate))
-                                     candidate)))
-               all-mana-abilities (filter #(= :mana (:ability/type %)) effective-abilities)
-               ;; Find mana ability that produces the requested color
-               ;; Reads :ability/effects exclusively — :ability/produces has been removed.
-               ;; Handles multiple patterns via :add-mana effects:
-               ;; 1. {:add-mana {:blue 1}} - direct color match
-               ;; 2. {:add-mana {:any 1}} - any color (Gemstone Mine, Lotus Petal, Mox Diamond)
-               ;; 3. {:add-mana {:any N}} - any color N mana (City of Brass, LED)
-               ;; If mana-color is nil or no match found, fall back to first mana ability
-               matching-ability (when (and (nil? indexed-ability) mana-color)
-                                  (first (filter
-                                           (fn [ability]
-                                             (let [effects (:ability/effects ability)
-                                                   ;; Check if any :add-mana effect matches the requested color
-                                                   has-color-mana-effect? (some #(and (= :add-mana (:effect/type %))
-                                                                                      (contains? (:effect/mana %) mana-color))
-                                                                                effects)
-                                                   ;; Check if any :add-mana effect produces any color
-                                                   has-any-mana-effect? (some #(and (= :add-mana (:effect/type %))
-                                                                                    (contains? (:effect/mana %) :any))
-                                                                              effects)]
-                                               (or has-color-mana-effect? has-any-mana-effect?)))
-                                           all-mana-abilities)))
-               ;; Priority: explicit index > color match > first mana ability.
-               ;; If ability-index was provided but didn't resolve to a mana
-               ;; ability, leave mana-ability nil so the call becomes a no-op
-               ;; rather than silently firing the wrong ability.
+               ;; Resolve the ability to activate
                mana-ability (cond
-                              indexed-ability indexed-ability
-                              ability-index nil
-                              :else (or matching-ability (first all-mana-abilities)))]
+                              ;; Grant source: resolve from :object/grants directly
+                              grant-source?
+                              (let [grant-id (:grant-id ability-ref)
+                                    grants (or (:object/grants obj) [])
+                                    grant (first (filter #(= grant-id (:grant/id %)) grants))
+                                    ability (:grant/data grant)]
+                                (when (= :mana (:ability/type ability))
+                                  ability))
+
+                              ;; Card source with explicit index
+                              (= :card (:source ability-ref))
+                              (let [idx (:index ability-ref)
+                                    candidate (nth effective-abilities idx nil)]
+                                (when (= :mana (:ability/type candidate))
+                                  candidate))
+
+                              ;; No ability-ref: color-based lookup (bot path)
+                              :else
+                              (let [all-mana-abilities (filter #(= :mana (:ability/type %)) effective-abilities)
+                                    ;; Find mana ability that produces the requested color
+                                    ;; Reads :ability/effects exclusively — :ability/produces has been removed.
+                                    ;; Handles multiple patterns via :add-mana effects:
+                                    ;; 1. {:add-mana {:blue 1}} - direct color match
+                                    ;; 2. {:add-mana {:any 1}} - any color (Gemstone Mine, Lotus Petal, Mox Diamond)
+                                    ;; 3. {:add-mana {:any N}} - any color N mana (City of Brass, LED)
+                                    ;; If mana-color is nil or no match found, fall back to first mana ability
+                                    matching-ability (when mana-color
+                                                       (first (filter
+                                                                (fn [ability]
+                                                                  (let [effects (:ability/effects ability)
+                                                                        ;; Check if any :add-mana effect matches the requested color
+                                                                        has-color-mana-effect? (some #(and (= :add-mana (:effect/type %))
+                                                                                                           (contains? (:effect/mana %) mana-color))
+                                                                                                     effects)
+                                                                        ;; Check if any :add-mana effect produces any color
+                                                                        has-any-mana-effect? (some #(and (= :add-mana (:effect/type %))
+                                                                                                         (contains? (:effect/mana %) :any))
+                                                                                                   effects)]
+                                                                    (or has-color-mana-effect? has-any-mana-effect?)))
+                                                                all-mana-abilities)))]
+                                (or matching-ability (first all-mana-abilities))))]
            (if (and mana-ability
                     (abilities/can-activate? db object-id mana-ability))
              ;; Execute ability — allocation-aware path
