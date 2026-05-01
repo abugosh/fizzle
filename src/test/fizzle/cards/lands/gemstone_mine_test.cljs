@@ -51,8 +51,6 @@
           "Should have exactly one ability")
       (let [ability (first abilities)]
         (is (= :mana (:ability/type ability)))
-        (is (= {:any 1} (:ability/produces ability))
-            "Should produce 1 mana of any color")
         (is (true? (get-in ability [:ability/cost :tap]))
             "Should require tap")
         (is (= {:mining 1} (get-in ability [:ability/cost :remove-counter]))
@@ -61,9 +59,12 @@
   (testing "Sacrifice condition on ability"
     (let [ability (first (:card/abilities gemstone-mine/card))
           effects (:ability/effects ability)]
-      (is (= 1 (count effects))
-          "Ability should have one conditional effect")
-      (let [effect (first effects)]
+      (is (= 2 (count effects))
+          "Ability should have :add-mana effect plus one conditional sacrifice effect")
+      (is (= {:effect/type :add-mana :effect/mana {:any 1}}
+             (first effects))
+          "First effect should be :add-mana {:any 1}")
+      (let [effect (second effects)]
         (is (= :sacrifice (:effect/type effect)))
         (is (= :self (:effect/target effect)))
         (is (= :no-counters (get-in effect [:effect/condition :condition/type])))

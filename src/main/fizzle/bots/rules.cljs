@@ -71,7 +71,9 @@
               (and (not (:object/tapped obj))
                    (some (fn [ability]
                            (and (= :mana (:ability/type ability))
-                                (get (:ability/produces ability) color)))
+                                (some #(and (= :add-mana (:effect/type %))
+                                            (contains? (:effect/mana %) color))
+                                      (:ability/effects ability))))
                          (get-in obj [:object/card :card/abilities]))))
             battlefield))))
 

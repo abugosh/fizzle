@@ -34,8 +34,7 @@
    Each entry is a map {:ability-index :color :amount :sac?}. Multiple mana
    abilities that produce the same color get separate entries (e.g. Crystal
    Vein's tap-for-{C} and tap+sac-for-{C}{C}). Abilities that produce
-   {:any N} — whether via :ability/produces or an :add-mana effect — expand
-   into one entry per color (W/U/B/R/G).
+   {:any N} via an :add-mana effect expand into one entry per color (W/U/B/R/G).
 
    The UI uses these to render distinguishable buttons and to dispatch
    activation with an explicit ability-index, which is required when two
@@ -48,12 +47,11 @@
     (vec
       (mapcat
         (fn [[idx ability]]
-          (let [produces (:ability/produces ability)
-                effect-mana (->> (:ability/effects ability)
-                                 (filter #(= :add-mana (:effect/type %)))
-                                 first
-                                 :effect/mana)
-                mana-map (or produces effect-mana {})
+          (let [mana-map (or (->> (:ability/effects ability)
+                                  (filter #(= :add-mana (:effect/type %)))
+                                  first
+                                  :effect/mana)
+                             {})
                 sac? (boolean (get-in ability [:ability/cost :sacrifice-self]))]
             (if (contains? mana-map :any)
               (let [amount (:any mana-map)]
@@ -105,8 +103,11 @@
 (defn- granted-ability-button
   [object-id grant]
   (let [ability (:grant/data grant)
-        produces (:ability/produces ability)
-        color (first (keys produces))
+        mana-map (->> (:ability/effects ability)
+                      (filter #(= :add-mana (:effect/type %)))
+                      first
+                      :effect/mana)
+        color (first (keys mana-map))
         symbol (get mana-symbols color (name color))]
     [:button {:class "py-0.5 px-1.5 mx-0.5 border border-amber-500 rounded text-[11px] font-bold cursor-pointer bg-amber-100 text-amber-800"
               :on-click #(rf/dispatch [::ability-events/activate-granted-mana-ability

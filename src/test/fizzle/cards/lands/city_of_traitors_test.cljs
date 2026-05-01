@@ -62,7 +62,8 @@
       (let [ability (first abilities)]
         (is (= :mana (:ability/type ability)))
         (is (true? (get-in ability [:ability/cost :tap])))
-        (is (= {:colorless 2} (:ability/produces ability)))))))
+        (is (= [{:effect/type :add-mana :effect/mana {:colorless 2}}]
+               (:ability/effects ability)))))))
 
 
 ;; === Mana production tests ===

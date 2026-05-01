@@ -58,8 +58,9 @@
             "Ability type should be :mana")
         (is (true? (get-in ability [:ability/cost :tap]))
             "Cost should include tap")
-        (is (= {:any 1} (:ability/produces ability))
-            "Should produce 1 mana of any color"))))
+        (is (= [{:effect/type :add-mana :effect/mana {:any 1}}]
+               (:ability/effects ability))
+            "Should produce 1 mana of any color via :add-mana effect"))))
 
   (testing "Mox Diamond has exactly one replacement effect"
     (let [card mox/card

@@ -65,7 +65,9 @@
                                        (fn [obj]
                                          (some (fn [ability]
                                                  (and (= :mana (:ability/type ability))
-                                                      (get (:ability/produces ability) color)))
+                                                      (some #(and (= :add-mana (:effect/type %))
+                                                                  (contains? (:effect/mana %) color))
+                                                            (:ability/effects ability))))
                                                (get-in obj [:object/card :card/abilities])))
                                        amount)]
                            (doseq [obj lands]
@@ -87,7 +89,10 @@
         (into colored-taps (map (fn [obj]
                                   (let [first-color (some (fn [ability]
                                                             (when (= :mana (:ability/type ability))
-                                                              (first (keys (:ability/produces ability)))))
+                                                              (first (keys (->> (:ability/effects ability)
+                                                                                (filter #(= :add-mana (:effect/type %)))
+                                                                                first
+                                                                                :effect/mana)))))
                                                           (get-in obj [:object/card :card/abilities]))]
                                     {:object-id (:object/id obj)
                                      :mana-color first-color})) generic-lands)))

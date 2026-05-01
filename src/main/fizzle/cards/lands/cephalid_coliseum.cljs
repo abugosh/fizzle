@@ -30,8 +30,9 @@
     ;; when the mana ability is activated, not when tapped by other effects.
     {:ability/type :mana
      :ability/cost {:tap true}
-     :ability/produces {:blue 1}
-     :ability/effects [{:effect/type :deal-damage
+     :ability/effects [{:effect/type :add-mana
+                        :effect/mana {:blue 1}}
+                       {:effect/type :deal-damage
                         :effect/amount 1
                         :effect/target :controller}]}
 

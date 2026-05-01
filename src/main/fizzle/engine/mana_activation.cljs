@@ -53,14 +53,14 @@
 ;; === Production and effects helper ===
 
 (defn execute-mana-ability-production-and-effects
-  "Resolve :ability/produces with the caller-supplied chosen color, add the
-   produced mana to the player's pool, then execute :ability/effects with
-   :self -> object-id and :controller -> player-id resolution.
+  "Execute :ability/effects with :self -> object-id and :controller -> player-id
+   resolution. :ability/effects is the single source of truth for mana production
+   (via :add-mana effects) and other ability effects (draw, deal-damage, sacrifice, etc.).
 
    Pure: db -> db.
 
-   chosen-color: keyword (e.g., :blue). For {:any 1} produces, resolves to
-   chosen-color. Currently implements single-color resolution only; future tasks
+   chosen-color: keyword (e.g., :blue). For {:any 1} :add-mana effects, resolves
+   to chosen-color. Currently implements single-color resolution only; future tasks
    may extend this helper to accept a sequence of colors for {:any N} (N > 1)
    by replacing the single keyword with a vector.
 
@@ -68,21 +68,10 @@
      db          - Datascript database value
      player-id   - Activating player (controller of the ability)
      object-id   - UUID of the source permanent
-     ability     - The ability map (must have :ability/produces and/or :ability/effects)
+     ability     - The ability map (must have :ability/effects)
      chosen-color - Keyword: the color chosen for {:any 1} resolution"
   [db player-id object-id ability chosen-color]
-  (let [;; Step 1: Handle :ability/produces (direct mana production)
-        ;; Resolve {:any N} to chosen color
-        produces (:ability/produces ability)
-        db-after-produces (if produces
-                            (let [resolved-mana (if-let [any-count (:any produces)]
-                                                  {chosen-color any-count}
-                                                  produces)]
-                              (effects/execute-effect db player-id
-                                                      {:effect/type :add-mana
-                                                       :effect/mana resolved-mana}))
-                            db)
-        ;; Step 2: Execute ability effects (mana and other effects)
+  (let [;; Execute ability effects (mana and other effects)
         ;; Resolve :self targets to object-id before execution
         ;; Resolve :controller targets to player-id before execution
         ;; Resolve {:any N} mana effects to chosen color
@@ -97,7 +86,7 @@
                                                                resolved-effect))
                                                            resolved-effect)]
                                      (effects/execute-effect db' player-id resolved-effect)))
-                                 db-after-produces
+                                 db
                                  (:ability/effects ability []))]
     db-after-effects))
 
@@ -162,8 +151,11 @@
                card-abilities (:card/abilities card)
                ;; Check for :land-type-override grants — applies when Vision Charm
                ;; or similar effects change what a land produces until EOT.
-               ;; If present, replace each mana ability's :ability/produces with
-               ;; the grant's :new-produces value.
+               ;; If present, replace each mana ability's :ability/effects with a
+               ;; single :add-mana effect for the new-produces value.
+               ;; Note: this replaces the entire effects vector, which is correct
+               ;; because :land-type-override means "change what this land produces"
+               ;; and basic lands (the primary target) have no other effects.
                override-grants (filterv #(= :land-type-override (:grant/type %))
                                         (or (:object/grants obj) []))
                effective-abilities (if (seq override-grants)
@@ -171,7 +163,8 @@
                                            new-produces (get-in override [:grant/data :new-produces])]
                                        (mapv (fn [ability]
                                                (if (= :mana (:ability/type ability))
-                                                 (assoc ability :ability/produces new-produces)
+                                                 (assoc ability :ability/effects [{:effect/type :add-mana
+                                                                                   :effect/mana new-produces}])
                                                  ability))
                                              card-abilities))
                                      card-abilities)
@@ -184,27 +177,25 @@
                                      candidate)))
                all-mana-abilities (filter #(= :mana (:ability/type %)) effective-abilities)
                ;; Find mana ability that produces the requested color
-               ;; Handles multiple patterns:
-               ;; 1. :ability/produces {:blue 1} - direct match
-               ;; 2. :ability/produces {:any 1} - any color (Gemstone Mine, Lotus Petal)
-               ;; 3. :ability/effects with :add-mana {:any N} - City of Brass, LED
+               ;; Reads :ability/effects exclusively — :ability/produces has been removed.
+               ;; Handles multiple patterns via :add-mana effects:
+               ;; 1. {:add-mana {:blue 1}} - direct color match
+               ;; 2. {:add-mana {:any 1}} - any color (Gemstone Mine, Lotus Petal, Mox Diamond)
+               ;; 3. {:add-mana {:any N}} - any color N mana (City of Brass, LED)
                ;; If mana-color is nil or no match found, fall back to first mana ability
                matching-ability (when (and (nil? indexed-ability) mana-color)
                                   (first (filter
                                            (fn [ability]
-                                             (let [produces (:ability/produces ability)
-                                                   effects (:ability/effects ability)
-                                                   ;; Check if any effect adds {:any N} mana
+                                             (let [effects (:ability/effects ability)
+                                                   ;; Check if any :add-mana effect matches the requested color
+                                                   has-color-mana-effect? (some #(and (= :add-mana (:effect/type %))
+                                                                                      (contains? (:effect/mana %) mana-color))
+                                                                                effects)
+                                                   ;; Check if any :add-mana effect produces any color
                                                    has-any-mana-effect? (some #(and (= :add-mana (:effect/type %))
                                                                                     (contains? (:effect/mana %) :any))
                                                                               effects)]
-                                               (or
-                                                 ;; Direct produces match
-                                                 (and produces (contains? produces mana-color))
-                                                 ;; Produces any color
-                                                 (and produces (contains? produces :any))
-                                                 ;; Effect adds any color
-                                                 has-any-mana-effect?)))
+                                               (or has-color-mana-effect? has-any-mana-effect?)))
                                            all-mana-abilities)))
                ;; Priority: explicit index > color match > first mana ability.
                ;; If ability-index was provided but didn't resolve to a mana

@@ -16,4 +16,5 @@
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true
                                     :sacrifice-self true}
-                     :ability/produces {:any 1}}]})
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:any 1}}]}]})

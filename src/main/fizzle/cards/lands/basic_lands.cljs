@@ -17,7 +17,8 @@
    :card/text "{T}: Add {W}."
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:white 1}}]})
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:white 1}}]}]})
 
 
 (def island
@@ -32,7 +33,8 @@
    :card/text "{T}: Add {U}."
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:blue 1}}]})
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:blue 1}}]}]})
 
 
 (def swamp
@@ -47,7 +49,8 @@
    :card/text "{T}: Add {B}."
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:black 1}}]})
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:black 1}}]}]})
 
 
 (def mountain
@@ -62,7 +65,8 @@
    :card/text "{T}: Add {R}."
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:red 1}}]})
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:red 1}}]}]})
 
 
 (def forest
@@ -77,7 +81,8 @@
    :card/text "{T}: Add {G}."
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:green 1}}]})
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:green 1}}]}]})
 
 
 (def cards

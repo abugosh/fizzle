@@ -1914,7 +1914,6 @@
 (def rain-of-filth-ability
   {:ability/type :mana
    :ability/cost {:sacrifice-self true}
-   :ability/produces {:black 1}
    :ability/effects [{:effect/type :add-mana
                       :effect/mana {:black 1}}]})
 

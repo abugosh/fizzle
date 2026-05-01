@@ -468,7 +468,6 @@
 (s/def :ability/effects ::effects)
 (s/def :ability/targeting ::targeting-vec)
 (s/def :ability/condition (s/keys :req [:condition/type]))
-(s/def :ability/produces ::mana-cost)
 (s/def :ability/name string?)
 (s/def :ability/description string?)
 
@@ -477,7 +476,7 @@
   (s/keys :req [:ability/type]
           :opt [:ability/cost :ability/effects
                 :ability/targeting :ability/condition
-                :ability/produces :ability/name
+                :ability/name
                 :ability/description]))
 
 

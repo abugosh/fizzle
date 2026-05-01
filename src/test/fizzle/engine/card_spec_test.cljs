@@ -140,8 +140,9 @@
                 :card/text "T: Add U."
                 :card/abilities [{:ability/type :mana
                                   :ability/cost {:tap true}
-                                  :ability/produces {:blue 1}
-                                  :ability/effects [{:effect/type :deal-damage
+                                  :ability/effects [{:effect/type :add-mana
+                                                     :effect/mana {:blue 1}}
+                                                    {:effect/type :deal-damage
                                                      :effect/amount 1
                                                      :effect/target :controller}]}]}]
       (is (= true (card-spec/valid-card? card))))))

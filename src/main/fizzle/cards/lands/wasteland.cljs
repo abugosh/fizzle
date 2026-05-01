@@ -23,7 +23,8 @@
    [;; Ability 0: {T}: Add {C}.
     {:ability/type :mana
      :ability/cost {:tap true}
-     :ability/produces {:colorless 1}}
+     :ability/effects [{:effect/type :add-mana
+                        :effect/mana {:colorless 1}}]}
 
     ;; Ability 1: {T}, Sacrifice this land: Destroy target nonbasic land.
     {:ability/type :activated

@@ -39,21 +39,23 @@
       ;; First ability: colorless, no damage
       (let [colorless-ability (first (:card/abilities card))]
         (is (= :mana (:ability/type colorless-ability)))
-        (is (= {:colorless 1} (:ability/produces colorless-ability)))
-        (is (nil? (:ability/effects colorless-ability))
-            "Colorless ability should have no pain effect"))
+        (is (= [{:effect/type :add-mana :effect/mana {:colorless 1}}]
+               (:ability/effects colorless-ability))
+            "Colorless ability should have only :add-mana effect"))
       ;; Second ability: color-a, deals damage
       (let [color-a-ability (second (:card/abilities card))]
         (is (= :mana (:ability/type color-a-ability)))
-        (is (= {color-a 1} (:ability/produces color-a-ability)))
-        (is (= 1 (count (:ability/effects color-a-ability))))
-        (is (= :deal-damage (:effect/type (first (:ability/effects color-a-ability))))))
+        (is (= 2 (count (:ability/effects color-a-ability))))
+        (is (= {:effect/type :add-mana :effect/mana {color-a 1}}
+               (first (:ability/effects color-a-ability))))
+        (is (= :deal-damage (:effect/type (second (:ability/effects color-a-ability))))))
       ;; Third ability: color-b, deals damage
       (let [color-b-ability (nth (:card/abilities card) 2)]
         (is (= :mana (:ability/type color-b-ability)))
-        (is (= {color-b 1} (:ability/produces color-b-ability)))
-        (is (= 1 (count (:ability/effects color-b-ability))))
-        (is (= :deal-damage (:effect/type (first (:ability/effects color-b-ability)))))))))
+        (is (= 2 (count (:ability/effects color-b-ability))))
+        (is (= {:effect/type :add-mana :effect/mana {color-b 1}}
+               (first (:ability/effects color-b-ability))))
+        (is (= :deal-damage (:effect/type (second (:ability/effects color-b-ability)))))))))
 
 
 (deftest pain-land-cards-vector-test

@@ -30,6 +30,7 @@
        :choice/label       "Sacrifice (go to graveyard)"
        :choice/redirect-to :graveyard}]}]
    :card/abilities
-   [{:ability/type     :mana
-     :ability/cost     {:tap true}
-     :ability/produces {:any 1}}]})
+   [{:ability/type :mana
+     :ability/cost {:tap true}
+     :ability/effects [{:effect/type :add-mana
+                        :effect/mana {:any 1}}]}]})

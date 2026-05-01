@@ -135,5 +135,6 @@
       (let [ability (first (:card/abilities card))]
         (is (= :mana (:ability/type ability))
             "Ability should be a mana ability")
-        (is (= {:any 1} (:ability/produces ability))
-            "Should produce 1 mana of any color")))))
+        (is (= [{:effect/type :add-mana :effect/mana {:any 1}}]
+               (:ability/effects ability))
+            "Should produce 1 mana of any color via :add-mana effect")))))

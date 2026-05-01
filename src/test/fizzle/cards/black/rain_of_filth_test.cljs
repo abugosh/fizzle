@@ -43,7 +43,8 @@
         (let [ability (:effect/ability effect)]
           (is (= :mana (:ability/type ability)))
           (is (= {:sacrifice-self true} (:ability/cost ability)))
-          (is (= {:black 1} (:ability/produces ability))))))))
+          (is (= [{:effect/type :add-mana :effect/mana {:black 1}}]
+                 (:ability/effects ability))))))))
 
 
 ;; === B. Cast-Resolve Happy Path ===
@@ -62,7 +63,8 @@
         (is (= 1 (count land2-grants)))
         (is (= :ability (:grant/type (first land1-grants))))
         (is (= :mana (:ability/type (:grant/data (first land1-grants)))))
-        (is (= {:black 1} (:ability/produces (:grant/data (first land1-grants)))))))))
+        (is (= [{:effect/type :add-mana :effect/mana {:black 1}}]
+               (:ability/effects (:grant/data (first land1-grants)))))))))
 
 
 ;; === C. Cannot-Cast Guards ===

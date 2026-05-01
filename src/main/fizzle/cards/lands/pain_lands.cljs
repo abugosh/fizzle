@@ -15,17 +15,20 @@
    :card/text "{T}: Add {C}. {T}: Add {W} or {U}. This land deals 1 damage to you."
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:colorless 1}}
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:colorless 1}}]}
                     {:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:white 1}
-                     :ability/effects [{:effect/type :deal-damage
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:white 1}}
+                                       {:effect/type :deal-damage
                                         :effect/amount 1
                                         :effect/target :controller}]}
                     {:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:blue 1}
-                     :ability/effects [{:effect/type :deal-damage
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:blue 1}}
+                                       {:effect/type :deal-damage
                                         :effect/amount 1
                                         :effect/target :controller}]}]})
 
@@ -40,17 +43,20 @@
    :card/text "{T}: Add {C}. {T}: Add {R} or {W}. This land deals 1 damage to you."
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:colorless 1}}
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:colorless 1}}]}
                     {:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:red 1}
-                     :ability/effects [{:effect/type :deal-damage
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:red 1}}
+                                       {:effect/type :deal-damage
                                         :effect/amount 1
                                         :effect/target :controller}]}
                     {:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:white 1}
-                     :ability/effects [{:effect/type :deal-damage
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:white 1}}
+                                       {:effect/type :deal-damage
                                         :effect/amount 1
                                         :effect/target :controller}]}]})
 
@@ -65,17 +71,20 @@
    :card/text "{T}: Add {C}. {T}: Add {G} or {W}. This land deals 1 damage to you."
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:colorless 1}}
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:colorless 1}}]}
                     {:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:green 1}
-                     :ability/effects [{:effect/type :deal-damage
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:green 1}}
+                                       {:effect/type :deal-damage
                                         :effect/amount 1
                                         :effect/target :controller}]}
                     {:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:white 1}
-                     :ability/effects [{:effect/type :deal-damage
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:white 1}}
+                                       {:effect/type :deal-damage
                                         :effect/amount 1
                                         :effect/target :controller}]}]})
 
@@ -90,17 +99,20 @@
    :card/text "{T}: Add {C}. {T}: Add {W} or {B}. This land deals 1 damage to you."
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:colorless 1}}
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:colorless 1}}]}
                     {:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:white 1}
-                     :ability/effects [{:effect/type :deal-damage
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:white 1}}
+                                       {:effect/type :deal-damage
                                         :effect/amount 1
                                         :effect/target :controller}]}
                     {:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:black 1}
-                     :ability/effects [{:effect/type :deal-damage
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:black 1}}
+                                       {:effect/type :deal-damage
                                         :effect/amount 1
                                         :effect/target :controller}]}]})
 
@@ -115,17 +127,20 @@
    :card/text "{T}: Add {C}. {T}: Add {R} or {G}. This land deals 1 damage to you."
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:colorless 1}}
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:colorless 1}}]}
                     {:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:red 1}
-                     :ability/effects [{:effect/type :deal-damage
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:red 1}}
+                                       {:effect/type :deal-damage
                                         :effect/amount 1
                                         :effect/target :controller}]}
                     {:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:green 1}
-                     :ability/effects [{:effect/type :deal-damage
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:green 1}}
+                                       {:effect/type :deal-damage
                                         :effect/amount 1
                                         :effect/target :controller}]}]})
 
@@ -140,17 +155,20 @@
    :card/text "{T}: Add {C}. {T}: Add {B} or {G}. This land deals 1 damage to you."
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:colorless 1}}
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:colorless 1}}]}
                     {:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:black 1}
-                     :ability/effects [{:effect/type :deal-damage
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:black 1}}
+                                       {:effect/type :deal-damage
                                         :effect/amount 1
                                         :effect/target :controller}]}
                     {:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:green 1}
-                     :ability/effects [{:effect/type :deal-damage
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:green 1}}
+                                       {:effect/type :deal-damage
                                         :effect/amount 1
                                         :effect/target :controller}]}]})
 
@@ -165,17 +183,20 @@
    :card/text "{T}: Add {C}. {T}: Add {U} or {R}. This land deals 1 damage to you."
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:colorless 1}}
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:colorless 1}}]}
                     {:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:blue 1}
-                     :ability/effects [{:effect/type :deal-damage
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:blue 1}}
+                                       {:effect/type :deal-damage
                                         :effect/amount 1
                                         :effect/target :controller}]}
                     {:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:red 1}
-                     :ability/effects [{:effect/type :deal-damage
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:red 1}}
+                                       {:effect/type :deal-damage
                                         :effect/amount 1
                                         :effect/target :controller}]}]})
 
@@ -190,17 +211,20 @@
    :card/text "{T}: Add {C}. {T}: Add {B} or {R}. This land deals 1 damage to you."
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:colorless 1}}
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:colorless 1}}]}
                     {:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:black 1}
-                     :ability/effects [{:effect/type :deal-damage
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:black 1}}
+                                       {:effect/type :deal-damage
                                         :effect/amount 1
                                         :effect/target :controller}]}
                     {:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:red 1}
-                     :ability/effects [{:effect/type :deal-damage
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:red 1}}
+                                       {:effect/type :deal-damage
                                         :effect/amount 1
                                         :effect/target :controller}]}]})
 
@@ -215,17 +239,20 @@
    :card/text "{T}: Add {C}. {T}: Add {U} or {B}. This land deals 1 damage to you."
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:colorless 1}}
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:colorless 1}}]}
                     {:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:blue 1}
-                     :ability/effects [{:effect/type :deal-damage
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:blue 1}}
+                                       {:effect/type :deal-damage
                                         :effect/amount 1
                                         :effect/target :controller}]}
                     {:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:black 1}
-                     :ability/effects [{:effect/type :deal-damage
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:black 1}}
+                                       {:effect/type :deal-damage
                                         :effect/amount 1
                                         :effect/target :controller}]}]})
 
@@ -240,17 +267,20 @@
    :card/text "{T}: Add {C}. {T}: Add {G} or {U}. This land deals 1 damage to you."
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:colorless 1}}
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:colorless 1}}]}
                     {:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:green 1}
-                     :ability/effects [{:effect/type :deal-damage
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:green 1}}
+                                       {:effect/type :deal-damage
                                         :effect/amount 1
                                         :effect/target :controller}]}
                     {:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:blue 1}
-                     :ability/effects [{:effect/type :deal-damage
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:blue 1}}
+                                       {:effect/type :deal-damage
                                         :effect/amount 1
                                         :effect/target :controller}]}]})
 

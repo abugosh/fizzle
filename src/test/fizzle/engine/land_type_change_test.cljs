@@ -331,10 +331,12 @@
                               :card/text "{T}: Add {U} or {B}."
                               :card/abilities [{:ability/type :mana
                                                 :ability/cost {:tap true}
-                                                :ability/produces {:blue 1}}
+                                                :ability/effects [{:effect/type :add-mana
+                                                                   :effect/mana {:blue 1}}]}
                                                {:ability/type :mana
                                                 :ability/cost {:tap true}
-                                                :ability/produces {:black 1}}]}])
+                                                :ability/effects [{:effect/type :add-mana
+                                                                   :effect/mana {:black 1}}]}]}])
         card-eid (d/q '[:find ?e . :in $ ?cid :where [?e :card/id ?cid]] @conn card-id)
         obj-id (random-uuid)
         _ (d/transact! conn [{:object/id obj-id

@@ -26,10 +26,12 @@
    [;; Ability 0: {T}: Add {C}.
     {:ability/type :mana
      :ability/cost {:tap true}
-     :ability/produces {:colorless 1}}
+     :ability/effects [{:effect/type :add-mana
+                        :effect/mana {:colorless 1}}]}
 
     ;; Ability 1: {T}, Sacrifice Crystal Vein: Add {C}{C}.
     {:ability/type :mana
      :ability/cost {:tap true
                     :sacrifice-self true}
-     :ability/produces {:colorless 2}}]})
+     :ability/effects [{:effect/type :add-mana
+                        :effect/mana {:colorless 2}}]}]})

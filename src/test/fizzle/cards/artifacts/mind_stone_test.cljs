@@ -56,8 +56,9 @@
           "Ability 0 should be a :mana ability (no stack)")
       (is (= {:tap true} (:ability/cost a0))
           "Ability 0 cost is exactly {:tap true}")
-      (is (= {:colorless 1} (:ability/produces a0))
-          "Ability 0 produces exactly 1 colorless")))
+      (is (= [{:effect/type :add-mana :effect/mana {:colorless 1}}]
+             (:ability/effects a0))
+          "Ability 0 produces exactly 1 colorless via :add-mana effect")))
 
   (testing "Ability 1: {1}, {T}, Sacrifice Mind Stone: Draw a card."
     (let [a1 (second (:card/abilities mind-stone/card))]

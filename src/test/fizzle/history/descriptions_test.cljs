@@ -82,7 +82,8 @@
    :card/types #{:land}
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:black 1}}]})
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:black 1}}]}]})
 
 
 (def ^:private test-multi-ability-land
@@ -94,7 +95,8 @@
    :card/types #{:land}
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:blue 1}}
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:blue 1}}]}
                     {:ability/type :activated
                      :ability/name "Threshold"
                      :ability/description "Target player draws 3, discards 3"
@@ -587,7 +589,8 @@
                                       :card/types #{:land}
                                       :card/abilities [{:ability/type :mana
                                                         :ability/cost {:tap true}
-                                                        :ability/produces {:colorless 1}}]})
+                                                        :ability/effects [{:effect/type :add-mana
+                                                                           :effect/mana {:colorless 1}}]}]})
           [db obj-id] (add-object db card-eid :battlefield)]
       (is (= "Tap City of Brass for B"
              (descriptions/describe-event

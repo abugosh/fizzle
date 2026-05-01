@@ -64,11 +64,10 @@
               :sacrifice-self true}
              (:ability/cost a0))
           "Ability cost should be {:mana {:colorless 1} :tap true :sacrifice-self true}")
-      (is (= {:any 1} (:ability/produces a0))
-          "Ability produces {:any 1} — caller chooses color at activation time")
-      (is (= [{:effect/type :draw :effect/amount 1}]
+      (is (= [{:effect/type :add-mana :effect/mana {:any 1}}
+              {:effect/type :draw :effect/amount 1}]
              (:ability/effects a0))
-          "Ability effects should have exactly one :draw 1 effect"))))
+          "Ability effects should have :add-mana {:any 1} then :draw 1"))))
 
 
 ;; =====================================================

@@ -98,8 +98,11 @@
         (let [ability-cost (:ability/cost ability)
               mana-cost (:mana ability-cost)
               generic (get mana-cost :colorless 0)]
-          ;; Guard: mana-color must be non-nil when ability has {:any N} produces
-          (if (and (nil? mana-color) (contains? (:ability/produces ability) :any))
+          ;; Guard: mana-color must be non-nil when ability has {:any N} :add-mana effect
+          (if (and (nil? mana-color)
+                   (some #(and (= :add-mana (:effect/type %))
+                               (contains? (:effect/mana %) :any))
+                         (:ability/effects ability)))
             {:db db :pending-selection nil}
             ;; Short-circuit: no generic cost — caller should use simple engine path
             (if-not (pos? generic)

@@ -26,21 +26,23 @@
 ;; === get-mana-ability-buttons ===
 
 (deftest get-mana-ability-buttons-single-produces
-  (testing "permanent with :ability/produces {:black 1} returns one button at index 0"
+  (testing "permanent with :add-mana {:black 1} effect returns one button at index 0"
     (let [obj {:object/card
                {:card/abilities [{:ability/type :mana
                                   :ability/cost {:tap true}
-                                  :ability/produces {:black 1}}]}}]
+                                  :ability/effects [{:effect/type :add-mana
+                                                     :effect/mana {:black 1}}]}]}}]
       (is (= [{:ability-index 0 :color :black :amount 1 :sac? false}]
              (battlefield/get-mana-ability-buttons obj))))))
 
 
 (deftest get-mana-ability-buttons-any-mana
-  (testing "permanent with :any 1 expands into five buttons sharing the same index"
+  (testing "permanent with :add-mana {:any 1} effect expands into five buttons sharing the same index"
     (let [obj {:object/card
                {:card/abilities [{:ability/type :mana
                                   :ability/cost {:tap true :sacrifice-self true}
-                                  :ability/produces {:any 1}}]}}]
+                                  :ability/effects [{:effect/type :add-mana
+                                                     :effect/mana {:any 1}}]}]}}]
       (is (= [{:ability-index 0 :color :white :amount 1 :sac? true}
               {:ability-index 0 :color :blue :amount 1 :sac? true}
               {:ability-index 0 :color :black :amount 1 :sac? true}
@@ -82,10 +84,12 @@
     (let [obj {:object/card
                {:card/abilities [{:ability/type :mana
                                   :ability/cost {:tap true}
-                                  :ability/produces {:colorless 1}}
+                                  :ability/effects [{:effect/type :add-mana
+                                                     :effect/mana {:colorless 1}}]}
                                  {:ability/type :mana
                                   :ability/cost {:tap true :sacrifice-self true}
-                                  :ability/produces {:colorless 2}}]}}]
+                                  :ability/effects [{:effect/type :add-mana
+                                                     :effect/mana {:colorless 2}}]}]}}]
       (is (= [{:ability-index 0 :color :colorless :amount 1 :sac? false}
               {:ability-index 1 :color :colorless :amount 2 :sac? true}]
              (battlefield/get-mana-ability-buttons obj))))))
@@ -97,13 +101,16 @@
     (let [obj {:object/card
                {:card/abilities [{:ability/type :mana
                                   :ability/cost {:tap true}
-                                  :ability/produces {:colorless 1}}
+                                  :ability/effects [{:effect/type :add-mana
+                                                     :effect/mana {:colorless 1}}]}
                                  {:ability/type :mana
                                   :ability/cost {:tap true}
-                                  :ability/produces {:white 1}}
+                                  :ability/effects [{:effect/type :add-mana
+                                                     :effect/mana {:white 1}}]}
                                  {:ability/type :mana
                                   :ability/cost {:tap true}
-                                  :ability/produces {:blue 1}}]}}]
+                                  :ability/effects [{:effect/type :add-mana
+                                                     :effect/mana {:blue 1}}]}]}}]
       (is (= [{:ability-index 0 :color :colorless :amount 1 :sac? false}
               {:ability-index 1 :color :white :amount 1 :sac? false}
               {:ability-index 2 :color :blue :amount 1 :sac? false}]
@@ -122,7 +129,8 @@
   (testing "card with only mana abilities returns empty (filtered out)"
     (let [obj {:object/card
                {:card/abilities [{:ability/type :mana
-                                  :ability/produces {:black 1}}]}}]
+                                  :ability/effects [{:effect/type :add-mana
+                                                     :effect/mana {:black 1}}]}]}}]
       (is (= [] (battlefield/get-activated-abilities obj))))))
 
 
@@ -135,7 +143,8 @@
 
 (deftest get-activated-abilities-mixed
   (testing "card with mixed ability types returns only activated with correct indices"
-    (let [mana-ability {:ability/type :mana :ability/produces {:black 1}}
+    (let [mana-ability {:ability/type :mana
+                        :ability/effects [{:effect/type :add-mana :effect/mana {:black 1}}]}
           activated {:ability/type :activated :ability/name "Draw"}
           obj {:object/card {:card/abilities [mana-ability activated]}}]
       (is (= [[1 activated]] (battlefield/get-activated-abilities obj))))))

@@ -45,8 +45,9 @@
           "Ability 0 should be a mana ability")
       (is (= {:tap true} (:ability/cost a0))
           "Ability 0 cost should be exactly {:tap true}")
-      (is (= {:colorless 1} (:ability/produces a0))
-          "Ability 0 should produce exactly 1 colorless")))
+      (is (= [{:effect/type :add-mana :effect/mana {:colorless 1}}]
+             (:ability/effects a0))
+          "Ability 0 should produce exactly 1 colorless via :add-mana effect")))
 
   (testing "Ability 1: {T}, Sacrifice Crystal Vein: Add {C}{C}."
     (let [a1 (second (:card/abilities crystal-vein/card))]
@@ -54,8 +55,9 @@
           "Ability 1 should be a mana ability (not :activated)")
       (is (= {:tap true :sacrifice-self true} (:ability/cost a1))
           "Ability 1 cost should be tap + sacrifice-self")
-      (is (= {:colorless 2} (:ability/produces a1))
-          "Ability 1 should produce exactly 2 colorless"))))
+      (is (= [{:effect/type :add-mana :effect/mana {:colorless 2}}]
+             (:ability/effects a1))
+          "Ability 1 should produce exactly 2 colorless via :add-mana effect"))))
 
 
 ;; === B. Ability 0 Activation (Tap for {C}) ===

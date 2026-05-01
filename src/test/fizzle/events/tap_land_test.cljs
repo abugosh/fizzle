@@ -423,8 +423,9 @@
                                 :card/types #{:land}
                                 :card/abilities [{:ability/type :mana
                                                   :ability/cost {:tap true}
-                                                  :ability/produces {:green 1}
-                                                  :ability/effects [{:effect/type :gain-life
+                                                  :ability/effects [{:effect/type :add-mana
+                                                                     :effect/mana {:green 1}}
+                                                                    {:effect/type :gain-life
                                                                      :effect/amount 1}]}]}])
           card-eid (d/q '[:find ?e .
                           :in $ ?cid

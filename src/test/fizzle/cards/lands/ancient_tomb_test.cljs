@@ -39,14 +39,15 @@
         (is (= :mana (:ability/type ability)))
         (is (true? (get-in ability [:ability/cost :tap]))
             "Should require tap")
-        (is (= {:colorless 2} (:ability/produces ability))
-            "Should produce 2 colorless mana")
-        (is (= 1 (count (:ability/effects ability)))
-            "Should have one effect (damage)")
-        (let [effect (first (:ability/effects ability))]
-          (is (= :deal-damage (:effect/type effect)))
-          (is (= 2 (:effect/amount effect)))
-          (is (= :controller (:effect/target effect))))))))
+        (is (= 2 (count (:ability/effects ability)))
+            "Should have :add-mana effect and :deal-damage effect")
+        (let [add-mana-effect (first (:ability/effects ability))
+              damage-effect (second (:ability/effects ability))]
+          (is (= {:effect/type :add-mana :effect/mana {:colorless 2}} add-mana-effect)
+              "First effect should be :add-mana {:colorless 2}")
+          (is (= :deal-damage (:effect/type damage-effect)))
+          (is (= 2 (:effect/amount damage-effect)))
+          (is (= :controller (:effect/target damage-effect))))))))
 
 
 ;; === Mana production tests ===

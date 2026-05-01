@@ -61,8 +61,9 @@
           "Ability 0 type should be :mana")
       (is (= {:tap true} (:ability/cost ability))
           "Ability 0 cost should be tap only")
-      (is (= {:colorless 1} (:ability/produces ability))
-          "Ability 0 should produce 1 colorless")))
+      (is (= [{:effect/type :add-mana :effect/mana {:colorless 1}}]
+             (:ability/effects ability))
+          "Ability 0 should produce 1 colorless via :add-mana effect")))
 
   ;; Oracle: "{T}, Sacrifice this land: Destroy target nonbasic land."
   (testing "Ability 1 is an activated ability with tap+sacrifice cost"

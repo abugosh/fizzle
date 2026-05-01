@@ -28,4 +28,5 @@
    ;; Mana ability: T: Add {C}{C}
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:colorless 2}}]})
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:colorless 2}}]}]})

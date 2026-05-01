@@ -25,7 +25,8 @@
    [;; Ability 0: {T}: Add {C}.
     {:ability/type :mana
      :ability/cost {:tap true}
-     :ability/produces {:colorless 1}}
+     :ability/effects [{:effect/type :add-mana
+                        :effect/mana {:colorless 1}}]}
 
     ;; Ability 1: {1}, {T}, Sacrifice Mind Stone: Draw a card.
     {:ability/type :activated

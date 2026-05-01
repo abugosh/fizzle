@@ -16,7 +16,8 @@
 
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
-                     :ability/produces {:colorless 2}
-                     :ability/effects [{:effect/type :deal-damage
+                     :ability/effects [{:effect/type :add-mana
+                                        :effect/mana {:colorless 2}}
+                                       {:effect/type :deal-damage
                                         :effect/amount 2
                                         :effect/target :controller}]}]})

@@ -43,7 +43,8 @@
       (is (= #{:basic} (:card/supertypes card)))
       (is (= "{T}: Add {W}." (:card/text card)))
       (is (= 1 (count (:card/abilities card))))
-      (is (= {:white 1} (:ability/produces (first (:card/abilities card))))))))
+      (is (= [{:effect/type :add-mana :effect/mana {:white 1}}]
+             (:ability/effects (first (:card/abilities card))))))))
 
 
 (deftest test-island-card-definition
@@ -59,7 +60,8 @@
       (is (= #{:basic} (:card/supertypes card)))
       (is (= "{T}: Add {U}." (:card/text card)))
       (is (= 1 (count (:card/abilities card))))
-      (is (= {:blue 1} (:ability/produces (first (:card/abilities card))))))))
+      (is (= [{:effect/type :add-mana :effect/mana {:blue 1}}]
+             (:ability/effects (first (:card/abilities card))))))))
 
 
 (deftest test-swamp-card-definition
@@ -75,7 +77,8 @@
       (is (= #{:basic} (:card/supertypes card)))
       (is (= "{T}: Add {B}." (:card/text card)))
       (is (= 1 (count (:card/abilities card))))
-      (is (= {:black 1} (:ability/produces (first (:card/abilities card))))))))
+      (is (= [{:effect/type :add-mana :effect/mana {:black 1}}]
+             (:ability/effects (first (:card/abilities card))))))))
 
 
 (deftest test-mountain-card-definition
@@ -91,7 +94,8 @@
       (is (= #{:basic} (:card/supertypes card)))
       (is (= "{T}: Add {R}." (:card/text card)))
       (is (= 1 (count (:card/abilities card))))
-      (is (= {:red 1} (:ability/produces (first (:card/abilities card))))))))
+      (is (= [{:effect/type :add-mana :effect/mana {:red 1}}]
+             (:ability/effects (first (:card/abilities card))))))))
 
 
 (deftest test-forest-card-definition
@@ -107,7 +111,8 @@
       (is (= #{:basic} (:card/supertypes card)))
       (is (= "{T}: Add {G}." (:card/text card)))
       (is (= 1 (count (:card/abilities card))))
-      (is (= {:green 1} (:ability/produces (first (:card/abilities card))))))))
+      (is (= [{:effect/type :add-mana :effect/mana {:green 1}}]
+             (:ability/effects (first (:card/abilities card))))))))
 
 
 ;; === Island tests ===
