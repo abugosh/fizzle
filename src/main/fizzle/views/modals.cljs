@@ -244,9 +244,11 @@
 
 ;; === Public API ===
 
-(defn selection-modal
+(defn selection-render
+  "Returns tagged result: [:modal component], [:inline component], or nil.
+   Used by core.cljs game-screen for unified routing."
   []
   (let [selection @(rf/subscribe [::subs/pending-selection])
         cards @(rf/subscribe [::subs/selection-cards])]
     (when selection
-      (render-selection-modal selection cards))))
+      (render-selection selection cards))))

@@ -1,0 +1,3 @@
+-Dcljs.storm.instrumentOnlyPrefixes=fizzle
+-Dcljs.storm.instrumentSkipRegex=.*-test$
+-Dcljs.storm.instrumentEnable=true

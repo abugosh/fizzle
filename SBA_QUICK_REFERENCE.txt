@@ -1,0 +1,153 @@
+╔════════════════════════════════════════════════════════════════════════════════════╗
+║                     SBA INSERTION POINTS - QUICK REFERENCE                          ║
+╚════════════════════════════════════════════════════════════════════════════════════╝
+
+DIRECT SBA CALLS IN ENGINE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ✅ engine/effects.cljs:207     (after all effects)
+  ✅ engine/effects.cljs:211     (after each effect, in recur)
+  ✅ engine/mana_activation.cljs:115     (after mana ability)
+
+  These are called AUTOMATICALLY and should NOT be moved.
+
+
+WHERE SBA CHECKS HAPPEN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+┌─ SPELL RESOLUTION PATH ──────────────────────────────────────────────────────────┐
+│                                                                                   │
+│  ::resolve-top (event)                                                          │
+│      ↓                                                                            │
+│  events/resolution.cljs:114 → resolve-one-item()                                │
+│      ↓                                                                            │
+│  engine/resolution.cljs → resolve-stack-item()                                  │
+│      ↓                                                                            │
+│  engine/effects.cljs:186 → reduce-effects()                                     │
+│      ↓                                                                            │
+│  ✅ SBA CHECK (line 207: after all effects)                                     │
+│  ✅ SBA CHECK (line 211: after each effect)                                     │
+│      ↓                                                                            │
+│  ⚠️  REDUNDANT: Interceptor also fires SBA                                       │
+│                                                                                   │
+└───────────────────────────────────────────────────────────────────────────────────┘
+
+┌─ MANA ABILITY PATH ──────────────────────────────────────────────────────────────┐
+│                                                                                   │
+│  ::activate-mana-ability (event)                                                │
+│      ↓                                                                            │
+│  events/abilities.cljs:30 → activate-mana-ability()                             │
+│      ↓                                                                            │
+│  engine/mana_activation.cljs:115 → check-and-execute-sbas()                    │
+│      ↓                                                                            │
+│  ✅ SBA CHECK (direct call)                                                     │
+│      ↓                                                                            │
+│  ⚠️  REDUNDANT: Interceptor also fires SBA                                       │
+│                                                                                   │
+└───────────────────────────────────────────────────────────────────────────────────┘
+
+┌─ SELECTION CONFIRMATION PATH ────────────────────────────────────────────────────┐
+│                                                                                   │
+│  ::confirm-selection (event)                                                    │
+│      ↓                                                                            │
+│  events/selection/core.cljs:463 → confirm-selection-impl()                      │
+│      ↓                                                                            │
+│  execute-confirmed-selection (multimethod)                                       │
+│      ↓                                                                            │
+│  standard-path() → reduce-effects()                                              │
+│      ↓                                                                            │
+│  ✅ SBA CHECK (via reduce-effects)                                              │
+│      ↓                                                                            │
+│  ⚠️  REDUNDANT: Interceptor also fires SBA                                       │
+│                                                                                   │
+└───────────────────────────────────────────────────────────────────────────────────┘
+
+┌─ LAND PLAY PATH ─────────────────────────────────────────────────────────────────┐
+│                                                                                   │
+│  ::play-land (event)                                                            │
+│      ↓                                                                            │
+│  events/lands.cljs → put-on-battlefield()                                       │
+│      ↓                                                                            │
+│  ❌ NO SBA HERE (should add)                                                    │
+│      ↓                                                                            │
+│  ✅ Interceptor fires SBA                                                       │
+│                                                                                   │
+│  RECOMMENDATION: Add inline SBA call after put-on-battlefield()                 │
+│                                                                                   │
+└───────────────────────────────────────────────────────────────────────────────────┘
+
+
+REDUNDANCY SUMMARY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Event                              Direct  reduce-effects  Interceptor  Total
+  ─────────────────────────────────────────────────────────────────────────────
+  ::resolve-top                        ❌         ✅ (2x)         ✅         3x
+  ::confirm-selection                  ❌         ✅ (2x)         ✅         3x
+  ::activate-mana-ability              ✅          ❌            ✅         2x
+  ::toggle-selection (auto)            ❌         ✅ (2x)         ✅         3x
+  ::allocate-mana-color (auto)         ❌         ✅ (2x)         ✅         3x
+  ::play-land                          ❌          ❌            ✅         1x ← ADD INLINE
+  ::cast-spell                         ❌          ❌            ✅         1x
+  ::advance-phase                      ❌          ❌            ✅         1x
+
+
+ALL CALLERS OF resolve-one-item
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  1. events/resolution.cljs:114         ::resolve-top event handler
+  2. events/resolution.cljs:133         ::resolve-all event handler
+  3. events/priority_flow.cljs:71       Internal: yield-resolve-stack
+
+
+ALL CALLERS OF confirm-selection-impl
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  1. events/selection/core.cljs:463     confirm-selection-handler (event dispatcher)
+  2. events/selection/core.cljs:447     toggle-selection-impl (auto-confirm)
+  3. events/selection/costs.cljs:766    allocate-mana-color-impl (auto-confirm)
+  4. events/resolution.cljs:89          resolve-one-item (bot attacker selection)
+
+
+REFACTORING CHECKLIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  PHASE 1 (Low Risk): Remove redundant interceptor calls
+  ──────────────────────────────────────────────────────
+  [ ] Remove from sba-trigger-events:
+      - :fizzle.events.resolution/resolve-top
+      - :fizzle.events.selection/confirm-selection
+      - :fizzle.events.selection/toggle-selection
+      - :fizzle.events.abilities/activate-mana-ability
+
+  PHASE 2 (Low Risk): Add missing SBA
+  ────────────────────────────────────
+  [ ] Add SBA call in events/lands.cljs after put-on-battlefield
+      Require: [fizzle.engine.state-based :as state-based]
+      Pattern: (state-based/check-and-execute-sbas game-db')
+
+  PHASE 3 (Optional): Document flow
+  ──────────────────────────────────
+  [ ] Add comments explaining where SBA happens
+  [ ] Update CLAUDE.md with SBA insertion points
+
+
+TESTING REQUIRED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  1. Run full test suite (should pass unchanged)
+  2. Instrument check-and-execute-sbas with call counter
+  3. Verify SBA called exactly once per event (not 2-3x)
+  4. Verify all existing SBA tests still pass
+
+
+KEY INSIGHTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ✓ SBA is NOT ONLY called by the interceptor
+  ✓ SBA is already inline in reduce-effects (2 calls)
+  ✓ SBA is already inline in mana_activation (1 call)
+  ✓ Most redundancy is HARMLESS (same operation, just called multiple times)
+  ✓ No game logic bugs, just inefficiency
+  ✓ Safe to refactor - all existing tests should pass
+
