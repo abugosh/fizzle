@@ -20,7 +20,7 @@ model {
       }
 
       selection_ui = component 'Selection Modals' {
-        description 'Selection interaction views split by pattern — zone-pick, accumulator, reorder, and custom modal components. Renders active selection state and dispatches toggle/confirm events.'
+        description 'Selection interaction views split by pattern — zone-pick, accumulator, reorder, and custom modal components. Unified render-selection multimethod dispatches on :selection/mechanism and routes to modal or inline rendering (ADR-033). Renders active selection state and dispatches toggle/confirm events.'
         metadata {
           layer 'presentation'
           stability_state 'exploring'
@@ -28,7 +28,7 @@ model {
       }
 
       game_controls = component 'Game Controls' {
-        description 'Phase bar, control buttons, and game-over screen. Dispatches phase-advance and game-reset events.'
+        description 'Phase bar, control buttons, and game-over screen. Dispatches phase-advance and game-reset events. Renders inline selection widgets (e.g., :binary-choice) when active, replacing priority buttons; dispatches selection toggle and confirm events (ADR-034).'
         metadata {
           layer 'presentation'
           stability_state 'exploring'
@@ -62,6 +62,7 @@ model {
       // Internal relationships
       game_board -> selection_ui 'board clicks trigger selection modals'
       game_controls -> game_board 'phase transitions update board display'
+      game_controls -> selection_ui 'renders inline selection widgets via unified dispatch (ADR-033, ADR-034)'
     }
   }
 }

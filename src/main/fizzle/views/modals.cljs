@@ -10,7 +10,6 @@
     [fizzle.views.selection.common :as common]
     [fizzle.views.selection.custom :as custom]
     [fizzle.views.selection.reorder :as reorder]
-    [fizzle.views.selection.replacement :as replacement-view]
     [fizzle.views.selection.zone-pick :as zone-pick]
     [re-frame.core :as rf]))
 
