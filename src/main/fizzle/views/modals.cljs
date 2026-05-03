@@ -121,10 +121,7 @@
 
 
 (defmethod render-selection :binary-choice [s _]
-  (case (:selection/domain s)
-    :replacement-choice [:modal [replacement-view/replacement-choice-modal s]]
-    :unless-pay         nil
-    [:inline [binary-choice-view/binary-choice-view s]]))
+  [:inline [binary-choice-view/binary-choice-view s]])
 
 
 (defmethod render-selection :default [s c] [:modal [zone-pick/zone-pick-modal s c]])
