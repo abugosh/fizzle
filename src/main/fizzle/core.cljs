@@ -101,7 +101,6 @@
             [controls/controls-view component]
             [controls/controls-view nil]))
         [controls/controls-view nil])
-      [mana-pool/unless-pay-view]
       [:div {:class "flex gap-8"}
        [mana-pool/mana-pool-view]
        [mana-pool/storm-count-view]]
