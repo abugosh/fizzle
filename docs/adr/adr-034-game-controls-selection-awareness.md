@@ -16,11 +16,11 @@ The same pattern already exists in `mana_pool.cljs`, which subscribes to selecti
 
 We accept that game_controls gains selection awareness. The component's responsibility is "what the player interacts with right now" — game-action buttons when no inline selection is pending, inline selection widget when one is active. These are mutually exclusive (switch pattern, not a braid).
 
-The architecture model will be updated to reflect the new edge: game_controls subscribes to selection state and renders inline selection widgets.
+The architecture model will be updated to reflect the new relationship: game_controls receives inline selection components as props from core.cljs.
 
 ## Consequences
 
-- game_controls now depends on the selection subscription and dispatches selection events (toggle-selection, confirm-selection).
-- The architecture model's game_controls description and edges must be updated.
-- controls.cljs gains selection-related imports, expanding from ~5 imports to ~7.
+- game_controls accepts an optional inline-component parameter from core.cljs. When non-nil, it renders the inline component in place of priority buttons.
+- controls.cljs itself has no selection-related imports — the inline component is produced by selection_ui (via render-selection in modals.cljs) and routed through core.cljs as a prop.
+- The architecture model's game_controls description and edges must be updated to reflect prop-based data flow.
 - The mana_pool.cljs precedent (3 commits/6mo with similar dual responsibility) suggests this will stabilize.

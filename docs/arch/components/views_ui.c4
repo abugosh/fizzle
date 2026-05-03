@@ -62,7 +62,7 @@ model {
       // Internal relationships
       game_board -> selection_ui 'board clicks trigger selection modals'
       game_controls -> game_board 'phase transitions update board display'
-      game_controls -> selection_ui 'receives inline selection component as prop via core.cljs routing (ADR-033)'
+      selection_ui -> game_controls 'produces inline selection component routed as prop via core.cljs (ADR-033)'
     }
   }
 }
