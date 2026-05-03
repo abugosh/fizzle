@@ -14,16 +14,18 @@
      A. Component renders one button per :selection/choices entry
      B. Button labels show :choice/label text from each choice
      C. :binary-choice defmethod in render-selection returns [:inline ...]
-     D. Correct toggle shape for :replacement-choice (full map)
-     E. Correct toggle shape for :unless-pay (keyword)
+     D. Correct toggle shape for :replacement-choice (full map dispatched on click)
+     E. Correct toggle shape for :unless-pay (keyword dispatched on click)
      F. Builder: build-unless-pay-selection includes :selection/choices"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
+    [fizzle.events.selection :as selection-events]
     [fizzle.events.selection.core :as sel-core]
     [fizzle.events.selection.zone-ops]
     [fizzle.test-helpers :as th]
     [fizzle.views.modals :as modals]
-    [fizzle.views.selection.binary-choice :as binary-choice-view]))
+    [fizzle.views.selection.binary-choice :as binary-choice-view]
+    [re-frame.core :as rf]))
 
 
 ;; ---------------------------------------------------------------------------
@@ -107,20 +109,96 @@
 
 
 ;; ---------------------------------------------------------------------------
-;; D. Component returns hiccup vector
+;; D. Toggle shape for :replacement-choice: full choice map dispatched on click
 
-(deftest binary-choice-view-returns-hiccup-vector-test
-  (testing "binary-choice-view returns a hiccup vector"
-    (let [result (binary-choice-view/binary-choice-view replacement-choice-selection)]
-      (is (vector? result)
-          "Component should return a hiccup vector"))))
+(defn- find-first-button
+  "Walk a hiccup tree and return the first [:button ...] element found,
+   handling lazy sequences produced by (for ...) inside :div children."
+  [hiccup]
+  (cond
+    (not (vector? hiccup))
+    nil
+
+    (= :button (first hiccup))
+    hiccup
+
+    :else
+    (let [children (if (map? (second hiccup)) (drop 2 hiccup) (drop 1 hiccup))]
+      (some (fn [child]
+              (cond
+                (vector? child) (find-first-button child)
+                (seq? child)    (some find-first-button child)
+                :else           nil))
+            children))))
 
 
-(deftest binary-choice-view-unless-pay-returns-hiccup-test
-  (testing "binary-choice-view returns hiccup for :unless-pay shape"
-    (let [result (binary-choice-view/binary-choice-view unless-pay-selection)]
-      (is (vector? result)
-          "Component should return a hiccup vector for unless-pay"))))
+(deftest binary-choice-view-replacement-choice-dispatches-full-map-test
+  (testing "binary-choice-view passes full choice map to toggle-selection for :replacement-choice"
+    (let [dispatched (atom [])
+          _          (with-redefs [rf/dispatch (fn [event] (swap! dispatched conj event))]
+                       (let [result    (binary-choice-view/binary-choice-view replacement-choice-selection)
+                             first-btn (find-first-button result)
+                             on-click  (:on-click (second first-btn))]
+                         (is (some? on-click) "First button must have :on-click")
+                         (on-click)))]
+      ;; Should dispatch toggle-selection with the full choice map (not just keyword)
+      (let [toggle-event (first (filter #(= ::selection-events/toggle-selection (first %)) @dispatched))]
+        (is (some? toggle-event)
+            "toggle-selection should be dispatched on button click")
+        (is (map? (second toggle-event))
+            "For :replacement-choice, toggle value should be the full choice map")
+        (is (= :proceed (:choice/action (second toggle-event)))
+            "Choice map should have :choice/action :proceed for first button")))))
+
+
+(deftest binary-choice-view-replacement-choice-dispatches-confirm-on-click-test
+  (testing "binary-choice-view dispatches confirm-selection alongside toggle for :replacement-choice"
+    (let [dispatched (atom [])
+          _          (with-redefs [rf/dispatch (fn [event] (swap! dispatched conj event))]
+                       (let [result    (binary-choice-view/binary-choice-view replacement-choice-selection)
+                             first-btn (find-first-button result)
+                             on-click  (:on-click (second first-btn))]
+                         (is (some? on-click) "First button must have :on-click")
+                         (on-click)))]
+      (let [confirm-event (first (filter #(= ::selection-events/confirm-selection (first %)) @dispatched))]
+        (is (some? confirm-event)
+            "confirm-selection should be dispatched on button click (single-click confirm)")))))
+
+
+;; ---------------------------------------------------------------------------
+;; E. Toggle shape for :unless-pay: keyword (:choice/action) dispatched on click
+
+(deftest binary-choice-view-unless-pay-dispatches-keyword-test
+  (testing "binary-choice-view passes :choice/action keyword to toggle-selection for :unless-pay"
+    (let [dispatched (atom [])
+          _          (with-redefs [rf/dispatch (fn [event] (swap! dispatched conj event))]
+                       (let [result    (binary-choice-view/binary-choice-view unless-pay-selection)
+                             first-btn (find-first-button result)
+                             on-click  (:on-click (second first-btn))]
+                         (is (some? on-click) "First button must have :on-click")
+                         (on-click)))]
+      ;; Should dispatch toggle-selection with the keyword :pay, not the full choice map
+      (let [toggle-event (first (filter #(= ::selection-events/toggle-selection (first %)) @dispatched))]
+        (is (some? toggle-event)
+            "toggle-selection should be dispatched on button click")
+        (is (keyword? (second toggle-event))
+            "For :unless-pay, toggle value should be a keyword (not a full map)")
+        (is (= :pay (second toggle-event))
+            "First button should dispatch keyword :pay for :unless-pay domain")))))
+
+
+(deftest binary-choice-view-unless-pay-dispatches-confirm-on-click-test
+  (testing "binary-choice-view dispatches confirm-selection alongside toggle for :unless-pay"
+    (let [dispatched (atom [])
+          _          (with-redefs [rf/dispatch (fn [event] (swap! dispatched conj event))]
+                       (let [result    (binary-choice-view/binary-choice-view unless-pay-selection)
+                             first-btn (find-first-button result)
+                             on-click  (:on-click (second first-btn))]
+                         (is (some? on-click) "First button must have :on-click")
+                         (on-click)))]
+      (let [confirm-event (first (filter #(= ::selection-events/confirm-selection (first %)) @dispatched))]
+        (is (some? confirm-event)
+            "confirm-selection should be dispatched on button click (single-click confirm)")))))
 
 
 ;; ---------------------------------------------------------------------------

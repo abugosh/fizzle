@@ -10,10 +10,10 @@
      - Absent or non-keyword-vec → dispatches full choice map
        (used by :replacement-choice where selected contains choice map)
 
-   Player flow:
+   Player flow (single-click confirm, Requirement 6):
      1. Buttons rendered for each choice in :selection/choices
-     2. Player clicks a button → dispatches toggle-selection with choice value
-     3. Player clicks Confirm → dispatches confirm-selection"
+     2. Player clicks a button → dispatches toggle-selection then confirm-selection
+        (both dispatched on the same click — no separate Confirm step)"
   (:require
     [fizzle.events.selection :as selection-events]
     [re-frame.core :as rf]))
@@ -35,35 +35,24 @@
    Reads :selection/choices from selection. For each choice, renders a
    button with :choice/label as text.
 
+   Single-click confirm (Requirement 6): each button dispatches both
+   toggle-selection and confirm-selection on click.
+
    Toggle dispatch:
      - If :selection/valid-targets is a vector of keywords (e.g. [:pay :decline]),
        dispatches toggle-selection with (:choice/action choice) keyword.
      - Otherwise (replacement-choice), dispatches toggle-selection with full choice map."
   [selection]
   (let [choices  (:selection/choices selection)
-        selected (first (:selection/selected selection))
         kw-mode? (keyword-targets? selection)]
     [:div {:class "mb-4 border-2 border-border-accent rounded-lg p-3"}
      [:div {:class "text-text-label mb-1.5 text-xs"} "CHOOSE AN OPTION"]
-     [:div {:class "flex flex-col gap-2 mb-2"}
+     [:div {:class "flex flex-col gap-2"}
       (for [choice choices]
-        (let [toggle-val (if kw-mode? (:choice/action choice) choice)
-              selected?  (= selected toggle-val)]
+        (let [toggle-val (if kw-mode? (:choice/action choice) choice)]
           ^{:key (:choice/action choice)}
-          [:button {:class (str "py-2 px-4 rounded font-bold text-sm text-text border-2 "
-                                (if selected?
-                                  "border-border-accent bg-modal-selected-bg"
-                                  "border-border bg-surface-raised hover:border-text-muted")
-                                " cursor-pointer transition-all duration-100")
-                    :on-click #(rf/dispatch [::selection-events/toggle-selection toggle-val])}
-           (:choice/label choice)]))]
-     [:div
-      [:button
-       {:class (str "py-1.5 px-4 border-none rounded font-bold text-sm "
-                    (if (some? selected)
-                      "cursor-pointer bg-btn-enabled-bg text-white"
-                      "cursor-not-allowed bg-surface-dim text-perm-text-tapped"))
-        :disabled (nil? selected)
-        :on-click (when (some? selected)
-                    #(rf/dispatch [::selection-events/confirm-selection]))}
-       "Confirm"]]]))
+          [:button {:class "py-2 px-4 rounded font-bold text-sm text-text border-2 border-border bg-surface-raised hover:border-text-muted cursor-pointer transition-all duration-100"
+                    :on-click (fn []
+                                (rf/dispatch [::selection-events/toggle-selection toggle-val])
+                                (rf/dispatch [::selection-events/confirm-selection]))}
+           (:choice/label choice)]))]]))
