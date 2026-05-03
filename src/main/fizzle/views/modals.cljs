@@ -165,6 +165,83 @@
 (defmethod render-selection-modal :default [s c] [zone-pick/zone-pick-modal s c])
 
 
+;; === render-selection (Foundation for ADR-033 unified dispatch) ===
+;;
+;; New multimethod that returns tagged tuples [:modal component] or [:inline component] or nil.
+;; Wraps render-selection-modal defmethods with tag-based routing.
+
+(defmulti render-selection
+  (fn [selection _cards] (modal-dispatch-key selection)))
+
+
+(defmethod render-selection :pick-from-zone [s c]
+  (case (:selection/domain s)
+    :return-land-cost (let [component (object-target s c :battlefield "1 land selected" "Select a land to return to hand")]
+                        [:modal component])
+    [:modal [zone-pick/zone-pick-modal s c]]))
+
+
+(defmethod render-selection :reorder [s _]
+  (case (:selection/domain s)
+    :scry           [:modal [reorder/scry-modal s]]
+    :order-bottom   [:modal [reorder/order-bottom-modal]]
+    :order-top      [:modal [reorder/order-top-modal]]
+    :peek-and-reorder [:modal [reorder/peek-and-reorder-modal]]))
+
+
+(defmethod render-selection :accumulate [s _]
+  (case (:selection/domain s)
+    :x-mana-cost  [:modal [accumulator/x-mana-selection-modal s]]
+    :pay-x-life   [:modal [accumulator/pay-x-life-selection-modal s]]
+    :storm-split  [:modal [accumulator/storm-split-modal s]]
+    nil))
+
+
+(defmethod render-selection :allocate-resource [_ _] nil)
+
+
+(defmethod render-selection :n-slot-targeting [s c]
+  (let [target-req (or (first (:selection/target-requirements s))
+                       (:selection/target-requirement s))
+        target-type (:target/type target-req)]
+    (case (:selection/domain s)
+      :player-target         [:modal [custom/player-target-modal s ::selection-events/confirm-selection]]
+      :cast-time-targeting   (case target-type
+                               :player [:modal [custom/player-target-modal s ::selection-events/confirm-selection]]
+                               :any    [:modal [custom/any-target-modal s c ::selection-events/confirm-selection]]
+                               (let [{:keys [selected-label unselected-label]}
+                                     (cast-time-targeting-labels s)]
+                                 [:modal (object-target s c :battlefield selected-label unselected-label)]))
+      :ability-targeting     (if (= :player target-type)
+                               [:modal [custom/player-target-modal s ::selection-events/confirm-selection]]
+                               (if (= :any target-type)
+                                 [:modal [custom/any-target-modal s c ::selection-events/confirm-selection]]
+                                 [:modal (object-target s c :battlefield "1 target selected" "Select a target")]))
+      :ability-cast-targeting [:modal [custom/ability-cast-targeting-modal s]]
+      :select-attackers      [:modal [custom/attacker-selection-modal s c]]
+      :assign-blockers       [:modal [custom/blocker-selection-modal s c]]
+      ;; Unknown domain falls to object-target as safe default
+      [:modal (object-target s c :battlefield "1 target selected" "Select a target")])))
+
+
+(defmethod render-selection :pick-mode [s c]
+  (case (:selection/domain s)
+    :spell-mode      [:modal [custom/spell-mode-selection-modal s c]]
+    :land-type-source [:modal [custom/land-type-selection-modal s]]
+    :land-type-target [:modal [custom/land-type-selection-modal s]]
+    nil))
+
+
+(defmethod render-selection :binary-choice [s _]
+  (case (:selection/domain s)
+    :replacement-choice [:modal [replacement-view/replacement-choice-modal s]]
+    :unless-pay         nil
+    nil))
+
+
+(defmethod render-selection :default [s c] [:modal [zone-pick/zone-pick-modal s c]])
+
+
 ;; === Public API ===
 
 (defn selection-modal
