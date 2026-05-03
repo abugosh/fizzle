@@ -64,3 +64,49 @@
              [{:object/card {:card/name "Dark Ritual"}
                :stack-item/card-name "Something Else"
                :object/position 1}])))))
+
+
+;; === controls-view inline-component parameter tests ===
+
+(deftest test-controls-view-structure-with-nil-inline-component
+  (testing "when inline-component is nil, controls-view returns div with :<> fragment for buttons"
+    (let [result (controls/controls-view nil)]
+      (is (vector? result)
+          "controls-view should return a hiccup vector")
+      (is (= :div (first result))
+          "Top level should be :div")
+      ;; The structure when nil is: [:div {:class "mb-4"} [:<> [buttons...]]]
+      (let [children (drop 2 result)
+            fragment (first children)]
+        (is (vector? fragment)
+            "Second child should be a hiccup vector (the fragment with buttons)")
+        (is (= :<> (first fragment))
+            "When inline-component is nil, should render :<> fragment with buttons")))))
+
+
+(deftest test-controls-view-with-inline-component
+  (testing "when inline-component is a hiccup vector, controls-view renders it directly inside div"
+    (let [inline-comp [:div {:class "custom-selection"} "Custom UI"]
+          result (controls/controls-view inline-comp)]
+      (is (vector? result)
+          "controls-view should return a hiccup vector")
+      (is (= :div (first result))
+          "Top level should be :div")
+      ;; The structure when inline-component is provided: [:div {:class "mb-4"} inline-component]
+      (let [children (drop 2 result)
+            content (first children)]
+        (is (= inline-comp content)
+            "When inline-component is provided, it should be rendered directly")
+        (is (= :div (first content))
+            "Inline component should be a div")
+        (is (= "custom-selection" (get-in content [1 :class]))
+            "Inline component should have custom class")))))
+
+
+(deftest test-controls-view-signature-with-no-args
+  (testing "controls-view can be called with no arguments (arity 0)"
+    (let [result (controls/controls-view)]
+      (is (vector? result)
+          "controls-view with no args should return a hiccup vector")
+      (is (= :div (first result))
+          "Should return a div structure"))))
