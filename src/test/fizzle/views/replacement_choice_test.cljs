@@ -3,7 +3,7 @@
 
    The replacement-choice modal renders discrete proceed/redirect buttons.
    Tests verify:
-     A. The multimethod dispatch handles :replacement-choice (not falling to :default)
+     A. The render-selection multimethod dispatch handles :replacement-choice (not falling to :default)
      B. The modal component returns choice buttons with :choice/label text (data-driven)
 
    These tests exercise pure functions only — no re-frame app-db needed."
@@ -17,9 +17,9 @@
 ;; A. Multimethod dispatch
 
 (deftest replacement-choice-dispatch-exists-test
-  (testing ":replacement-choice has a dedicated render-selection-modal method"
-    (is (some? (get-method modals/render-selection-modal :replacement-choice))
-        "render-selection-modal should have a method for :replacement-choice (not just :default)")))
+  (testing ":binary-choice mechanism can handle :replacement-choice domain"
+    (is (some? (get-method modals/render-selection :binary-choice))
+        "render-selection must have a :binary-choice method to handle :replacement-choice domain")))
 
 
 ;; ---------------------------------------------------------------------------

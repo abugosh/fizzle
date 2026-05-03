@@ -82,24 +82,24 @@
 
 
 ;; ---------------------------------------------------------------------------
-;; C. :binary-choice defmethod in render-selection returns [:inline ...]
+;; C. :binary-choice defmethod in render-selection dispatches on domain
 
-(deftest binary-choice-render-selection-returns-inline-test
-  (testing ":binary-choice render-selection defmethod returns [:inline ...]"
+(deftest binary-choice-render-selection-replacement-choice-returns-modal-test
+  (testing ":binary-choice render-selection returns [:modal ...] for :replacement-choice domain"
     (let [result (modals/render-selection replacement-choice-selection nil)]
       (is (vector? result)
           "render-selection should return a vector")
-      (is (= :inline (first result))
-          "First element should be :inline tag")
+      (is (= :modal (first result))
+          "First element should be :modal tag for :replacement-choice domain")
       (is (vector? (second result))
           "Second element should be the hiccup component vector"))))
 
 
-(deftest binary-choice-render-selection-unless-pay-returns-inline-test
-  (testing ":binary-choice render-selection returns [:inline ...] for :unless-pay domain"
+(deftest binary-choice-render-selection-unless-pay-returns-nil-test
+  (testing ":binary-choice render-selection returns nil for :unless-pay domain"
     (let [result (modals/render-selection unless-pay-selection nil)]
-      (is (= :inline (first result))
-          "Unless-pay binary choice should also return [:inline ...]"))))
+      (is (nil? result)
+          "Unless-pay binary choice should return nil (handled inline in mana pool)"))))
 
 
 ;; ---------------------------------------------------------------------------

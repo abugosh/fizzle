@@ -6,7 +6,7 @@
 
    Tests verify:
      A. modal-dispatch-key returns :selection/mechanism for all 7 mechanisms
-     B. render-selection-modal has dedicated defmethods for all 7 mechanisms
+     B. render-selection has dedicated defmethods for all 7 mechanisms
      C. :selection/pattern is no longer consulted for routing"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
@@ -76,48 +76,48 @@
 
 
 ;; ---------------------------------------------------------------------------
-;; B. render-selection-modal has dedicated defmethods for all 7 mechanisms
+;; B. render-selection has dedicated defmethods for all 7 mechanisms
 
-(deftest render-modal-has-pick-from-zone-method-test
-  (testing ":pick-from-zone has a dedicated render-selection-modal method"
-    (is (some? (get-method modals/render-selection-modal :pick-from-zone))
-        "render-selection-modal must have :pick-from-zone (not just :default)")))
-
-
-(deftest render-modal-has-reorder-method-test
-  (testing ":reorder has a dedicated render-selection-modal method"
-    (is (some? (get-method modals/render-selection-modal :reorder))
-        "render-selection-modal must have :reorder")))
+(deftest render-selection-has-pick-from-zone-method-test
+  (testing ":pick-from-zone has a dedicated render-selection method"
+    (is (some? (get-method modals/render-selection :pick-from-zone))
+        "render-selection must have :pick-from-zone (not just :default)")))
 
 
-(deftest render-modal-has-accumulate-method-test
-  (testing ":accumulate has a dedicated render-selection-modal method"
-    (is (some? (get-method modals/render-selection-modal :accumulate))
-        "render-selection-modal must have :accumulate")))
+(deftest render-selection-has-reorder-method-test
+  (testing ":reorder has a dedicated render-selection method"
+    (is (some? (get-method modals/render-selection :reorder))
+        "render-selection must have :reorder")))
 
 
-(deftest render-modal-has-allocate-resource-method-test
-  (testing ":allocate-resource has a dedicated render-selection-modal method"
-    (is (some? (get-method modals/render-selection-modal :allocate-resource))
-        "render-selection-modal must have :allocate-resource")))
+(deftest render-selection-has-accumulate-method-test
+  (testing ":accumulate has a dedicated render-selection method"
+    (is (some? (get-method modals/render-selection :accumulate))
+        "render-selection must have :accumulate")))
 
 
-(deftest render-modal-has-n-slot-targeting-method-test
-  (testing ":n-slot-targeting has a dedicated render-selection-modal method"
-    (is (some? (get-method modals/render-selection-modal :n-slot-targeting))
-        "render-selection-modal must have :n-slot-targeting")))
+(deftest render-selection-has-allocate-resource-method-test
+  (testing ":allocate-resource has a dedicated render-selection method"
+    (is (some? (get-method modals/render-selection :allocate-resource))
+        "render-selection must have :allocate-resource")))
 
 
-(deftest render-modal-has-pick-mode-method-test
-  (testing ":pick-mode has a dedicated render-selection-modal method"
-    (is (some? (get-method modals/render-selection-modal :pick-mode))
-        "render-selection-modal must have :pick-mode")))
+(deftest render-selection-has-n-slot-targeting-method-test
+  (testing ":n-slot-targeting has a dedicated render-selection method"
+    (is (some? (get-method modals/render-selection :n-slot-targeting))
+        "render-selection must have :n-slot-targeting")))
 
 
-(deftest render-modal-has-binary-choice-method-test
-  (testing ":binary-choice has a dedicated render-selection-modal method"
-    (is (some? (get-method modals/render-selection-modal :binary-choice))
-        "render-selection-modal must have :binary-choice")))
+(deftest render-selection-has-pick-mode-method-test
+  (testing ":pick-mode has a dedicated render-selection method"
+    (is (some? (get-method modals/render-selection :pick-mode))
+        "render-selection must have :pick-mode")))
+
+
+(deftest render-selection-has-binary-choice-method-test
+  (testing ":binary-choice has a dedicated render-selection method"
+    (is (some? (get-method modals/render-selection :binary-choice))
+        "render-selection must have :binary-choice")))
 
 
 ;; ---------------------------------------------------------------------------
