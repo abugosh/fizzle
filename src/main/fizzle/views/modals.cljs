@@ -6,6 +6,7 @@
     [fizzle.events.selection :as selection-events]
     [fizzle.subs.game :as subs]
     [fizzle.views.selection.accumulator :as accumulator]
+    [fizzle.views.selection.binary-choice :as binary-choice-view]
     [fizzle.views.selection.common :as common]
     [fizzle.views.selection.custom :as custom]
     [fizzle.views.selection.reorder :as reorder]
@@ -233,10 +234,7 @@
 
 
 (defmethod render-selection :binary-choice [s _]
-  (case (:selection/domain s)
-    :replacement-choice [:modal [replacement-view/replacement-choice-modal s]]
-    :unless-pay         nil
-    nil))
+  [:inline [binary-choice-view/binary-choice-view s]])
 
 
 (defmethod render-selection :default [s c] [:modal [zone-pick/zone-pick-modal s c]])

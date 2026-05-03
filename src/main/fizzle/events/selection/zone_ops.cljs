@@ -255,6 +255,27 @@
 ;; Unless-They-Pay Selection (Soft Counters)
 ;; =====================================================
 
+(defn- format-mana-cost-label
+  "Format a mana cost map as a short string for display (e.g. '{3}{U}').
+   Used to populate :choice/label for the :pay choice in unless-pay selections."
+  [mana-cost]
+  (if (or (nil? mana-cost) (empty? mana-cost))
+    "{0}"
+    (str
+      (when-let [c (:colorless mana-cost)]
+        (when (pos? c) (str "{" c "}")))
+      (when-let [w (:white mana-cost)]
+        (apply str (repeat w "{W}")))
+      (when-let [u (:blue mana-cost)]
+        (apply str (repeat u "{U}")))
+      (when-let [b (:black mana-cost)]
+        (apply str (repeat b "{B}")))
+      (when-let [r (:red mana-cost)]
+        (apply str (repeat r "{R}")))
+      (when-let [g (:green mana-cost)]
+        (apply str (repeat g "{G}"))))))
+
+
 (defn build-unless-pay-selection
   "Build selection for unless-they-pay counter choice.
    The targeted spell's controller chooses whether to pay mana to prevent
@@ -264,17 +285,23 @@
    NOT the controller of the counterspell.
 
    Player ALWAYS sees the prompt (per anti-pattern: no auto-resolving).
-   :selection/can-pay? tracks whether :pay is a valid choice."
+   :selection/can-pay? tracks whether :pay is a valid choice.
+
+   Includes :selection/choices for the binary-choice-view component,
+   with formatted :choice/label strings from the unless-pay cost."
   [_game-db _player-id object-id effect effects-after]
   (let [target-id (:effect/target effect)
         unless-pay (:effect/unless-pay effect)
-        controller-id (:unless-pay/controller effect)]
+        controller-id (:unless-pay/controller effect)
+        formatted-cost (format-mana-cost-label unless-pay)]
     {:selection/mechanism :binary-choice
      :selection/domain    :unless-pay
      :selection/player-id controller-id
      :selection/selected #{}
      :selection/select-count 1
      :selection/valid-targets [:pay :decline]
+     :selection/choices [{:choice/action :pay     :choice/label (str "Pay " formatted-cost)}
+                         {:choice/action :decline :choice/label "Decline"}]
      :selection/spell-id object-id
      :selection/remaining-effects effects-after
      :selection/counter-target-id target-id
