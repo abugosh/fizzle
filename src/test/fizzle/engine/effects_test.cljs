@@ -217,29 +217,29 @@
       (is (= 0 (count-zone db' :player-1 :graveyard))))))
 
 
-^:fizzle-x40o-triage
-;; Skipped: fizzle-50dr — intentional negative mana violates mana-spec; throw-on-spec-failure true now catches it
 (deftest test-add-mana-negative-amount
-  (testing "add-mana with negative value: documents current behavior"
-    ;; Corner case: negative mana amounts in effect.
-    ;; Current behavior: merge-with + allows negative values, which subtract.
-    ;; This test documents the behavior - not necessarily desired, but known.
-    ;; Bug it catches: unexpected negative mana pool values.
-    ;; NOTE: binding false because spec rejects negative mana; see fizzle-50dr for fix.
+  (testing "add-mana with negative value: spec rejects"
+    ;; Spec rejects negative mana amounts; with throw-on-spec-failure true (global),
+    ;; this assertion passes.
+    (is (thrown? js/Error (fx/execute-effect (init-game-state) :player-1
+                                             {:effect/type :add-mana
+                                              :effect/mana {:black -3}}))))
+  (testing "add-mana with negative value: clamp behavior verified with spec false"
+    ;; When spec enforcement is off, the clamp function produces zero effect
+    ;; (negative mana is clamped to 0, so the pool doesn't change).
     (binding [spec-util/*throw-on-spec-failure* false]
       (let [db (init-game-state)
-            ;; First add some mana so we have a baseline
+            ;; Add initial mana baseline
             db (fx/execute-effect db :player-1 {:effect/type :add-mana
                                                 :effect/mana {:black 5}})
             _ (is (= 5 (:black (q/get-mana-pool db :player-1))))
-            ;; Now try to add negative mana
+            ;; Try to add negative mana (clamped to 0, so no change)
             effect {:effect/type :add-mana
                     :effect/mana {:black -3}}
             db' (fx/execute-effect db :player-1 effect)]
-        ;; Document current behavior: negative add works like subtraction
-        ;; Pool was 5, adding -3 gives 2
-        (is (= 2 (:black (q/get-mana-pool db' :player-1)))
-            "Current behavior: negative mana in add-mana subtracts from pool")))))
+        ;; Clamp behavior: negative mana is treated as 0, so pool stays 5
+        (is (= 5 (:black (q/get-mana-pool db' :player-1)))
+            "Clamp behavior: negative mana produces no change to pool")))))
 
 
 ;; === execute-effect :draw tests ===
