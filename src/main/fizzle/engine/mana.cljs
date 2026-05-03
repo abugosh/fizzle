@@ -26,6 +26,15 @@
         (assoc :colorless (+ existing-colorless x-as-colorless)))))
 
 
+(defn- clamp-mana
+  "Clamp negative mana values to 0. Preserves non-numeric values (e.g., booleans).
+
+   Uses (neg? v) instead of (max 0 v) to avoid coercing booleans:
+   (max 0 true) -> 1 (wrong), (neg? true) -> false (correct)."
+  [m]
+  (into {} (map (fn [[k v]] [k (if (neg? v) 0 v)]) m)))
+
+
 (defn add-mana
   "Add mana to a player's pool. Pure function: (db, args) -> db
 
@@ -33,12 +42,13 @@
    Empty map {} is a no-op."
   [db player-id mana-to-add]
   (mana-spec/validate-mana-add-arg! mana-to-add "add-mana")
-  (if (empty? mana-to-add)
-    db
-    (let [player-eid (q/get-player-eid db player-id)
-          current-pool (q/get-mana-pool db player-id)
-          new-pool (merge-with + current-pool mana-to-add)]
-      (d/db-with db [[:db/add player-eid :player/mana-pool new-pool]]))))
+  (let [mana-to-add (clamp-mana mana-to-add)]
+    (if (empty? mana-to-add)
+      db
+      (let [player-eid (q/get-player-eid db player-id)
+            current-pool (q/get-mana-pool db player-id)
+            new-pool (merge-with + current-pool mana-to-add)]
+        (d/db-with db [[:db/add player-eid :player/mana-pool new-pool]])))))
 
 
 (defn can-pay?
@@ -90,7 +100,8 @@
    (pay-mana db player-id cost nil))
   ([db player-id cost x-value]
    (mana-spec/validate-mana-pay-arg! cost "pay-mana")
-   (let [resolved-cost (resolve-x-cost cost x-value)]
+   (let [cost (clamp-mana cost)
+         resolved-cost (resolve-x-cost cost x-value)]
      (if (empty? resolved-cost)
        db
        (let [player-eid (q/get-player-eid db player-id)
