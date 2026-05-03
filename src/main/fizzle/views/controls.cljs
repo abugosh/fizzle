@@ -56,34 +56,34 @@
 
                             :else "Play & Yield")]
      [:div {:class "mb-4"}
-      (when inline-component
-        [:div {:class "mb-4"}
-         inline-component])
-      [:button {:class (btn-class play-enabled?)
-                :disabled (not play-enabled?)
-                :on-click (cond
-                            can-cast? #(rf/dispatch [::casting-events/cast-spell {:object-id selected}])
-                            can-play-land? #(rf/dispatch [::lands-events/play-land selected])
-                            :else identity)}
-       play-label]
-      [:button {:class (btn-class play-enabled?)
-                :disabled (not play-enabled?)
-                :on-click (cond
-                            can-cast? #(rf/dispatch [::priority-flow-events/cast-and-yield {:object-id selected}])
-                            can-play-land? #(rf/dispatch [::lands-events/play-land selected])
-                            :else identity)}
-       play-yield-label]
-      (when can-cycle?
-        [:button {:class (btn-class true)
-                  :on-click #(rf/dispatch [::cycling-events/cycle-card selected])}
-         (str "Cycle " (:name card-info))])
-      [:button {:class (btn-class true)
-                :on-click #(rf/dispatch [::priority-flow-events/yield])}
-       (if-let [n (top-stack-item-name stack)]
-         (str "Yield: " n)
-         "Yield")]
-      [:button {:class (btn-class true)
-                :on-click #(rf/dispatch [::priority-flow-events/yield-all])}
-       (if (seq stack)
-         (str "Yield All (" (count stack) ")")
-         "Yield All")]])))
+      (if inline-component
+        inline-component
+        [:<>
+         [:button {:class (btn-class play-enabled?)
+                   :disabled (not play-enabled?)
+                   :on-click (cond
+                               can-cast? #(rf/dispatch [::casting-events/cast-spell {:object-id selected}])
+                               can-play-land? #(rf/dispatch [::lands-events/play-land selected])
+                               :else identity)}
+          play-label]
+         [:button {:class (btn-class play-enabled?)
+                   :disabled (not play-enabled?)
+                   :on-click (cond
+                               can-cast? #(rf/dispatch [::priority-flow-events/cast-and-yield {:object-id selected}])
+                               can-play-land? #(rf/dispatch [::lands-events/play-land selected])
+                               :else identity)}
+          play-yield-label]
+         (when can-cycle?
+           [:button {:class (btn-class true)
+                     :on-click #(rf/dispatch [::cycling-events/cycle-card selected])}
+            (str "Cycle " (:name card-info))])
+         [:button {:class (btn-class true)
+                   :on-click #(rf/dispatch [::priority-flow-events/yield])}
+          (if-let [n (top-stack-item-name stack)]
+            (str "Yield: " n)
+            "Yield")]
+         [:button {:class (btn-class true)
+                   :on-click #(rf/dispatch [::priority-flow-events/yield-all])}
+          (if (seq stack)
+            (str "Yield All (" (count stack) ")")
+            "Yield All")]])])))
