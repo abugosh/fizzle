@@ -55,8 +55,8 @@
 
 ;; === render-selection (ADR-033 unified dispatch) ===
 ;;
-;; New multimethod that returns tagged tuples [:modal component] or [:inline component] or nil.
-;; Wraps render-selection-modal defmethods with tag-based routing.
+;; Multimethod that returns tagged tuples [:modal component] or [:inline component] or nil.
+;; Dispatches on :selection/mechanism; domain-specific handling inside each defmethod.
 
 (defmulti render-selection
   (fn [selection _cards] (modal-dispatch-key selection)))
