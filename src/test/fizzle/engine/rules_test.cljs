@@ -348,26 +348,28 @@
                             :object/tapped false}])]))
 
 
-^:fizzle-x40o-triage
-;; Skipped: fizzle-euq5 — intentional negative cost violates mana-spec; throw-on-spec-failure true now catches it
 (deftest test-cast-negative-cost
-  (testing "cast-spell handles malformed card with negative mana cost"
-    ;; NOTE: binding false because spec rejects negative mana cost; see fizzle-euq5 for fix.
+  (testing "cast-spell rejects malformed card with negative mana cost"
+    ;; Spec rejection test: with throw-on-spec-failure true (default),
+    ;; casting a card with negative mana cost should throw an error
+    (let [db (init-game-state)
+          [obj-id db] (add-malformed-card-to-hand db :player-1)]
+      (is (thrown? js/Error (rules/cast-spell db :player-1 obj-id))
+          "Negative mana cost should be rejected by spec")))
+
+  (testing "clamp behavior: negative cost becomes zero"
+    ;; With throw-on-spec-failure bound to false, the card bypasses spec validation
+    ;; and the clamp logic turns negative cost into zero
     (binding [spec-util/*throw-on-spec-failure* false]
       (let [db (init-game-state)
             [obj-id db] (add-malformed-card-to-hand db :player-1)
             initial-black (:black (q/get-mana-pool db :player-1))
-            ;; Cast the malformed card (no mana needed since cost is negative)
+            ;; Cast the malformed card with clamp in place
             db' (rules/cast-spell db :player-1 obj-id)
             final-black (:black (q/get-mana-pool db' :player-1))]
-        ;; Verify spell was cast (moved to stack)
-        (is (= 1 (count (q/get-objects-in-zone db' :player-1 :stack)))
-            "Card should be on stack")
-        ;; With negative cost {:black -1}, subtracting negative adds mana
-        ;; This documents the current behavior - not necessarily desired
-        ;; but the test ensures we know what happens with bad data
-        (is (= (+ initial-black 1) final-black)
-            "Negative cost subtracts negative (adds mana) - documents malformed behavior")))))
+        ;; With clamp, negative cost becomes 0, so mana pool should be unchanged
+        (is (= initial-black final-black)
+            "Negative cost clamped to zero produces no mana change")))))
 
 
 ;; === Permanent type resolution tests ===
