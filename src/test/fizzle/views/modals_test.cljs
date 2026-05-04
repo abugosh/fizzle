@@ -155,6 +155,20 @@
         "render-selection must have :pick-mode")))
 
 
+(deftest render-selection-pick-mode-returns-inline-test
+  (testing ":pick-mode render-selection returns [:inline ...] for :spell-mode domain"
+    (let [sel {:selection/mechanism :pick-mode
+               :selection/domain :spell-mode
+               :selection/selected #{}
+               :selection/choices [{:choice/label "Mill" :choice/action {:mode/id :mill}}
+                                   {:choice/label "Bounce" :choice/action {:mode/id :bounce}}]
+               :selection/description "Choose a mode"
+               :selection/valid-targets [{:mode/id :mill} {:mode/id :bounce}]}
+          result (modals/render-selection sel nil)]
+      (is (= :inline (first result)) "First element should be :inline tag")
+      (is (vector? (second result)) "Second element should be hiccup component"))))
+
+
 (deftest render-selection-has-binary-choice-method-test
   (testing ":binary-choice has a dedicated render-selection method"
     (is (some? (get-method modals/render-selection :binary-choice))
