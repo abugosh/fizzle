@@ -26,7 +26,9 @@
   "Build a minimal JS-like event map for normalize-key testing."
   ([key] (mock-event key false))
   ([key shift?]
-   #js {:key key :shiftKey shift?}))
+   #js {:key key :shiftKey shift?})
+  ([key shift? tag-name]
+   #js {:key key :shiftKey shift? :target #js {:tagName tag-name}}))
 
 
 ;; ---------------------------------------------------------------------------
@@ -380,6 +382,7 @@
          {:selection/mechanism      :allocate-resource
           :selection/remaining-pool {:white 1 :blue 2 :black 0 :red 1 :green 0 :colorless 3}}))
 
+
 (deftest action-dispatch-allocate-1-happy-path-test
   (testing ":allocate-1 returns allocate-mana-color for the first available color"
     ;; color-order is [:white :blue :black :red :green :colorless]
@@ -388,20 +391,24 @@
     (let [result (kb/action-dispatch :allocate-1 allocate-state)]
       (is (= [::cost-events/allocate-mana-color :white] result)))))
 
+
 (deftest action-dispatch-allocate-2-returns-second-available-color-test
   (testing ":allocate-2 returns allocate-mana-color for the second available color"
     ;; Available colors in order: white, blue, red, colorless — second is :blue
     (let [result (kb/action-dispatch :allocate-2 allocate-state)]
       (is (= [::cost-events/allocate-mana-color :blue] result)))))
 
+
 (deftest action-dispatch-allocate-5-nil-when-fewer-than-5-colors-test
   (testing ":allocate-5 returns nil when fewer than 5 colors are available in pool"
     ;; allocate-state pool has only 4 available colors: white, blue, red, colorless
     (is (nil? (kb/action-dispatch :allocate-5 allocate-state)))))
 
+
 (deftest action-dispatch-allocate-1-nil-when-pending-selection-nil-test
   (testing ":allocate-1 returns nil when pending-selection is nil"
     (is (nil? (kb/action-dispatch :allocate-1 base-state)))))
+
 
 (deftest action-dispatch-allocate-color-order-test
   (testing "allocate-N respects color-order: white, blue, black, red, green, colorless"
@@ -425,9 +432,11 @@
   (testing "[:normal \"x\"] → nil (no binding for x in normal context)"
     (is (nil? (get kb/keymap [:normal "x"])))))
 
+
 (deftest keymap-modal-e-is-unmapped-test
   (testing "[:modal \"e\"] → nil (:modal is a suppressed context with no bindings)"
     (is (nil? (get kb/keymap [:modal "e"])))))
+
 
 (deftest keymap-normal-unknown-number-is-unmapped-test
   (testing "[:normal \"9\"] → nil (number keys not bound in normal context)"
@@ -449,6 +458,7 @@
       (is (= :yield action))
       (is (= [::priority-flow-events/yield] result)))))
 
+
 (deftest integration-1-in-binary-choice-context-dispatches-choose-1-test
   (testing "\"1\" key in :binary-choice context dispatches toggle+confirm for first choice"
     (let [choice-1  {:choice/action :pay   :choice/label "Pay 2 life"}
@@ -469,3 +479,26 @@
       (is (= [[::selection-events/toggle-selection :pay]
               [::selection-events/confirm-selection]]
              (:dispatch-n result))))))
+
+
+;; ---------------------------------------------------------------------------
+;; I. Text-input suppression
+
+(deftest text-input-target-input-element-test
+  (testing "INPUT element target is recognized as text input"
+    (is (true? (kb/text-input-target? (mock-event "e" false "INPUT"))))))
+
+
+(deftest text-input-target-textarea-element-test
+  (testing "TEXTAREA element target is recognized as text input"
+    (is (true? (kb/text-input-target? (mock-event "e" false "TEXTAREA"))))))
+
+
+(deftest text-input-target-div-element-test
+  (testing "DIV element target is NOT a text input"
+    (is (false? (kb/text-input-target? (mock-event "e" false "DIV"))))))
+
+
+(deftest text-input-target-nil-target-test
+  (testing "Event with no target does not crash (nil-safe)"
+    (is (false? (kb/text-input-target? #js {:key "e" :shiftKey false})))))

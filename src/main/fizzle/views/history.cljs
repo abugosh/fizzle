@@ -4,6 +4,7 @@
     [fizzle.snapshot.events :as snapshot]
     [fizzle.subs.game :as game-subs]
     [fizzle.subs.history :as subs]
+    [fizzle.views.keyboard :as kbd]
     [re-frame.core :as rf]
     [reagent.core :as r]))
 
@@ -29,7 +30,9 @@
      [:button {:class (step-btn-class can-pop?)
                :disabled (not can-pop?)
                :on-click #(rf/dispatch [::events/pop-entry])}
-      "Undo"]
+      "Undo"
+      (when-let [hint (kbd/hint-for-action :normal :undo)]
+        [:span {:class "ml-1.5 text-xs text-text-muted opacity-70"} (str "[" hint "]")])]
      [:button {:class (step-btn-class can-fwd?)
                :disabled (not can-fwd?)
                :on-click #(rf/dispatch [::events/step-forward])}

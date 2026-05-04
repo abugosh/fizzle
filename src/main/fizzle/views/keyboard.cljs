@@ -242,32 +242,33 @@
 
 ;; === Keydown handler ===
 
-(defn- handle-keydown
-  "Internal keydown event handler. Reads current app state via deref,
-   derives context, looks up action, resolves dispatch and fires it.
-
-   Suppresses shortcuts when:
-     - event target is INPUT or TEXTAREA element
-     - context is :modal"
-  [event pending-selection-ref app-state-ref]
+(defn text-input-target?
+  "Returns true when the event target is a text input element (INPUT or TEXTAREA).
+   Keyboard shortcuts are suppressed on these elements."
+  [event]
   (let [tag (some-> event .-target .-tagName .toLowerCase)]
-    (when-not (or (= tag "input") (= tag "textarea"))
-      (let [pending-selection @pending-selection-ref
-            context           (derive-context pending-selection)]
-        (when-not (= context :modal)
-          (let [normalized-key (normalize-key event)
-                action         (get keymap [context normalized-key])]
-            (when action
-              (.preventDefault event)
-              (let [app-state  @app-state-ref
-                    result     (action-dispatch action (assoc app-state :pending-selection pending-selection))]
-                (when result
-                  (if (map? result)
-                    ;; Multi-dispatch shape {:dispatch-n [[...] [...]]}
-                    (doseq [v (:dispatch-n result)]
-                      (rf/dispatch v))
-                    ;; Single dispatch vector
-                    (rf/dispatch result)))))))))))
+    (or (= tag "input") (= tag "textarea"))))
+
+
+(defn- handle-keydown
+  [event pending-selection-ref app-state-ref]
+  (when-not (text-input-target? event)
+    (let [pending-selection @pending-selection-ref
+          context           (derive-context pending-selection)]
+      (when-not (= context :modal)
+        (let [normalized-key (normalize-key event)
+              action         (get keymap [context normalized-key])]
+          (when action
+            (.preventDefault event)
+            (let [app-state  @app-state-ref
+                  result     (action-dispatch action (assoc app-state :pending-selection pending-selection))]
+              (when result
+                (if (map? result)
+                  ;; Multi-dispatch shape {:dispatch-n [[...] [...]]}
+                  (doseq [v (:dispatch-n result)]
+                    (rf/dispatch v))
+                  ;; Single dispatch vector
+                  (rf/dispatch result))))))))))
 
 
 ;; === Hook ===
