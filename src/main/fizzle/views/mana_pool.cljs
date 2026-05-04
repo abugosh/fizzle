@@ -59,7 +59,7 @@
      [:div {:class "flex gap-2.5 flex-wrap"}
       (for [color color-order
             :let [amount (get remaining-pool color)]
-            :when (some? amount)]
+            :when (and (some? amount) (pos? amount))]
         (allocation-mana-button color amount (get allocation color 0)))]
      [:div {:class "flex gap-2 mt-2"}
       [:button
