@@ -368,3 +368,104 @@
 (deftest normalize-key-number-1-test
   (testing "event.key \"1\" normalizes to \"1\""
     (is (= "1" (kb/normalize-key (mock-event "1"))))))
+
+
+;; ---------------------------------------------------------------------------
+;; F. Allocate-N action dispatch
+
+(def ^:private allocate-state
+  "Base state with a pending allocate-resource selection containing a mana pool."
+  (assoc base-state
+         :pending-selection
+         {:selection/mechanism      :allocate-resource
+          :selection/remaining-pool {:white 1 :blue 2 :black 0 :red 1 :green 0 :colorless 3}}))
+
+(deftest action-dispatch-allocate-1-happy-path-test
+  (testing ":allocate-1 returns allocate-mana-color for the first available color"
+    ;; color-order is [:white :blue :black :red :green :colorless]
+    ;; Pool has white=1, blue=2, red=1, colorless=3 (black=0 and green=0 skipped)
+    ;; First available is :white
+    (let [result (kb/action-dispatch :allocate-1 allocate-state)]
+      (is (= [::cost-events/allocate-mana-color :white] result)))))
+
+(deftest action-dispatch-allocate-2-returns-second-available-color-test
+  (testing ":allocate-2 returns allocate-mana-color for the second available color"
+    ;; Available colors in order: white, blue, red, colorless — second is :blue
+    (let [result (kb/action-dispatch :allocate-2 allocate-state)]
+      (is (= [::cost-events/allocate-mana-color :blue] result)))))
+
+(deftest action-dispatch-allocate-5-nil-when-fewer-than-5-colors-test
+  (testing ":allocate-5 returns nil when fewer than 5 colors are available in pool"
+    ;; allocate-state pool has only 4 available colors: white, blue, red, colorless
+    (is (nil? (kb/action-dispatch :allocate-5 allocate-state)))))
+
+(deftest action-dispatch-allocate-1-nil-when-pending-selection-nil-test
+  (testing ":allocate-1 returns nil when pending-selection is nil"
+    (is (nil? (kb/action-dispatch :allocate-1 base-state)))))
+
+(deftest action-dispatch-allocate-color-order-test
+  (testing "allocate-N respects color-order: white, blue, black, red, green, colorless"
+    ;; Pool with all 6 colors present
+    (let [state (assoc base-state
+                       :pending-selection
+                       {:selection/mechanism      :allocate-resource
+                        :selection/remaining-pool {:white 1 :blue 1 :black 1
+                                                   :red 1 :green 1 :colorless 1}})]
+      (is (= [::cost-events/allocate-mana-color :white]     (kb/action-dispatch :allocate-1 state)))
+      (is (= [::cost-events/allocate-mana-color :blue]      (kb/action-dispatch :allocate-2 state)))
+      (is (= [::cost-events/allocate-mana-color :black]     (kb/action-dispatch :allocate-3 state)))
+      (is (= [::cost-events/allocate-mana-color :red]       (kb/action-dispatch :allocate-4 state)))
+      (is (= [::cost-events/allocate-mana-color :green]     (kb/action-dispatch :allocate-5 state))))))
+
+
+;; ---------------------------------------------------------------------------
+;; G. Unmapped key lookups return nil
+
+(deftest keymap-normal-x-is-unmapped-test
+  (testing "[:normal \"x\"] → nil (no binding for x in normal context)"
+    (is (nil? (get kb/keymap [:normal "x"])))))
+
+(deftest keymap-modal-e-is-unmapped-test
+  (testing "[:modal \"e\"] → nil (:modal is a suppressed context with no bindings)"
+    (is (nil? (get kb/keymap [:modal "e"])))))
+
+(deftest keymap-normal-unknown-number-is-unmapped-test
+  (testing "[:normal \"9\"] → nil (number keys not bound in normal context)"
+    (is (nil? (get kb/keymap [:normal "9"])))))
+
+
+;; ---------------------------------------------------------------------------
+;; H. Integration tests: compose normalize-key → keymap → action-dispatch
+
+(deftest integration-space-in-normal-context-yields-test
+  (testing "Space key in :normal context dispatches yield"
+    (let [event      (mock-event " ")                  ; raw space
+          norm-key   (kb/normalize-key event)           ; → "Space"
+          context    (kb/derive-context nil)            ; nil selection → :normal
+          action     (get kb/keymap [context norm-key]) ; → :yield
+          result     (kb/action-dispatch action base-state)]
+      (is (= "Space" norm-key))
+      (is (= :normal context))
+      (is (= :yield action))
+      (is (= [::priority-flow-events/yield] result)))))
+
+(deftest integration-1-in-binary-choice-context-dispatches-choose-1-test
+  (testing "\"1\" key in :binary-choice context dispatches toggle+confirm for first choice"
+    (let [choice-1  {:choice/action :pay   :choice/label "Pay 2 life"}
+          choice-2  {:choice/action :skip  :choice/label "Skip"}
+          sel       {:selection/mechanism     :binary-choice
+                     :selection/choices       [choice-1 choice-2]
+                     :selection/valid-targets [:pay :skip]}
+          event      (mock-event "1")
+          norm-key   (kb/normalize-key event)                   ; → "1"
+          context    (kb/derive-context sel)                     ; → :binary-choice
+          action     (get kb/keymap [context norm-key])          ; → :choose-1
+          state      (assoc base-state :pending-selection sel)
+          result     (kb/action-dispatch action state)]
+      (is (= "1" norm-key))
+      (is (= :binary-choice context))
+      (is (= :choose-1 action))
+      (is (map? result))
+      (is (= [[::selection-events/toggle-selection :pay]
+              [::selection-events/confirm-selection]]
+             (:dispatch-n result))))))
