@@ -345,34 +345,6 @@
       (is (= {:black 0 :blue 1 :red 0} (:selection/remaining-pool result))))))
 
 
-;; === ::storm-split-source-name subscription tests ===
-
-(deftest test-storm-split-source-name-returns-spell-name
-  (testing "storm-split-source-name returns card name from source object"
-    ;; Production path: add brain-freeze to stack via th/add-card-to-zone (loads real card data),
-    ;; then build storm-split selection via sel-spec/set-pending-selection with actual source-object-id.
-    ;; The sub reads the card name from the real stack object — tests that lookup works correctly.
-    (let [db (th/create-test-db {:mana {:blue 2 :colorless 1}})
-          ;; Add brain-freeze to stack so the sub can look it up via queries/get-object
-          [game-db obj-id] (th/add-card-to-zone db :brain-freeze :stack :player-1)
-          selection (assoc (get sel-spec/minimal-valid-selections :storm-split)
-                           :selection/source-object-id obj-id
-                           :selection/player-id :player-1)
-          app-db (sel-spec/set-pending-selection {:game/db game-db} selection)
-          result (sub-value app-db [::subs/storm-split-source-name])]
-      (is (= "Brain Freeze" result)))))
-
-
-(deftest test-storm-split-source-name-nil-when-not-storm-split
-  (testing "storm-split-source-name returns nil for non-storm-split selection"
-    ;; Use sel-spec/set-pending-selection (spec chokepoint) with a valid :discard selection.
-    (let [game-db (make-game-db)
-          discard-sel (get sel-spec/minimal-valid-selections :discard)
-          app-db (sel-spec/set-pending-selection {:game/db game-db} discard-sel)
-          result (sub-value app-db [::subs/storm-split-source-name])]
-      (is (nil? result)))))
-
-
 (defn- add-battlefield-permanent
   "Add a permanent to a player's battlefield. Returns new game-db."
   [game-db player-id card-name cmc types]

@@ -751,12 +751,6 @@
         db))))
 
 
-(rf/reg-event-db
-  ::cancel-x-mana-selection
-  (fn [db _]
-    (dissoc db :game/pending-selection)))
-
-
 ;; =====================================================
 ;; Mana Allocation Event Handlers
 ;; =====================================================

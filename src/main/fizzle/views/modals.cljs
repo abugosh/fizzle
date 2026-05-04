@@ -78,9 +78,9 @@
 
 (defmethod render-selection :accumulate [s _]
   (case (:selection/domain s)
-    :x-mana-cost  [:modal [accumulator/x-mana-selection-modal s]]
-    :pay-x-life   [:modal [accumulator/pay-x-life-selection-modal s]]
-    :storm-split  [:modal [accumulator/storm-split-modal s]]
+    :x-mana-cost  [:inline [accumulator/accumulate-stepper-view s]]
+    :pay-x-life   [:inline [accumulator/accumulate-stepper-view s]]
+    :storm-split  [:inline [accumulator/storm-split-inline-view s]]
     nil))
 
 

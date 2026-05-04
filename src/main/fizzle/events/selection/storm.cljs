@@ -112,14 +112,3 @@
   ::adjust-storm-split
   (fn [db [_ target-id delta]]
     (adjust-storm-split-impl db target-id delta)))
-
-
-(rf/reg-event-db
-  ::reset-storm-split
-  (fn [db _]
-    (let [selection (:game/pending-selection db)
-          targets (:selection/valid-targets selection)
-          copy-count (:selection/copy-count selection)]
-      (assoc-in db [:game/pending-selection :selection/allocation]
-                (assoc (zipmap targets (repeat 0))
-                       (first targets) copy-count)))))
