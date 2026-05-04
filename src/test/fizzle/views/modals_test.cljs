@@ -165,6 +165,8 @@
                :selection/description "Choose a mode"
                :selection/valid-targets [{:mode/id :mill} {:mode/id :bounce}]}
           result (modals/render-selection sel nil)]
+      (is (vector? result)
+          "render-selection should return a vector")
       (is (= :inline (first result)) "First element should be :inline tag")
       (is (vector? (second result)) "Second element should be hiccup component"))))
 
