@@ -59,7 +59,7 @@
 
 (defn- accumulate-inline-stepper-row
   "Stepper row for storm-split inline component.
-   Renders label + [-] count [+] for a single target."
+   Renders label + [«] [-] count [+] [»] for a single target."
   [target-id count copy-count total-allocated]
   (let [can-decrement? (pos? count)
         can-increment? (< total-allocated copy-count)]
@@ -69,6 +69,10 @@
      [:div {:class "flex items-center justify-center gap-2"}
       [:button {:class (common/stepper-button-class can-decrement?)
                 :disabled (not can-decrement?)
+                :on-click #(rf/dispatch [::storm-events/adjust-storm-split target-id (- count)])}
+       "«"]
+      [:button {:class (common/stepper-button-class can-decrement?)
+                :disabled (not can-decrement?)
                 :on-click #(rf/dispatch [::storm-events/adjust-storm-split target-id -1])}
        "-"]
       [:span {:class "text-text font-bold text-lg min-w-[3ch] text-center"}
@@ -76,7 +80,11 @@
       [:button {:class (common/stepper-button-class can-increment?)
                 :disabled (not can-increment?)
                 :on-click #(rf/dispatch [::storm-events/adjust-storm-split target-id 1])}
-       "+"]]]))
+       "+"]
+      [:button {:class (common/stepper-button-class can-increment?)
+                :disabled (not can-increment?)
+                :on-click #(rf/dispatch [::storm-events/adjust-storm-split target-id (- copy-count total-allocated)])}
+       "»"]]]))
 
 
 (defn storm-split-inline-view
