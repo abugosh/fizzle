@@ -185,7 +185,7 @@
 
 (defn build-spell-mode-selection
   "Build a spell-mode selection for a modal card.
-   Mode maps are used as candidate identifiers — select-count 1, auto-confirm true.
+   Mode maps are used as candidate identifiers — select-count 1, auto-confirm false.
    Per-mode targeting evaluation happens here (valid modes only).
    Returns selection map for :game/pending-selection."
   [player-id object-id valid-modes]
@@ -197,7 +197,10 @@
    :selection/candidates valid-modes
    :selection/selected #{}
    :selection/select-count 1
-   :selection/auto-confirm? true
+   :selection/auto-confirm? false
+   :selection/choices (mapv (fn [mode] {:choice/label (:mode/label mode) :choice/action mode}) valid-modes)
+   :selection/description "Choose a mode"
+   :selection/valid-targets valid-modes
    :selection/validation :exact
    :selection/on-complete {:continuation/type :cast-after-spell-mode
                            :continuation/object-id object-id}})

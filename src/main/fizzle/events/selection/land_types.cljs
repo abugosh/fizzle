@@ -6,6 +6,7 @@
    Result: All lands on the battlefield (both players) with the source subtype
            receive a :land-type-override grant, overriding mana production until EOT."
   (:require
+    [clojure.string :as str]
     [fizzle.db.queries :as queries]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.land-types :as land-types]
@@ -28,7 +29,10 @@
    :selection/validation :exact
    :selection/player-id player-id
    :selection/spell-id object-id
-   :selection/remaining-effects remaining-effects})
+   :selection/remaining-effects remaining-effects
+   :selection/choices (mapv (fn [lt] {:choice/label (str/capitalize (name lt)) :choice/action lt}) land-types/basic-land-type-keys)
+   :selection/description "Choose source land type"
+   :selection/valid-targets land-types/basic-land-type-keys})
 
 
 ;; =====================================================
@@ -50,11 +54,12 @@
 
 (defmethod core/build-chain-selection :land-type-source
   [_db selection]
-  (let [source-type (first (:selection/selected selection))]
+  (let [source-type (first (:selection/selected selection))
+        target-types (vec (remove #{source-type} land-types/basic-land-type-keys))]
     {:selection/mechanism :pick-mode
      :selection/domain    :land-type-target
      :selection/lifecycle :standard
-     :selection/options (vec (remove #{source-type} land-types/basic-land-type-keys))
+     :selection/options target-types
      :selection/selected nil
      :selection/select-count 1
      :selection/exact? true
@@ -62,7 +67,10 @@
      :selection/source-type source-type
      :selection/player-id (:selection/player-id selection)
      :selection/spell-id (:selection/spell-id selection)
-     :selection/remaining-effects (:selection/remaining-effects selection)}))
+     :selection/remaining-effects (:selection/remaining-effects selection)
+     :selection/choices (mapv (fn [lt] {:choice/label (str/capitalize (name lt)) :choice/action lt}) target-types)
+     :selection/description (str "Change " (str/capitalize (name source-type)) "s to...")
+     :selection/valid-targets target-types}))
 
 
 ;; =====================================================
