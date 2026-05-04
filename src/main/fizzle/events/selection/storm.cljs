@@ -50,6 +50,7 @@
            :selection/allocation (assoc (zipmap valid-targets (repeat 0))
                                         (first valid-targets) copy-count)
            :selection/source-object-id source-id
+           :selection/source-name (get-in source-obj [:object/card :card/name])
            :selection/player-id player-id
            :selection/stack-item-eid (:db/id storm-stack-item)
            :selection/selected #{}
