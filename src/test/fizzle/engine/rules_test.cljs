@@ -1501,7 +1501,7 @@
 ;; === :mode/label population (fizzle-8mfo) ===
 
 (deftest get-primary-mode-includes-default-label
-  (testing "Primary mode has a non-nil :mode/label so spell-mode-selection-modal can render + key"
+  (testing "Primary mode has a non-nil :mode/label so binary-choice-view can render + key"
     (let [card {:card/id :foo :card/name "Foo" :card/mana-cost {:blue 1} :card/types #{:instant}}
           mode (#'rules/get-primary-mode card)]
       (is (= "Cast" (:mode/label mode))
@@ -1532,7 +1532,7 @@
 
 
 (deftest casting-modes-have-unique-mode-ids-per-card
-  (testing "Mode IDs in a card's casting modes list are unique — invariant for spell-mode-selection-modal :key"
+  (testing "Mode IDs in a card's casting modes list are unique — invariant for binary-choice-view :key"
     (let [card-with-kicker {:card/id :rr
                             :card/mana-cost {:blue 1}
                             :card/types #{:instant}
