@@ -64,7 +64,7 @@
      :selection/select-count 1
      :selection/exact? true
      :selection/validation :exact
-     :selection/source-type source-type
+     :selection/land-source-type source-type
      :selection/player-id (:selection/player-id selection)
      :selection/spell-id (:selection/spell-id selection)
      :selection/remaining-effects (:selection/remaining-effects selection)
@@ -99,7 +99,7 @@
 (defmethod core/apply-domain-policy :land-type-target
   [game-db selection]
   (let [target-type (first (:selection/selected selection))
-        source-type (:selection/source-type selection)
+        source-type (:selection/land-source-type selection)
         spell-id (:selection/spell-id selection)
         player-id (:selection/player-id selection)
         game-state (queries/get-game-state game-db)

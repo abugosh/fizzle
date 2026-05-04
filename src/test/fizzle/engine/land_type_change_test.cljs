@@ -117,7 +117,7 @@
           "Target options should exclude the source type (4 remaining)")
       (is (not (contains? (set (:selection/options next-sel)) :island))
           "Target options should NOT include the source type :island")
-      (is (= :island (:selection/source-type next-sel))
+      (is (= :island (:selection/land-source-type next-sel))
           "Source type should be stored on target selection"))))
 
 

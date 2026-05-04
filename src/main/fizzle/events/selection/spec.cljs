@@ -75,6 +75,7 @@
 
 (s/def :selection/choices (s/coll-of map?))
 (s/def :selection/description string?)
+(s/def :selection/land-source-type keyword?)
 (s/def :selection/replacement-event map?)
 (s/def :selection/replacement-entity-id int?)
 
@@ -274,6 +275,7 @@
                 :selection/options
                 :selection/exact?
                 :selection/source-type
+                :selection/land-source-type
                 :selection/spell-id
                 :selection/remaining-effects
                 :selection/on-complete
