@@ -34,9 +34,14 @@
 ;; ---------------------------------------------------------------------------
 ;; A. Keymap lookup
 
-(deftest keymap-normal-e-cast-test
-  (testing "[:normal \"e\"] → :cast"
-    (is (= :cast (get kb/keymap [:normal "e"])))))
+(deftest keymap-normal-e-cast-and-yield-test
+  (testing "[:normal \"e\"] → :cast-and-yield"
+    (is (= :cast-and-yield (get kb/keymap [:normal "e"])))))
+
+
+(deftest keymap-normal-f-cast-test
+  (testing "[:normal \"f\"] → :cast"
+    (is (= :cast (get kb/keymap [:normal "f"])))))
 
 
 (deftest keymap-normal-space-yield-test
@@ -161,9 +166,14 @@
     (is (= "Shift+Space" (kb/hint-for-action :normal :yield-all)))))
 
 
-(deftest hint-for-action-cast-e-test
-  (testing "(hint-for-action :normal :cast) → \"E\""
-    (is (= "E" (kb/hint-for-action :normal :cast)))))
+(deftest hint-for-action-cast-and-yield-e-test
+  (testing "(hint-for-action :normal :cast-and-yield) → \"E\""
+    (is (= "E" (kb/hint-for-action :normal :cast-and-yield)))))
+
+
+(deftest hint-for-action-cast-f-test
+  (testing "(hint-for-action :normal :cast) → \"F\""
+    (is (= "F" (kb/hint-for-action :normal :cast)))))
 
 
 (deftest hint-for-action-undo-q-test
@@ -239,6 +249,19 @@
     (let [state (assoc base-state :can-cast? true :can-play-land? true)
           result (kb/action-dispatch :cast state)]
       (is (= ::casting-events/cast-spell (first result))))))
+
+
+(deftest action-dispatch-cast-and-yield-nil-when-no-play-test
+  (testing ":cast-and-yield returns nil when both can-cast? and can-play-land? are false"
+    (is (nil? (kb/action-dispatch :cast-and-yield base-state)))))
+
+
+(deftest action-dispatch-cast-and-yield-returns-vector-when-can-cast-test
+  (testing ":cast-and-yield returns cast-and-yield vector when can-cast? is true"
+    (let [state (assoc base-state :can-cast? true)
+          result (kb/action-dispatch :cast-and-yield state)]
+      (is (= ::priority-flow-events/cast-and-yield (first result)))
+      (is (= {:object-id :card-1} (second result))))))
 
 
 (deftest action-dispatch-yield-always-dispatches-test

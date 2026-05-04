@@ -75,7 +75,9 @@
                                can-cast? #(rf/dispatch [::priority-flow-events/cast-and-yield {:object-id selected}])
                                can-play-land? #(rf/dispatch [::lands-events/play-land selected])
                                :else identity)}
-          play-yield-label]
+          play-yield-label
+          (when-let [hint (kbd/hint-for-action :normal :cast-and-yield)]
+            [:span {:class "ml-1.5 text-xs text-text-muted opacity-70"} (str "[" hint "]")])]
          (when can-cycle?
            [:button {:class (btn-class true)
                      :on-click #(rf/dispatch [::cycling-events/cycle-card selected])}

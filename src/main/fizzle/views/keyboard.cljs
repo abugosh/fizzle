@@ -52,7 +52,8 @@
 
 (def keymap
   {;; Normal context: cast, yield, undo, cycle
-   [:normal "e"]           :cast
+   [:normal "e"]           :cast-and-yield
+   [:normal "f"]           :cast
    [:normal "Space"]       :yield
    [:normal "Shift+Space"] :yield-all
    [:normal "q"]           :undo
@@ -150,6 +151,12 @@
     :cast
     (cond
       can-cast?      [::casting-events/cast-spell {:object-id selected-card}]
+      can-play-land? [::lands-events/play-land selected-card]
+      :else          nil)
+
+    :cast-and-yield
+    (cond
+      can-cast?      [::priority-flow-events/cast-and-yield {:object-id selected-card}]
       can-play-land? [::lands-events/play-land selected-card]
       :else          nil)
 
