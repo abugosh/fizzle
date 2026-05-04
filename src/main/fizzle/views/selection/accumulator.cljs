@@ -5,6 +5,7 @@
     [fizzle.events.selection :as selection-events]
     [fizzle.events.selection.costs :as cost-events]
     [fizzle.events.selection.storm :as storm-events]
+    [fizzle.views.keyboard :as kbd]
     [fizzle.views.selection.common :as common]
     [re-frame.core :as rf]))
 
@@ -38,23 +39,35 @@
         header-label (case domain
                        :x-mana-cost (str "CHOOSE X VALUE (max " max-x ")")
                        :pay-x-life (str "PAY X LIFE (max " max-x ")")
-                       "ACCUMULATE")]
+                       "ACCUMULATE")
+        decrement-hint (kbd/hint-for-action :accumulate :decrement)
+        increment-hint (kbd/hint-for-action :accumulate :increment)
+        confirm-hint (kbd/hint-for-action :accumulate :confirm)]
     [:div {:class "mb-4 border-2 border-border-accent rounded-lg p-3"}
      [:div {:class "text-text-label mb-3 text-xs"} header-label]
      [:div {:class "flex items-center justify-center gap-5 mb-4"}
       [:button {:class (common/stepper-button-class (pos? selected-x))
                 :disabled (not (pos? selected-x))
                 :on-click #(rf/dispatch [::cost-events/decrement-x-value])}
-       "-"]
+       "-"
+       (when decrement-hint
+         [:span {:class "ml-1 text-xs text-text-muted inline"}
+          "[" decrement-hint "]"])]
       [:div {:class "text-text font-bold text-xl min-w-[60px] text-center"}
        (str "X = " selected-x)]
       [:button {:class (common/stepper-button-class (< selected-x max-x))
                 :disabled (not (< selected-x max-x))
                 :on-click #(rf/dispatch [::cost-events/increment-x-value])}
-       "+"]]
+       "+"
+       (when increment-hint
+         [:span {:class "ml-1 text-xs text-text-muted inline"}
+          "[" increment-hint "]"])]]
      [:button {:class "w-full py-2 px-5 border-none rounded font-bold text-sm cursor-pointer bg-btn-enabled-bg text-white"
                :on-click #(rf/dispatch [::selection-events/confirm-selection])}
-      "Confirm"]]))
+      "Confirm"
+      (when confirm-hint
+        [:span {:class "ml-2 text-xs text-text-muted inline"}
+         "[" confirm-hint "]"])]]))
 
 
 (defn- accumulate-inline-stepper-row
@@ -62,7 +75,9 @@
    Renders label + [«] [-] count [+] [»] for a single target."
   [target-id count copy-count total-allocated]
   (let [can-decrement? (pos? count)
-        can-increment? (< total-allocated copy-count)]
+        can-increment? (< total-allocated copy-count)
+        decrement-hint (kbd/hint-for-action :accumulate :decrement)
+        increment-hint (kbd/hint-for-action :accumulate :increment)]
     [:div {:class "flex items-center justify-between gap-3 mb-3"}
      [:span {:class "text-text font-bold text-sm"}
       (storm-split-target-label target-id)]
@@ -74,13 +89,19 @@
       [:button {:class (common/stepper-button-class can-decrement?)
                 :disabled (not can-decrement?)
                 :on-click #(rf/dispatch [::storm-events/adjust-storm-split target-id -1])}
-       "-"]
+       "-"
+       (when decrement-hint
+         [:span {:class "ml-1 text-xs text-text-muted inline"}
+          "[" decrement-hint "]"])]
       [:span {:class "text-text font-bold text-lg min-w-[3ch] text-center"}
        count]
       [:button {:class (common/stepper-button-class can-increment?)
                 :disabled (not can-increment?)
                 :on-click #(rf/dispatch [::storm-events/adjust-storm-split target-id 1])}
-       "+"]
+       "+"
+       (when increment-hint
+         [:span {:class "ml-1 text-xs text-text-muted inline"}
+          "[" increment-hint "]"])]
       [:button {:class (common/stepper-button-class can-increment?)
                 :disabled (not can-increment?)
                 :on-click #(rf/dispatch [::storm-events/adjust-storm-split target-id (- copy-count total-allocated)])}
@@ -101,7 +122,8 @@
         allocation (:selection/allocation selection)
         source-name (:selection/source-name selection)
         total-allocated (apply + (vals allocation))
-        valid? (= total-allocated copy-count)]
+        valid? (= total-allocated copy-count)
+        confirm-hint (kbd/hint-for-action :accumulate :confirm)]
     [:div {:class "mb-4 border-2 border-border-accent rounded-lg p-3"}
      [:div {:class "text-text-label mb-3 text-xs"}
       (str "DISTRIBUTE " copy-count " COPIES"
@@ -119,4 +141,7 @@
                              "cursor-not-allowed bg-surface-dim text-perm-text-tapped"))
                :disabled (not valid?)
                :on-click #(rf/dispatch [::selection-events/confirm-selection])}
-      "Confirm"]]))
+      "Confirm"
+      (when confirm-hint
+        [:span {:class "ml-2 text-xs text-text-muted inline"}
+         "[" confirm-hint "]"])]]))

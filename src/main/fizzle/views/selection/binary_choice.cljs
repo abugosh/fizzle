@@ -16,6 +16,7 @@
         (both dispatched on the same click — no separate Confirm step)"
   (:require
     [fizzle.events.selection :as selection-events]
+    [fizzle.views.keyboard :as kbd]
     [re-frame.core :as rf]))
 
 
@@ -47,11 +48,17 @@
     [:div {:class "mb-4 border-2 border-border-accent rounded-lg p-3"}
      [:div {:class "text-text-label mb-1.5 text-xs"} (or (:selection/description selection) "CHOOSE AN OPTION")]
      [:div {:class "flex flex-col gap-2"}
-      (for [choice choices]
-        (let [toggle-val (if action-mode? (:choice/action choice) choice)]
+      (for [[idx choice] (map-indexed vector choices)]
+        (let [toggle-val (if action-mode? (:choice/action choice) choice)
+              mechanism (:selection/mechanism selection)
+              action-kw (keyword (str "choose-" (inc idx)))
+              hint (kbd/hint-for-action mechanism action-kw)]
           ^{:key (:choice/action choice)}
           [:button {:class "py-2 px-4 rounded font-bold text-sm text-text border-2 border-border bg-surface-raised hover:border-text-muted cursor-pointer transition-all duration-100"
                     :on-click (fn []
                                 (rf/dispatch [::selection-events/toggle-selection toggle-val])
                                 (rf/dispatch [::selection-events/confirm-selection]))}
-           (:choice/label choice)]))]]))
+           (:choice/label choice)
+           (when hint
+             [:span {:class "ml-2 text-xs text-text-muted inline"}
+              "[" hint "]"])]))]]))
