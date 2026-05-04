@@ -246,6 +246,38 @@
           "Player 1's library should be unaffected"))))
 
 
+(deftest vision-charm-mode2-changes-land-types-and-leaves-stack-test
+  (testing "Mode 2: full resolve — source+target selection, grants applied, spell leaves stack"
+    (let [db (th/create-test-db)
+          db (th/add-opponent db)
+          [db island-id] (th/add-card-to-zone db :island :battlefield :player-1)
+          [db vc-id] (th/add-card-to-zone db :vision-charm :hand :player-1)
+          db (mana/add-mana db :player-1 {:blue 1})
+          mode-2-card (get (:card/modes vision-charm/card) 1)
+          {:keys [db selection]} (th/cast-with-mode db :player-1 vc-id)
+          candidate (first (filter #(= % mode-2-card) (:selection/candidates selection)))
+          _ (is (some? candidate) "Mode 2 should be in candidates")
+          {:keys [db]} (th/confirm-selection db selection #{candidate})]
+      (is (some? (q/get-top-stack-item db))
+          "Spell should be on stack before resolve")
+      (let [{:keys [db selection]} (th/resolve-top db)]
+        (is (= :land-type-source (:selection/domain selection))
+            "Resolve should produce land-type-source selection")
+        (let [{:keys [db selection]} (th/confirm-selection db selection #{:island})]
+          (is (= :land-type-target (:selection/domain selection))
+              "Source confirm should chain to land-type-target selection")
+          (let [{:keys [db]} (th/confirm-selection db selection #{:swamp})]
+            (is (nil? (q/get-top-stack-item db))
+                "Spell must leave the stack after Mode 2 resolution completes")
+            (is (= :graveyard (:object/zone (q/get-object db vc-id)))
+                "Vision Charm should be in graveyard after resolution")
+            (let [island-grants (q/get-grants db island-id)]
+              (is (= 1 (count island-grants))
+                  "Island should have exactly one grant after land type change")
+              (is (= :land-type-override (:grant/type (first island-grants)))
+                  "Grant type should be :land-type-override"))))))))
+
+
 ;; =====================================================
 ;; C. Cannot-Cast Guards
 ;; =====================================================
