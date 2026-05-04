@@ -74,6 +74,7 @@
 ;; =====================================================
 
 (s/def :selection/choices (s/coll-of map?))
+(s/def :selection/description string?)
 (s/def :selection/replacement-event map?)
 (s/def :selection/replacement-entity-id int?)
 
@@ -275,7 +276,10 @@
                 :selection/source-type
                 :selection/spell-id
                 :selection/remaining-effects
-                :selection/on-complete]))
+                :selection/on-complete
+                :selection/valid-targets
+                :selection/choices
+                :selection/description]))
 
 
 ;; :binary-choice — choose one action from a small fixed action-keyword set.
@@ -596,7 +600,10 @@
     :selection/player-id :player-1
     :selection/selected nil
     :selection/select-count 1
-    :selection/validation :exact}
+    :selection/validation :exact
+    :selection/choices [{:choice/label "Plains" :choice/action :plains}]
+    :selection/description "Choose source land type"
+    :selection/valid-targets [:plains :island :swamp :mountain :forest]}
 
    :land-type-target
    {:selection/mechanism :pick-mode
@@ -605,7 +612,10 @@
     :selection/player-id :player-1
     :selection/selected nil
     :selection/select-count 1
-    :selection/validation :exact}
+    :selection/validation :exact
+    :selection/choices [{:choice/label "Island" :choice/action :island}]
+    :selection/description "Choose target land type"
+    :selection/valid-targets [:island :swamp :mountain :forest]}
 
    :select-attackers
    {:selection/mechanism :n-slot-targeting
@@ -641,9 +651,12 @@
     :selection/selected #{}
     :selection/select-count 1
     :selection/validation :exact
-    :selection/auto-confirm? true
+    :selection/auto-confirm? false
     :selection/object-id :spell-id
-    :selection/candidates [{:mode/id :primary}]}
+    :selection/candidates [{:mode/id :primary}]
+    :selection/choices [{:choice/label "Primary" :choice/action {:mode/id :primary}}]
+    :selection/description "Choose a mode"
+    :selection/valid-targets [{:mode/id :primary}]}
 
    :untap-lands
    {:selection/mechanism :pick-from-zone
