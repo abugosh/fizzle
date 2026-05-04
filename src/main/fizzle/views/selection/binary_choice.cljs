@@ -4,10 +4,10 @@
    Renders one button per entry in :selection/choices.
    Domain-agnostic: handles both :replacement-choice and :unless-pay.
 
-   Toggle dispatch shape is determined by :selection/valid-targets:
-     - Vector of keywords → dispatches (:choice/action choice) as keyword
+   Toggle dispatch shape is determined by :selection/valid-targets presence:
+     - Present (e.g. [:pay :decline]) → dispatches (:choice/action choice) as keyword
        (used by :unless-pay where selected contains :pay or :decline)
-     - Absent or non-keyword-vec → dispatches full choice map
+     - Absent → dispatches full choice map
        (used by :replacement-choice where selected contains choice map)
 
    Player flow (single-click confirm, Requirement 6):
@@ -19,14 +19,13 @@
     [re-frame.core :as rf]))
 
 
-(defn- keyword-targets?
-  "Returns true if :selection/valid-targets is a vector of keywords.
-   Used to determine toggle dispatch shape."
+(defn- dispatch-action?
+  "Returns true when toggle-selection should dispatch (:choice/action choice)
+   instead of the full choice map. Keyed on :selection/valid-targets presence:
+   domains with valid-targets dispatch the action value; domains without
+   (replacement-choice) dispatch the full choice map for apply-domain-policy."
   [selection]
-  (let [valid-targets (:selection/valid-targets selection)]
-    (and (vector? valid-targets)
-         (seq valid-targets)
-         (every? keyword? valid-targets))))
+  (boolean (:selection/valid-targets selection)))
 
 
 (defn binary-choice-view
@@ -39,17 +38,17 @@
    toggle-selection and confirm-selection on click.
 
    Toggle dispatch:
-     - If :selection/valid-targets is a vector of keywords (e.g. [:pay :decline]),
+     - If :selection/valid-targets is present (e.g. [:pay :decline]),
        dispatches toggle-selection with (:choice/action choice) keyword.
      - Otherwise (replacement-choice), dispatches toggle-selection with full choice map."
   [selection]
   (let [choices  (:selection/choices selection)
-        kw-mode? (keyword-targets? selection)]
+        action-mode? (dispatch-action? selection)]
     [:div {:class "mb-4 border-2 border-border-accent rounded-lg p-3"}
-     [:div {:class "text-text-label mb-1.5 text-xs"} "CHOOSE AN OPTION"]
+     [:div {:class "text-text-label mb-1.5 text-xs"} (or (:selection/description selection) "CHOOSE AN OPTION")]
      [:div {:class "flex flex-col gap-2"}
       (for [choice choices]
-        (let [toggle-val (if kw-mode? (:choice/action choice) choice)]
+        (let [toggle-val (if action-mode? (:choice/action choice) choice)]
           ^{:key (:choice/action choice)}
           [:button {:class "py-2 px-4 rounded font-bold text-sm text-text border-2 border-border bg-surface-raised hover:border-text-muted cursor-pointer transition-all duration-100"
                     :on-click (fn []

@@ -111,12 +111,8 @@
       [:modal (object-target s c :battlefield "1 target selected" "Select a target")])))
 
 
-(defmethod render-selection :pick-mode [s c]
-  (case (:selection/domain s)
-    :spell-mode      [:modal [custom/spell-mode-selection-modal s c]]
-    :land-type-source [:modal [custom/land-type-selection-modal s]]
-    :land-type-target [:modal [custom/land-type-selection-modal s]]
-    nil))
+(defmethod render-selection :pick-mode [s _]
+  [:inline [binary-choice-view/binary-choice-view s]])
 
 
 (defmethod render-selection :binary-choice [s _]
