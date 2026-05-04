@@ -37,6 +37,7 @@
     [fizzle.views.graveyard :as graveyard]
     [fizzle.views.hand :as hand]
     [fizzle.views.history :as history]
+    [fizzle.views.keyboard :as kbd]
     [fizzle.views.mana-pool :as mana-pool]
     [fizzle.views.modals :as modals]
     [fizzle.views.opening-hand :as opening-hand]
@@ -44,6 +45,7 @@
     [fizzle.views.stack :as stack]
     [fizzle.views.zone-counts :as zone-counts]
     [re-frame.core :as rf]
+    [reagent.core :as r]
     [reagent.dom.client :as rdom]))
 
 
@@ -85,35 +87,37 @@
 
 (defn- game-screen
   []
-  (let [render-result (modals/selection-render)]
-    [:div {:class "game-grid min-h-0"}
-     ;; Left sidebar: graveyard
-     [collapsible-left-column "Graveyard" ::subs/gy-collapsed ::ui-events/toggle-gy-collapsed [graveyard/graveyard-view]]
-     ;; Center column: primary interaction zones
-     [:div {:class "p-4 overflow-y-auto min-w-[400px]"}
-      [battlefield/battlefield-view]
-      [stack/stack-view]
-      [battlefield/phase-bar-section]
-      [hand/hand-view]
-      (if render-result
-        (let [[mode component] render-result]
-          (if (= mode :inline)
-            [controls/controls-view component]
-            [controls/controls-view nil]))
-        [controls/controls-view nil])
-      [:div {:class "flex gap-8"}
-       [mana-pool/mana-pool-view]
-       [mana-pool/storm-count-view]]
-      [zone-counts/zone-counts-view]
-      [calculator/calculator-panel]]
-     ;; Right sidebar: history
-     [collapsible-right-column "History" ::subs/history-collapsed ::ui-events/toggle-history-collapsed [history/history-sidebar]]
-     ;; Modals (overlay, not in grid flow)
-     (when render-result
-       (let [[mode component] render-result]
-         (when (= mode :modal)
-           component)))
-     [game-over/game-over-modal]]))
+  (r/with-let [^:clj-kondo/ignore cleanup (kbd/use-keyboard-shortcuts)]
+              (let [render-result (modals/selection-render)]
+                [:div {:class "game-grid min-h-0"}
+                 ;; Left sidebar: graveyard
+                 [collapsible-left-column "Graveyard" ::subs/gy-collapsed ::ui-events/toggle-gy-collapsed [graveyard/graveyard-view]]
+                 ;; Center column: primary interaction zones
+                 [:div {:class "p-4 overflow-y-auto min-w-[400px]"}
+                  [battlefield/battlefield-view]
+                  [stack/stack-view]
+                  [battlefield/phase-bar-section]
+                  [hand/hand-view]
+                  (if render-result
+                    (let [[mode component] render-result]
+                      (if (= mode :inline)
+                        [controls/controls-view component]
+                        [controls/controls-view nil]))
+                    [controls/controls-view nil])
+                  [:div {:class "flex gap-8"}
+                   [mana-pool/mana-pool-view]
+                   [mana-pool/storm-count-view]]
+                  [zone-counts/zone-counts-view]
+                  [calculator/calculator-panel]]
+                 ;; Right sidebar: history
+                 [collapsible-right-column "History" ::subs/history-collapsed ::ui-events/toggle-history-collapsed [history/history-sidebar]]
+                 ;; Modals (overlay, not in grid flow)
+                 (when render-result
+                   (let [[mode component] render-result]
+                     (when (= mode :modal)
+                       component)))
+                 [game-over/game-over-modal]])
+              (finally ^:clj-kondo/ignore (cleanup))))
 
 
 (defn app
