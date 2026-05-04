@@ -90,10 +90,51 @@
         "render-selection must have :reorder")))
 
 
-(deftest render-selection-has-accumulate-method-test
-  (testing ":accumulate has a dedicated render-selection method"
-    (is (some? (get-method modals/render-selection :accumulate))
-        "render-selection must have :accumulate")))
+(deftest render-selection-accumulate-x-mana-cost-returns-inline-test
+  (testing ":accumulate render-selection returns [:inline ...] for :x-mana-cost domain"
+    (let [sel {:selection/mechanism :accumulate
+               :selection/domain :x-mana-cost
+               :selection/selected-x 0
+               :selection/max-x 5}
+          result (modals/render-selection sel nil)]
+      (is (vector? result)
+          "render-selection should return a vector")
+      (is (= :inline (first result))
+          "First element should be :inline tag for :accumulate mechanism")
+      (is (vector? (second result))
+          "Second element should be the hiccup component vector"))))
+
+
+(deftest render-selection-accumulate-pay-x-life-returns-inline-test
+  (testing ":accumulate render-selection returns [:inline ...] for :pay-x-life domain"
+    (let [sel {:selection/mechanism :accumulate
+               :selection/domain :pay-x-life
+               :selection/selected-x 0
+               :selection/max-x 10}
+          result (modals/render-selection sel nil)]
+      (is (vector? result)
+          "render-selection should return a vector")
+      (is (= :inline (first result))
+          "First element should be :inline tag for :accumulate mechanism")
+      (is (vector? (second result))
+          "Second element should be the hiccup component vector"))))
+
+
+(deftest render-selection-accumulate-storm-split-returns-inline-test
+  (testing ":accumulate render-selection returns [:inline ...] for :storm-split domain"
+    (let [sel {:selection/mechanism :accumulate
+               :selection/domain :storm-split
+               :selection/copy-count 3
+               :selection/valid-targets [:player-2 :player-1]
+               :selection/allocation {:player-2 3 :player-1 0}
+               :selection/source-name "Brain Freeze"}
+          result (modals/render-selection sel nil)]
+      (is (vector? result)
+          "render-selection should return a vector")
+      (is (= :inline (first result))
+          "First element should be :inline tag for :accumulate mechanism")
+      (is (vector? (second result))
+          "Second element should be the hiccup component vector"))))
 
 
 (deftest render-selection-has-allocate-resource-method-test

@@ -145,6 +145,8 @@
       (is (= :finalized (:selection/lifecycle selection)))
       (is (= 3 (:selection/copy-count selection)))
       (is (= source-id (:selection/source-object-id selection)))
+      (is (= "Brain Freeze" (:selection/source-name selection))
+          "Builder should include source card name")
       (is (= :player-1 (:selection/player-id selection)))
       (is (= (:db/id storm-si) (:selection/stack-item-eid selection)))
       ;; valid-targets uses player-ids
