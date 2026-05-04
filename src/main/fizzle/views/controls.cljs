@@ -5,6 +5,7 @@
     [fizzle.events.lands :as lands-events]
     [fizzle.events.priority-flow :as priority-flow-events]
     [fizzle.subs.game :as subs]
+    [fizzle.views.keyboard :as kbd]
     [re-frame.core :as rf]))
 
 
@@ -65,7 +66,9 @@
                                can-cast? #(rf/dispatch [::casting-events/cast-spell {:object-id selected}])
                                can-play-land? #(rf/dispatch [::lands-events/play-land selected])
                                :else identity)}
-          play-label]
+          play-label
+          (when-let [hint (kbd/hint-for-action :normal :cast)]
+            [:span {:class "ml-1.5 text-xs text-text-muted opacity-70"} (str "[" hint "]")])]
          [:button {:class (btn-class play-enabled?)
                    :disabled (not play-enabled?)
                    :on-click (cond
@@ -76,14 +79,20 @@
          (when can-cycle?
            [:button {:class (btn-class true)
                      :on-click #(rf/dispatch [::cycling-events/cycle-card selected])}
-            (str "Cycle " (:name card-info))])
+            (str "Cycle " (:name card-info))
+            (when-let [hint (kbd/hint-for-action :normal :cycle)]
+              [:span {:class "ml-1.5 text-xs text-text-muted opacity-70"} (str "[" hint "]")])])
          [:button {:class (btn-class true)
                    :on-click #(rf/dispatch [::priority-flow-events/yield])}
           (if-let [n (top-stack-item-name stack)]
             (str "Yield: " n)
-            "Yield")]
+            "Yield")
+          (when-let [hint (kbd/hint-for-action :normal :yield)]
+            [:span {:class "ml-1.5 text-xs text-text-muted opacity-70"} (str "[" hint "]")])]
          [:button {:class (btn-class true)
                    :on-click #(rf/dispatch [::priority-flow-events/yield-all])}
           (if (seq stack)
             (str "Yield All (" (count stack) ")")
-            "Yield All")]])])))
+            "Yield All")
+          (when-let [hint (kbd/hint-for-action :normal :yield-all)]
+            [:span {:class "ml-1.5 text-xs text-text-muted opacity-70"} (str "[" hint "]")])]])])))
