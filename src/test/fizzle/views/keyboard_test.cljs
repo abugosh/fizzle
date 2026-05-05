@@ -15,6 +15,7 @@
     [fizzle.events.priority-flow :as priority-flow-events]
     [fizzle.events.selection :as selection-events]
     [fizzle.events.selection.costs :as cost-events]
+    [fizzle.events.selection.storm :as storm-events]
     [fizzle.history.events :as history-events]
     [fizzle.views.keyboard :as kb]))
 
@@ -525,3 +526,152 @@
 (deftest text-input-target-nil-target-test
   (testing "Event with no target does not crash (nil-safe)"
     (is (false? (kb/text-input-target? #js {:key "e" :shiftKey false})))))
+
+
+;; ---------------------------------------------------------------------------
+;; J. Storm-split context: derive-context
+
+(deftest derive-context-storm-split-domain-returns-storm-split-test
+  (testing ":accumulate mechanism + :storm-split domain → :storm-split context"
+    (is (= :storm-split
+           (kb/derive-context {:selection/mechanism :accumulate
+                               :selection/domain    :storm-split})))))
+
+
+(deftest derive-context-accumulate-x-mana-cost-domain-returns-accumulate-test
+  (testing ":accumulate mechanism + :x-mana-cost domain → :accumulate context (no regression)"
+    (is (= :accumulate
+           (kb/derive-context {:selection/mechanism :accumulate
+                               :selection/domain    :x-mana-cost})))))
+
+
+(deftest derive-context-accumulate-pay-x-life-domain-returns-accumulate-test
+  (testing ":accumulate mechanism + :pay-x-life domain → :accumulate context (no regression)"
+    (is (= :accumulate
+           (kb/derive-context {:selection/mechanism :accumulate
+                               :selection/domain    :pay-x-life})))))
+
+
+(deftest derive-context-accumulate-no-domain-returns-accumulate-test
+  (testing ":accumulate mechanism with no domain → :accumulate context (no regression)"
+    (is (= :accumulate
+           (kb/derive-context {:selection/mechanism :accumulate})))))
+
+
+;; ---------------------------------------------------------------------------
+;; K. Storm-split keymap chord entries
+
+(deftest keymap-storm-split-1-chord-start-test
+  (testing "[:storm-split \"1\"] → :chord-start"
+    (is (= :chord-start (get kb/keymap [:storm-split "1"])))))
+
+
+(deftest keymap-storm-split-2-chord-start-test
+  (testing "[:storm-split \"2\"] → :chord-start"
+    (is (= :chord-start (get kb/keymap [:storm-split "2"])))))
+
+
+(deftest keymap-storm-split-1-w-storm-add-all-1-test
+  (testing "[:storm-split \"1>w\"] → :storm-add-all-1"
+    (is (= :storm-add-all-1 (get kb/keymap [:storm-split "1>w"])))))
+
+
+(deftest keymap-storm-split-1-s-storm-clear-1-test
+  (testing "[:storm-split \"1>s\"] → :storm-clear-1"
+    (is (= :storm-clear-1 (get kb/keymap [:storm-split "1>s"])))))
+
+
+(deftest keymap-storm-split-1-shift-w-storm-inc-1-test
+  (testing "[:storm-split \"1>Shift+W\"] → :storm-inc-1"
+    (is (= :storm-inc-1 (get kb/keymap [:storm-split "1>Shift+W"])))))
+
+
+(deftest keymap-storm-split-1-shift-s-storm-dec-1-test
+  (testing "[:storm-split \"1>Shift+S\"] → :storm-dec-1"
+    (is (= :storm-dec-1 (get kb/keymap [:storm-split "1>Shift+S"])))))
+
+
+(deftest keymap-storm-split-2-w-storm-add-all-2-test
+  (testing "[:storm-split \"2>w\"] → :storm-add-all-2"
+    (is (= :storm-add-all-2 (get kb/keymap [:storm-split "2>w"])))))
+
+
+(deftest keymap-storm-split-2-s-storm-clear-2-test
+  (testing "[:storm-split \"2>s\"] → :storm-clear-2"
+    (is (= :storm-clear-2 (get kb/keymap [:storm-split "2>s"])))))
+
+
+(deftest keymap-storm-split-2-shift-w-storm-inc-2-test
+  (testing "[:storm-split \"2>Shift+W\"] → :storm-inc-2"
+    (is (= :storm-inc-2 (get kb/keymap [:storm-split "2>Shift+W"])))))
+
+
+(deftest keymap-storm-split-2-shift-s-storm-dec-2-test
+  (testing "[:storm-split \"2>Shift+S\"] → :storm-dec-2"
+    (is (= :storm-dec-2 (get kb/keymap [:storm-split "2>Shift+S"])))))
+
+
+(deftest keymap-storm-split-space-confirm-test
+  (testing "[:storm-split \"Space\"] → :confirm"
+    (is (= :confirm (get kb/keymap [:storm-split "Space"])))))
+
+
+;; ---------------------------------------------------------------------------
+;; L. Storm-split action-dispatch
+
+(def ^:private t1 :player-1)
+(def ^:private t2 :player-2)
+
+
+(def ^:private storm-split-state
+  "Base state with a :storm-split pending-selection:
+   2 valid-targets, copy-count 6, allocation {t1 3 t2 1}."
+  (assoc base-state
+         :pending-selection
+         {:selection/mechanism    :accumulate
+          :selection/domain       :storm-split
+          :selection/copy-count   6
+          :selection/valid-targets [t1 t2]
+          :selection/allocation    {t1 3 t2 1}}))
+
+
+(deftest action-dispatch-storm-add-all-1-test
+  (testing ":storm-add-all-1 dispatches adjust-storm-split for t1 with remaining delta"
+    ;; remaining = copy-count - total-allocated = 6 - (3+1) = 2
+    (let [result (kb/action-dispatch :storm-add-all-1 storm-split-state)]
+      (is (= [::storm-events/adjust-storm-split t1 2] result)))))
+
+
+(deftest action-dispatch-storm-clear-1-test
+  (testing ":storm-clear-1 dispatches adjust-storm-split for t1 with negative current allocation"
+    ;; current allocation for t1 = 3, delta = -3
+    (let [result (kb/action-dispatch :storm-clear-1 storm-split-state)]
+      (is (= [::storm-events/adjust-storm-split t1 -3] result)))))
+
+
+(deftest action-dispatch-storm-inc-1-test
+  (testing ":storm-inc-1 dispatches adjust-storm-split for t1 with delta +1"
+    (let [result (kb/action-dispatch :storm-inc-1 storm-split-state)]
+      (is (= [::storm-events/adjust-storm-split t1 1] result)))))
+
+
+(deftest action-dispatch-storm-dec-2-test
+  (testing ":storm-dec-2 dispatches adjust-storm-split for t2 with delta -1"
+    (let [result (kb/action-dispatch :storm-dec-2 storm-split-state)]
+      (is (= [::storm-events/adjust-storm-split t2 -1] result)))))
+
+
+(deftest action-dispatch-storm-add-all-2-out-of-range-test
+  (testing ":storm-add-all-2 returns nil when only 1 valid-target exists"
+    (let [state (assoc-in storm-split-state
+                          [:pending-selection :selection/valid-targets]
+                          [t1])
+          result (kb/action-dispatch :storm-add-all-2 state)]
+      (is (nil? result)))))
+
+
+(deftest action-dispatch-storm-add-all-2-two-targets-test
+  (testing ":storm-add-all-2 dispatches adjust-storm-split for t2 with remaining delta"
+    ;; remaining = 6 - (3+1) = 2, so t2 gets +2
+    (let [result (kb/action-dispatch :storm-add-all-2 storm-split-state)]
+      (is (= [::storm-events/adjust-storm-split t2 2] result)))))

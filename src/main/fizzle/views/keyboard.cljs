@@ -24,6 +24,7 @@
     [fizzle.events.priority-flow :as priority-flow-events]
     [fizzle.events.selection :as selection-events]
     [fizzle.events.selection.costs :as cost-events]
+    [fizzle.events.selection.storm :as storm-events]
     [fizzle.history.events :as history-events]
     [fizzle.subs.game :as subs]
     [re-frame.core :as rf]))
@@ -79,7 +80,24 @@
    [:allocate-resource "3"]     :allocate-3
    [:allocate-resource "4"]     :allocate-4
    [:allocate-resource "5"]     :allocate-5
-   [:allocate-resource "Space"] :confirm})
+   [:allocate-resource "Space"] :confirm
+
+   ;; storm-split context: chord-based target allocation
+   ;; First key selects target (1 or 2), second key selects action.
+   ;; "1"/"2" alone → :chord-start (prefix mode, wait for second key)
+   ;; Composed chords: "1>w" = add-all to target 1, "1>s" = clear target 1, etc.
+   ;; Shift+W = +1 (increment), Shift+S = -1 (decrement)
+   [:storm-split "1"]         :chord-start
+   [:storm-split "2"]         :chord-start
+   [:storm-split "1>w"]       :storm-add-all-1
+   [:storm-split "1>s"]       :storm-clear-1
+   [:storm-split "1>Shift+W"] :storm-inc-1
+   [:storm-split "1>Shift+S"] :storm-dec-1
+   [:storm-split "2>w"]       :storm-add-all-2
+   [:storm-split "2>s"]       :storm-clear-2
+   [:storm-split "2>Shift+W"] :storm-inc-2
+   [:storm-split "2>Shift+S"] :storm-dec-2
+   [:storm-split "Space"]     :confirm})
 
 
 ;; === Key normalization ===
@@ -103,13 +121,21 @@
   "Derive keyboard context from pending-selection.
    nil → :normal (no active selection)
    Modal mechanisms (:pick-from-zone, :reorder, :n-slot-targeting) → :modal (suppressed)
+   :accumulate mechanism + :storm-split domain → :storm-split (chord-based target allocation)
    Other mechanisms → the mechanism keyword itself (e.g. :binary-choice, :pick-mode)"
   [pending-selection]
   (if (nil? pending-selection)
     :normal
     (let [mechanism (:selection/mechanism pending-selection)]
-      (if (contains? modal-mechanisms mechanism)
+      (cond
+        (contains? modal-mechanisms mechanism)
         :modal
+
+        (and (= mechanism :accumulate)
+             (= :storm-split (:selection/domain pending-selection)))
+        :storm-split
+
+        :else
         mechanism))))
 
 
@@ -129,6 +155,34 @@
           color (nth available-colors n nil)]
       (when color
         [::cost-events/allocate-mana-color color]))))
+
+
+;; === Storm-split chord helper ===
+
+(defn- storm-target-dispatch
+  "Dispatch a storm-split action for the Nth target (0-indexed idx).
+   Returns [::storm-events/adjust-storm-split target-id delta] or nil.
+
+   action types:
+     :add-all — remaining delta: copy-count minus total-already-allocated
+     :clear   — negative current allocation (removes all from this target)
+     :inc     — +1
+     :dec     — -1"
+  [pending-selection idx action-type]
+  (when pending-selection
+    (let [valid-targets (:selection/valid-targets pending-selection)
+          target-id     (nth valid-targets idx nil)]
+      (when target-id
+        (let [allocation (:selection/allocation pending-selection)
+              current    (get allocation target-id 0)
+              copy-count (:selection/copy-count pending-selection)
+              total      (apply + (vals allocation))
+              delta      (case action-type
+                           :add-all (- copy-count total)
+                           :clear   (- current)
+                           :inc     1
+                           :dec     -1)]
+          [::storm-events/adjust-storm-split target-id delta])))))
 
 
 ;; === Action dispatch ===
@@ -219,6 +273,17 @@
     :allocate-4 (allocate-nth-color pending-selection 3)
     :allocate-5 (allocate-nth-color pending-selection 4)
 
+    ;; storm-split: chord-based target allocation
+    ;; :chord-start is handled in handle-keydown (prefix mode), not here
+    :storm-add-all-1 (storm-target-dispatch pending-selection 0 :add-all)
+    :storm-clear-1   (storm-target-dispatch pending-selection 0 :clear)
+    :storm-inc-1     (storm-target-dispatch pending-selection 0 :inc)
+    :storm-dec-1     (storm-target-dispatch pending-selection 0 :dec)
+    :storm-add-all-2 (storm-target-dispatch pending-selection 1 :add-all)
+    :storm-clear-2   (storm-target-dispatch pending-selection 1 :clear)
+    :storm-inc-2     (storm-target-dispatch pending-selection 1 :inc)
+    :storm-dec-2     (storm-target-dispatch pending-selection 1 :dec)
+
     ;; Unknown action
     nil))
 
@@ -257,25 +322,68 @@
     (or (= tag "input") (= tag "textarea"))))
 
 
+(defn- dispatch-result!
+  "Fire a dispatch result: single vector or {:dispatch-n [...]}"
+  [result]
+  (when result
+    (if (map? result)
+      (doseq [v (:dispatch-n result)]
+        (rf/dispatch v))
+      (rf/dispatch result))))
+
+
 (defn- handle-keydown
-  [event pending-selection-ref app-state-ref]
+  "Handle a keydown event with optional chord-prefix support.
+
+   chord-prefix-ref — atom holding the current chord prefix string (e.g. \"1\"), or nil.
+
+   Chord flow:
+     1. If prefix is active: compose \"<prefix>><normalized-key>\" and look it up.
+        - Found → dispatch action, clear prefix.
+        - Not found → clear prefix, fall through and process normalized-key as standalone.
+     2. If no prefix: look up [context normalized-key].
+        - Action is :chord-start → store normalized-key as new prefix (no dispatch).
+        - Otherwise → dispatch normally."
+  [event pending-selection-ref app-state-ref chord-prefix-ref]
   (when-not (text-input-target? event)
     (let [pending-selection @pending-selection-ref
           context           (derive-context pending-selection)]
       (when-not (= context :modal)
         (let [normalized-key (normalize-key event)
-              action         (get keymap [context normalized-key])]
-          (when action
-            (.preventDefault event)
-            (let [app-state  @app-state-ref
-                  result     (action-dispatch action (assoc app-state :pending-selection pending-selection))]
-              (when result
-                (if (map? result)
-                  ;; Multi-dispatch shape {:dispatch-n [[...] [...]]}
-                  (doseq [v (:dispatch-n result)]
-                    (rf/dispatch v))
-                  ;; Single dispatch vector
-                  (rf/dispatch result))))))))))
+              prefix         @chord-prefix-ref]
+          (if prefix
+            ;; --- Chord second-key path ---
+            (let [composed-key (str prefix ">" normalized-key)
+                  composed-action (get keymap [context composed-key])]
+              (reset! chord-prefix-ref nil)
+              (if composed-action
+                ;; Composed chord found → dispatch and stop
+                (do (.preventDefault event)
+                    (let [app-state @app-state-ref
+                          result    (action-dispatch composed-action
+                                                     (assoc app-state :pending-selection pending-selection))]
+                      (dispatch-result! result)))
+                ;; Composed chord NOT found → fall through to standalone key lookup
+                (let [standalone-action (get keymap [context normalized-key])]
+                  (when standalone-action
+                    (.preventDefault event)
+                    (if (= standalone-action :chord-start)
+                      ;; Second key is itself a chord-start → store new prefix
+                      (reset! chord-prefix-ref normalized-key)
+                      (let [app-state @app-state-ref
+                            result    (action-dispatch standalone-action
+                                                       (assoc app-state :pending-selection pending-selection))]
+                        (dispatch-result! result)))))))
+            ;; --- No prefix: standalone key path ---
+            (let [action (get keymap [context normalized-key])]
+              (when action
+                (.preventDefault event)
+                (if (= action :chord-start)
+                  ;; Store prefix for next key
+                  (reset! chord-prefix-ref normalized-key)
+                  (let [app-state @app-state-ref
+                        result    (action-dispatch action (assoc app-state :pending-selection pending-selection))]
+                    (dispatch-result! result)))))))))))
 
 
 ;; === Hook ===
@@ -295,6 +403,9 @@
                                      :can-play-land?  @(rf/subscribe [::subs/can-play-land?])
                                      :can-cycle?      @(rf/subscribe [::subs/can-cycle?])
                                      :stack           @(rf/subscribe [::subs/stack])})
+        ;; Chord prefix: keyboard-local state (not in app-db). Holds first key of an
+        ;; in-progress chord sequence (e.g. "1"), nil when no chord is active.
+        chord-prefix-ref      (atom nil)
         ;; Watch subscriptions and keep atoms up to date
         pending-sel-sub       (rf/subscribe [::subs/pending-selection])
         selected-card-sub     (rf/subscribe [::subs/selected-card])
@@ -312,7 +423,7 @@
                                          :stack          @stack-sub}))
         handler               (fn [event]
                                 (update-state!)
-                                (handle-keydown event pending-selection-ref app-state-ref))]
+                                (handle-keydown event pending-selection-ref app-state-ref chord-prefix-ref))]
     (.addEventListener js/document "keydown" handler)
     (fn cleanup
       []
