@@ -17,7 +17,8 @@
     [fizzle.events.selection.costs :as cost-events]
     [fizzle.events.selection.storm :as storm-events]
     [fizzle.history.events :as history-events]
-    [fizzle.views.keyboard :as kb]))
+    [fizzle.views.keyboard :as kb]
+    [re-frame.core :as rf]))
 
 
 ;; ---------------------------------------------------------------------------
@@ -661,6 +662,25 @@
       (is (= [::storm-events/adjust-storm-split t2 -1] result)))))
 
 
+(deftest action-dispatch-storm-clear-2-test
+  (testing ":storm-clear-2 dispatches adjust-storm-split for t2 with negative current allocation"
+    ;; current allocation for t2 = 1, delta = -1
+    (let [result (kb/action-dispatch :storm-clear-2 storm-split-state)]
+      (is (= [::storm-events/adjust-storm-split t2 -1] result)))))
+
+
+(deftest action-dispatch-storm-inc-2-test
+  (testing ":storm-inc-2 dispatches adjust-storm-split for t2 with delta +1"
+    (let [result (kb/action-dispatch :storm-inc-2 storm-split-state)]
+      (is (= [::storm-events/adjust-storm-split t2 1] result)))))
+
+
+(deftest action-dispatch-storm-dec-1-test
+  (testing ":storm-dec-1 dispatches adjust-storm-split for t1 with delta -1"
+    (let [result (kb/action-dispatch :storm-dec-1 storm-split-state)]
+      (is (= [::storm-events/adjust-storm-split t1 -1] result)))))
+
+
 (deftest action-dispatch-storm-add-all-2-out-of-range-test
   (testing ":storm-add-all-2 returns nil when only 1 valid-target exists"
     (let [state (assoc-in storm-split-state
@@ -723,3 +743,94 @@
 (deftest hint-for-action-accumulate-increment-regression-test
   (testing "(hint-for-action :accumulate :increment) still returns \"W\" (regression)"
     (is (= "W" (kb/hint-for-action :accumulate :increment)))))
+
+
+;; ---------------------------------------------------------------------------
+;; N. Chord fallthrough behavioral tests (handle-keydown)
+
+(def ^:private storm-split-selection
+  "A storm-split pending-selection for use in handle-keydown tests."
+  {:selection/mechanism    :accumulate
+   :selection/domain       :storm-split
+   :selection/copy-count   6
+   :selection/valid-targets [t1 t2]
+   :selection/allocation    {t1 3 t2 1}})
+
+
+(deftest chord-fallthrough-1-space-confirms-test
+  (testing "Prefix \"1\" + Space falls through to [:storm-split \"Space\"] → :confirm dispatch"
+    ;; When prefix is "1" and Space is pressed:
+    ;;   - composed "1>Space" is not in keymap → composed-action is nil
+    ;;   - prefix cleared
+    ;;   - standalone [:storm-split "Space"] → :confirm → dispatches confirm-selection
+    (let [dispatched      (atom [])
+          chord-prefix    (atom "1")
+          pending-ref     (atom storm-split-selection)
+          app-ref         (atom base-state)
+          event           #js {:key " " :shiftKey false
+                               :target #js {:tagName "div"}
+                               :preventDefault (fn [])}]
+      (with-redefs [rf/dispatch (fn [v] (swap! dispatched conj v))]
+        (#'kb/handle-keydown event pending-ref app-ref chord-prefix))
+      (is (nil? @chord-prefix) "chord-prefix-ref should be cleared")
+      (is (= [[::selection-events/confirm-selection]] @dispatched)
+          "confirm-selection should be dispatched"))))
+
+
+(deftest chord-fallthrough-1-2-sets-new-prefix-test
+  (testing "Prefix \"1\" + \"2\" → composed \"1>2\" not found, standalone \"2\" is :chord-start → new prefix \"2\""
+    ;; When prefix is "1" and "2" is pressed:
+    ;;   - composed "1>2" is not in keymap → composed-action is nil
+    ;;   - prefix cleared
+    ;;   - standalone [:storm-split "2"] → :chord-start → set new prefix to "2"
+    ;;   - no dispatch fires
+    (let [dispatched      (atom [])
+          chord-prefix    (atom "1")
+          pending-ref     (atom storm-split-selection)
+          app-ref         (atom base-state)
+          event           #js {:key "2" :shiftKey false
+                               :target #js {:tagName "div"}
+                               :preventDefault (fn [])}]
+      (with-redefs [rf/dispatch (fn [v] (swap! dispatched conj v))]
+        (#'kb/handle-keydown event pending-ref app-ref chord-prefix))
+      (is (= "2" @chord-prefix) "chord-prefix-ref should be updated to \"2\"")
+      (is (empty? @dispatched) "no dispatch should fire"))))
+
+
+(deftest chord-fallthrough-1-q-clears-prefix-test
+  (testing "Prefix \"1\" + \"q\" → composed \"1>q\" not found, standalone [:storm-split \"q\"] not in keymap → no dispatch"
+    ;; When prefix is "1" and "q" is pressed:
+    ;;   - composed "1>q" is not in keymap → composed-action is nil
+    ;;   - prefix cleared
+    ;;   - standalone [:storm-split "q"] is also not in keymap → no dispatch
+    (let [dispatched      (atom [])
+          chord-prefix    (atom "1")
+          pending-ref     (atom storm-split-selection)
+          app-ref         (atom base-state)
+          event           #js {:key "q" :shiftKey false
+                               :target #js {:tagName "div"}
+                               :preventDefault (fn [])}]
+      (with-redefs [rf/dispatch (fn [v] (swap! dispatched conj v))]
+        (#'kb/handle-keydown event pending-ref app-ref chord-prefix))
+      (is (nil? @chord-prefix) "chord-prefix-ref should be cleared")
+      (is (empty? @dispatched) "no dispatch should fire"))))
+
+
+(deftest chord-composed-1-w-dispatches-test
+  (testing "Prefix \"1\" + \"w\" → composed \"1>w\" → :storm-add-all-1 → adjust-storm-split dispatch"
+    ;; When prefix is "1" and "w" is pressed:
+    ;;   - composed "1>w" → :storm-add-all-1
+    ;;   - remaining = copy-count(6) - total-allocated(3+1=4) = 2
+    ;;   - dispatches [::storm-events/adjust-storm-split t1 2]
+    (let [dispatched      (atom [])
+          chord-prefix    (atom "1")
+          pending-ref     (atom storm-split-selection)
+          app-ref         (atom base-state)
+          event           #js {:key "w" :shiftKey false
+                               :target #js {:tagName "div"}
+                               :preventDefault (fn [])}]
+      (with-redefs [rf/dispatch (fn [v] (swap! dispatched conj v))]
+        (#'kb/handle-keydown event pending-ref app-ref chord-prefix))
+      (is (nil? @chord-prefix) "chord-prefix-ref should be cleared after composed chord")
+      (is (= [[::storm-events/adjust-storm-split t1 2]] @dispatched)
+          "adjust-storm-split for t1 with delta 2 should be dispatched"))))

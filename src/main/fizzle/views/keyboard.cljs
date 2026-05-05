@@ -14,6 +14,7 @@
      :pick-mode        — :pick-mode mechanism (1/2/3 choose)
      :accumulate       — :accumulate mechanism (W/S increment/decrement, Space confirm)
      :allocate-resource — :allocate-resource mechanism (1-5 color, Space confirm)
+     :storm-split      — :accumulate mechanism + :storm-split domain (chord-based target allocation)
      :modal            — modal mechanisms (shortcuts suppressed)
 
    Modal mechanisms (shortcuts suppressed): :pick-from-zone, :reorder, :n-slot-targeting"
