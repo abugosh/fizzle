@@ -18,6 +18,7 @@
 
    Modal mechanisms (shortcuts suppressed): :pick-from-zone, :reorder, :n-slot-targeting"
   (:require
+    [clojure.string]
     [fizzle.events.casting :as casting-events]
     [fizzle.events.cycling :as cycling-events]
     [fizzle.events.lands :as lands-events]
@@ -290,6 +291,30 @@
 
 ;; === Hint reverse-lookup ===
 
+(defn- format-chord-key
+  "Format a chord key string (e.g., \"1>w\" or \"1>Shift+W\") as a human-readable display string.
+
+   A chord key contains two parts separated by \">\": prefix (target number) and suffix (action key).
+
+   Returns: \"<prefix> <formatted-suffix>\"
+   where formatted-suffix is:
+     - uppercase single letter (\"w\" → \"W\")
+     - shift indicator with uppercase (\"Shift+w\" → \"⇧W\")"
+  [key-str]
+  (let [parts (clojure.string/split key-str ">")]
+    (if (= 2 (count parts))
+      (let [prefix (first parts)
+            suffix (second parts)]
+        (str prefix " "
+             (if (clojure.string/starts-with? suffix "Shift+")
+               ;; Format: "Shift+w" → "⇧W"
+               (str "⇧" (.toUpperCase (subs suffix 6)))
+               ;; Format: "w" → "W"
+               (.toUpperCase suffix))))
+      ;; Fallback for non-chord keys
+      key-str)))
+
+
 (defn hint-for-action
   "Returns a human-readable key display string for the given context+action pair,
    or nil if no binding exists.
@@ -297,18 +322,24 @@
    Examples:
      (hint-for-action :normal :yield)       → \"Space\"
      (hint-for-action :accumulate :increment) → \"W\"
-     (hint-for-action :normal :cast)        → \"E\""
+     (hint-for-action :normal :cast)        → \"E\"
+     (hint-for-action :storm-split :storm-add-all-1) → \"1 W\"
+     (hint-for-action :storm-split :storm-inc-1) → \"1 ⇧W\""
   [context action]
   (some (fn [[[ctx key-str] act]]
           (when (and (= ctx context) (= act action))
             ;; Convert internal key string to human-readable display string
-            (case key-str
-              "Space"       "Space"
-              "Shift+Space" "Shift+Space"
-              ;; Single letter: display uppercase
-              (if (= 1 (count key-str))
-                (.toUpperCase key-str)
-                key-str))))
+            (if (clojure.string/includes? key-str ">")
+              ;; Chord key: format as "N <action>"
+              (format-chord-key key-str)
+              ;; Non-chord key
+              (case key-str
+                "Space"       "Space"
+                "Shift+Space" "Shift+Space"
+                ;; Single letter: display uppercase
+                (if (= 1 (count key-str))
+                  (.toUpperCase key-str)
+                  key-str)))))
         keymap))
 
 

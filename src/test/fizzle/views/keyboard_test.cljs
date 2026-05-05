@@ -675,3 +675,51 @@
     ;; remaining = 6 - (3+1) = 2, so t2 gets +2
     (let [result (kb/action-dispatch :storm-add-all-2 storm-split-state)]
       (is (= [::storm-events/adjust-storm-split t2 2] result)))))
+
+
+;; ---------------------------------------------------------------------------
+;; M. Storm-split chord hints
+
+(deftest hint-for-action-storm-add-all-1-w-test
+  (testing "(hint-for-action :storm-split :storm-add-all-1) → \"1 W\""
+    (is (= "1 W" (kb/hint-for-action :storm-split :storm-add-all-1)))))
+
+
+(deftest hint-for-action-storm-clear-1-s-test
+  (testing "(hint-for-action :storm-split :storm-clear-1) → \"1 S\""
+    (is (= "1 S" (kb/hint-for-action :storm-split :storm-clear-1)))))
+
+
+(deftest hint-for-action-storm-inc-1-shift-w-test
+  (testing "(hint-for-action :storm-split :storm-inc-1) → \"1 ⇧W\""
+    (is (= "1 ⇧W" (kb/hint-for-action :storm-split :storm-inc-1)))))
+
+
+(deftest hint-for-action-storm-dec-1-shift-s-test
+  (testing "(hint-for-action :storm-split :storm-dec-1) → \"1 ⇧S\""
+    (is (= "1 ⇧S" (kb/hint-for-action :storm-split :storm-dec-1)))))
+
+
+(deftest hint-for-action-storm-add-all-2-w-test
+  (testing "(hint-for-action :storm-split :storm-add-all-2) → \"2 W\""
+    (is (= "2 W" (kb/hint-for-action :storm-split :storm-add-all-2)))))
+
+
+(deftest hint-for-action-storm-clear-2-s-test
+  (testing "(hint-for-action :storm-split :storm-clear-2) → \"2 S\""
+    (is (= "2 S" (kb/hint-for-action :storm-split :storm-clear-2)))))
+
+
+(deftest hint-for-action-storm-inc-2-shift-w-test
+  (testing "(hint-for-action :storm-split :storm-inc-2) → \"2 ⇧W\""
+    (is (= "2 ⇧W" (kb/hint-for-action :storm-split :storm-inc-2)))))
+
+
+(deftest hint-for-action-storm-dec-2-shift-s-test
+  (testing "(hint-for-action :storm-split :storm-dec-2) → \"2 ⇧S\""
+    (is (= "2 ⇧S" (kb/hint-for-action :storm-split :storm-dec-2)))))
+
+
+(deftest hint-for-action-accumulate-increment-regression-test
+  (testing "(hint-for-action :accumulate :increment) still returns \"W\" (regression)"
+    (is (= "W" (kb/hint-for-action :accumulate :increment)))))

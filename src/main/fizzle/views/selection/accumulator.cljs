@@ -72,12 +72,28 @@
 
 (defn- accumulate-inline-stepper-row
   "Stepper row for storm-split inline component.
-   Renders label + [«] [-] count [+] [»] for a single target."
-  [target-id count copy-count total-allocated]
+   Renders label + [«] [-] count [+] [»] for a single target.
+
+   When target-index is provided (storm-split mode), computes target-specific chord hints.
+   When target-index is nil, falls back to non-storm-split hints."
+  [target-id count copy-count total-allocated target-index]
   (let [can-decrement? (pos? count)
         can-increment? (< total-allocated copy-count)
-        decrement-hint (kbd/hint-for-action :accumulate :decrement)
-        increment-hint (kbd/hint-for-action :accumulate :increment)]
+        ;; Compute hints based on mode
+        [clear-hint dec-hint inc-hint add-all-hint]
+        (if target-index
+          ;; Storm-split mode: use target-specific action keywords
+          ;; target-index is 0-based, action keywords use 1-based numbering (N = target-index + 1)
+          (let [n (inc target-index)]
+            [(kbd/hint-for-action :storm-split (keyword (str "storm-clear-" n)))
+             (kbd/hint-for-action :storm-split (keyword (str "storm-dec-" n)))
+             (kbd/hint-for-action :storm-split (keyword (str "storm-inc-" n)))
+             (kbd/hint-for-action :storm-split (keyword (str "storm-add-all-" n)))])
+          ;; Non-storm-split mode: use accumulate context (backward compatibility)
+          [(kbd/hint-for-action :accumulate :decrement)
+           (kbd/hint-for-action :accumulate :decrement)
+           (kbd/hint-for-action :accumulate :increment)
+           (kbd/hint-for-action :accumulate :increment)])]
     [:div {:class "flex items-center justify-between gap-3 mb-3"}
      [:span {:class "text-text font-bold text-sm"}
       (storm-split-target-label target-id)]
@@ -85,27 +101,33 @@
       [:button {:class (common/stepper-button-class can-decrement?)
                 :disabled (not can-decrement?)
                 :on-click #(rf/dispatch [::storm-events/adjust-storm-split target-id (- count)])}
-       "«"]
+       "«"
+       (when clear-hint
+         [:span {:class "ml-1 text-xs text-text-muted inline"}
+          "[" clear-hint "]"])]
       [:button {:class (common/stepper-button-class can-decrement?)
                 :disabled (not can-decrement?)
                 :on-click #(rf/dispatch [::storm-events/adjust-storm-split target-id -1])}
        "-"
-       (when decrement-hint
+       (when dec-hint
          [:span {:class "ml-1 text-xs text-text-muted inline"}
-          "[" decrement-hint "]"])]
+          "[" dec-hint "]"])]
       [:span {:class "text-text font-bold text-lg min-w-[3ch] text-center"}
        count]
       [:button {:class (common/stepper-button-class can-increment?)
                 :disabled (not can-increment?)
                 :on-click #(rf/dispatch [::storm-events/adjust-storm-split target-id 1])}
        "+"
-       (when increment-hint
+       (when inc-hint
          [:span {:class "ml-1 text-xs text-text-muted inline"}
-          "[" increment-hint "]"])]
+          "[" inc-hint "]"])]
       [:button {:class (common/stepper-button-class can-increment?)
                 :disabled (not can-increment?)
                 :on-click #(rf/dispatch [::storm-events/adjust-storm-split target-id (- copy-count total-allocated)])}
-       "»"]]]))
+       "»"
+       (when add-all-hint
+         [:span {:class "ml-1 text-xs text-text-muted inline"}
+          "[" add-all-hint "]"])]]]))
 
 
 (defn storm-split-inline-view
@@ -129,9 +151,11 @@
       (str "DISTRIBUTE " copy-count " COPIES"
            (when source-name (str " of " source-name)))]
      [:div {:class "mb-3"}
-      (for [target valid-targets]
-        ^{:key target}
-        [accumulate-inline-stepper-row target (get allocation target 0) copy-count total-allocated])]
+      (map-indexed
+        (fn [idx target]
+          ^{:key target}
+          [accumulate-inline-stepper-row target (get allocation target 0) copy-count total-allocated idx])
+        valid-targets)]
      [:p {:class (str "text-sm m-0 mb-3 "
                       (if valid? "text-health-good" "text-health-danger"))}
       (str total-allocated " / " copy-count " assigned")]
