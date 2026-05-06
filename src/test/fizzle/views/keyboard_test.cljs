@@ -903,15 +903,15 @@
       (is (nil? result)))))
 
 
-(deftest select-nth-candidate-any-target-domain-players-first-test
-  (testing "select-nth-candidate :any-target domain: player keywords numbered first, creatures after"
+(deftest select-nth-candidate-cast-time-targeting-domain-players-first-test
+  (testing "select-nth-candidate :cast-time-targeting domain: player keywords numbered first, creatures after"
     (let [creature-1 {:object/id :creature-uuid-1}
           creature-2 {:object/id :creature-uuid-2}
           player-1   :player-1
           player-2   :player-2
           selection-cards [creature-1 creature-2]
           ;; valid-targets contains both player keywords and creature UUIDs
-          pending-sel {:selection/domain :any-target
+          pending-sel {:selection/domain :cast-time-targeting
                        :selection/valid-targets [:creature-uuid-1 player-1 :creature-uuid-2 player-2]}
           ;; Expected order: player-1, player-2 (sorted), then creature-1, creature-2
           result-0   (#'kb/select-nth-candidate selection-cards pending-sel 0)
@@ -924,6 +924,24 @@
       ;; Next two should be creatures in original order with :object/id extracted
       (is (= [::selection-events/toggle-selection :creature-uuid-1] result-2))
       (is (= [::selection-events/toggle-selection :creature-uuid-2] result-3)))))
+
+
+(deftest select-nth-candidate-player-only-no-creatures-test
+  (testing "select-nth-candidate: empty selection-cards with player keywords in valid-targets → players still selectable"
+    (let [player-1   :player-1
+          player-2   :player-2
+          ;; No creatures — selection-cards is empty (subscription filtered out player keywords)
+          selection-cards []
+          pending-sel {:selection/domain :cast-time-targeting
+                       :selection/valid-targets [player-2 player-1]}
+          result-0   (#'kb/select-nth-candidate selection-cards pending-sel 0)
+          result-1   (#'kb/select-nth-candidate selection-cards pending-sel 1)
+          result-2   (#'kb/select-nth-candidate selection-cards pending-sel 2)]
+      ;; Players sorted: player-1 first, player-2 second
+      (is (= [::selection-events/toggle-selection player-1] result-0))
+      (is (= [::selection-events/toggle-selection player-2] result-1))
+      ;; Out of bounds → nil
+      (is (nil? result-2)))))
 
 
 (deftest select-nth-candidate-action-dispatch-select-1-test

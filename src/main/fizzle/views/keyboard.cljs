@@ -262,43 +262,27 @@
 
 (defn- select-nth-candidate
   "Resolve the Nth selectable element in flat-targeting context.
-   Returns a dispatch vector [::selection-events/toggle-selection id] or nil.
+   Returns [::selection-events/toggle-selection id] or nil.
 
-   Builds ordered candidate list matching visual render order:
-   - For :any-target domain: player keywords from valid-targets first (filtered to player ids),
-     then creature cards from selection-cards
-   - For all other domains: selection-cards in render order
-
-   Does NOT filter by valid-targets for numbering — dispatch for Nth candidate
-   regardless of validity (event layer enforces validity, matching click behavior).
-
-   Extracts :object/id from card objects (maps) at dispatch time.
-   For :any-target domain, player keywords dispatch directly, card objects extract :object/id.
-
-   Returns nil if n >= count of ordered candidates, or if selection-cards is nil/empty."
+   Detects player targets by scanning valid-targets for player-id keywords.
+   Ordered list: player keywords first (sorted), then card objects from selection-cards.
+   Does NOT filter by valid-targets for card numbering."
   [selection-cards pending-selection n]
-  (when (and selection-cards (seq selection-cards))
-    (let [domain (:selection/domain pending-selection)
-          ordered-candidates
-          (if (= domain :any-target)
-            ;; :any-target domain: player keywords first, then creatures
-            (let [valid-targets (:selection/valid-targets pending-selection)
-                  ;; Filter valid-targets to known player-ids
-                  player-ids (filterv (fn [target]
-                                        (or (= target game-state/human-player-id)
-                                            (= target game-state/opponent-player-id)))
-                                      valid-targets)
-                  sorted-players (sort player-ids)]
-              (into (vec sorted-players) selection-cards))
-            ;; All other domains: selection-cards in render order
-            (vec selection-cards))
-          candidate (nth ordered-candidates n nil)]
-      (when candidate
-        ;; Extract :object/id from card objects - maps with :object/id field
-        (let [dispatch-id (if (keyword? candidate)
-                            candidate
-                            (:object/id candidate))]
-          [::selection-events/toggle-selection dispatch-id])))))
+  (let [valid-targets (or (:selection/valid-targets pending-selection) [])
+        ;; Extract player keywords from valid-targets
+        player-ids (filterv (fn [t]
+                              (or (= t game-state/human-player-id)
+                                  (= t game-state/opponent-player-id)))
+                            valid-targets)
+        ;; Build ordered candidates: sorted players first, then cards
+        ordered-candidates (into (vec (sort player-ids))
+                                 (or selection-cards []))
+        candidate (nth ordered-candidates n nil)]
+    (when candidate
+      [::selection-events/toggle-selection
+       (if (keyword? candidate)
+         candidate
+         (:object/id candidate))])))
 
 
 ;; === Action dispatch ===
