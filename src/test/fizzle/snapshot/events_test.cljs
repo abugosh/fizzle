@@ -17,6 +17,20 @@
 
 
 ;; ---------------------------------------------------------------------------
+;; Mock localStorage (required for scenario auto-save path)
+
+(defn- create-mock-storage
+  []
+  (let [store (atom {})]
+    #js {:getItem    (fn [key] (get @store key nil))
+         :setItem    (fn [key value] (swap! store assoc key value) nil)
+         :removeItem (fn [key] (swap! store dissoc key) nil)}))
+
+
+(set! js/localStorage (create-mock-storage))
+
+
+;; ---------------------------------------------------------------------------
 ;; A. restore-from-hash handler (pure function tests)
 
 (deftest restore-from-hash-valid-test
@@ -269,3 +283,35 @@
           "parsed :snapshot should match encoded string")
       (is (nil? (:title parsed))
           "parsed :title should be nil when &t= absent"))))
+
+
+;; ---------------------------------------------------------------------------
+;; G. restore-from-snapshot-handler: auto-save to scenario library
+
+(deftest restore-from-snapshot-with-title-saves-to-library-test
+  (testing "restoring a URL with &t= param auto-saves a new entry to :scenario/library"
+    (let [db       (-> (th/create-test-db {:life 17}) (th/add-opponent))
+          [db' _]  (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          encoded  (-> db' extractor/extract encoder/encode-snapshot)
+          title    "My Auto-Saved Scenario"
+          hash     (str "#s=" encoded "&t=" (js/encodeURIComponent title))
+          restored (snap-events/restore-from-hash-handler hash)
+          result   (snap-events/restore-from-snapshot-handler {} [nil restored])]
+      (is (some? result) "handler should return a result")
+      (is (pos? (count (:scenario/library result)))
+          ":scenario/library should have at least one entry after restore with title")
+      (let [saved-scenario (first (vals (:scenario/library result)))]
+        (is (= title (:scenario/title saved-scenario))
+            "saved scenario title should match the &t= param")))))
+
+
+(deftest restore-from-snapshot-without-title-does-not-save-test
+  (testing "restoring a URL without &t= does NOT add an entry to :scenario/library"
+    (let [db       (-> (th/create-test-db) (th/add-opponent))
+          encoded  (-> db extractor/extract encoder/encode-snapshot)
+          hash     (str "#s=" encoded)
+          restored (snap-events/restore-from-hash-handler hash)
+          result   (snap-events/restore-from-snapshot-handler {} [nil restored])]
+      (is (some? result) "handler should return a result")
+      (is (empty? (:scenario/library result))
+          ":scenario/library should remain empty when URL has no title"))))

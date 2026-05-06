@@ -243,13 +243,14 @@
 
 
 (deftest test-reorder-library-top-invalid-to-index
-  (testing "reorder-library-top clamps invalid to-index"
+  (testing "reorder-library-top clamps invalid to-index: moves card to last position"
     (let [db (db-with-library-top [:dark-ritual :swamp :lotus-petal] :player)
           result (scenario/reorder-library-top-handler
                    db
                    [nil {:side :player :from-index 1 :to-index 10}])]
-      (is (= 3 (count (get-in result [:scenario/editing :scenario/player :library-top])))
-          "library-top should still have 3 elements"))))
+      (is (= [:dark-ritual :lotus-petal :swamp]
+             (get-in result [:scenario/editing :scenario/player :library-top]))
+          "swamp at from-index 1 should be clamped to last position (index 2)"))))
 
 
 (deftest test-reorder-library-top-opponent-side

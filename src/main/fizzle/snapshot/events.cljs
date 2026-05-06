@@ -192,11 +192,24 @@
                   (rf/dispatch [::set-share-status :error-clipboard]))))))
 
 
+(defn restore-from-snapshot-handler
+  "Pure function: merge restored-app-db into db, auto-saving to scenario library
+   when :snapshot/restored-title is present (i.e. URL included a &t= param)."
+  [db [_ restored-app-db]]
+  (let [merged (merge db restored-app-db)
+        title  (:snapshot/restored-title merged)]
+    (if (and (string? title) (not (str/blank? title)))
+      ;; Auto-save to scenario library when URL contained &t= title param
+      (let [game-db (:game/db merged)
+            scenario (scenario-events/extract-scenario-from-game game-db title)
+            scenario-id (:scenario/id scenario)]
+        (assoc-in merged [:scenario/library scenario-id] scenario))
+      merged)))
+
+
 (rf/reg-event-db
   ::restore-from-snapshot
-  (fn [db [_ restored-app-db]]
-    ;; Merge restored game state into app-db, preserving setup keys
-    (merge db restored-app-db)))
+  restore-from-snapshot-handler)
 
 
 ;; ---------------------------------------------------------------------------

@@ -299,3 +299,89 @@
       (is (= {} (:history/forks app-db)) "history/forks should be empty map")
       (is (nil? (:history/current-branch app-db)) "history/current-branch should be nil")
       (is (= -1 (:history/position app-db)) "history/position should be -1"))))
+
+
+;; === extract-scenario-from-game ===
+
+(def ^:private multi-zone-scenario
+  "Scenario with cards in hand, graveyard, and battlefield."
+  {:scenario/id      #uuid "aaaaaaaa-0000-0000-0000-000000000010"
+   :scenario/title   "Multi Zone"
+   :scenario/player  {:deck        [{:card/id :dark-ritual :count 2}
+                                    {:card/id :lotus-petal :count 2}
+                                    {:card/id :swamp :count 2}]
+                      :zones       {:hand         [:dark-ritual]
+                                    :graveyard    [:lotus-petal]
+                                    :battlefield  [:swamp]}
+                      :library-top []
+                      :mana-pool   {}
+                      :life        20}
+   :scenario/opponent {:archetype  :goldfish
+                       :deck       []
+                       :zones      {:hand [] :graveyard [] :battlefield []}
+                       :library-top []
+                       :mana-pool  {}
+                       :life       20}
+   :scenario/phase   :main1})
+
+
+(deftest test-extract-scenario-hand-is-non-empty
+  (testing "extract-scenario-from-game returns non-empty hand zone when cards are in hand"
+    (let [app-db (scenario/init-from-scenario multi-zone-scenario)
+          game-db (:game/db app-db)
+          extracted (scenario/extract-scenario-from-game game-db "Extracted")
+          hand (get-in extracted [:scenario/player :zones :hand])]
+      (is (seq hand)
+          "extracted player hand should be non-empty")
+      (is (= [:dark-ritual] hand)
+          "extracted hand should contain dark-ritual"))))
+
+
+(deftest test-extract-scenario-graveyard-is-non-empty
+  (testing "extract-scenario-from-game returns non-empty graveyard zone when cards are there"
+    (let [app-db (scenario/init-from-scenario multi-zone-scenario)
+          game-db (:game/db app-db)
+          extracted (scenario/extract-scenario-from-game game-db "Extracted")
+          gy (get-in extracted [:scenario/player :zones :graveyard])]
+      (is (seq gy)
+          "extracted player graveyard should be non-empty")
+      (is (= [:lotus-petal] gy)
+          "extracted graveyard should contain lotus-petal"))))
+
+
+(deftest test-extract-scenario-battlefield-is-non-empty
+  (testing "extract-scenario-from-game returns non-empty battlefield zone when cards are there"
+    (let [app-db (scenario/init-from-scenario multi-zone-scenario)
+          game-db (:game/db app-db)
+          extracted (scenario/extract-scenario-from-game game-db "Extracted")
+          bf (get-in extracted [:scenario/player :zones :battlefield])]
+      (is (seq bf)
+          "extracted player battlefield should be non-empty")
+      (is (= [:swamp] bf)
+          "extracted battlefield should contain swamp"))))
+
+
+(deftest test-extract-scenario-title-preserved
+  (testing "extract-scenario-from-game preserves the provided title"
+    (let [app-db (scenario/init-from-scenario minimal-scenario)
+          game-db (:game/db app-db)
+          extracted (scenario/extract-scenario-from-game game-db "My Title")]
+      (is (= "My Title" (:scenario/title extracted))
+          "extracted scenario title should match provided title"))))
+
+
+(deftest test-extract-scenario-deck-reconstructed
+  (testing "extract-scenario-from-game reconstructs deck from all zones"
+    (let [app-db (scenario/init-from-scenario multi-zone-scenario)
+          game-db (:game/db app-db)
+          extracted (scenario/extract-scenario-from-game game-db "Extracted")
+          deck (get-in extracted [:scenario/player :deck])
+          card-ids (set (map :card/id deck))]
+      (is (seq deck)
+          "extracted player deck should be non-empty")
+      (is (contains? card-ids :dark-ritual)
+          "deck should include dark-ritual")
+      (is (contains? card-ids :lotus-petal)
+          "deck should include lotus-petal")
+      (is (contains? card-ids :swamp)
+          "deck should include swamp"))))

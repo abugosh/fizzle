@@ -108,6 +108,13 @@
     (scenario-events/available-cards (or (:deck player) []))))
 
 
+(rf/reg-sub
+  ::opponent-available-cards
+  :<- [::editing-opponent]
+  (fn [opponent _]
+    (scenario-events/available-cards (or (:deck opponent) []))))
+
+
 ;; === Zone pool subscriptions ===
 
 (defn compute-zone-pool

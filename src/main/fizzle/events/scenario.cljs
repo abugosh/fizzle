@@ -194,14 +194,17 @@
   "Query all objects in a given zone for a player.
    Returns a vector of card-ids."
   [db player-id zone]
-  (into []
-        (map :card/id)
-        (d/q '[:find [?obj ...]
-               :in $ ?player-id ?zone
-               :where [?obj :object/zone ?zone]
-               [?obj :object/controller ?player-id]
-               [?obj :card/id]]
-             db player-id zone)))
+  (let [player-eid (d/q '[:find ?e . :in $ ?pid :where [?e :player/id ?pid]] db player-id)]
+    (if player-eid
+      (into []
+            (d/q '[:find [?cid ...]
+                   :in $ ?owner ?zone
+                   :where [?obj :object/zone ?zone]
+                   [?obj :object/owner ?owner]
+                   [?obj :object/card ?card]
+                   [?card :card/id ?cid]]
+                 db player-eid zone))
+      [])))
 
 
 (defn- count-card-ids-in-sequence
@@ -243,7 +246,7 @@
   (d/q '[:find ?phase . :where [?e :game/phase ?phase]] db))
 
 
-(defn- extract-scenario-from-game
+(defn extract-scenario-from-game
   "Extract current board state from game-db and return a scenario config map.
    Captures: player and opponent decks (reconstructed from all zones),
    zones (hand, graveyard, battlefield), mana pools, life, phase.
@@ -261,18 +264,27 @@
         opp-gy (get-objects-in-zone game-db opp-id :graveyard)
         opp-bf (get-objects-in-zone game-db opp-id :battlefield)
         ;; Get stack items (cards that are on stack) for each player
-        player-stack-items (d/q '[:find [?obj ...]
-                                  :in $ ?player-id
-                                  :where [?obj :object/zone :stack]
-                                  [?obj :object/controller ?player-id]
-                                  [?obj :card/id]]
-                                game-db player-id)
-        opp-stack-items (d/q '[:find [?obj ...]
-                               :in $ ?player-id
-                               :where [?obj :object/zone :stack]
-                               [?obj :object/controller ?player-id]
-                               [?obj :card/id]]
-                             game-db opp-id)
+        ;; Resolve player EIDs once to avoid per-zone lookups
+        player-eid (d/q '[:find ?e . :in $ ?pid :where [?e :player/id ?pid]] game-db player-id)
+        opp-eid    (d/q '[:find ?e . :in $ ?pid :where [?e :player/id ?pid]] game-db opp-id)
+        player-stack-items (if player-eid
+                             (d/q '[:find [?cid ...]
+                                    :in $ ?owner
+                                    :where [?obj :object/zone :stack]
+                                    [?obj :object/owner ?owner]
+                                    [?obj :object/card ?card]
+                                    [?card :card/id ?cid]]
+                                  game-db player-eid)
+                             [])
+        opp-stack-items (if opp-eid
+                          (d/q '[:find [?cid ...]
+                                 :in $ ?owner
+                                 :where [?obj :object/zone :stack]
+                                 [?obj :object/owner ?owner]
+                                 [?obj :object/card ?card]
+                                 [?card :card/id ?cid]]
+                               game-db opp-eid)
+                          [])
         ;; Get library and exile cards for deck reconstruction
         player-library (get-objects-in-zone game-db player-id :library)
         player-exile (get-objects-in-zone game-db player-id :exile)
@@ -290,8 +302,7 @@
         opp-life (get-player-life game-db opp-id)
         ;; Get phase
         phase (or (get-game-phase game-db) :main1)
-        ;; Get opponent archetype
-        opp-eid (d/q '[:find ?e . :in $ ?pid :where [?e :player/id ?pid]] game-db opp-id)
+        ;; Get opponent archetype (reuse opp-eid resolved above)
         opp-archetype (if opp-eid
                         (:player/bot-archetype (d/pull game-db [:player/bot-archetype] opp-eid))
                         :goldfish)]
@@ -666,11 +677,8 @@
               card (nth lib-top from-index)
               without (into (subvec lib-top 0 from-index)
                             (subvec lib-top (inc from-index)))
-              with-insert (if (< clamped-to from-index)
-                            (into (subvec without 0 clamped-to)
-                                  (cons card (subvec without clamped-to)))
-                            (into (subvec without 0 clamped-to)
-                                  (cons card (subvec without clamped-to))))]
+              with-insert (into (subvec without 0 clamped-to)
+                                (cons card (subvec without clamped-to)))]
           (assoc-in db [:scenario/editing sk :library-top] with-insert))
         ;; Invalid from-index, no-op
         db))))

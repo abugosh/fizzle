@@ -361,18 +361,12 @@
           [:option {:value (cljs.core/name arch)} (:bot/name spec)]))]]))
 
 
-(defn- opponent-available-cards
-  "Return available cards for opponent deck (not filtered by player deck)."
-  [opponent-deck]
-  (scenario-events/available-cards (or opponent-deck [])))
-
-
 (defn- opponent-side
   "Opponent archetype selector, deck contents panel, zone distribution, and library-top."
   []
   (let [opp-grouped @(rf/subscribe [::subs-scenario/opponent-deck-grouped])
         opp-data    @(rf/subscribe [::subs-scenario/editing-opponent])
-        available   (opponent-available-cards (:deck opp-data))]
+        available   @(rf/subscribe [::subs-scenario/opponent-available-cards])]
     [:div {:class "p-3 border border-border rounded bg-surface"}
      [:h3 {:class "text-sm font-bold uppercase tracking-wider text-text-label mb-2"} "Opponent"]
      [bot-archetype-selector]
