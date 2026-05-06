@@ -22,11 +22,14 @@
        (if valid? "Attackers selected" "Select creatures to attack with")]
       [:div {:class "flex flex-wrap gap-2.5 mb-5 min-h-[60px]"}
        (if (seq cards)
-         (for [obj cards]
+         (for [[card-idx obj] (map-indexed vector cards)]
            ^{:key (:object/id obj)}
            [common/selection-card-view obj
             (contains? selected (:object/id obj))
-            ::selection-events/toggle-selection])
+            ::selection-events/toggle-selection
+            true
+            nil
+            (inc card-idx)])
          [:div {:class "text-perm-text-tapped"} "No eligible attackers"])]
       [:div {:class "flex justify-end"}
        [common/confirm-button {:label "Confirm" :valid? valid?
@@ -54,13 +57,14 @@
        (if valid? "Blockers assigned" "Select blockers (or confirm with none)")]
       [:div {:class "flex flex-wrap gap-2.5 mb-5 min-h-[60px]"}
        (if (seq cards)
-         (for [obj cards]
+         (for [[card-idx obj] (map-indexed vector cards)]
            ^{:key (:object/id obj)}
            [common/selection-card-view obj
             (contains? selected (:object/id obj))
             ::selection-events/toggle-selection
             true
-            attacker-toughness])
+            attacker-toughness
+            (inc card-idx)])
          [:div {:class "text-perm-text-tapped"} "No eligible blockers"])]
       [:div {:class "flex justify-end"}
        [common/confirm-button {:label "Confirm" :valid? valid?
@@ -77,16 +81,20 @@
         show? (fn [id] (or (nil? vt) (contains? vt id)))]
     [common/modal-wrapper {:title "Choose target player" :max-width "400px" :text-align "center"}
      [:div {:class "flex justify-center mb-5"}
-      (for [[id label] [[game-state/human-player-id "You"] [game-state/opponent-player-id "Opponent"]]
+      (for [[badge-num [id label]] (map-indexed (fn [idx pair] [(inc idx) pair])
+                                                [[game-state/human-player-id "You"] [game-state/opponent-player-id "Opponent"]])
             :when (show? id)]
         ^{:key id}
-        [:button {:class (str "py-4 px-8 m-2 rounded-lg cursor-pointer text-text text-base "
-                              "font-bold min-w-[120px] transition-all duration-100 "
-                              (if (contains? selected id)
-                                "border-[3px] border-border-accent bg-modal-selected-bg"
-                                "border-2 border-border bg-surface-raised"))
-                  :on-click #(rf/dispatch [::selection-events/toggle-selection id])}
-         label])]
+        [:div {:class "relative"}
+         [:button {:class (str "py-4 px-8 m-2 rounded-lg cursor-pointer text-text text-base "
+                               "font-bold min-w-[120px] transition-all duration-100 "
+                               (if (contains? selected id)
+                                 "border-[3px] border-border-accent bg-modal-selected-bg"
+                                 "border-2 border-border bg-surface-raised"))
+                   :on-click #(rf/dispatch [::selection-events/toggle-selection id])}
+          label]
+         [:span {:class "absolute top-1 right-1 text-xs font-mono bg-surface-raised border border-border rounded px-1 py-0.5"}
+          (str "[" badge-num "]")]])]
      [:div {:class "flex justify-center"}
       [common/confirm-button {:label "Confirm" :valid? valid?
                               :on-confirm #(rf/dispatch [confirm-event])
@@ -116,11 +124,14 @@
        (if valid? selected-label unselected-label)]
       [:div {:class "flex flex-wrap gap-2.5 mb-5 min-h-[60px]"}
        (if (seq cards)
-         (for [obj cards]
+         (for [[card-idx obj] (map-indexed vector cards)]
            ^{:key (:object/id obj)}
            [common/selection-card-view obj
             (contains? selected-set (:object/id obj))
-            select-event])
+            select-event
+            true
+            nil
+            (inc card-idx)])
          [:div {:class "text-perm-text-tapped"} "No valid targets"])]
       [:div {:class "flex justify-end"}
        [common/confirm-button {:label "Confirm" :valid? valid?
@@ -142,13 +153,15 @@
        (if valid? "1 target selected" "Select an ability to counter")]
       [:div {:class "flex flex-col gap-2.5 mb-5 min-h-[60px]"}
        (if (seq targets)
-         (for [item targets]
+         (for [[item-idx item] (map-indexed vector targets)]
            ^{:key (:db/id item)}
-           [:div {:class (str "cursor-pointer rounded px-3 py-2 text-sm border "
+           [:div {:class (str "cursor-pointer rounded px-3 py-2 text-sm border relative "
                               (if (contains? selected (:db/id item))
                                 "border-health-good bg-health-good/20 text-text"
                                 "border-perm-border bg-surface text-text hover:border-text-muted"))
                   :on-click #(rf/dispatch [::selection-events/toggle-selection (:db/id item)])}
+            [:span {:class "absolute top-1 right-1 text-xs font-mono bg-surface-raised border border-border rounded px-1 py-0.5"}
+             (str "[" (inc item-idx) "]")]
             (or (:stack-item/description item)
                 (str (name (or (:stack-item/type item) :unknown)) " ability"))])
          [:div {:class "text-perm-text-tapped"} "No valid targets"])]
@@ -161,36 +174,47 @@
 
 (defn any-target-modal
   "Modal for :target/type :any — shows both players as buttons and battlefield
-   creatures as card tiles. Valid-targets contains player keywords and creature UUIDs."
+   creatures as card tiles. Valid-targets contains player keywords and creature UUIDs.
+   Uses flat numbering: players [1]/[2], creatures [3]+ in keyboard order."
   [selection cards confirm-event]
   (let [selected (or (:selection/selected selection) #{})
         valid? @(rf/subscribe [::subs/selection-valid?])
         vt (set (:selection/valid-targets selection))
-        show-player? (fn [id] (contains? vt id))]
+        show-player? (fn [id] (contains? vt id))
+        ;; Build list of visible players to count them
+        visible-players (filter (fn [[id _]] (show-player? id))
+                                [[game-state/human-player-id "You"] [game-state/opponent-player-id "Opponent"]])
+        player-count (count visible-players)
+        creature-start-num (+ player-count 1)]
     [common/modal-wrapper {:title "Choose any target" :max-width "500px"}
      [:p {:class (str "m-0 mb-3 text-sm "
                       (if valid? "text-health-good" "text-health-danger"))}
       (if valid? "Target selected" "Select a player or creature")]
      ;; Players row
      [:div {:class "flex justify-center gap-3 mb-4"}
-      (for [[id label] [[game-state/human-player-id "You"] [game-state/opponent-player-id "Opponent"]]
-            :when (show-player? id)]
+      (for [[badge-num [id label]] (map-indexed (fn [idx pair] [(inc idx) pair]) visible-players)]
         ^{:key id}
-        [:button {:class (str "py-3 px-6 rounded-lg cursor-pointer text-text text-sm "
-                              "font-bold min-w-[100px] transition-all duration-100 "
-                              (if (contains? selected id)
-                                "border-[3px] border-border-accent bg-modal-selected-bg"
-                                "border-2 border-border bg-surface-raised"))
-                  :on-click #(rf/dispatch [::selection-events/toggle-selection id])}
-         label])]
+        [:div {:class "relative"}
+         [:button {:class (str "py-3 px-6 rounded-lg cursor-pointer text-text text-sm "
+                               "font-bold min-w-[100px] transition-all duration-100 "
+                               (if (contains? selected id)
+                                 "border-[3px] border-border-accent bg-modal-selected-bg"
+                                 "border-2 border-border bg-surface-raised"))
+                   :on-click #(rf/dispatch [::selection-events/toggle-selection id])}
+          label]
+         [:span {:class "absolute top-1 right-1 text-xs font-mono bg-surface-raised border border-border rounded px-1 py-0.5"}
+          (str "[" badge-num "]")]])]
      ;; Creature objects (battlefield)
      (when (seq cards)
        [:div {:class "flex flex-wrap gap-2.5 mb-4 min-h-[60px]"}
-        (for [obj cards]
+        (for [[card-idx obj] (map-indexed vector cards)]
           ^{:key (:object/id obj)}
           [common/selection-card-view obj
            (contains? selected (:object/id obj))
-           ::selection-events/toggle-selection])])
+           ::selection-events/toggle-selection
+           true
+           nil
+           (+ creature-start-num card-idx)])])
      [:div {:class "flex justify-center"}
       [common/confirm-button {:label "Confirm" :valid? valid?
                               :on-confirm #(rf/dispatch [confirm-event])
