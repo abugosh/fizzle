@@ -25,6 +25,7 @@
 
 (def ^:private sample-id #uuid "00000000-0000-0000-0000-000000000001")
 
+
 (def ^:private sample-scenario
   {:scenario/id     sample-id
    :scenario/title  "Tendrils Turn with LED in hand"
@@ -43,6 +44,7 @@
                        :mana-pool {}
                        :life      20}
    :scenario/phase  :main1})
+
 
 (def ^:private empty-db {})
 
