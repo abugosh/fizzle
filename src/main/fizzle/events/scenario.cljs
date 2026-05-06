@@ -86,15 +86,15 @@
                     zone-ids)
         ;; Consume library-top entries from remaining pool
         [top-ids after-top] (reduce
-                               (fn [[tops pool] lib-top-id]
-                                 (let [idx (.indexOf pool lib-top-id)]
-                                   (if (neg? idx)
-                                     ;; Not available in pool — clamp: skip it
-                                     [tops pool]
-                                     [(conj tops lib-top-id)
-                                      (into (subvec pool 0 idx) (subvec pool (inc idx)))])))
-                               [[] (vec remaining)]
-                               library-top-ids)]
+                              (fn [[tops pool] lib-top-id]
+                                (let [idx (.indexOf pool lib-top-id)]
+                                  (if (neg? idx)
+                                    ;; Not available in pool — clamp: skip it
+                                    [tops pool]
+                                    [(conj tops lib-top-id)
+                                     (into (subvec pool 0 idx) (subvec pool (inc idx)))])))
+                              [[] (vec remaining)]
+                              library-top-ids)]
     [top-ids (shuffle after-top)]))
 
 
@@ -269,3 +269,128 @@
   (fn [db _]
     (let [scenario (:scenario/editing db)]
       (merge db (init-from-scenario scenario)))))
+
+
+;; === Deck selection and mutation helpers ===
+
+(defn- basic-land?
+  "Return true if the card identified by card-id is a basic land.
+   Uses the card registry to look up :card/supertypes."
+  [card-id]
+  (let [card-def (get cards/card-by-id card-id)]
+    (contains? (or (:card/supertypes card-def) #{}) :basic)))
+
+
+(defn- deck-count-for
+  "Return the current count of card-id in deck, or 0 if absent."
+  [deck card-id]
+  (or (some #(when (= card-id (:card/id %)) (:count %)) deck) 0))
+
+
+(defn- update-deck-count
+  "Update the count of card-id in deck vector.
+   delta is +1 or -1. Removes entry when count reaches 0.
+   Creates entry with count 1 if not present and delta is positive."
+  [deck card-id delta]
+  (let [existing (some #(when (= card-id (:card/id %)) %) deck)]
+    (if existing
+      (let [new-count (+ (:count existing) delta)]
+        (if (pos? new-count)
+          (mapv (fn [entry]
+                  (if (= card-id (:card/id entry))
+                    (assoc entry :count new-count)
+                    entry))
+                deck)
+          (vec (remove #(= card-id (:card/id %)) deck))))
+      (if (pos? delta)
+        (conj (or deck []) {:card/id card-id :count delta})
+        (or deck [])))))
+
+
+(defn- side-key
+  "Convert :player/:opponent side to the scenario key."
+  [side]
+  (if (= side :player) :scenario/player :scenario/opponent))
+
+
+;; === Pure handler functions for deck selection and mutation ===
+
+(defn select-player-deck-handler
+  "Set the player deck on :scenario/editing.
+   deck is a vector of {:card/id kw :count n} maps."
+  [db [_ deck]]
+  (assoc-in db [:scenario/editing :scenario/player :deck] deck))
+
+
+(defn select-bot-archetype-handler
+  "Set the opponent archetype and populate its deck on :scenario/editing."
+  [db [_ archetype]]
+  (let [deck (bot-protocol/bot-deck archetype)]
+    (-> db
+        (assoc-in [:scenario/editing :scenario/opponent :archetype] archetype)
+        (assoc-in [:scenario/editing :scenario/opponent :deck] deck))))
+
+
+(defn add-card-handler
+  "Increment count for card-id in the given side's deck.
+   Respects the 4-copy limit for non-basic cards (basics are unlimited).
+   {:side :player/:opponent :card-id keyword}"
+  [db [_ {:keys [side card-id]}]]
+  (let [sk    (side-key side)
+        deck  (get-in db [:scenario/editing sk :deck] [])
+        count (deck-count-for deck card-id)
+        at-limit? (and (>= count 4) (not (basic-land? card-id)))]
+    (if at-limit?
+      db
+      (assoc-in db [:scenario/editing sk :deck]
+                (update-deck-count deck card-id 1)))))
+
+
+(defn remove-card-handler
+  "Decrement count for card-id in the given side's deck.
+   Removes the entry when count reaches 0. No-op when card absent.
+   {:side :player/:opponent :card-id keyword}"
+  [db [_ {:keys [side card-id]}]]
+  (let [sk   (side-key side)
+        deck (get-in db [:scenario/editing sk :deck] [])]
+    (assoc-in db [:scenario/editing sk :deck]
+              (update-deck-count deck card-id -1))))
+
+
+(defn available-cards
+  "Return all registry cards that can still be added to a deck.
+   Excludes non-basic cards already at 4 copies.
+   deck is a vector of {:card/id kw :count n} maps.
+   Returns a vector of {:card/id kw :card/name str} maps."
+  [deck]
+  (let [counts (into {} (map (juxt :card/id :count) deck))]
+    (into []
+          (keep (fn [card-def]
+                  (let [id    (:card/id card-def)
+                        cnt   (get counts id 0)
+                        basic (contains? (or (:card/supertypes card-def) #{}) :basic)]
+                    (when (or basic (< cnt 4))
+                      {:card/id id :card/name (:card/name card-def)}))))
+          cards/all-cards)))
+
+
+;; === re-frame event registrations for deck selection/mutation ===
+
+(rf/reg-event-db
+  ::select-player-deck
+  select-player-deck-handler)
+
+
+(rf/reg-event-db
+  ::select-bot-archetype
+  select-bot-archetype-handler)
+
+
+(rf/reg-event-db
+  ::add-card
+  add-card-handler)
+
+
+(rf/reg-event-db
+  ::remove-card
+  remove-card-handler)
