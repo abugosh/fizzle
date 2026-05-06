@@ -273,9 +273,16 @@
                                [?obj :object/controller ?player-id]
                                [?obj :card/id]]
                              game-db opp-id)
-        ;; Reconstruct deck from all cards in play and on stack
-        all-player-cards (concat player-hand player-gy player-bf player-stack-items)
-        all-opp-cards (concat opp-hand opp-gy opp-bf opp-stack-items)
+        ;; Get library and exile cards for deck reconstruction
+        player-library (get-objects-in-zone game-db player-id :library)
+        player-exile (get-objects-in-zone game-db player-id :exile)
+        opp-library (get-objects-in-zone game-db opp-id :library)
+        opp-exile (get-objects-in-zone game-db opp-id :exile)
+        ;; Reconstruct deck from ALL cards in all zones
+        all-player-cards (concat player-hand player-gy player-bf player-stack-items
+                                 player-library player-exile)
+        all-opp-cards (concat opp-hand opp-gy opp-bf opp-stack-items
+                              opp-library opp-exile)
         ;; Get mana pools and life
         player-mana (:player/mana-pool (get-player-mana-pool game-db player-id))
         player-life (get-player-life game-db player-id)
