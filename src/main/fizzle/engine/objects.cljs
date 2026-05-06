@@ -8,6 +8,7 @@
    Battlefield-specific fields (summoning-sick, damage-marked) are NOT set here.
    Those are zone-transition concerns owned by engine/zones.cljs:move-to-zone."
   (:require
+    [datascript.core :as d]
     [fizzle.engine.replacement-db :as replacement-db]
     [fizzle.engine.trigger-db :as trigger-db]))
 
@@ -48,6 +49,10 @@
    Does NOT set battlefield-specific fields (summoning-sick, damage-marked).
    Those belong to zone transitions (engine/zones.cljs:move-to-zone)."
   [db card-eid card-data zone owner-eid position & {:keys [id controller]}]
+  (assert (or (< card-eid 0) (d/entity db card-eid))
+          (str "Card entity must exist before building object. card-eid: " card-eid))
+  (assert (or (< owner-eid 0) (d/entity db owner-eid))
+          (str "Player entity must exist before building object. owner-eid: " owner-eid))
   (let [tempid (next-tempid)
         controller-eid (or controller owner-eid)
         card-triggers (:card/triggers card-data)
