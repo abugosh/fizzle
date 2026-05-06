@@ -176,11 +176,12 @@
    (if (empty? cards)
      [:p {:class "text-text-muted text-xs italic"} "Empty"]
      [:div {:class "flex flex-wrap gap-1"}
-      (map-indexed
-        (fn [i card-id]
-          ^{:key (str zone "-" i)}
-          [zone-card-pill card-id zone side])
-        cards)])])
+      (doall
+        (map-indexed
+          (fn [i card-id]
+            ^{:key (str zone "-" i)}
+            [zone-card-pill card-id zone side])
+          cards))])])
 
 
 (defn- pool-pill
@@ -283,9 +284,11 @@
             "Pool"]
            (if (empty? pool)
              [:p {:class "text-text-muted text-xs italic"} "All assigned"]
-             (for [entry pool]
-               [pool-pill entry side @selected-id
-                (fn [id] (reset! selected-id id))]))]
+             (doall
+               (for [entry pool]
+                 ^{:key (:card/id entry)}
+                 [pool-pill entry side @selected-id
+                  (fn [id] (reset! selected-id id))])))]
           ;; Right: zone columns
           [:div {:class "flex-1 flex gap-2"}
            (for [zone [:hand :graveyard :battlefield]]
@@ -298,7 +301,8 @@
 (defn- player-deck-selector
   "Dropdown of saved decks + built-in Iggy Pop for the player side."
   []
-  (let [decks @(rf/subscribe [::subs-setup/available-decks])]
+  (let [decks    @(rf/subscribe [::subs-setup/available-decks])
+        imported @(rf/subscribe [::subs-setup/imported-decks])]
     [:div {:class "mb-3"}
      [:label {:class "text-text-label text-xs font-bold uppercase tracking-wider block mb-1"}
       "Select Deck"]
@@ -309,8 +313,7 @@
                                (let [deck-id (keyword v)
                                      deck    (if (= deck-id :iggy-pop)
                                                (:deck/main setup-events/iggy-pop-decklist)
-                                               (let [imported @(rf/subscribe [::subs-setup/imported-decks])]
-                                                 (:deck/main (get imported deck-id))))]
+                                               (:deck/main (get imported deck-id)))]
                                  (rf/dispatch [::scenario-events/select-player-deck deck])))
                              (set! (.. % -target -value) ""))}
       [:option {:value ""} "Load deck..."]
