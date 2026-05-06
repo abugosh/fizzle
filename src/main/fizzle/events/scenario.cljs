@@ -537,3 +537,57 @@
 (rf/reg-event-db
   ::reorder-library-top
   reorder-library-top-handler)
+
+
+;; === Game state configuration handlers ===
+
+(defn set-title-handler
+  "Set the scenario title on :scenario/editing.
+   title is a string."
+  [db [_ title]]
+  (assoc-in db [:scenario/editing :scenario/title] title))
+
+
+(defn set-life-handler
+  "Set life total for a player side.
+   {:side :player/:opponent :life int}"
+  [db [_ {:keys [side life]}]]
+  (let [sk (side-key side)]
+    (assoc-in db [:scenario/editing sk :life] life)))
+
+
+(defn set-mana-handler
+  "Set a specific mana color amount for a player side.
+   {:side :player/:opponent :color :white/:blue/:black/:red/:green/:colorless :amount int}"
+  [db [_ {:keys [side color amount]}]]
+  (let [sk (side-key side)]
+    (assoc-in db [:scenario/editing sk :mana-pool color] amount)))
+
+
+(defn set-phase-handler
+  "Set the starting game phase for the scenario.
+   {:phase keyword}"
+  [db [_ {:keys [phase]}]]
+  (assoc-in db [:scenario/editing :scenario/phase] phase))
+
+
+;; === re-frame event registrations for game state config ===
+
+(rf/reg-event-db
+  ::set-title
+  set-title-handler)
+
+
+(rf/reg-event-db
+  ::set-life
+  set-life-handler)
+
+
+(rf/reg-event-db
+  ::set-mana
+  set-mana-handler)
+
+
+(rf/reg-event-db
+  ::set-phase
+  set-phase-handler)

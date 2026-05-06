@@ -323,6 +323,104 @@
          ::subs-scenario/opponent-unordered-pool]])]))
 
 
+;; === Game state configuration ===
+
+(def ^:private phase-options
+  "Available game phases for scenario start."
+  [:upkeep :draw :main1 :combat :main2 :end])
+
+
+(defn- game-state-config-panel
+  "Configuration for title, life totals, mana pools, and starting phase."
+  []
+  (let [editing @(rf/subscribe [::subs-scenario/editing])]
+    [:div {:class "p-3 border border-border rounded bg-surface"}
+     [:h3 {:class "text-sm font-bold uppercase tracking-wider text-text-label mb-3"} "Game State"]
+
+     ;; Title input
+     [:div {:class "mb-3"}
+      [:label {:class "text-text-label text-xs font-bold uppercase tracking-wider block mb-1"}
+       "Scenario Title"]
+      [:input {:type "text"
+               :class "bg-surface-raised border border-border rounded px-2 py-1 text-sm text-text w-full"
+               :placeholder "Required to save"
+               :value (or (:scenario/title editing) "")
+               :on-change #(rf/dispatch [::scenario-events/set-title (.. % -target -value)])}]]
+
+     ;; Life totals
+     [:div {:class "grid grid-cols-2 gap-3 mb-3"}
+      [:div
+       [:label {:class "text-text-label text-xs font-bold uppercase tracking-wider block mb-1"}
+        "Player Life"]
+       [:input {:type "number"
+                :class "bg-surface-raised border border-border rounded px-2 py-1 text-sm text-text w-full"
+                :value (or (get-in editing [:scenario/player :life]) 20)
+                :on-change #(let [val (js/parseInt (.. % -target -value))]
+                              (when (not (js/isNaN val))
+                                (rf/dispatch [::scenario-events/set-life
+                                              {:side :player :life (max 0 val)}])))}]]
+      [:div
+       [:label {:class "text-text-label text-xs font-bold uppercase tracking-wider block mb-1"}
+        "Opponent Life"]
+       [:input {:type "number"
+                :class "bg-surface-raised border border-border rounded px-2 py-1 text-sm text-text w-full"
+                :value (or (get-in editing [:scenario/opponent :life]) 20)
+                :on-change #(let [val (js/parseInt (.. % -target -value))]
+                              (when (not (js/isNaN val))
+                                (rf/dispatch [::scenario-events/set-life
+                                              {:side :opponent :life (max 0 val)}])))}]]]
+
+     ;; Mana pools
+     [:div {:class "mb-3"}
+      [:h4 {:class "text-text-label text-xs font-bold uppercase tracking-wider mb-2"} "Mana Pools"]
+      ;; Player mana
+      [:div {:class "mb-2"}
+       [:div {:class "text-xs font-semibold text-text-label mb-1"} "Player"]
+       [:div {:class "grid grid-cols-6 gap-1"}
+        (for [color [:white :blue :black :red :green :colorless]]
+          ^{:key (str "player-" color)}
+          [:div
+           [:label {:class "text-text-label text-xs font-bold uppercase block mb-0.5"
+                    :style {:font-size "0.65rem"}}
+            (subs (str color) 0 1)]
+           [:input {:type "number"
+                    :class "bg-surface-raised border border-border rounded px-1 py-0.5 text-xs text-text w-full"
+                    :value (or (get-in editing [:scenario/player :mana-pool color]) 0)
+                    :on-change #(let [val (js/parseInt (.. % -target -value))]
+                                  (when (not (js/isNaN val))
+                                    (rf/dispatch [::scenario-events/set-mana
+                                                  {:side :player :color color :amount (max 0 val)}])))}]])]]
+      ;; Opponent mana
+      [:div
+       [:div {:class "text-xs font-semibold text-text-label mb-1"} "Opponent"]
+       [:div {:class "grid grid-cols-6 gap-1"}
+        (for [color [:white :blue :black :red :green :colorless]]
+          ^{:key (str "opponent-" color)}
+          [:div
+           [:label {:class "text-text-label text-xs font-bold uppercase block mb-0.5"
+                    :style {:font-size "0.65rem"}}
+            (subs (str color) 0 1)]
+           [:input {:type "number"
+                    :class "bg-surface-raised border border-border rounded px-1 py-0.5 text-xs text-text w-full"
+                    :value (or (get-in editing [:scenario/opponent :mana-pool color]) 0)
+                    :on-change #(let [val (js/parseInt (.. % -target -value))]
+                                  (when (not (js/isNaN val))
+                                    (rf/dispatch [::scenario-events/set-mana
+                                                  {:side :opponent :color color :amount (max 0 val)}])))}]])]]]
+
+     ;; Phase selector
+     [:div
+      [:label {:class "text-text-label text-xs font-bold uppercase tracking-wider block mb-1"}
+       "Starting Phase"]
+      [:select {:class "bg-surface-raised border border-border rounded px-2 py-1 text-sm text-text w-full"
+                :value (or (:scenario/phase editing) "main1")
+                :on-change #(rf/dispatch [::scenario-events/set-phase (keyword (.. % -target -value))])}
+       (for [phase phase-options]
+         ^{:key phase}
+         [:option {:value (cljs.core/name phase)}
+          (str (cljs.core/name phase))])]]]))
+
+
 ;; === Builder view ===
 
 (defn- builder-header
@@ -336,13 +434,27 @@
 
 (defn- builder-actions
   []
-  (let [player-deck @(rf/subscribe [::subs-scenario/editing-player])]
-    [:div {:class "flex justify-end mt-4"}
+  (let [editing @(rf/subscribe [::subs-scenario/editing])
+        player-deck (:deck (:scenario/player editing))
+        title (:scenario/title editing)
+        has-deck? (seq player-deck)
+        has-title? (seq title)]
+    [:div {:class "flex gap-3 justify-end mt-4"}
+     [:button {:class "px-3 py-1 text-sm border border-border rounded cursor-pointer bg-surface-raised text-text"
+               :on-click #(rf/dispatch [::scenario-events/show-library])}
+      "Back to Library"]
      [:button {:class (str "py-2 px-5 border border-border rounded font-bold text-sm "
-                           (if (seq (:deck player-deck))
+                           (if has-title?
+                             "cursor-pointer bg-accent text-surface"
+                             "cursor-default bg-btn-disabled-bg text-border opacity-50"))
+               :disabled (not has-title?)
+               :on-click #(rf/dispatch [::scenario-events/save editing])}
+      "Save"]
+     [:button {:class (str "py-2 px-5 border border-border rounded font-bold text-sm "
+                           (if has-deck?
                              "cursor-pointer bg-btn-enabled-bg text-white"
                              "cursor-default bg-btn-disabled-bg text-border opacity-50"))
-               :disabled (empty? (:deck player-deck))
+               :disabled (not has-deck?)
                :on-click #(rf/dispatch [::scenario-events/play])}
       "Play Scenario"]]))
 
@@ -350,11 +462,15 @@
 (defn builder-view
   "Scenario builder: two-column deck selection and mutation UI."
   []
-  [:div {:class "p-4 max-w-4xl mx-auto"}
+  [:div {:class "p-4 max-w-6xl mx-auto"}
    [builder-header]
-   [:div {:class "grid grid-cols-2 gap-4"}
-    [player-side]
-    [opponent-side]]
+   [:div {:class "grid grid-cols-3 gap-4"}
+    [:div {:class "col-span-2"}
+     [:div {:class "grid grid-cols-2 gap-4"}
+      [player-side]
+      [opponent-side]]]
+    [:div
+     [game-state-config-panel]]]
    [builder-actions]])
 
 

@@ -1,19 +1,19 @@
-{:total-forms-hit 920
- :total-forms 1021
- :total-sub-forms-hit 15919
- :total-sub-forms 18599
+{:total-forms-hit 974
+ :total-forms 1067
+ :total-sub-forms-hit 17168
+ :total-sub-forms 19839
  :namespaces
  [{:ns "fizzle.bots.action-spec" :sub-forms-hit 12 :sub-forms 11}
- {:ns "fizzle.bots.decisions" :sub-forms-hit 160 :sub-forms 173}
+ {:ns "fizzle.bots.decisions" :sub-forms-hit 173 :sub-forms 186}
  {:ns "fizzle.bots.definitions" :sub-forms-hit 6 :sub-forms 8}
  {:ns "fizzle.bots.protocol" :sub-forms-hit 39 :sub-forms 41}
- {:ns "fizzle.bots.rules" :sub-forms-hit 210 :sub-forms 218}
+ {:ns "fizzle.bots.rules" :sub-forms-hit 217 :sub-forms 225}
  {:ns "fizzle.db.game-state" :sub-forms-hit 31 :sub-forms 31}
  {:ns "fizzle.db.init" :sub-forms-hit 22 :sub-forms 22}
  {:ns "fizzle.db.queries" :sub-forms-hit 179 :sub-forms 183}
- {:ns "fizzle.db.storage" :sub-forms-hit 71 :sub-forms 77}
+ {:ns "fizzle.db.storage" :sub-forms-hit 79 :sub-forms 86}
  {:ns "fizzle.engine.abilities" :sub-forms-hit 73 :sub-forms 73}
- {:ns "fizzle.engine.card-spec" :sub-forms-hit 130 :sub-forms 133}
+ {:ns "fizzle.engine.card-spec" :sub-forms-hit 132 :sub-forms 135}
  {:ns "fizzle.engine.combat" :sub-forms-hit 243 :sub-forms 248}
  {:ns "fizzle.engine.conditions" :sub-forms-hit 44 :sub-forms 44}
  {:ns "fizzle.engine.costs" :sub-forms-hit 381 :sub-forms 389}
@@ -21,7 +21,7 @@
  {:ns "fizzle.engine.deck-parser" :sub-forms-hit 256 :sub-forms 272}
  {:ns "fizzle.engine.effects" :sub-forms-hit 157 :sub-forms 157}
  {:ns "fizzle.engine.effects.grants" :sub-forms-hit 131 :sub-forms 135}
- {:ns "fizzle.engine.effects.life" :sub-forms-hit 160 :sub-forms 174}
+ {:ns "fizzle.engine.effects.life" :sub-forms-hit 179 :sub-forms 193}
  {:ns "fizzle.engine.effects.pt-modifier" :sub-forms-hit 23 :sub-forms 23}
  {:ns "fizzle.engine.effects.selection" :sub-forms-hit 26 :sub-forms 28}
  {:ns "fizzle.engine.effects.simple" :sub-forms-hit 26 :sub-forms 26}
@@ -30,21 +30,21 @@
  {:ns "fizzle.engine.effects.zones" :sub-forms-hit 379 :sub-forms 383}
  {:ns "fizzle.engine.events" :sub-forms-hit 20 :sub-forms 20}
  {:ns "fizzle.engine.grants" :sub-forms-hit 201 :sub-forms 206}
- {:ns "fizzle.engine.mana" :sub-forms-hit 159 :sub-forms 158}
- {:ns "fizzle.engine.mana-activation" :sub-forms-hit 226 :sub-forms 230}
+ {:ns "fizzle.engine.mana" :sub-forms-hit 171 :sub-forms 170}
+ {:ns "fizzle.engine.mana-activation" :sub-forms-hit 273 :sub-forms 276}
  {:ns "fizzle.engine.mana-spec" :sub-forms-hit 8 :sub-forms 6}
  {:ns "fizzle.engine.object-spec" :sub-forms-hit 3 :sub-forms 2}
- {:ns "fizzle.engine.objects" :sub-forms-hit 49 :sub-forms 49}
+ {:ns "fizzle.engine.objects" :sub-forms-hit 59 :sub-forms 63}
  {:ns "fizzle.engine.priority" :sub-forms-hit 47 :sub-forms 48}
  {:ns "fizzle.engine.probability" :sub-forms-hit 284 :sub-forms 287}
  {:ns "fizzle.engine.replacement-db" :sub-forms-hit 61 :sub-forms 71}
  {:ns "fizzle.engine.resolution" :sub-forms-hit 354 :sub-forms 397}
- {:ns "fizzle.engine.rules" :sub-forms-hit 624 :sub-forms 641}
- {:ns "fizzle.engine.sorting" :sub-forms-hit 44 :sub-forms 44}
+ {:ns "fizzle.engine.rules" :sub-forms-hit 625 :sub-forms 641}
+ {:ns "fizzle.engine.sorting" :sub-forms-hit 73 :sub-forms 73}
  {:ns "fizzle.engine.spec-generators" :sub-forms-hit 392 :sub-forms 779}
  {:ns "fizzle.engine.spec-util" :sub-forms-hit 14 :sub-forms 14}
  {:ns "fizzle.engine.stack" :sub-forms-hit 75 :sub-forms 75}
- {:ns "fizzle.engine.stack-spec" :sub-forms-hit 42 :sub-forms 41}
+ {:ns "fizzle.engine.stack-spec" :sub-forms-hit 41 :sub-forms 41}
  {:ns "fizzle.engine.state-based" :sub-forms-hit 240 :sub-forms 247}
  {:ns "fizzle.engine.static-abilities" :sub-forms-hit 182 :sub-forms 183}
  {:ns "fizzle.engine.targeting" :sub-forms-hit 276 :sub-forms 304}
@@ -55,9 +55,9 @@
  {:ns "fizzle.engine.validation" :sub-forms-hit 109 :sub-forms 115}
  {:ns "fizzle.engine.zone-change-dispatch" :sub-forms-hit 73 :sub-forms 73}
  {:ns "fizzle.engine.zones" :sub-forms-hit 172 :sub-forms 182}
- {:ns "fizzle.events.abilities" :sub-forms-hit 346 :sub-forms 370}
+ {:ns "fizzle.events.abilities" :sub-forms-hit 294 :sub-forms 316}
  {:ns "fizzle.events.calculator" :sub-forms-hit 334 :sub-forms 364}
- {:ns "fizzle.events.casting" :sub-forms-hit 312 :sub-forms 370}
+ {:ns "fizzle.events.casting" :sub-forms-hit 319 :sub-forms 377}
  {:ns "fizzle.events.cleanup" :sub-forms-hit 79 :sub-forms 85}
  {:ns "fizzle.events.cycling" :sub-forms-hit 40 :sub-forms 40}
  {:ns "fizzle.events.db-effect" :sub-forms-hit 29 :sub-forms 29}
@@ -68,19 +68,20 @@
  {:ns "fizzle.events.phases" :sub-forms-hit 96 :sub-forms 96}
  {:ns "fizzle.events.priority-flow" :sub-forms-hit 95 :sub-forms 101}
  {:ns "fizzle.events.resolution" :sub-forms-hit 187 :sub-forms 188}
+ {:ns "fizzle.events.scenario" :sub-forms-hit 539 :sub-forms 554}
  {:ns "fizzle.events.selection.combat" :sub-forms-hit 85 :sub-forms 85}
  {:ns "fizzle.events.selection.core" :sub-forms-hit 384 :sub-forms 400}
  {:ns "fizzle.events.selection.costs" :sub-forms-hit 698 :sub-forms 797}
- {:ns "fizzle.events.selection.land-types" :sub-forms-hit 82 :sub-forms 82}
+ {:ns "fizzle.events.selection.land-types" :sub-forms-hit 103 :sub-forms 103}
  {:ns "fizzle.events.selection.library" :sub-forms-hit 716 :sub-forms 779}
- {:ns "fizzle.events.selection.mana-ability" :sub-forms-hit 162 :sub-forms 171}
+ {:ns "fizzle.events.selection.mana-ability" :sub-forms-hit 145 :sub-forms 162}
  {:ns "fizzle.events.selection.replacement" :sub-forms-hit 232 :sub-forms 247}
  {:ns "fizzle.events.selection.spec" :sub-forms-hit 23 :sub-forms 22}
  {:ns "fizzle.events.selection.spell-cleanup" :sub-forms-hit 36 :sub-forms 36}
- {:ns "fizzle.events.selection.storm" :sub-forms-hit 110 :sub-forms 110}
+ {:ns "fizzle.events.selection.storm" :sub-forms-hit 112 :sub-forms 112}
  {:ns "fizzle.events.selection.targeting" :sub-forms-hit 266 :sub-forms 279}
  {:ns "fizzle.events.selection.untap" :sub-forms-hit 37 :sub-forms 37}
- {:ns "fizzle.events.selection.zone-ops" :sub-forms-hit 242 :sub-forms 246}
+ {:ns "fizzle.events.selection.zone-ops" :sub-forms-hit 269 :sub-forms 288}
  {:ns "fizzle.events.setup" :sub-forms-hit 428 :sub-forms 435}
  {:ns "fizzle.events.ui" :sub-forms-hit 3 :sub-forms 3}
  {:ns "fizzle.events.ui-invariants" :sub-forms-hit 37 :sub-forms 37}
@@ -96,19 +97,22 @@
  {:ns "fizzle.snapshot.events" :sub-forms-hit 33 :sub-forms 54}
  {:ns "fizzle.subs.calculator" :sub-forms-hit 133 :sub-forms 133}
  {:ns "fizzle.subs.game" :sub-forms-hit 71 :sub-forms 73}
+ {:ns "fizzle.subs.scenario" :sub-forms-hit 57 :sub-forms 87}
  {:ns "fizzle.test-helpers" :sub-forms-hit 524 :sub-forms 557}
- {:ns "fizzle.views.battlefield" :sub-forms-hit 55 :sub-forms 298}
+ {:ns "fizzle.views.battlefield" :sub-forms-hit 102 :sub-forms 299}
  {:ns "fizzle.views.card-styles" :sub-forms-hit 33 :sub-forms 33}
- {:ns "fizzle.views.controls" :sub-forms-hit 17 :sub-forms 102}
- {:ns "fizzle.views.history" :sub-forms-hit 24 :sub-forms 236}
- {:ns "fizzle.views.mana-pool" :sub-forms-hit 2 :sub-forms 156}
- {:ns "fizzle.views.modals" :sub-forms-hit 25 :sub-forms 104}
+ {:ns "fizzle.views.controls" :sub-forms-hit 74 :sub-forms 120}
+ {:ns "fizzle.views.history" :sub-forms-hit 24 :sub-forms 239}
+ {:ns "fizzle.views.keyboard" :sub-forms-hit 336 :sub-forms 452}
+ {:ns "fizzle.views.mana-pool" :sub-forms-hit 55 :sub-forms 85}
+ {:ns "fizzle.views.modals" :sub-forms-hit 32 :sub-forms 99}
  {:ns "fizzle.views.opponent" :sub-forms-hit 10 :sub-forms 23}
- {:ns "fizzle.views.selection.accumulator" :sub-forms-hit 2 :sub-forms 149}
- {:ns "fizzle.views.selection.common" :sub-forms-hit 0 :sub-forms 91}
- {:ns "fizzle.views.selection.custom" :sub-forms-hit 0 :sub-forms 226}
+ {:ns "fizzle.views.selection.accumulator" :sub-forms-hit 2 :sub-forms 157}
+ {:ns "fizzle.views.selection.binary-choice" :sub-forms-hit 32 :sub-forms 32}
+ {:ns "fizzle.views.selection.common" :sub-forms-hit 0 :sub-forms 99}
+ {:ns "fizzle.views.selection.custom" :sub-forms-hit 0 :sub-forms 222}
  {:ns "fizzle.views.selection.reorder" :sub-forms-hit 0 :sub-forms 140}
  {:ns "fizzle.views.selection.replacement" :sub-forms-hit 16 :sub-forms 19}
- {:ns "fizzle.views.selection.zone-pick" :sub-forms-hit 0 :sub-forms 113}
+ {:ns "fizzle.views.selection.zone-pick" :sub-forms-hit 2 :sub-forms 129}
  {:ns "fizzle.views.zone-counts" :sub-forms-hit 2 :sub-forms 29}
  ]}
