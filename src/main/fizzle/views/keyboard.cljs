@@ -15,9 +15,11 @@
      :accumulate       — :accumulate mechanism (W/S increment/decrement, Space confirm)
      :allocate-resource — :allocate-resource mechanism (1-5 color, Space confirm)
      :storm-split      — :accumulate mechanism + :storm-split domain (chord-based target allocation)
+     :zone-pick        — :pick-from-zone mechanism (chord: pile 1-9, then card 1-9)
+     :flat-targeting   — :n-slot-targeting mechanism (1-9 select candidate)
      :modal            — modal mechanisms (shortcuts suppressed)
 
-   Modal mechanisms (shortcuts suppressed): :pick-from-zone, :reorder, :n-slot-targeting"
+   Modal mechanisms (shortcuts suppressed): :reorder"
   (:require
     [clojure.string]
     [fizzle.db.game-state :as game-state]
