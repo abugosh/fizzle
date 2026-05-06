@@ -98,19 +98,28 @@
        (counter-text selection)]
       (if (seq cards)
         [:div {:class "flex flex-row gap-4 mb-5 min-h-[60px] flex-wrap"}
-         (for [[group-key group-cards] (sorting/group-by-cmc cards)]
-           ^{:key group-key}
-           [:div {:class "flex flex-col gap-1"}
-            [:span {:class "text-xs text-gray-400 mb-1"}
-             (if (= :lands group-key) "Lands" (str group-key))]
-            (for [obj group-cards]
-              ^{:key (:object/id obj)}
-              [common/selection-card-view obj
-               (contains? (:selection/selected selection) (:object/id obj))
-               ::selection-events/toggle-selection
-               (if (and has-reveal? valid-targets)
-                 (contains? valid-targets (:object/id obj))
-                 true)])])]
+         (map-indexed
+           (fn [pile-idx [group-key group-cards]]
+             ^{:key group-key}
+             [:div {:class "flex flex-col gap-1"}
+              [:div {:class "flex items-center gap-2 mb-1"}
+               [:span {:class "text-xs text-gray-400"}
+                (if (= :lands group-key) "Lands" (str group-key))]
+               [:span {:class "text-xs font-mono bg-surface-raised border border-border rounded px-1 py-0.5"}
+                (inc pile-idx)]]
+              (map-indexed
+                (fn [card-idx obj]
+                  ^{:key (:object/id obj)}
+                  [common/selection-card-view obj
+                   (contains? (:selection/selected selection) (:object/id obj))
+                   ::selection-events/toggle-selection
+                   (if (and has-reveal? valid-targets)
+                     (contains? valid-targets (:object/id obj))
+                     true)
+                   nil
+                   (inc card-idx)])
+                group-cards)])
+           (sorting/group-by-cmc cards))]
         [:div {:class "mb-5 min-h-[60px] text-perm-text-tapped"}
          (or (:empty-text config) "No cards available")])
       [:div {:class "flex justify-end gap-3"}

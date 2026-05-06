@@ -69,12 +69,15 @@
   "A card in a selection modal. Supports optional selectable? param for
    hand-reveal style (dimmed non-selectable cards).
    When obj has :creature/display, shows effective P/T below card name.
-   When opposing-toughness is provided, shows combat math preview."
+   When opposing-toughness is provided, shows combat math preview.
+   When card-index is provided, shows a positional number badge for keyboard chords."
   ([obj selected? toggle-event]
    (selection-card-view obj selected? toggle-event true nil))
   ([obj selected? toggle-event selectable?]
    (selection-card-view obj selected? toggle-event selectable? nil))
   ([obj selected? toggle-event selectable? opposing-toughness]
+   (selection-card-view obj selected? toggle-event selectable? opposing-toughness nil))
+  ([obj selected? toggle-event selectable? opposing-toughness card-index]
    (let [card-name (get-in obj [:object/card :card/name])
          object-id (:object/id obj)
          card-types (get-in obj [:object/card :card/types])
@@ -85,12 +88,15 @@
                         (not selectable?) "border-2 border-border opacity-50"
                         :else (str "border-2 " (card-styles/get-type-border-class card-types false)))
          bg-class (card-styles/get-color-identity-bg-class card-colors card-types)]
-     [:div {:class (str "rounded-md px-3.5 py-2.5 min-w-[90px] text-center "
+     [:div {:class (str "rounded-md px-3.5 py-2.5 min-w-[90px] text-center relative "
                         "select-none text-text transition-all duration-100 "
                         (if selectable? "cursor-pointer " "cursor-not-allowed ")
                         border-class " " bg-class)
             :on-click (when selectable?
                         #(rf/dispatch [toggle-event object-id]))}
+      (when card-index
+        [:span {:class "absolute top-1 right-1 text-xs font-mono bg-surface-raised border border-border rounded px-1 py-0.5"}
+         card-index])
       card-name
       (when creature-display
         [pt-display creature-display opposing-toughness])])))
