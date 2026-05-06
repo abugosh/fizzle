@@ -412,6 +412,22 @@
     :select-8 (select-nth-candidate selection-cards pending-selection 7)
     :select-9 (select-nth-candidate selection-cards pending-selection 8)
 
+    ;; secondary action: domain-appropriate action (Find Nothing, Random, Clear/Cancel)
+    ;; mirrors zone_pick.cljs:54-68 secondary-button logic exactly
+    :secondary
+    (when pending-selection
+      (let [domain (:selection/domain pending-selection)]
+        (case domain
+          :tutor
+          {:dispatch-n [[::selection-events/cancel-selection]
+                        [::selection-events/confirm-selection]]}
+          :pile-choice
+          [::selection-events/select-random-pile-choice]
+          :exile-cost
+          [::cost-events/cancel-exile-cards-selection]
+          ;; default: cancel-selection
+          [::selection-events/cancel-selection])))
+
     ;; Unknown action
     nil))
 

@@ -1122,3 +1122,56 @@
       (is (nil? @chord-prefix) "chord-prefix-ref should be cleared after chord resolution")
       (is (= [[::selection-events/toggle-selection :card-a]] @dispatched)
           "toggle-selection for :card-a should be dispatched"))))
+
+
+;; ---------------------------------------------------------------------------
+;; S. Secondary action dispatch (Escape key)
+
+(deftest action-dispatch-secondary-tutor-domain-test
+  (testing ":secondary with domain :tutor → dispatches cancel + confirm"
+    (let [sel   {:selection/domain :tutor}
+          state (assoc base-state :pending-selection sel)
+          result (kb/action-dispatch :secondary state)]
+      (is (map? result))
+      (is (= [[::selection-events/cancel-selection]
+              [::selection-events/confirm-selection]]
+             (:dispatch-n result))))))
+
+
+(deftest action-dispatch-secondary-pile-choice-domain-test
+  (testing ":secondary with domain :pile-choice → dispatches select-random-pile-choice"
+    (let [sel   {:selection/domain :pile-choice}
+          state (assoc base-state :pending-selection sel)
+          result (kb/action-dispatch :secondary state)]
+      (is (= [::selection-events/select-random-pile-choice] result)))))
+
+
+(deftest action-dispatch-secondary-exile-cost-domain-test
+  (testing ":secondary with domain :exile-cost → dispatches cancel-exile-cards-selection"
+    (let [sel   {:selection/domain :exile-cost}
+          state (assoc base-state :pending-selection sel)
+          result (kb/action-dispatch :secondary state)]
+      (is (= [::cost-events/cancel-exile-cards-selection] result)))))
+
+
+(deftest action-dispatch-secondary-discard-domain-default-test
+  (testing ":secondary with domain :discard → dispatches cancel-selection (default)"
+    (let [sel   {:selection/domain :discard}
+          state (assoc base-state :pending-selection sel)
+          result (kb/action-dispatch :secondary state)]
+      (is (= [::selection-events/cancel-selection] result)))))
+
+
+(deftest action-dispatch-secondary-nil-domain-default-test
+  (testing ":secondary with domain nil (flat-targeting) → dispatches cancel-selection (default)"
+    (let [sel   {:selection/domain nil}
+          state (assoc base-state :pending-selection sel)
+          result (kb/action-dispatch :secondary state)]
+      (is (= [::selection-events/cancel-selection] result)))))
+
+
+(deftest action-dispatch-secondary-no-pending-selection-test
+  (testing ":secondary with nil pending-selection → returns nil"
+    (let [state base-state
+          result (kb/action-dispatch :secondary state)]
+      (is (nil? result)))))
