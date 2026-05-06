@@ -394,3 +394,57 @@
 (rf/reg-event-db
   ::remove-card
   remove-card-handler)
+
+
+;; === Zone assignment handlers ===
+
+(defn assign-to-zone-handler
+  "Move one copy of card-id from the deck pool into zone for side.
+   Pool = deck minus already-zone-assigned cards.
+   Guards: no-op if no copies remain in pool.
+   {:side :player/:opponent :card-id keyword :zone keyword}"
+  [db [_ {:keys [side card-id zone]}]]
+  (let [sk          (side-key side)
+        deck        (get-in db [:scenario/editing sk :deck] [])
+        zones       (get-in db [:scenario/editing sk :zones] {})
+        ;; Count how many copies are already in any zone
+        zone-counts (reduce
+                      (fn [acc z-cards]
+                        (+ acc (count (filter #(= card-id %) z-cards))))
+                      0
+                      (vals zones))
+        deck-count  (deck-count-for deck card-id)
+        available   (- deck-count zone-counts)]
+    (if (pos? available)
+      (update-in db [:scenario/editing sk :zones zone]
+                 (fn [existing] (conj (or existing []) card-id)))
+      db)))
+
+
+(defn remove-from-zone-handler
+  "Remove one copy of card-id from zone for side, returning it to pool.
+   No-op if card not present in that zone.
+   {:side :player/:opponent :card-id keyword :zone keyword}"
+  [db [_ {:keys [side card-id zone]}]]
+  (let [sk    (side-key side)
+        cards (vec (get-in db [:scenario/editing sk :zones zone] []))
+        idx   (reduce-kv (fn [found i v] (if (and (nil? found) (= v card-id)) i found))
+                         nil
+                         cards)]
+    (if (nil? idx)
+      db
+      (update-in db [:scenario/editing sk :zones zone]
+                 (fn [existing]
+                   (let [v (vec existing)]
+                     (into (subvec v 0 idx)
+                           (subvec v (inc idx)))))))))
+
+
+(rf/reg-event-db
+  ::assign-to-zone
+  assign-to-zone-handler)
+
+
+(rf/reg-event-db
+  ::remove-from-zone
+  remove-from-zone-handler)

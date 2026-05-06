@@ -2,11 +2,13 @@
   "Scenario builder and library screens."
   (:require
     [fizzle.bots.definitions :as bot-definitions]
+    [fizzle.engine.cards :as cards]
     [fizzle.events.scenario :as scenario-events]
     [fizzle.events.setup :as setup-events]
     [fizzle.subs.scenario :as subs-scenario]
     [fizzle.subs.setup :as subs-setup]
-    [re-frame.core :as rf]))
+    [re-frame.core :as rf]
+    [reagent.core :as r]))
 
 
 (defn library-view
@@ -82,6 +84,92 @@
          [:option {:value (cljs.core/name id)} name])]]]))
 
 
+;; === Zone distribution UI ===
+
+(def ^:private zone-labels
+  {:hand "Hand" :graveyard "Graveyard" :battlefield "Battlefield"})
+
+
+(defn- zone-card-pill
+  "Card pill inside a zone with a click-to-return button."
+  [card-id zone side]
+  (let [card-def  (get cards/card-by-id card-id)
+        card-name (or (:card/name card-def) (cljs.core/name card-id))]
+    [:span {:class "inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 bg-surface-raised border border-border rounded cursor-pointer hover:bg-error hover:text-white"
+            :title "Click to return to pool"
+            :on-click #(rf/dispatch [::scenario-events/remove-from-zone
+                                     {:side side :card-id card-id :zone zone}])}
+     card-name
+     [:span {:class "text-text-muted"} "×"]]))
+
+
+(defn- zone-column
+  "Display one zone (hand/graveyard/battlefield) with its cards."
+  [zone cards side]
+  [:div {:class "flex-1 min-w-0"}
+   [:div {:class "text-xs font-semibold uppercase text-text-label mb-1"}
+    (str (get zone-labels zone) " (" (count cards) ")")]
+   (if (empty? cards)
+     [:p {:class "text-text-muted text-xs italic"} "Empty"]
+     [:div {:class "flex flex-wrap gap-1"}
+      (map-indexed
+        (fn [i card-id]
+          ^{:key (str zone "-" i)}
+          [zone-card-pill card-id zone side])
+        cards)])])
+
+
+(defn- pool-pill
+  "Card pill in the pool. Clicking expands zone assignment buttons."
+  [{:keys [card/id card/name count]} side selected-id set-selected!]
+  (let [selected? (= id selected-id)]
+    ^{:key id}
+    [:div {:class "mb-1"}
+     [:div {:class "flex items-center gap-1 flex-wrap"}
+      [:button {:class (str "text-left text-xs px-2 py-0.5 rounded cursor-pointer "
+                            (if selected?
+                              "bg-accent text-surface font-bold"
+                              "bg-surface-raised text-text hover:bg-surface-hover border border-border"))
+                :on-click #(set-selected! (if selected? nil id))}
+       (str count "x " name)]
+      (when selected?
+        (for [zone [:hand :graveyard :battlefield]]
+          ^{:key zone}
+          [:button {:class "text-xs px-2 py-0.5 rounded bg-surface-raised border border-border text-text hover:bg-accent hover:text-surface cursor-pointer"
+                    :on-click (fn []
+                                (rf/dispatch [::scenario-events/assign-to-zone
+                                              {:side side :card-id id :zone zone}])
+                                (set-selected! nil))}
+           (get zone-labels zone)]))]]))
+
+
+(defn- zone-distribution-panel
+  "Full zone distribution section for one side.
+   Shows card pool on the left and hand/graveyard/battlefield columns on the right."
+  [side pool-sub zones-sub]
+  (let [selected-id (r/atom nil)]
+    (fn []
+      (let [pool  @(rf/subscribe [pool-sub])
+            zones @(rf/subscribe [zones-sub])]
+        [:div {:class "mt-3 pt-3 border-t border-border"}
+         [:div {:class "text-xs font-bold uppercase text-text-label mb-2"} "Zone Distribution"]
+         [:div {:class "flex gap-3"}
+          ;; Left: card pool
+          [:div {:class "w-40 flex-shrink-0"}
+           [:div {:class "text-xs font-semibold uppercase text-text-label mb-1"}
+            "Pool"]
+           (if (empty? pool)
+             [:p {:class "text-text-muted text-xs italic"} "All assigned"]
+             (for [entry pool]
+               [pool-pill entry side @selected-id
+                (fn [id] (reset! selected-id id))]))]
+          ;; Right: zone columns
+          [:div {:class "flex-1 flex gap-2"}
+           (for [zone [:hand :graveyard :battlefield]]
+             ^{:key zone}
+             [zone-column zone (get zones zone []) side])]]]))))
+
+
 ;; === Player side ===
 
 (defn- player-deck-selector
@@ -109,14 +197,19 @@
 
 
 (defn- player-side
-  "Player deck selector and deck contents panel."
+  "Player deck selector, deck contents panel, and zone distribution."
   []
-  (let [grouped       @(rf/subscribe [::subs-scenario/player-deck-grouped])
-        available     @(rf/subscribe [::subs-scenario/available-cards])]
+  (let [grouped   @(rf/subscribe [::subs-scenario/player-deck-grouped])
+        available @(rf/subscribe [::subs-scenario/available-cards])
+        player    @(rf/subscribe [::subs-scenario/editing-player])]
     [:div {:class "p-3 border border-border rounded bg-surface"}
      [:h3 {:class "text-sm font-bold uppercase tracking-wider text-text-label mb-2"} "Player"]
      [player-deck-selector]
-     [deck-panel (or grouped {}) :player available]]))
+     [deck-panel (or grouped {}) :player available]
+     (when (seq (:deck player))
+       [zone-distribution-panel :player
+        ::subs-scenario/player-zone-pool
+        ::subs-scenario/player-zones])]))
 
 
 ;; === Opponent side ===
@@ -148,7 +241,7 @@
 
 
 (defn- opponent-side
-  "Opponent archetype selector and deck contents panel."
+  "Opponent archetype selector, deck contents panel, and zone distribution."
   []
   (let [opp-grouped @(rf/subscribe [::subs-scenario/opponent-deck-grouped])
         opp-data    @(rf/subscribe [::subs-scenario/editing-opponent])
@@ -156,7 +249,11 @@
     [:div {:class "p-3 border border-border rounded bg-surface"}
      [:h3 {:class "text-sm font-bold uppercase tracking-wider text-text-label mb-2"} "Opponent"]
      [bot-archetype-selector]
-     [deck-panel (or opp-grouped {}) :opponent available]]))
+     [deck-panel (or opp-grouped {}) :opponent available]
+     (when (seq (:deck opp-data))
+       [zone-distribution-panel :opponent
+        ::subs-scenario/opponent-zone-pool
+        ::subs-scenario/opponent-zones])]))
 
 
 ;; === Builder view ===

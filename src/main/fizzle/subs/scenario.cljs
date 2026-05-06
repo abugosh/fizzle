@@ -90,3 +90,58 @@
   :<- [::editing-player]
   (fn [player _]
     (scenario-events/available-cards (or (:deck player) []))))
+
+
+;; === Zone pool subscriptions ===
+
+(defn compute-zone-pool
+  "Given a side config map (with :deck and :zones), return a vector of
+   {:card/id kw :card/name str :count n} maps representing cards still
+   available in the pool (deck minus zone-assigned cards)."
+  [side-config]
+  (let [deck   (or (:deck side-config) [])
+        zones  (or (:zones side-config) {})
+        ;; Count zone-assigned cards per card-id
+        zone-assigned (reduce
+                        (fn [acc card-id]
+                          (update acc card-id (fnil inc 0)))
+                        {}
+                        (apply concat (vals zones)))]
+    (into []
+          (keep (fn [{:keys [card/id count]}]
+                  (let [assigned  (get zone-assigned id 0)
+                        remaining (- count assigned)]
+                    (when (pos? remaining)
+                      (let [card-def (get cards/card-by-id id)]
+                        {:card/id   id
+                         :card/name (:card/name card-def)
+                         :count     remaining})))))
+          deck)))
+
+
+(rf/reg-sub
+  ::player-zone-pool
+  :<- [::editing-player]
+  (fn [player _]
+    (compute-zone-pool player)))
+
+
+(rf/reg-sub
+  ::opponent-zone-pool
+  :<- [::editing-opponent]
+  (fn [opponent _]
+    (compute-zone-pool opponent)))
+
+
+(rf/reg-sub
+  ::player-zones
+  :<- [::editing-player]
+  (fn [player _]
+    (or (:zones player) {})))
+
+
+(rf/reg-sub
+  ::opponent-zones
+  :<- [::editing-opponent]
+  (fn [opponent _]
+    (or (:zones opponent) {})))
