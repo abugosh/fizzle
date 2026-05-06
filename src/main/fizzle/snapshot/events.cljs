@@ -8,10 +8,15 @@
    Restore flow (called from core.cljs init):
      ::restore-from-hash → decode URL hash → restore game state → merge into app-db
 
+   Scenario URL format: #s=<base64url-snapshot>&t=<percent-encoded-title>
+     - &t= is optional; absent when no title
+     - title is encoded via js/encodeURIComponent for safe embedding
+
    Subscription:
      ::share-status → :idle | :copied | :error-too-large | :error-clipboard"
   (:require
     [clojure.string :as str]
+    [fizzle.events.scenario :as scenario-events]
     [fizzle.sharing.decoder :as decoder]
     [fizzle.sharing.encoder :as encoder]
     [fizzle.sharing.extractor :as extractor]
@@ -53,19 +58,76 @@
         nil))))
 
 
+(defn scenario->url
+  "Generate a shareable URL for a scenario map.
+   Returns a URL string of the form:
+     <base-url>#s=<encoded-snapshot>[&t=<percent-encoded-title>]
+
+   Returns nil if the game state cannot be encoded (e.g. state too large).
+
+   The title param is included only when :scenario/title is a non-blank string.
+   Title is encoded via js/encodeURIComponent so all special chars (&, #, etc.)
+   are safe in the URL hash."
+  [scenario base-url]
+  (let [game-state  (scenario-events/init-from-scenario scenario)
+        game-db     (:game/db game-state)
+        app-db      {:game/db game-db}
+        url         (encode-for-share app-db base-url)]
+    (when url
+      (let [title (:scenario/title scenario)]
+        (if (and (string? title) (not (str/blank? title)))
+          (str url "&t=" (js/encodeURIComponent title))
+          url)))))
+
+
+(defn parse-scenario-url
+  "Pure function: parse a URL hash string into its component parts.
+   Returns a map with :snapshot (base64url string) and :title (string or nil).
+
+   Handles both formats:
+     #s=<encoded>              → {:snapshot <encoded> :title nil}
+     #s=<encoded>&t=<title>    → {:snapshot <encoded> :title <decoded-title>}
+
+   Returns nil if hash does not start with #s=."
+  [hash-str]
+  (when (and (string? hash-str)
+             (str/starts-with? hash-str hash-prefix))
+    (let [after-prefix (subs hash-str (count hash-prefix))
+          ;; Split on & to separate snapshot from title param
+          parts        (str/split after-prefix #"&" 2)
+          snapshot     (first parts)
+          title        (when (= 2 (count parts))
+                         (let [param (second parts)]
+                           (when (str/starts-with? param "t=")
+                             (try
+                               (js/decodeURIComponent (subs param 2))
+                               (catch :default _
+                                 nil)))))]
+      {:snapshot snapshot
+       :title    title})))
+
+
 (defn restore-from-hash-handler
   "Pure function: restore game state from a URL hash string.
    Returns app-db map or nil if hash is absent/invalid/malformed.
 
-   Expected hash format: #s=<base64url-encoded-snapshot>
+   Handles both URL formats:
+     #s=<base64url-encoded-snapshot>              (legacy / backward-compat)
+     #s=<base64url-encoded-snapshot>&t=<title>    (scenario URL with title)
+
+   When &t= param is present, the restored app-db includes
+   :snapshot/restored-title with the decoded title string.
+
    Returns nil for caller to fall back to normal init."
   [hash-str]
-  (when (and (string? hash-str)
-             (str/starts-with? hash-str hash-prefix))
-    (let [encoded (subs hash-str (count hash-prefix))
+  (when-let [parsed (parse-scenario-url hash-str)]
+    (let [encoded (:snapshot parsed)
           decoded (decoder/decode-snapshot encoded)]
       (when-not (:error decoded)
-        (restorer/restore-game-state decoded)))))
+        (let [restored (restorer/restore-game-state decoded)]
+          (if (:title parsed)
+            (assoc restored :snapshot/restored-title (:title parsed))
+            restored))))))
 
 
 ;; ---------------------------------------------------------------------------
@@ -135,6 +197,20 @@
   (fn [db [_ restored-app-db]]
     ;; Merge restored game state into app-db, preserving setup keys
     (merge db restored-app-db)))
+
+
+;; ---------------------------------------------------------------------------
+;; Scenario share event
+
+(rf/reg-event-fx
+  ::copy-scenario-share-link
+  (fn [{:keys [db]} [_ scenario]]
+    (let [base-url (str (.-origin js/location) (.-pathname js/location))
+          url      (scenario->url scenario base-url)]
+      (if url
+        {:db     (set-share-status db :copied)
+         ::copy-to-clipboard url}
+        {:db (set-share-status db :error-too-large)}))))
 
 
 ;; ---------------------------------------------------------------------------
