@@ -858,3 +858,111 @@
       (is (nil? @chord-prefix) "chord-prefix-ref should be cleared after composed chord")
       (is (= [[::storm-events/adjust-storm-split t1 2]] @dispatched)
           "adjust-storm-split for t1 with delta 2 should be dispatched"))))
+
+
+;; ---------------------------------------------------------------------------
+;; O. Flat-targeting candidate selection
+
+(deftest select-nth-candidate-3-cards-index-0-test
+  (testing "select-nth-candidate with 3 cards → returns toggle-selection for card at index 0"
+    (let [card-1     :card-uuid-1
+          card-2     :card-uuid-2
+          card-3     :card-uuid-3
+          selection-cards [card-1 card-2 card-3]
+          pending-sel {:selection/domain :object-target
+                       :selection/valid-targets [card-1 card-2 card-3]}
+          result     (#'kb/select-nth-candidate selection-cards pending-sel 0)]
+      (is (= [::selection-events/toggle-selection card-1] result)))))
+
+
+(deftest select-nth-candidate-3-cards-out-of-bounds-test
+  (testing "select-nth-candidate with 3 cards, n=5 → returns nil (out-of-bounds)"
+    (let [card-1     :card-uuid-1
+          card-2     :card-uuid-2
+          card-3     :card-uuid-3
+          selection-cards [card-1 card-2 card-3]
+          pending-sel {:selection/domain :object-target
+                       :selection/valid-targets [card-1 card-2 card-3]}
+          result     (#'kb/select-nth-candidate selection-cards pending-sel 5)]
+      (is (nil? result)))))
+
+
+(deftest select-nth-candidate-nil-selection-cards-test
+  (testing "select-nth-candidate with nil selection-cards → returns nil"
+    (let [pending-sel {:selection/domain :object-target
+                       :selection/valid-targets []}
+          result     (#'kb/select-nth-candidate nil pending-sel 0)]
+      (is (nil? result)))))
+
+
+(deftest select-nth-candidate-empty-selection-cards-test
+  (testing "select-nth-candidate with empty [] selection-cards → returns nil"
+    (let [pending-sel {:selection/domain :object-target
+                       :selection/valid-targets []}
+          result     (#'kb/select-nth-candidate [] pending-sel 0)]
+      (is (nil? result)))))
+
+
+(deftest select-nth-candidate-any-target-domain-players-first-test
+  (testing "select-nth-candidate :any-target domain: player keywords numbered first, creatures after"
+    (let [creature-1 :creature-uuid-1
+          creature-2 :creature-uuid-2
+          player-1   :player-1
+          player-2   :player-2
+          selection-cards [creature-1 creature-2]
+          ;; valid-targets contains both player keywords and creature UUIDs
+          pending-sel {:selection/domain :any-target
+                       :selection/valid-targets [creature-1 player-1 creature-2 player-2]}
+          ;; Expected order: player-1, player-2 (sorted), then creature-1, creature-2
+          result-0   (#'kb/select-nth-candidate selection-cards pending-sel 0)
+          result-1   (#'kb/select-nth-candidate selection-cards pending-sel 1)
+          result-2   (#'kb/select-nth-candidate selection-cards pending-sel 2)
+          result-3   (#'kb/select-nth-candidate selection-cards pending-sel 3)]
+      ;; First two should be players (sorted alphabetically)
+      (is (= [::selection-events/toggle-selection player-1] result-0))
+      (is (= [::selection-events/toggle-selection player-2] result-1))
+      ;; Next two should be creatures in original order
+      (is (= [::selection-events/toggle-selection creature-1] result-2))
+      (is (= [::selection-events/toggle-selection creature-2] result-3)))))
+
+
+(deftest select-nth-candidate-action-dispatch-select-1-test
+  (testing ":select-1 dispatches toggle-selection for first candidate"
+    (let [card-1     :card-uuid-1
+          card-2     :card-uuid-2
+          selection-cards [card-1 card-2]
+          pending-sel {:selection/mechanism :n-slot-targeting
+                       :selection/domain :object-target
+                       :selection/valid-targets [card-1 card-2]}
+          state      (assoc base-state :pending-selection pending-sel
+                            :selection-cards selection-cards)
+          result     (kb/action-dispatch :select-1 state)]
+      (is (= [::selection-events/toggle-selection card-1] result)))))
+
+
+(deftest select-nth-candidate-action-dispatch-select-9-out-of-bounds-test
+  (testing ":select-9 returns nil when only 3 candidates exist"
+    (let [card-1     :card-uuid-1
+          card-2     :card-uuid-2
+          card-3     :card-uuid-3
+          selection-cards [card-1 card-2 card-3]
+          pending-sel {:selection/mechanism :n-slot-targeting
+                       :selection/domain :object-target
+                       :selection/valid-targets [card-1 card-2 card-3]}
+          state      (assoc base-state :pending-selection pending-sel
+                            :selection-cards selection-cards)
+          result     (kb/action-dispatch :select-9 state)]
+      (is (nil? result)))))
+
+
+(deftest keymap-flat-targeting-1-through-9-test
+  (testing "flat-targeting keymap has bindings for 1-9"
+    (is (= :select-1 (get kb/keymap [:flat-targeting "1"])))
+    (is (= :select-2 (get kb/keymap [:flat-targeting "2"])))
+    (is (= :select-3 (get kb/keymap [:flat-targeting "3"])))
+    (is (= :select-4 (get kb/keymap [:flat-targeting "4"])))
+    (is (= :select-5 (get kb/keymap [:flat-targeting "5"])))
+    (is (= :select-6 (get kb/keymap [:flat-targeting "6"])))
+    (is (= :select-7 (get kb/keymap [:flat-targeting "7"])))
+    (is (= :select-8 (get kb/keymap [:flat-targeting "8"])))
+    (is (= :select-9 (get kb/keymap [:flat-targeting "9"])))))

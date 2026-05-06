@@ -20,6 +20,7 @@
    Modal mechanisms (shortcuts suppressed): :pick-from-zone, :reorder, :n-slot-targeting"
   (:require
     [clojure.string]
+    [fizzle.db.game-state :as game-state]
     [fizzle.events.casting :as casting-events]
     [fizzle.events.cycling :as cycling-events]
     [fizzle.events.lands :as lands-events]
@@ -106,6 +107,15 @@
    [:zone-pick "Escape"] :secondary
 
    ;; flat-targeting context: n-slot targeting
+   [:flat-targeting "1"]      :select-1
+   [:flat-targeting "2"]      :select-2
+   [:flat-targeting "3"]      :select-3
+   [:flat-targeting "4"]      :select-4
+   [:flat-targeting "5"]      :select-5
+   [:flat-targeting "6"]      :select-6
+   [:flat-targeting "7"]      :select-7
+   [:flat-targeting "8"]      :select-8
+   [:flat-targeting "9"]      :select-9
    [:flat-targeting "Space"]  :confirm
    [:flat-targeting "Escape"] :secondary})
 
@@ -203,6 +213,42 @@
           [::storm-events/adjust-storm-split target-id delta])))))
 
 
+;; === Flat-targeting helper ===
+
+(defn- select-nth-candidate
+  "Resolve the Nth selectable element in flat-targeting context.
+   Returns a dispatch vector [::selection-events/toggle-selection id] or nil.
+
+   Builds ordered candidate list matching visual render order:
+   - For :any-target domain: player keywords from valid-targets first (filtered to player ids),
+     then creature cards from selection-cards
+   - For all other domains: selection-cards in render order
+
+   Does NOT filter by valid-targets for numbering — dispatch for Nth candidate
+   regardless of validity (event layer enforces validity, matching click behavior).
+
+   Returns nil if n >= count of ordered candidates, or if selection-cards is nil/empty."
+  [selection-cards pending-selection n]
+  (when (and selection-cards (seq selection-cards))
+    (let [domain (:selection/domain pending-selection)
+          ordered-candidates
+          (if (= domain :any-target)
+            ;; :any-target domain: player keywords first, then creatures
+            (let [valid-targets (:selection/valid-targets pending-selection)
+                  ;; Filter valid-targets to known player-ids
+                  player-ids (filterv (fn [target]
+                                        (or (= target game-state/human-player-id)
+                                            (= target game-state/opponent-player-id)))
+                                      valid-targets)
+                  sorted-players (sort player-ids)]
+              (into (vec sorted-players) selection-cards))
+            ;; All other domains: selection-cards in render order
+            (vec selection-cards))
+          candidate (nth ordered-candidates n nil)]
+      (when candidate
+        [::selection-events/toggle-selection candidate]))))
+
+
 ;; === Action dispatch ===
 
 (defn action-dispatch
@@ -215,10 +261,11 @@
      :can-cycle?       — boolean, whether selected card can be cycled
      :stack            — current stack items (seq or nil)
      :pending-selection — current pending selection map (or nil)
+     :selection-cards  — vec of candidate objects for flat-targeting (or nil)
 
    Returns a dispatch vector [event-kw & args], a {:dispatch-n [...]} map for
    multi-dispatch, or nil if the guard fails."
-  [action {:keys [selected-card can-cast? can-play-land? can-cycle? pending-selection]}]
+  [action {:keys [selected-card can-cast? can-play-land? can-cycle? pending-selection selection-cards]}]
   (case action
     :cast
     (cond
@@ -301,6 +348,17 @@
     :storm-clear-2   (storm-target-dispatch pending-selection 1 :clear)
     :storm-inc-2     (storm-target-dispatch pending-selection 1 :inc)
     :storm-dec-2     (storm-target-dispatch pending-selection 1 :dec)
+
+    ;; flat-targeting: select the Nth candidate
+    :select-1 (select-nth-candidate selection-cards pending-selection 0)
+    :select-2 (select-nth-candidate selection-cards pending-selection 1)
+    :select-3 (select-nth-candidate selection-cards pending-selection 2)
+    :select-4 (select-nth-candidate selection-cards pending-selection 3)
+    :select-5 (select-nth-candidate selection-cards pending-selection 4)
+    :select-6 (select-nth-candidate selection-cards pending-selection 5)
+    :select-7 (select-nth-candidate selection-cards pending-selection 6)
+    :select-8 (select-nth-candidate selection-cards pending-selection 7)
+    :select-9 (select-nth-candidate selection-cards pending-selection 8)
 
     ;; Unknown action
     nil))
