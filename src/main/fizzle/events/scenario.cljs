@@ -188,6 +188,126 @@
      :history/position      -1}))
 
 
+;; === Extract current position from game state ===
+
+(defn- get-objects-in-zone
+  "Query all objects in a given zone for a player.
+   Returns a vector of card-ids."
+  [db player-id zone]
+  (into []
+        (map :card/id)
+        (d/q '[:find [?obj ...]
+               :in $ ?player-id ?zone
+               :where [?obj :object/zone ?zone]
+               [?obj :object/controller ?player-id]
+               [?obj :card/id]]
+             db player-id zone)))
+
+
+(defn- count-card-ids-in-sequence
+  "Given a sequence of card-id keywords, return a vector of
+   {:card/id kw :count n} maps, sorted by card-id."
+  [card-ids]
+  (let [counts (reduce
+                 (fn [acc id]
+                   (update acc id (fnil inc 0)))
+                 {}
+                 card-ids)]
+    (into []
+          (map (fn [[id count]]
+                 {:card/id id :count count}))
+          (sort-by first counts))))
+
+
+(defn- get-player-mana-pool
+  "Query the mana pool for a player."
+  [db player-id]
+  (let [player-eid (d/q '[:find ?e . :in $ ?pid :where [?e :player/id ?pid]] db player-id)]
+    (if player-eid
+      (d/pull db [:player/mana-pool] player-eid)
+      {})))
+
+
+(defn- get-player-life
+  "Query the life total for a player."
+  [db player-id]
+  (let [player-eid (d/q '[:find ?e . :in $ ?pid :where [?e :player/id ?pid]] db player-id)]
+    (if player-eid
+      (:player/life (d/pull db [:player/life] player-eid))
+      20)))
+
+
+(defn- get-game-phase
+  "Query the current game phase."
+  [db]
+  (d/q '[:find ?phase . :where [?e :game/phase ?phase]] db))
+
+
+(defn- extract-scenario-from-game
+  "Extract current board state from game-db and return a scenario config map.
+   Captures: player and opponent decks (reconstructed from all zones),
+   zones (hand, graveyard, battlefield), mana pools, life, phase.
+
+   Library-top is left empty (can't reconstruct order from live game).
+   Bot archetype comes from opponent's :player/bot-archetype."
+  [game-db title]
+  (let [player-id game-state/human-player-id
+        opp-id game-state/opponent-player-id
+        ;; Get zone contents for both players
+        player-hand (get-objects-in-zone game-db player-id :hand)
+        player-gy (get-objects-in-zone game-db player-id :graveyard)
+        player-bf (get-objects-in-zone game-db player-id :battlefield)
+        opp-hand (get-objects-in-zone game-db opp-id :hand)
+        opp-gy (get-objects-in-zone game-db opp-id :graveyard)
+        opp-bf (get-objects-in-zone game-db opp-id :battlefield)
+        ;; Get stack items (cards that are on stack) for each player
+        player-stack-items (d/q '[:find [?obj ...]
+                                  :in $ ?player-id
+                                  :where [?obj :object/zone :stack]
+                                  [?obj :object/controller ?player-id]
+                                  [?obj :card/id]]
+                                game-db player-id)
+        opp-stack-items (d/q '[:find [?obj ...]
+                               :in $ ?player-id
+                               :where [?obj :object/zone :stack]
+                               [?obj :object/controller ?player-id]
+                               [?obj :card/id]]
+                             game-db opp-id)
+        ;; Reconstruct deck from all cards in play and on stack
+        all-player-cards (concat player-hand player-gy player-bf player-stack-items)
+        all-opp-cards (concat opp-hand opp-gy opp-bf opp-stack-items)
+        ;; Get mana pools and life
+        player-mana (:player/mana-pool (get-player-mana-pool game-db player-id))
+        player-life (get-player-life game-db player-id)
+        opp-mana (:player/mana-pool (get-player-mana-pool game-db opp-id))
+        opp-life (get-player-life game-db opp-id)
+        ;; Get phase
+        phase (or (get-game-phase game-db) :main1)
+        ;; Get opponent archetype
+        opp-eid (d/q '[:find ?e . :in $ ?pid :where [?e :player/id ?pid]] game-db opp-id)
+        opp-archetype (if opp-eid
+                        (:player/bot-archetype (d/pull game-db [:player/bot-archetype] opp-eid))
+                        :goldfish)]
+    {:scenario/id (random-uuid)
+     :scenario/title title
+     :scenario/player {:deck (count-card-ids-in-sequence all-player-cards)
+                       :zones {:hand player-hand
+                               :graveyard player-gy
+                               :battlefield player-bf}
+                       :library-top []
+                       :mana-pool (or player-mana {})
+                       :life player-life}
+     :scenario/opponent {:archetype opp-archetype
+                         :deck (count-card-ids-in-sequence all-opp-cards)
+                         :zones {:hand opp-hand
+                                 :graveyard opp-gy
+                                 :battlefield opp-bf}
+                         :library-top []
+                         :mana-pool (or opp-mana {})
+                         :life opp-life}
+     :scenario/phase phase}))
+
+
 ;; === Pure handler functions (exported for direct testing) ===
 
 (defn load-all-handler
@@ -618,3 +738,47 @@
 (rf/reg-event-db
   ::set-phase
   set-phase-handler)
+
+
+;; === Save from game handlers ===
+
+(defn show-save-modal-handler
+  "Toggle the save-from-game modal visibility."
+  [db _]
+  (update db :scenario/save-modal-visible not))
+
+
+(defn save-from-game-handler
+  "Extract current game position, wrap as scenario, and save it.
+   Expects event: [::save-from-game title-string]"
+  [db [_ title]]
+  (if-let [game-db (:game/db db)]
+    (let [scenario (extract-scenario-from-game game-db title)
+          db' (-> db
+                  (assoc-in [:scenario/library (:scenario/id scenario)] scenario)
+                  (assoc :scenario/save-modal-visible false)
+                  (assoc :scenario/save-modal-title ""))]
+      db')
+    db))
+
+
+(rf/reg-event-db
+  ::show-save-modal
+  show-save-modal-handler)
+
+
+(rf/reg-event-db
+  ::save-from-game
+  [save-scenarios-interceptor]
+  save-from-game-handler)
+
+
+(defn update-save-modal-title-handler
+  "Update the title field in the save-from-game modal."
+  [db [_ title]]
+  (assoc db :scenario/save-modal-title title))
+
+
+(rf/reg-event-db
+  ::update-save-modal-title
+  update-save-modal-title-handler)

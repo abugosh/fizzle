@@ -538,11 +538,42 @@
    [builder-actions]])
 
 
+(defn save-from-game-modal
+  "Modal for saving the current game position as a scenario.
+   Shows title input and Save/Cancel buttons."
+  []
+  (let [visible? @(rf/subscribe [::subs-scenario/save-modal-visible])
+        title @(rf/subscribe [::subs-scenario/save-modal-title])]
+    (when visible?
+      [:div {:class "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"}
+       [:div {:class "bg-surface rounded border border-border p-6 max-w-md w-full mx-4"}
+        [:h2 {:class "text-lg font-bold text-text mb-4"} "Save Position as Scenario"]
+        [:div {:class "mb-4"}
+         [:label {:class "text-sm text-text-label block mb-2"} "Scenario Title"]
+         [:input {:class "w-full px-3 py-2 border border-border rounded bg-surface-raised text-text placeholder-text-muted"
+                  :placeholder "Enter scenario title..."
+                  :value title
+                  :on-change #(rf/dispatch [::scenario-events/update-save-modal-title (.. % -target -value)])}]]
+        [:div {:class "flex gap-3 justify-end"}
+         [:button {:class "px-4 py-2 border border-border rounded cursor-pointer bg-surface-raised text-text hover:bg-surface-hover"
+                   :on-click #(rf/dispatch [::scenario-events/show-save-modal])}
+          "Cancel"]
+         [:button {:class (str "px-4 py-2 rounded font-bold text-sm "
+                               (if (seq title)
+                                 "cursor-pointer bg-accent text-surface"
+                                 "cursor-default bg-btn-disabled-bg text-border opacity-50"))
+                   :disabled (not (seq title))
+                   :on-click #(rf/dispatch [::scenario-events/save-from-game title])}
+          "Save"]]]])))
+
+
 (defn scenarios-screen
-  "Main scenarios screen: dispatch to library-view or builder-view based on active-view."
+  "Main scenarios screen: dispatch to library-view or builder-view based on active-view.
+   Also renders the save-from-game modal when visible."
   []
   (let [active-view @(rf/subscribe [::subs-scenario/active-view])]
     [:div {:class "h-full overflow-y-auto"}
      (case active-view
        :builder [builder-view]
-       [library-view])]))
+       [library-view])
+     [save-from-game-modal]]))

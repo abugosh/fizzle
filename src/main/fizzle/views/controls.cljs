@@ -4,6 +4,7 @@
     [fizzle.events.cycling :as cycling-events]
     [fizzle.events.lands :as lands-events]
     [fizzle.events.priority-flow :as priority-flow-events]
+    [fizzle.events.scenario :as scenario-events]
     [fizzle.subs.game :as subs]
     [fizzle.views.keyboard :as kbd]
     [re-frame.core :as rf]))
@@ -97,4 +98,7 @@
             (str "Yield All (" (count stack) ")")
             "Yield All")
           (when-let [hint (kbd/hint-for-action :normal :yield-all)]
-            [:span {:class "ml-1.5 text-xs text-text-muted opacity-70"} (str "[" hint "]")])]])])))
+            [:span {:class "ml-1.5 text-xs text-text-muted opacity-70"} (str "[" hint "]")])]
+         [:button {:class (btn-class true)
+                   :on-click #(rf/dispatch [::scenario-events/show-save-modal])}
+          "Save as Scenario"]])])))

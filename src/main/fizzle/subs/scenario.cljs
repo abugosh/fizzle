@@ -213,3 +213,17 @@
   :<- [::editing-opponent]
   (fn [opponent _]
     (unordered-pool opponent)))
+
+
+;; === Save from game modal subscriptions ===
+
+(rf/reg-sub
+  ::save-modal-visible
+  (fn [db _]
+    (:scenario/save-modal-visible db)))
+
+
+(rf/reg-sub
+  ::save-modal-title
+  (fn [db _]
+    (:scenario/save-modal-title db)))

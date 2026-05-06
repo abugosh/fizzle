@@ -30,7 +30,6 @@
     [fizzle.subs.game :as subs]
     [fizzle.subs.history]
     [fizzle.subs.opening-hand]
-    [fizzle.subs.scenario]
     [fizzle.subs.setup]
     [fizzle.views.battlefield :as battlefield]
     [fizzle.views.calculator :as calculator]
@@ -119,6 +118,7 @@
                    (let [[mode component] render-result]
                      (when (= mode :modal)
                        component)))
+                 [scenarios-view/save-from-game-modal]
                  [game-over/game-over-modal]])
               (finally ^:clj-kondo/ignore (cleanup))))
 
