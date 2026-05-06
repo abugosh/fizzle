@@ -51,6 +51,20 @@
       (str n " / " r " selected"))))
 
 
+(defn secondary-dispatch-for-domain
+  "Returns the re-frame dispatch action for a domain's secondary button.
+   Used by both the modal UI and the keyboard handler.
+
+   Returns a dispatch vector (single event) or a map with :dispatch-n (multiple events)."
+  [domain]
+  (case domain
+    :tutor {:dispatch-n [[::selection-events/cancel-selection]
+                         [::selection-events/confirm-selection]]}
+    :pile-choice [::selection-events/select-random-pile-choice]
+    :exile-cost [::cost-events/cancel-exile-cards-selection]
+    [::selection-events/cancel-selection]))
+
+
 (defn- secondary-button
   [sel-domain]
   (case sel-domain
