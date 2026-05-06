@@ -5,28 +5,92 @@
     [fizzle.engine.cards :as cards]
     [fizzle.events.scenario :as scenario-events]
     [fizzle.events.setup :as setup-events]
+    [fizzle.snapshot.events :as snapshot-events]
     [fizzle.subs.scenario :as subs-scenario]
     [fizzle.subs.setup :as subs-setup]
     [re-frame.core :as rf]
     [reagent.core :as r]))
 
 
+(defn auto-summary
+  "Pure function: generate a one-line summary string from a scenario map.
+   Format: 'Player: [deck-size] cards, [N] in hand, [M] lands | Opponent: [archetype], [life] life'"
+  [scenario]
+  (let [player    (:scenario/player scenario)
+        opponent  (:scenario/opponent scenario)
+        deck      (or (:deck player) [])
+        deck-size (reduce + 0 (map :count deck))
+        zones     (or (:zones player) {})
+        hand-ids  (or (:hand zones) [])
+        bf-ids    (or (:battlefield zones) [])
+        ;; Count lands on battlefield by looking up card types from registry
+        land-count (count (filter (fn [cid]
+                                    (let [card-def (get cards/card-by-id cid)]
+                                      (contains? (or (:card/types card-def) #{}) :land)))
+                                  bf-ids))
+        archetype  (or (:archetype opponent) :goldfish)
+        opp-life   (or (:life opponent) 20)]
+    (str "Player: " deck-size " cards, " (count hand-ids) " in hand, " land-count " lands"
+         " | Opponent: " (name archetype) ", " opp-life " life")))
+
+
+(defn- scenario-card
+  "Render a single scenario row with title, summary, and action buttons."
+  [scenario]
+  (let [id    (:scenario/id scenario)
+        title (or (:scenario/title scenario) "Untitled")
+        summary (auto-summary scenario)]
+    [:div {:key (str id)
+           :class "border border-border rounded bg-surface p-3 mb-2"}
+     [:div {:class "flex items-start justify-between gap-2"}
+      [:div {:class "flex-1 min-w-0"}
+       [:div {:class "font-semibold text-text text-sm mb-0.5"} title]
+       [:div {:class "text-text-muted text-xs truncate"} summary]]
+      [:div {:class "flex gap-1 flex-shrink-0"}
+       [:button {:class "px-2 py-1 text-xs rounded bg-btn-enabled-bg text-white font-bold cursor-pointer"
+                 :title "Play this scenario"
+                 :on-click #(rf/dispatch [::scenario-events/quick-play scenario])}
+        "Play"]
+       [:button {:class "px-2 py-1 text-xs rounded bg-surface-raised border border-border text-text cursor-pointer"
+                 :title "Edit this scenario"
+                 :on-click #(rf/dispatch [::scenario-events/edit-existing scenario])}
+        "Edit"]
+       [:button {:class "px-2 py-1 text-xs rounded bg-surface-raised border border-border text-text cursor-pointer"
+                 :title "Copy share link"
+                 :on-click #(rf/dispatch [::snapshot-events/copy-scenario-share-link scenario])}
+        "Share"]
+       [:button {:class "px-2 py-1 text-xs rounded border border-error text-error cursor-pointer hover:bg-error hover:text-white"
+                 :title "Delete this scenario"
+                 :on-click #(when (js/confirm (str "Delete \"" title "\"?"))
+                              (rf/dispatch [::scenario-events/delete id]))}
+        "Delete"]]]]))
+
+
 (defn library-view
-  "Display saved scenarios or a prompt to create one."
+  "Display saved scenarios with play, edit, share, and delete actions."
   []
-  (let [scenarios @(rf/subscribe [::subs-scenario/all-scenarios])]
-    [:div {:class "p-4"}
+  (let [scenarios @(rf/subscribe [::subs-scenario/scenario-list])]
+    [:div {:class "p-4 max-w-4xl mx-auto"}
+     [:div {:class "flex items-center justify-between mb-4"}
+      [:h2 {:class "text-lg font-bold text-text"} "Scenarios"]
+      [:button {:class "px-4 py-2 bg-accent text-surface rounded font-bold cursor-pointer text-sm"
+                :on-click #(do
+                             (rf/dispatch [::scenario-events/set-editing nil])
+                             (rf/dispatch [::scenario-events/show-builder]))}
+       "New Scenario"]]
      (if (empty? scenarios)
-       [:div
-        [:p {:class "text-text-muted mb-4"} "No scenarios yet"]
+       [:div {:class "text-center py-12"}
+        [:p {:class "text-text-muted mb-4"}
+         "No scenarios saved yet. Create one or load from a shared link."]
         [:button {:class "px-4 py-2 bg-accent text-surface rounded font-bold cursor-pointer"
-                  :on-click #(rf/dispatch [::scenario-events/show-builder])}
+                  :on-click #(do
+                               (rf/dispatch [::scenario-events/set-editing nil])
+                               (rf/dispatch [::scenario-events/show-builder]))}
          "New Scenario"]]
        [:div
-        [:p "Scenarios: " (count scenarios)]
-        [:button {:class "px-4 py-2 bg-accent text-surface rounded font-bold cursor-pointer"
-                  :on-click #(rf/dispatch [::scenario-events/show-builder])}
-         "New Scenario"]])]))
+        (for [scenario scenarios]
+          ^{:key (str (:scenario/id scenario))}
+          [scenario-card scenario])])]))
 
 
 ;; === Deck display helpers ===

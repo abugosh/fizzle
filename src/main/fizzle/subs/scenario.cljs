@@ -12,6 +12,22 @@
     (:scenario/library db)))
 
 
+(defn scenario-list-fn
+  "Pure function: return scenarios from :scenario/library sorted by title ascending.
+   Exported for direct unit testing."
+  [db]
+  (let [library (:scenario/library db)]
+    (if (empty? library)
+      []
+      (vec (sort-by (fn [s] (or (:scenario/title s) ""))
+                    (vals library))))))
+
+
+(rf/reg-sub
+  ::scenario-list
+  scenario-list-fn)
+
+
 (rf/reg-sub
   ::editing
   (fn [db _]

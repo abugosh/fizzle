@@ -252,6 +252,33 @@
   set-editing-handler)
 
 
+(defn edit-existing-handler
+  "Load scenario into :scenario/editing and navigate to builder.
+   Composite of set-editing + show-builder."
+  [db [_ scenario]]
+  (-> db
+      (assoc :scenario/editing scenario)
+      (assoc :scenario/active-view :builder)))
+
+
+(defn quick-play-handler
+  "Load scenario into :scenario/editing then play it immediately.
+   Composite of set-editing + play."
+  [db [_ scenario]]
+  (let [db' (assoc db :scenario/editing scenario)]
+    (merge db' (init-from-scenario scenario))))
+
+
+(rf/reg-event-db
+  ::edit-existing
+  edit-existing-handler)
+
+
+(rf/reg-event-db
+  ::quick-play
+  quick-play-handler)
+
+
 (rf/reg-event-db
   ::show-library
   (fn [db _]
