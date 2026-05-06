@@ -426,7 +426,12 @@
 (rf/reg-event-db
   ::show-builder
   (fn [db _]
-    (assoc db :scenario/active-view :builder)))
+    (let [db' (assoc db :scenario/active-view :builder)]
+      (if (:scenario/editing db')
+        db'
+        (assoc db' :scenario/editing
+               {:scenario/opponent {:archetype :goldfish
+                                    :deck (bot-protocol/bot-deck :goldfish)}})))))
 
 
 (rf/reg-event-db
