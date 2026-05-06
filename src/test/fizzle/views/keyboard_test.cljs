@@ -112,6 +112,26 @@
     (is (= :confirm (get kb/keymap [:allocate-resource "Space"])))))
 
 
+(deftest keymap-zone-pick-space-confirm-test
+  (testing "[:zone-pick \"Space\"] → :confirm"
+    (is (= :confirm (get kb/keymap [:zone-pick "Space"])))))
+
+
+(deftest keymap-zone-pick-escape-secondary-test
+  (testing "[:zone-pick \"Escape\"] → :secondary"
+    (is (= :secondary (get kb/keymap [:zone-pick "Escape"])))))
+
+
+(deftest keymap-flat-targeting-space-confirm-test
+  (testing "[:flat-targeting \"Space\"] → :confirm"
+    (is (= :confirm (get kb/keymap [:flat-targeting "Space"])))))
+
+
+(deftest keymap-flat-targeting-escape-secondary-test
+  (testing "[:flat-targeting \"Escape\"] → :secondary"
+    (is (= :secondary (get kb/keymap [:flat-targeting "Escape"])))))
+
+
 ;; ---------------------------------------------------------------------------
 ;; B. Context derivation
 
@@ -140,9 +160,9 @@
     (is (= :allocate-resource (kb/derive-context {:selection/mechanism :allocate-resource})))))
 
 
-(deftest derive-context-pick-from-zone-is-modal-test
-  (testing ":pick-from-zone mechanism → :modal (suppressed)"
-    (is (= :modal (kb/derive-context {:selection/mechanism :pick-from-zone})))))
+(deftest derive-context-pick-from-zone-is-zone-pick-test
+  (testing ":pick-from-zone mechanism → :zone-pick context"
+    (is (= :zone-pick (kb/derive-context {:selection/mechanism :pick-from-zone})))))
 
 
 (deftest derive-context-reorder-is-modal-test
@@ -150,9 +170,9 @@
     (is (= :modal (kb/derive-context {:selection/mechanism :reorder})))))
 
 
-(deftest derive-context-n-slot-targeting-is-modal-test
-  (testing ":n-slot-targeting mechanism → :modal (suppressed)"
-    (is (= :modal (kb/derive-context {:selection/mechanism :n-slot-targeting})))))
+(deftest derive-context-n-slot-targeting-is-flat-targeting-test
+  (testing ":n-slot-targeting mechanism → :flat-targeting context"
+    (is (= :flat-targeting (kb/derive-context {:selection/mechanism :n-slot-targeting})))))
 
 
 ;; ---------------------------------------------------------------------------
@@ -763,15 +783,16 @@
     ;;   - composed "1>Space" is not in keymap → composed-action is nil
     ;;   - prefix cleared
     ;;   - standalone [:storm-split "Space"] → :confirm → dispatches confirm-selection
-    (let [dispatched      (atom [])
-          chord-prefix    (atom "1")
-          pending-ref     (atom storm-split-selection)
-          app-ref         (atom base-state)
+    (let [dispatched        (atom [])
+          chord-prefix      (atom "1")
+          pending-ref       (atom storm-split-selection)
+          app-ref           (atom base-state)
+          selection-cards-ref (atom [])
           event           #js {:key " " :shiftKey false
                                :target #js {:tagName "div"}
                                :preventDefault (fn [])}]
       (with-redefs [rf/dispatch (fn [v] (swap! dispatched conj v))]
-        (#'kb/handle-keydown event pending-ref app-ref chord-prefix))
+        (#'kb/handle-keydown event pending-ref app-ref chord-prefix selection-cards-ref))
       (is (nil? @chord-prefix) "chord-prefix-ref should be cleared")
       (is (= [[::selection-events/confirm-selection]] @dispatched)
           "confirm-selection should be dispatched"))))
@@ -784,15 +805,16 @@
     ;;   - prefix cleared
     ;;   - standalone [:storm-split "2"] → :chord-start → set new prefix to "2"
     ;;   - no dispatch fires
-    (let [dispatched      (atom [])
-          chord-prefix    (atom "1")
-          pending-ref     (atom storm-split-selection)
-          app-ref         (atom base-state)
+    (let [dispatched        (atom [])
+          chord-prefix      (atom "1")
+          pending-ref       (atom storm-split-selection)
+          app-ref           (atom base-state)
+          selection-cards-ref (atom [])
           event           #js {:key "2" :shiftKey false
                                :target #js {:tagName "div"}
                                :preventDefault (fn [])}]
       (with-redefs [rf/dispatch (fn [v] (swap! dispatched conj v))]
-        (#'kb/handle-keydown event pending-ref app-ref chord-prefix))
+        (#'kb/handle-keydown event pending-ref app-ref chord-prefix selection-cards-ref))
       (is (= "2" @chord-prefix) "chord-prefix-ref should be updated to \"2\"")
       (is (empty? @dispatched) "no dispatch should fire"))))
 
@@ -803,15 +825,16 @@
     ;;   - composed "1>q" is not in keymap → composed-action is nil
     ;;   - prefix cleared
     ;;   - standalone [:storm-split "q"] is also not in keymap → no dispatch
-    (let [dispatched      (atom [])
-          chord-prefix    (atom "1")
-          pending-ref     (atom storm-split-selection)
-          app-ref         (atom base-state)
+    (let [dispatched        (atom [])
+          chord-prefix      (atom "1")
+          pending-ref       (atom storm-split-selection)
+          app-ref           (atom base-state)
+          selection-cards-ref (atom [])
           event           #js {:key "q" :shiftKey false
                                :target #js {:tagName "div"}
                                :preventDefault (fn [])}]
       (with-redefs [rf/dispatch (fn [v] (swap! dispatched conj v))]
-        (#'kb/handle-keydown event pending-ref app-ref chord-prefix))
+        (#'kb/handle-keydown event pending-ref app-ref chord-prefix selection-cards-ref))
       (is (nil? @chord-prefix) "chord-prefix-ref should be cleared")
       (is (empty? @dispatched) "no dispatch should fire"))))
 
@@ -822,15 +845,16 @@
     ;;   - composed "1>w" → :storm-add-all-1
     ;;   - remaining = copy-count(6) - total-allocated(3+1=4) = 2
     ;;   - dispatches [::storm-events/adjust-storm-split t1 2]
-    (let [dispatched      (atom [])
-          chord-prefix    (atom "1")
-          pending-ref     (atom storm-split-selection)
-          app-ref         (atom base-state)
+    (let [dispatched        (atom [])
+          chord-prefix      (atom "1")
+          pending-ref       (atom storm-split-selection)
+          app-ref           (atom base-state)
+          selection-cards-ref (atom [])
           event           #js {:key "w" :shiftKey false
                                :target #js {:tagName "div"}
                                :preventDefault (fn [])}]
       (with-redefs [rf/dispatch (fn [v] (swap! dispatched conj v))]
-        (#'kb/handle-keydown event pending-ref app-ref chord-prefix))
+        (#'kb/handle-keydown event pending-ref app-ref chord-prefix selection-cards-ref))
       (is (nil? @chord-prefix) "chord-prefix-ref should be cleared after composed chord")
       (is (= [[::storm-events/adjust-storm-split t1 2]] @dispatched)
           "adjust-storm-split for t1 with delta 2 should be dispatched"))))

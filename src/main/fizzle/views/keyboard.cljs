@@ -36,7 +36,7 @@
 ;; Mechanisms that render full modal overlays — shortcuts suppressed during these.
 
 (def ^:private modal-mechanisms
-  #{:pick-from-zone :reorder :n-slot-targeting})
+  #{:reorder})
 
 
 ;; === Mana color order for allocate-resource context ===
@@ -99,7 +99,15 @@
    [:storm-split "2>s"]       :storm-clear-2
    [:storm-split "2>Shift+W"] :storm-inc-2
    [:storm-split "2>Shift+S"] :storm-dec-2
-   [:storm-split "Space"]     :confirm})
+   [:storm-split "Space"]     :confirm
+
+   ;; zone-pick context: pick card(s) from zone
+   [:zone-pick "Space"]  :confirm
+   [:zone-pick "Escape"] :secondary
+
+   ;; flat-targeting context: n-slot targeting
+   [:flat-targeting "Space"]  :confirm
+   [:flat-targeting "Escape"] :secondary})
 
 
 ;; === Key normalization ===
@@ -122,7 +130,9 @@
 (defn derive-context
   "Derive keyboard context from pending-selection.
    nil → :normal (no active selection)
-   Modal mechanisms (:pick-from-zone, :reorder, :n-slot-targeting) → :modal (suppressed)
+   Modal mechanisms (:reorder only) → :modal (suppressed)
+   :pick-from-zone mechanism → :zone-pick
+   :n-slot-targeting mechanism → :flat-targeting
    :accumulate mechanism + :storm-split domain → :storm-split (chord-based target allocation)
    Other mechanisms → the mechanism keyword itself (e.g. :binary-choice, :pick-mode)"
   [pending-selection]
@@ -136,6 +146,12 @@
         (and (= mechanism :accumulate)
              (= :storm-split (:selection/domain pending-selection)))
         :storm-split
+
+        (= mechanism :pick-from-zone)
+        :zone-pick
+
+        (= mechanism :n-slot-targeting)
+        :flat-targeting
 
         :else
         mechanism))))
@@ -368,6 +384,7 @@
   "Handle a keydown event with optional chord-prefix support.
 
    chord-prefix-ref — atom holding the current chord prefix string (e.g. \"1\"), or nil.
+   selection-cards-ref — atom holding the current selection-cards value.
 
    Chord flow:
      1. If prefix is active: compose \"<prefix>><normalized-key>\" and look it up.
@@ -376,7 +393,7 @@
      2. If no prefix: look up [context normalized-key].
         - Action is :chord-start → store normalized-key as new prefix (no dispatch).
         - Otherwise → dispatch normally."
-  [event pending-selection-ref app-state-ref chord-prefix-ref]
+  [event pending-selection-ref app-state-ref chord-prefix-ref selection-cards-ref]
   (when-not (text-input-target? event)
     (let [pending-selection @pending-selection-ref
           context           (derive-context pending-selection)]
@@ -393,7 +410,8 @@
                 (do (.preventDefault event)
                     (let [app-state @app-state-ref
                           result    (action-dispatch composed-action
-                                                     (assoc app-state :pending-selection pending-selection))]
+                                                     (assoc app-state :pending-selection pending-selection
+                                                            :selection-cards @selection-cards-ref))]
                       (dispatch-result! result)))
                 ;; Composed chord NOT found → fall through to standalone key lookup
                 (let [standalone-action (get keymap [context normalized-key])]
@@ -404,7 +422,8 @@
                       (reset! chord-prefix-ref normalized-key)
                       (let [app-state @app-state-ref
                             result    (action-dispatch standalone-action
-                                                       (assoc app-state :pending-selection pending-selection))]
+                                                       (assoc app-state :pending-selection pending-selection
+                                                              :selection-cards @selection-cards-ref))]
                         (dispatch-result! result)))))))
             ;; --- No prefix: standalone key path ---
             (let [action (get keymap [context normalized-key])]
@@ -414,7 +433,8 @@
                   ;; Store prefix for next key
                   (reset! chord-prefix-ref normalized-key)
                   (let [app-state @app-state-ref
-                        result    (action-dispatch action (assoc app-state :pending-selection pending-selection))]
+                        result    (action-dispatch action (assoc app-state :pending-selection pending-selection
+                                                                 :selection-cards @selection-cards-ref))]
                     (dispatch-result! result)))))))))))
 
 
@@ -435,6 +455,7 @@
                                      :can-play-land?  @(rf/subscribe [::subs/can-play-land?])
                                      :can-cycle?      @(rf/subscribe [::subs/can-cycle?])
                                      :stack           @(rf/subscribe [::subs/stack])})
+        selection-cards-ref   (atom @(rf/subscribe [::subs/selection-cards]))
         ;; Chord prefix: keyboard-local state (not in app-db). Holds first key of an
         ;; in-progress chord sequence (e.g. "1"), nil when no chord is active.
         chord-prefix-ref      (atom nil)
@@ -445,6 +466,7 @@
         can-play-land-sub     (rf/subscribe [::subs/can-play-land?])
         can-cycle-sub         (rf/subscribe [::subs/can-cycle?])
         stack-sub             (rf/subscribe [::subs/stack])
+        selection-cards-sub   (rf/subscribe [::subs/selection-cards])
         update-state!         (fn []
                                 (reset! pending-selection-ref @pending-sel-sub)
                                 (reset! app-state-ref
@@ -452,10 +474,11 @@
                                          :can-cast?      @can-cast-sub
                                          :can-play-land? @can-play-land-sub
                                          :can-cycle?     @can-cycle-sub
-                                         :stack          @stack-sub}))
+                                         :stack          @stack-sub})
+                                (reset! selection-cards-ref @selection-cards-sub))
         handler               (fn [event]
                                 (update-state!)
-                                (handle-keydown event pending-selection-ref app-state-ref chord-prefix-ref))]
+                                (handle-keydown event pending-selection-ref app-state-ref chord-prefix-ref selection-cards-ref))]
     (.addEventListener js/document "keydown" handler)
     (fn cleanup
       []
