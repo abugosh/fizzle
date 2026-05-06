@@ -448,3 +448,92 @@
 (rf/reg-event-db
   ::remove-from-zone
   remove-from-zone-handler)
+
+
+;; === Library-top handlers ===
+
+(defn add-to-library-top-handler
+  "Add a card-id to the end of library-top for the given side.
+   Guards: no-op if card is not in the unordered pool (already in zones or already in library-top).
+   {:side :player/:opponent :card-id keyword}"
+  [db [_ {:keys [side card-id]}]]
+  (let [sk         (side-key side)
+        side-cfg   (get-in db [:scenario/editing sk] {})
+        deck       (or (:deck side-cfg) [])
+        zones      (or (:zones side-cfg) {})
+        lib-top    (or (:library-top side-cfg) [])
+        ;; Count how many of card-id are in zones
+        zone-count (reduce
+                     (fn [acc z-cards]
+                       (+ acc (count (filter #(= card-id %) z-cards))))
+                     0
+                     (vals zones))
+        ;; Count how many are already in library-top
+        lib-top-count (count (filter #(= card-id %) lib-top))
+        ;; Get deck count
+        deck-count (deck-count-for deck card-id)
+        ;; Remaining available = deck - zones - library-top
+        available (- deck-count zone-count lib-top-count)]
+    (if (pos? available)
+      (assoc-in db [:scenario/editing sk :library-top]
+                (conj lib-top card-id))
+      db)))
+
+
+(defn remove-from-library-top-handler
+  "Remove the card at the given index from library-top for the given side.
+   No-op if index is out of bounds.
+   {:side :player/:opponent :index int}"
+  [db [_ {:keys [side index]}]]
+  (let [sk      (side-key side)
+        lib-top (vec (get-in db [:scenario/editing sk :library-top] []))]
+    (if (and (>= index 0) (< index (count lib-top)))
+      (assoc-in db [:scenario/editing sk :library-top]
+                (into (subvec lib-top 0 index)
+                      (subvec lib-top (inc index))))
+      db)))
+
+
+(defn reorder-library-top-handler
+  "Reorder library-top by moving card from from-index to to-index for the given side.
+   No-op if from-index or to-index are invalid.
+   Clamps to-index if beyond bounds.
+   {:side :player/:opponent :from-index int :to-index int}"
+  [db [_ {:keys [side from-index to-index]}]]
+  (let [sk      (side-key side)
+        lib-top (vec (get-in db [:scenario/editing sk :library-top] []))
+        len     (count lib-top)]
+    (if (and (>= from-index 0) (< from-index len) (= from-index to-index))
+      ;; No-op if indices are the same
+      db
+      (if (and (>= from-index 0) (< from-index len) (>= to-index 0))
+        ;; Valid from-index; clamp to-index to valid range
+        (let [clamped-to (min to-index (dec len))
+              card (nth lib-top from-index)
+              without (into (subvec lib-top 0 from-index)
+                            (subvec lib-top (inc from-index)))
+              with-insert (if (< clamped-to from-index)
+                            (into (subvec without 0 clamped-to)
+                                  (cons card (subvec without clamped-to)))
+                            (into (subvec without 0 clamped-to)
+                                  (cons card (subvec without clamped-to))))]
+          (assoc-in db [:scenario/editing sk :library-top] with-insert))
+        ;; Invalid from-index, no-op
+        db))))
+
+
+;; === re-frame event registrations for library-top ===
+
+(rf/reg-event-db
+  ::add-to-library-top
+  add-to-library-top-handler)
+
+
+(rf/reg-event-db
+  ::remove-from-library-top
+  remove-from-library-top-handler)
+
+
+(rf/reg-event-db
+  ::reorder-library-top
+  reorder-library-top-handler)

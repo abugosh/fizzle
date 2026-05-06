@@ -145,3 +145,55 @@
   :<- [::editing-opponent]
   (fn [opponent _]
     (or (:zones opponent) {})))
+
+
+;; === Library-top subscriptions ===
+
+(defn unordered-pool
+  "Compute the unordered pool: cards from compute-zone-pool that are NOT in library-top.
+   This represents the clickable cards available to add to library-top.
+   side-config is a map with :deck, :zones, :library-top."
+  [side-config]
+  (let [zone-pool (compute-zone-pool side-config)
+        lib-top   (or (:library-top side-config) [])
+        ;; Count how many of each card-id are in library-top
+        lib-top-counts (reduce
+                         (fn [acc card-id]
+                           (update acc card-id (fnil inc 0)))
+                         {}
+                         lib-top)]
+    (into []
+          (keep (fn [{:keys [card/id count] :as entry}]
+                  (let [in-lib-top (get lib-top-counts id 0)
+                        remaining (- count in-lib-top)]
+                    (when (pos? remaining)
+                      (assoc entry :count remaining))))
+                zone-pool))))
+
+
+(rf/reg-sub
+  ::player-library-top
+  :<- [::editing-player]
+  (fn [player _]
+    (or (:library-top player) [])))
+
+
+(rf/reg-sub
+  ::opponent-library-top
+  :<- [::editing-opponent]
+  (fn [opponent _]
+    (or (:library-top opponent) [])))
+
+
+(rf/reg-sub
+  ::player-unordered-pool
+  :<- [::editing-player]
+  (fn [player _]
+    (unordered-pool player)))
+
+
+(rf/reg-sub
+  ::opponent-unordered-pool
+  :<- [::editing-opponent]
+  (fn [opponent _]
+    (unordered-pool opponent)))

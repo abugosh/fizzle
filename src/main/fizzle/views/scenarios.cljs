@@ -143,6 +143,65 @@
            (get zone-labels zone)]))]]))
 
 
+(defn- library-top-card-pill
+  "Card pill in the library-top sequence with remove and reorder buttons."
+  [card-id index count side]
+  (let [card-def  (get cards/card-by-id card-id)
+        card-name (or (:card/name card-def) (cljs.core/name card-id))]
+    [:div {:key (str "lib-" index) :class "inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 bg-accent text-surface rounded border border-border"}
+     [:span {:class "font-bold"} (str (inc index) ".")] ; 1-based for display
+     [:span card-name]
+     ;; Up button
+     (when (pos? index)
+       [:button {:class "text-text hover:text-error cursor-pointer"
+                 :title "Move up (earlier draw)"
+                 :on-click #(rf/dispatch [::scenario-events/reorder-library-top
+                                          {:side side :from-index index :to-index (dec index)}])}
+        "↑"])
+     ;; Down button
+     (when (< index (dec count))
+       [:button {:class "text-text hover:text-error cursor-pointer"
+                 :title "Move down (later draw)"
+                 :on-click #(rf/dispatch [::scenario-events/reorder-library-top
+                                          {:side side :from-index index :to-index (inc index)}])}
+        "↓"])
+     ;; Remove button
+     [:button {:class "text-text-muted hover:text-error cursor-pointer"
+               :title "Return to pool"
+               :on-click #(rf/dispatch [::scenario-events/remove-from-library-top
+                                        {:side side :index index}])}
+      "×"]]))
+
+
+(defn- library-top-panel
+  "Display library-top cards in order with position numbers and reorder buttons."
+  [side lib-top-sub unordered-pool-sub]
+  (fn []
+    (let [lib-top @(rf/subscribe [lib-top-sub])
+          unord-pool @(rf/subscribe [unordered-pool-sub])]
+      [:div {:class "mt-3 pt-3 border-t border-border"}
+       [:div {:class "text-xs font-bold uppercase text-text-label mb-2"} "Library Top Cards"]
+       (if (empty? lib-top)
+         [:p {:class "text-text-muted text-xs italic mb-2"} "No cards ordered yet"]
+         [:div {:class "flex flex-wrap gap-1 mb-2"}
+          (map-indexed
+            (fn [i card-id]
+              ^{:key (str "lib-" i)}
+              [library-top-card-pill card-id i (count lib-top) side])
+            lib-top)])
+       ;; Unordered pool (clickable to add)
+       [:div {:class "text-xs font-semibold uppercase text-text-label mb-1"} "Available"]
+       (if (empty? unord-pool)
+         [:p {:class "text-text-muted text-xs italic"} "All assigned or ordered"]
+         [:div {:class "flex flex-wrap gap-1"}
+          (for [{:keys [card/id card/name count]} unord-pool]
+            ^{:key id}
+            [:button {:class "text-xs px-2 py-0.5 rounded bg-surface-raised border border-border text-text hover:bg-accent hover:text-surface cursor-pointer"
+                      :on-click #(rf/dispatch [::scenario-events/add-to-library-top
+                                               {:side side :card-id id}])}
+             (str count "x " name)])])])))
+
+
 (defn- zone-distribution-panel
   "Full zone distribution section for one side.
    Shows card pool on the left and hand/graveyard/battlefield columns on the right."
@@ -197,7 +256,7 @@
 
 
 (defn- player-side
-  "Player deck selector, deck contents panel, and zone distribution."
+  "Player deck selector, deck contents panel, zone distribution, and library-top."
   []
   (let [grouped   @(rf/subscribe [::subs-scenario/player-deck-grouped])
         available @(rf/subscribe [::subs-scenario/available-cards])
@@ -207,9 +266,13 @@
      [player-deck-selector]
      [deck-panel (or grouped {}) :player available]
      (when (seq (:deck player))
-       [zone-distribution-panel :player
-        ::subs-scenario/player-zone-pool
-        ::subs-scenario/player-zones])]))
+       [:<>
+        [zone-distribution-panel :player
+         ::subs-scenario/player-zone-pool
+         ::subs-scenario/player-zones]
+        [library-top-panel :player
+         ::subs-scenario/player-library-top
+         ::subs-scenario/player-unordered-pool]])]))
 
 
 ;; === Opponent side ===
@@ -241,7 +304,7 @@
 
 
 (defn- opponent-side
-  "Opponent archetype selector, deck contents panel, and zone distribution."
+  "Opponent archetype selector, deck contents panel, zone distribution, and library-top."
   []
   (let [opp-grouped @(rf/subscribe [::subs-scenario/opponent-deck-grouped])
         opp-data    @(rf/subscribe [::subs-scenario/editing-opponent])
@@ -251,9 +314,13 @@
      [bot-archetype-selector]
      [deck-panel (or opp-grouped {}) :opponent available]
      (when (seq (:deck opp-data))
-       [zone-distribution-panel :opponent
-        ::subs-scenario/opponent-zone-pool
-        ::subs-scenario/opponent-zones])]))
+       [:<>
+        [zone-distribution-panel :opponent
+         ::subs-scenario/opponent-zone-pool
+         ::subs-scenario/opponent-zones]
+        [library-top-panel :opponent
+         ::subs-scenario/opponent-library-top
+         ::subs-scenario/opponent-unordered-pool]])]))
 
 
 ;; === Builder view ===
