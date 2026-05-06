@@ -19,6 +19,7 @@
     [fizzle.events.selection.replacement]
     [fizzle.events.selection.untap]
     [fizzle.events.selection.zone-ops]
+    [fizzle.events.scenario :as scenario-events]
     [fizzle.events.setup :as setup]
     [fizzle.events.ui :as ui-events]
     [fizzle.events.ui-invariants :as ui-invariants]
@@ -29,6 +30,7 @@
     [fizzle.subs.game :as subs]
     [fizzle.subs.history]
     [fizzle.subs.opening-hand]
+    [fizzle.subs.scenario]
     [fizzle.subs.setup]
     [fizzle.views.battlefield :as battlefield]
     [fizzle.views.calculator :as calculator]
@@ -162,6 +164,8 @@
   (rf/dispatch-sync [::setup/init-setup])
   ;; Initialize calculator (restores queries from localStorage if available)
   (rf/dispatch-sync [::calc-events/init-calculator])
+  ;; Load saved scenarios from localStorage
+  (rf/dispatch-sync [::scenario-events/load-all])
   ;; If the URL has a snapshot hash, restore it (overrides active-screen to :game)
   (let [hash     (.-hash js/location)
         restored (snapshot/restore-from-hash-handler hash)]

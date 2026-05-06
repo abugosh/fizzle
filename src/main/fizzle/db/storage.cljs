@@ -85,6 +85,28 @@
       [])))
 
 
+;; === Scenarios ===
+
+(defn save-scenarios!
+  "Persist scenarios map {id → scenario} to localStorage as EDN."
+  [scenarios]
+  (try
+    (.setItem js/localStorage "fizzle-scenarios" (pr-str scenarios))
+    (catch :default _)))
+
+
+(defn load-scenarios
+  "Load scenarios map from localStorage. Returns {} on missing or corrupt data."
+  []
+  (try
+    (let [raw (.getItem js/localStorage "fizzle-scenarios")]
+      (if raw
+        (reader/read-string raw)
+        {}))
+    (catch :default _
+      {})))
+
+
 ;; === Phase Stops ===
 
 (defn default-stops
