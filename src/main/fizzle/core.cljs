@@ -43,6 +43,7 @@
     [fizzle.views.mana-pool :as mana-pool]
     [fizzle.views.modals :as modals]
     [fizzle.views.opening-hand :as opening-hand]
+    [fizzle.views.scenarios :as scenarios-view]
     [fizzle.views.setup :as setup-view]
     [fizzle.views.stack :as stack]
     [fizzle.views.zone-counts :as zone-counts]
@@ -135,6 +136,9 @@
       [:button {:class (nav-btn-class (= screen :game))
                 :on-click #(rf/dispatch [::ui-events/set-active-screen :game])}
        "Game"]
+      [:button {:class (nav-btn-class (= screen :scenarios))
+                :on-click #(rf/dispatch [::ui-events/set-active-screen :scenarios])}
+       "Scenarios"]
       (when (= screen :game)
         [:button {:class "px-3 py-1 text-sm rounded cursor-pointer bg-surface-raised text-text-muted"
                   :on-click #(rf/dispatch [::setup/new-game])}
@@ -143,6 +147,7 @@
      (case screen
        :setup [setup-view/setup-screen]
        :opening-hand [opening-hand/opening-hand-screen]
+       :scenarios [scenarios-view/scenarios-screen]
        [game-screen])]))
 
 

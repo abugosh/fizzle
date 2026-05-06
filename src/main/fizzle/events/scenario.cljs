@@ -77,3 +77,15 @@
 (rf/reg-event-db
   ::set-editing
   set-editing-handler)
+
+
+(rf/reg-event-db
+  ::show-library
+  (fn [db _]
+    (assoc db :scenario/active-view :library)))
+
+
+(rf/reg-event-db
+  ::show-builder
+  (fn [db _]
+    (assoc db :scenario/active-view :builder)))

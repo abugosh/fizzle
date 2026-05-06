@@ -28,3 +28,9 @@
   :<- [::editing]
   (fn [editing _]
     (:scenario/opponent editing)))
+
+
+(rf/reg-sub
+  ::active-view
+  (fn [db _]
+    (:scenario/active-view db)))
