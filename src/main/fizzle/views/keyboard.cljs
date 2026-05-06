@@ -21,6 +21,7 @@
   (:require
     [clojure.string]
     [fizzle.db.game-state :as game-state]
+    [fizzle.engine.sorting :as sorting]
     [fizzle.events.casting :as casting-events]
     [fizzle.events.cycling :as cycling-events]
     [fizzle.events.lands :as lands-events]
@@ -103,6 +104,17 @@
    [:storm-split "Space"]     :confirm
 
    ;; zone-pick context: pick card(s) from zone
+   ;; Number keys 1-9 → :chord-start (pile selection, wait for second key)
+   ;; Second key selects card within pile via dynamic zone-pick-toggle-dispatch resolution
+   [:zone-pick "1"]     :chord-start
+   [:zone-pick "2"]     :chord-start
+   [:zone-pick "3"]     :chord-start
+   [:zone-pick "4"]     :chord-start
+   [:zone-pick "5"]     :chord-start
+   [:zone-pick "6"]     :chord-start
+   [:zone-pick "7"]     :chord-start
+   [:zone-pick "8"]     :chord-start
+   [:zone-pick "9"]     :chord-start
    [:zone-pick "Space"]  :confirm
    [:zone-pick "Escape"] :secondary
 
@@ -211,6 +223,39 @@
                            :inc     1
                            :dec     -1)]
           [::storm-events/adjust-storm-split target-id delta])))))
+
+
+;; === Zone-pick chord helper ===
+
+(defn- zone-pick-toggle-dispatch
+  "Resolve a zone-pick chord to a toggle-selection dispatch vector.
+   prefix-str is the pile number (1-based), key-str is the card number (1-based).
+   Returns [::selection-events/toggle-selection object-id] or nil.
+
+   Piles are ordered as returned by sorting/group-by-cmc:
+   [:lands [land-objs...]] first (if non-empty), then [cmc [objs...]] in ascending order.
+
+   Does NOT filter by valid-targets — dispatches for any card in pile regardless
+   of validity (matching click behavior; event layer enforces validity).
+
+   Returns nil if:
+   - prefix-str or key-str are non-numeric (NaN from js/parseInt)
+   - pile index (prefix-n - 1) is out of bounds
+   - card index (key-n - 1) is out of bounds within the pile
+   - selection-cards is nil or empty"
+  [selection-cards _pending-selection prefix-str key-str]
+  (let [pile-n (js/parseInt prefix-str 10)
+        card-n (js/parseInt key-str 10)]
+    (when-not (or (js/isNaN pile-n) (js/isNaN card-n))
+      (let [pile-idx (dec pile-n)
+            card-idx (dec card-n)]
+        (when (and (>= pile-idx 0) (>= card-idx 0))
+          (let [piles        (sorting/group-by-cmc (or selection-cards []))
+                pile-entry   (nth piles pile-idx nil)
+                cards-vec    (second pile-entry)
+                card         (nth cards-vec card-idx nil)]
+            (when card
+              [::selection-events/toggle-selection (:object/id card)])))))))
 
 
 ;; === Flat-targeting helper ===
@@ -478,18 +523,28 @@
                                                      (assoc app-state :pending-selection pending-selection
                                                             :selection-cards @selection-cards-ref))]
                       (dispatch-result! result)))
-                ;; Composed chord NOT found → fall through to standalone key lookup
-                (let [standalone-action (get keymap [context normalized-key])]
-                  (when standalone-action
-                    (.preventDefault event)
-                    (if (= standalone-action :chord-start)
-                      ;; Second key is itself a chord-start → store new prefix
-                      (reset! chord-prefix-ref normalized-key)
-                      (let [app-state @app-state-ref
-                            result    (action-dispatch standalone-action
-                                                       (assoc app-state :pending-selection pending-selection
-                                                              :selection-cards @selection-cards-ref))]
-                        (dispatch-result! result)))))))
+                ;; Composed chord NOT found → check zone-pick dynamic resolution first,
+                ;; then fall through to standalone key lookup
+                (let [zone-pick-dispatch
+                      (when (= context :zone-pick)
+                        (zone-pick-toggle-dispatch @selection-cards-ref pending-selection
+                                                   prefix normalized-key))]
+                  (if zone-pick-dispatch
+                    ;; Zone-pick dynamic chord resolved → dispatch and stop
+                    (do (.preventDefault event)
+                        (dispatch-result! zone-pick-dispatch))
+                    ;; Fall through to standalone key lookup
+                    (let [standalone-action (get keymap [context normalized-key])]
+                      (when standalone-action
+                        (.preventDefault event)
+                        (if (= standalone-action :chord-start)
+                          ;; Second key is itself a chord-start → store new prefix
+                          (reset! chord-prefix-ref normalized-key)
+                          (let [app-state @app-state-ref
+                                result    (action-dispatch standalone-action
+                                                           (assoc app-state :pending-selection pending-selection
+                                                                  :selection-cards @selection-cards-ref))]
+                            (dispatch-result! result)))))))))
             ;; --- No prefix: standalone key path ---
             (let [action (get keymap [context normalized-key])]
               (when action

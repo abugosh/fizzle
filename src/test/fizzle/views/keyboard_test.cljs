@@ -966,3 +966,159 @@
     (is (= :select-7 (get kb/keymap [:flat-targeting "7"])))
     (is (= :select-8 (get kb/keymap [:flat-targeting "8"])))
     (is (= :select-9 (get kb/keymap [:flat-targeting "9"])))))
+
+
+;; ---------------------------------------------------------------------------
+;; P. Zone-pick chord keymap entries
+
+(deftest keymap-zone-pick-1-through-9-chord-start-test
+  (testing "zone-pick keymap has chord-start bindings for 1-9"
+    (is (= :chord-start (get kb/keymap [:zone-pick "1"])))
+    (is (= :chord-start (get kb/keymap [:zone-pick "2"])))
+    (is (= :chord-start (get kb/keymap [:zone-pick "3"])))
+    (is (= :chord-start (get kb/keymap [:zone-pick "4"])))
+    (is (= :chord-start (get kb/keymap [:zone-pick "5"])))
+    (is (= :chord-start (get kb/keymap [:zone-pick "6"])))
+    (is (= :chord-start (get kb/keymap [:zone-pick "7"])))
+    (is (= :chord-start (get kb/keymap [:zone-pick "8"])))
+    (is (= :chord-start (get kb/keymap [:zone-pick "9"])))))
+
+
+;; ---------------------------------------------------------------------------
+;; Q. Zone-pick chord resolution: zone-pick-toggle-dispatch
+
+(defn- make-card
+  "Build a minimal card object for zone-pick chord tests.
+   cmc is the card's mana value; object-id is the :object/id keyword."
+  [object-id cmc]
+  {:object/id object-id
+   :object/card {:card/cmc cmc :card/name (name object-id) :card/types #{:instant}}})
+
+
+(defn- make-land-card
+  "Build a minimal land card object for zone-pick chord tests."
+  [object-id]
+  {:object/id object-id
+   :object/card {:card/name (name object-id) :card/types #{:land}}})
+
+
+(def ^:private zone-pick-selection
+  "A zone-pick pending-selection for use in chord dispatch tests."
+  {:selection/mechanism :pick-from-zone
+   :selection/domain    :graveyard-return})
+
+
+(deftest zone-pick-toggle-dispatch-basic-chord-test
+  (testing "prefix \"2\", key \"1\" returns toggle-selection for first card in second pile"
+    ;; 3 piles: lands, cmc=1, cmc=2
+    ;; pile index 2 (1-based "2") → cmc=1 pile (index 1 of [[lands ..][1 ..][2 ..]])
+    ;; card index 1 (1-based "1") → first card in that pile
+    (let [land-1  (make-land-card :land-uuid)
+          card-a  (make-card :card-a 1)
+          card-b  (make-card :card-b 1)
+          card-c  (make-card :card-c 2)
+          selection-cards [land-1 card-a card-b card-c]
+          result (#'kb/zone-pick-toggle-dispatch selection-cards zone-pick-selection "2" "1")]
+      (is (= [::selection-events/toggle-selection :card-a] result)))))
+
+
+(deftest zone-pick-toggle-dispatch-pile-1-card-2-test
+  (testing "prefix \"1\", key \"2\" returns toggle-selection for second card in first pile"
+    ;; First pile is lands (pile index 0 = 1-based "1")
+    ;; Second card in lands pile
+    (let [land-1  (make-land-card :land-a)
+          land-2  (make-land-card :land-b)
+          card-a  (make-card :card-a 1)
+          selection-cards [land-1 land-2 card-a]
+          result (#'kb/zone-pick-toggle-dispatch selection-cards zone-pick-selection "1" "2")]
+      (is (= [::selection-events/toggle-selection :land-b] result)))))
+
+
+(deftest zone-pick-toggle-dispatch-out-of-bounds-pile-test
+  (testing "prefix \"5\" with only 3 piles returns nil"
+    (let [land-1 (make-land-card :land-a)
+          card-a (make-card :card-a 1)
+          card-b (make-card :card-b 2)
+          selection-cards [land-1 card-a card-b]
+          result (#'kb/zone-pick-toggle-dispatch selection-cards zone-pick-selection "5" "1")]
+      (is (nil? result)))))
+
+
+(deftest zone-pick-toggle-dispatch-out-of-bounds-card-test
+  (testing "prefix \"1\", key \"4\" with pile containing 2 cards returns nil"
+    (let [card-a (make-card :card-a 1)
+          card-b (make-card :card-b 1)
+          selection-cards [card-a card-b]
+          result (#'kb/zone-pick-toggle-dispatch selection-cards zone-pick-selection "1" "4")]
+      (is (nil? result)))))
+
+
+(deftest zone-pick-toggle-dispatch-non-numeric-prefix-test
+  (testing "non-numeric prefix \"w\" returns nil (NaN check)"
+    (let [card-a (make-card :card-a 1)
+          selection-cards [card-a]
+          result (#'kb/zone-pick-toggle-dispatch selection-cards zone-pick-selection "w" "1")]
+      (is (nil? result)))))
+
+
+(deftest zone-pick-toggle-dispatch-non-numeric-key-test
+  (testing "non-numeric second key \"w\" returns nil (NaN check)"
+    (let [card-a (make-card :card-a 1)
+          selection-cards [card-a]
+          result (#'kb/zone-pick-toggle-dispatch selection-cards zone-pick-selection "1" "w")]
+      (is (nil? result)))))
+
+
+(deftest zone-pick-toggle-dispatch-zero-prefix-test
+  (testing "prefix \"0\" returns nil (0 - 1 = -1, nth with negative index = nil)"
+    (let [card-a (make-card :card-a 1)
+          selection-cards [card-a]
+          result (#'kb/zone-pick-toggle-dispatch selection-cards zone-pick-selection "0" "1")]
+      (is (nil? result)))))
+
+
+(deftest zone-pick-toggle-dispatch-empty-selection-cards-test
+  (testing "empty selection-cards returns nil"
+    (let [result (#'kb/zone-pick-toggle-dispatch [] zone-pick-selection "1" "1")]
+      (is (nil? result)))))
+
+
+(deftest zone-pick-toggle-dispatch-single-pile-single-card-test
+  (testing "single pile, single card: prefix \"1\", key \"1\" returns correct object-id"
+    (let [card-a (make-card :card-a 3)
+          selection-cards [card-a]
+          result (#'kb/zone-pick-toggle-dispatch selection-cards zone-pick-selection "1" "1")]
+      (is (= [::selection-events/toggle-selection :card-a] result)))))
+
+
+;; ---------------------------------------------------------------------------
+;; R. Zone-pick chord handle-keydown integration
+
+(def ^:private zone-pick-selection-for-integration
+  "A zone-pick pending-selection for integration tests."
+  {:selection/mechanism :pick-from-zone
+   :selection/domain    :graveyard-return})
+
+
+(deftest handle-keydown-zone-pick-chord-dispatches-toggle-selection-test
+  (testing "In zone-pick context, chord prefix \"2\" + \"1\" dispatches toggle-selection for first card of second pile"
+    ;; Piles: [:lands [land-a]], [1 [card-a card-b]]
+    ;; prefix="2" → pile index 1 → cmc=1 pile
+    ;; key="1" → first card → :card-a
+    (let [dispatched          (atom [])
+          chord-prefix        (atom "2")
+          land-a              (make-land-card :land-a)
+          card-a              (make-card :card-a 1)
+          card-b              (make-card :card-b 1)
+          selection-cards     [land-a card-a card-b]
+          pending-ref         (atom zone-pick-selection-for-integration)
+          app-ref             (atom base-state)
+          selection-cards-ref (atom selection-cards)
+          event               #js {:key "1" :shiftKey false
+                                   :target #js {:tagName "div"}
+                                   :preventDefault (fn [])}]
+      (with-redefs [rf/dispatch (fn [v] (swap! dispatched conj v))]
+        (#'kb/handle-keydown event pending-ref app-ref chord-prefix selection-cards-ref))
+      (is (nil? @chord-prefix) "chord-prefix-ref should be cleared after chord resolution")
+      (is (= [[::selection-events/toggle-selection :card-a]] @dispatched)
+          "toggle-selection for :card-a should be dispatched"))))
