@@ -227,6 +227,9 @@
    Does NOT filter by valid-targets for numbering — dispatch for Nth candidate
    regardless of validity (event layer enforces validity, matching click behavior).
 
+   Extracts :object/id from card objects (maps) at dispatch time.
+   For :any-target domain, player keywords dispatch directly, card objects extract :object/id.
+
    Returns nil if n >= count of ordered candidates, or if selection-cards is nil/empty."
   [selection-cards pending-selection n]
   (when (and selection-cards (seq selection-cards))
@@ -246,7 +249,11 @@
             (vec selection-cards))
           candidate (nth ordered-candidates n nil)]
       (when candidate
-        [::selection-events/toggle-selection candidate]))))
+        ;; Extract :object/id from card objects - maps with :object/id field
+        (let [dispatch-id (if (keyword? candidate)
+                            candidate
+                            (:object/id candidate))]
+          [::selection-events/toggle-selection dispatch-id])))))
 
 
 ;; === Action dispatch ===
