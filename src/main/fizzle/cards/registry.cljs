@@ -86,6 +86,7 @@
     [fizzle.cards.red.recoup :as recoup]
     [fizzle.cards.red.red-elemental-blast :as red-elemental-blast]
     [fizzle.cards.white.abeyance :as abeyance]
+    [fizzle.cards.white.imposing-vantasaur :as imposing-vantasaur]
     [fizzle.cards.white.orims-chant :as orims-chant]
     [fizzle.cards.white.ray-of-revelation :as ray-of-revelation]
     [fizzle.cards.white.seal-of-cleansing :as seal-of-cleansing]))
@@ -133,6 +134,7 @@
        turnabout/card
        words-of-wisdom/card
        abeyance/card
+       imposing-vantasaur/card
        orims-chant/card
        ray-of-revelation/card
        seal-of-cleansing/card
