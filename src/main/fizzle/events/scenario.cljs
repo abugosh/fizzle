@@ -154,18 +154,16 @@
                       conn game-state/human-player-id
                       {:player/name      "Player"
                        :player/life      (or (:life player-cfg) 20)
-                       :player/mana-pool (if (seq (:mana-pool player-cfg))
-                                           (:mana-pool player-cfg)
-                                           game-state/empty-mana-pool)})
+                       :player/mana-pool (merge game-state/empty-mana-pool
+                                                (:mana-pool player-cfg))})
         opp-eid     (game-state/create-complete-player
                       conn game-state/opponent-player-id
                       {:player/name          "Opponent"
                        :player/is-opponent   true
                        :player/bot-archetype bot-arch
                        :player/life          (or (:life opp-cfg) 20)
-                       :player/mana-pool     (if (seq (:mana-pool opp-cfg))
-                                               (:mana-pool opp-cfg)
-                                               game-state/empty-mana-pool)})
+                       :player/mana-pool     (merge game-state/empty-mana-pool
+                                                    (:mana-pool opp-cfg))})
         stops       (storage/load-stops)]
     ;; Build objects for each player side
     (init-player-side! conn player-eid player-cfg)
