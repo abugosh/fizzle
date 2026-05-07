@@ -7,7 +7,8 @@
     [datascript.core :as d]
     [fizzle.db.queries :as q]
     [fizzle.engine.events :as game-events]
-    [fizzle.engine.trigger-dispatch :as dispatch]))
+    [fizzle.engine.trigger-dispatch :as dispatch]
+    [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]))
 
 
 (defn get-controller-eid
@@ -129,12 +130,9 @@
 (defmethod can-pay? :sacrifice-self [db object-id _cost]
   ;; Can pay sacrifice-self if:
   ;; 1. Object exists
-  ;; 2. Object is on the battlefield
-  (if-let [obj-eid (q/get-object-eid db object-id)]
-    (= :battlefield (d/q '[:find ?z .
-                           :in $ ?e
-                           :where [?e :object/zone ?z]]
-                         db obj-eid))
+  ;; Zone check removed per ADR-039 (zone policy at activation chokepoint)
+  (if-let [_obj-eid (q/get-object-eid db object-id)]
+    true
     false))
 
 
@@ -145,18 +143,32 @@
       (d/db-with db [[:db/add obj-eid :object/zone :graveyard]]))))
 
 
+;; === :discard-self cost ===
+
+(defmethod can-pay? :discard-self [db object-id _cost]
+  ;; Can pay discard-self if:
+  ;; 1. Object exists
+  ;; Zone check not needed - zone policy enforced at activation chokepoint per ADR-039
+  (if-let [_obj-eid (q/get-object-eid db object-id)]
+    true
+    false))
+
+
+(defmethod pay-cost :discard-self [db object-id cost]
+  ;; Guard: check can pay first
+  (when (can-pay? db object-id cost)
+    (zone-change-dispatch/move-to-zone-db db object-id :graveyard)))
+
+
 ;; === :discard-hand cost ===
 
 (defmethod can-pay? :discard-hand [db object-id _cost]
   ;; Can pay discard-hand if:
   ;; 1. Object exists
-  ;; 2. Object is on the battlefield
+  ;; Zone check removed per ADR-039 (zone policy at activation chokepoint)
   ;; Note: Can always discard hand (even if empty)
-  (if-let [obj-eid (q/get-object-eid db object-id)]
-    (= :battlefield (d/q '[:find ?z .
-                           :in $ ?e
-                           :where [?e :object/zone ?z]]
-                         db obj-eid))
+  (if-let [_obj-eid (q/get-object-eid db object-id)]
+    true
     false))
 
 

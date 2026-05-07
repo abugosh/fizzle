@@ -206,13 +206,13 @@
 
 
 (deftest test-can-pay-sacrifice-self-not-on-battlefield
-  (testing "can-pay? :sacrifice-self returns false when not on battlefield"
+  (testing "can-pay? :sacrifice-self returns true even for object not on battlefield (zone-agnostic)"
     (let [db (init-game-state)
           hand (q/get-hand db :player-1)
           obj-id (:object/id (first hand))
           cost {:sacrifice-self true}]
-      ;; Object is in hand, not battlefield
-      (is (false? (costs/can-pay? db obj-id cost))))))
+      ;; Object is in hand, but can-pay? is zone-agnostic (zone policy at activation chokepoint per ADR-039)
+      (is (true? (costs/can-pay? db obj-id cost))))))
 
 
 (deftest test-pay-sacrifice-self-moves-to-graveyard
@@ -233,12 +233,68 @@
       (is (nil? result)))))
 
 
+;; === :discard-self cost tests ===
+
+(deftest test-can-pay-discard-self-object-exists
+  (testing "can-pay? :discard-self returns true when object exists"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          cost {:discard-self true}]
+      (is (true? (costs/can-pay? db object-id cost))))))
+
+
+(deftest test-can-pay-discard-self-object-in-hand
+  (testing "can-pay? :discard-self returns true for object in hand (zone-agnostic)"
+    (let [db (init-game-state)
+          hand (q/get-hand db :player-1)
+          obj-id (:object/id (first hand))
+          cost {:discard-self true}]
+      ;; Object is in hand, should still be payable (zone policy at chokepoint)
+      (is (true? (costs/can-pay? db obj-id cost))))))
+
+
+(deftest test-can-pay-discard-self-nil-object-id
+  (testing "can-pay? :discard-self returns false for nil object-id"
+    (let [db (init-game-state)
+          cost {:discard-self true}]
+      (is (false? (costs/can-pay? db (random-uuid) cost))))))
+
+
+(deftest test-pay-discard-self-moves-to-graveyard
+  (testing "pay-cost :discard-self moves object to graveyard"
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          cost {:discard-self true}
+          db' (costs/pay-cost db object-id cost)]
+      (is (= :graveyard (:object/zone (q/get-object db' object-id)))
+          "Discarded object should be in graveyard"))))
+
+
+(deftest test-pay-discard-self-from-hand
+  (testing "pay-cost :discard-self moves hand card to graveyard"
+    (let [db (init-game-state)
+          hand (q/get-hand db :player-1)
+          obj-id (:object/id (first hand))
+          cost {:discard-self true}
+          db' (costs/pay-cost db obj-id cost)]
+      (is (= :graveyard (:object/zone (q/get-object db' obj-id)))
+          "Discarded card should be in graveyard")
+      (is (= 0 (count (q/get-hand db' :player-1)))
+          "Hand should be empty"))))
+
+
+(deftest test-pay-discard-self-invalid-object
+  (testing "pay-cost :discard-self returns nil for nonexistent object"
+    (let [db (init-game-state)
+          result (costs/pay-cost db (random-uuid) {:discard-self true})]
+      (is (nil? result)))))
+
+
 ;; === :discard-hand cost tests ===
 
 (deftest test-can-pay-discard-hand-on-battlefield
-  (testing "can-pay? :discard-hand returns true when object on battlefield"
+  (testing "can-pay? :discard-hand returns true for any object (zone-agnostic)"
     (let [[db object-id] (add-permanent (init-game-state) :player-1)
           cost {:discard-hand true}]
+      ;; Zone policy is at activation chokepoint per ADR-039
       (is (true? (costs/can-pay? db object-id cost))))))
 
 
