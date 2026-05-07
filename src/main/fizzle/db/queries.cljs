@@ -218,13 +218,12 @@
 
 (defn get-opponent-id
   "Get the opponent player's ID for a given player.
-   Returns the player-id of the player marked as opponent.
-   Returns nil if no opponent exists."
+   Returns the player-id of the other player in the game.
+   Returns nil if no other player exists."
   [db player-id]
   (d/q '[:find ?pid .
          :in $ ?my-pid
          :where [?p :player/id ?pid]
-         [?p :player/is-opponent true]
          [(not= ?pid ?my-pid)]]
        db player-id))
 
