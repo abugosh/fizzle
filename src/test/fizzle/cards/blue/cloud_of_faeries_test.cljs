@@ -268,8 +268,8 @@
       ;; Card should be in graveyard after paying discard-self cost
       (is (= :graveyard (:object/zone (q/get-object db-after-discard cf-id)))
           "Cycled card should be in graveyard after activation")
-      ;; Confirm mana allocation — allocate 2 colorless
-      (let [alloc-sel-with-alloc (assoc alloc-sel :selection/allocation {:colorless 2})
+      ;; Confirm mana allocation — auto-compute from remaining pool
+      (let [alloc-sel-with-alloc (assoc alloc-sel :selection/allocation (th/auto-compute-mana-allocation alloc-sel))
             {:keys [db]} (th/confirm-selection db-after-discard alloc-sel-with-alloc #{})
             {:keys [db]} (th/resolve-top db)]
         (is (= 1 (th/get-hand-count db :player-1))
@@ -336,7 +336,7 @@
           result (abilities/activate-ability db :player-1 cf-id 0)
           db-after-discard (:db result)
           alloc-sel (:pending-selection result)
-          alloc-sel-with-alloc (assoc alloc-sel :selection/allocation {:colorless 2})
+          alloc-sel-with-alloc (assoc alloc-sel :selection/allocation (th/auto-compute-mana-allocation alloc-sel))
           {:keys [db]} (th/confirm-selection db-after-discard alloc-sel-with-alloc #{})
           {:keys [db]} (th/resolve-top db)]
       ;; Card should be in graveyard even with empty library

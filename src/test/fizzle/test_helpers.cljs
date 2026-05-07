@@ -425,11 +425,13 @@
         {:db (:game/db result)}))))
 
 
-(defn- auto-compute-mana-allocation
+(defn auto-compute-mana-allocation
   "Compute an allocation map that covers the generic-remaining cost of a
    mana-allocation selection by draining greedily from :selection/remaining-pool.
    Used by cast-mode-with-target to auto-confirm the chained mana-allocation step
-   for spells with colorless mana costs (e.g. Turnabout: {2}{U}{U})."
+   for spells with colorless mana costs (e.g. Turnabout: {2}{U}{U}).
+   Also exported for cycling tests that need to confirm a mana-allocation selection
+   returned by activate-ability without hardcoding a specific allocation map."
   [selection]
   (let [generic-needed (:selection/generic-remaining selection 0)
         pool (:selection/remaining-pool selection {})]

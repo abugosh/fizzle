@@ -138,8 +138,8 @@
       ;; Card should be in graveyard after paying discard-self cost
       (is (= :graveyard (:object/zone (q/get-object db-after-discard obj-id)))
           "Card should be in graveyard after discard-self cost")
-      ;; Confirm mana allocation — use colorless 1 from pool
-      (let [alloc-sel-with-alloc (assoc alloc-sel :selection/allocation {:colorless 1})
+      ;; Confirm mana allocation — auto-compute from remaining pool
+      (let [alloc-sel-with-alloc (assoc alloc-sel :selection/allocation (th/auto-compute-mana-allocation alloc-sel))
             {:keys [db]} (th/confirm-selection db-after-discard alloc-sel-with-alloc #{})
             ;; Resolve the draw effect
             {:keys [db]} (th/resolve-top db)]
@@ -162,7 +162,7 @@
             result (abilities/activate-ability db :player-1 obj-id 0)
             db-after-discard (:db result)
             alloc-sel (:pending-selection result)
-            alloc-sel-with-alloc (assoc alloc-sel :selection/allocation {color 1})
+            alloc-sel-with-alloc (assoc alloc-sel :selection/allocation (th/auto-compute-mana-allocation alloc-sel))
             {:keys [db]} (th/confirm-selection db-after-discard alloc-sel-with-alloc #{})
             {:keys [db]} (th/resolve-top db)]
         (is (= :graveyard (:object/zone (q/get-object db obj-id)))
@@ -224,7 +224,7 @@
           result (abilities/activate-ability db :player-1 obj-id 0)
           db-after-discard (:db result)
           alloc-sel (:pending-selection result)
-          alloc-sel-with-alloc (assoc alloc-sel :selection/allocation {:colorless 1})
+          alloc-sel-with-alloc (assoc alloc-sel :selection/allocation (th/auto-compute-mana-allocation alloc-sel))
           {:keys [db]} (th/confirm-selection db-after-discard alloc-sel-with-alloc #{})
           {:keys [db]} (th/resolve-top db)]
       (is (= :graveyard (:object/zone (q/get-object db obj-id)))
@@ -243,7 +243,7 @@
           result (abilities/activate-ability db :player-1 obj-id 0)
           db-after-discard (:db result)
           alloc-sel (:pending-selection result)
-          alloc-sel-with-alloc (assoc alloc-sel :selection/allocation {:colorless 1})
+          alloc-sel-with-alloc (assoc alloc-sel :selection/allocation (th/auto-compute-mana-allocation alloc-sel))
           {:keys [db]} (th/confirm-selection db-after-discard alloc-sel-with-alloc #{})
           {:keys [db]} (th/resolve-top db)]
       (is (= 0 (q/get-storm-count db :player-1))
