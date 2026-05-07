@@ -65,6 +65,7 @@
     [fizzle.cards.green.nimble-mongoose :as nimble-mongoose]
     [fizzle.cards.green.xantid-swarm :as xantid-swarm]
     [fizzle.cards.lands.ancient-tomb :as ancient-tomb]
+    [fizzle.cards.lands.artifact-lands :as artifact-lands]
     [fizzle.cards.lands.basic-lands :as basic-lands]
     [fizzle.cards.lands.cephalid-coliseum :as cephalid-coliseum]
     [fizzle.cards.lands.city-of-brass :as city-of-brass]
@@ -174,6 +175,7 @@
        infernal-contract/card
        hoodwink/card]
       ;; Cycle cards
+      artifact-lands/cards
       basic-lands/cards
       pain-lands/cards
       fetch-lands/cards
