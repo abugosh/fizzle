@@ -11,6 +11,7 @@
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [clojure.string :as str]
+    [datascript.core :as d]
     [fizzle.sharing.encoder :as encoder]
     [fizzle.sharing.extractor :as extractor]
     [fizzle.snapshot.events :as snap-events]
@@ -274,13 +275,17 @@
           "decoded config should match original scenario minus :scenario/id"))))
 
 
-(deftest scenario->url-with-random-draw-produces-sc-url-test
-  (testing "scenario->url with :random-draw produces valid #sc= URL"
-    (let [scenario (assoc base-scenario :scenario/draw :random-draw)
-          url      (snap-events/scenario->url scenario "https://example.com/")]
-      (is (string? url) "should return a string")
+(deftest scenario->url-with-random-draw-roundtrip-test
+  (testing "scenario->url with :random-draw encodes and decodes the field correctly"
+    (let [scenario (assoc-in base-scenario [:scenario/player :random-draw] 3)
+          url      (snap-events/scenario->url scenario "https://example.com/")
+          hash     (str "#" (second (str/split url #"#")))
+          parsed   (snap-events/parse-scenario-url hash)
+          decoded  (snap-events/decode-scenario-config (:encoded parsed))]
       (is (str/includes? url "#sc=")
-          "URL should use #sc= prefix for random-draw scenario"))))
+          "URL should use #sc= prefix")
+      (is (= 3 (get-in decoded [:scenario/player :random-draw]))
+          ":random-draw value should survive the encode/decode roundtrip"))))
 
 
 (deftest scenario->url-title-preserved-in-roundtrip-test
@@ -347,16 +352,22 @@
 
 
 (deftest restore-from-hash-sc-with-random-draw-produces-hand-test
-  (testing "restore-from-hash-handler with #sc= and :random-draw produces hand cards"
-    (let [scenario (-> base-scenario
-                       (assoc :scenario/draw :random-draw))
+  (testing "restore-from-hash-handler with #sc= and :random-draw produces correct hand count"
+    (let [scenario (assoc-in base-scenario [:scenario/player :random-draw] 3)
           url      (snap-events/scenario->url scenario "https://example.com/")
           hash     (str "#" (second (str/split url #"#")))
-          result   (snap-events/restore-from-hash-handler hash)]
-      (is (some? result)
-          "should produce a game state from #sc= :random-draw URL")
-      (is (some? (:game/db result))
-          "game/db should be present"))))
+          result   (snap-events/restore-from-hash-handler hash)
+          game-db  (:game/db result)
+          hand-count (count
+                       (d/q '[:find [?e ...]
+                              :in $ ?pid ?zone
+                              :where
+                              [?p :player/id ?pid]
+                              [?e :object/owner ?p]
+                              [?e :object/zone ?zone]]
+                            game-db :player-1 :hand))]
+      (is (= 3 hand-count)
+          "hand should have exactly 3 randomly drawn cards after #sc= restore"))))
 
 
 (deftest restore-from-hash-sc-title-preserved-test
