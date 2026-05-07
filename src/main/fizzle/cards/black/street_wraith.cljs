@@ -18,8 +18,7 @@
    :card/toughness 4
    :card/keywords #{:swampwalk}
    :card/text "Swampwalk (This creature can't be blocked as long as defending player controls a Swamp.)\nCycling—Pay 2 life. (Pay 2 life, Discard this card: Draw a card.)"
-   :card/abilities [{:ability/id :cycle
-                     :ability/type :cycling
+   :card/abilities [{:ability/type :cycling
                      :ability/zone :hand
                      :ability/cost {:discard-self true :pay-life 2}
                      :ability/effects [{:effect/type :draw :effect/amount 1}]

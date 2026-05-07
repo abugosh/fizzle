@@ -242,6 +242,7 @@ Every card must have a dedicated test file (`src/test/fizzle/cards/<card>_test.c
 - `cast-and-yield` — cast + resolve, captures post-resolve selection for spells that produce selections after resolution (e.g. ETB replacements); added in fizzle-y63h
 - `resolve-top` — resolve top stack item, returns `{:db}` or `{:db :selection}`
 - `confirm-selection` — confirm interactive selection, returns `{:db}` or chains to next selection
+- `auto-compute-mana-allocation` — compute allocation for mana-allocation selections (promoted to public in fizzle-0y27 for cycling tests with colorless costs)
 
 ### Spec chokepoint enforcement
 

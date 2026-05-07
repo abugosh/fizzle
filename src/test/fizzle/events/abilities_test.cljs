@@ -484,21 +484,7 @@
           "Mana ability on :battlefield (default zone) should be accepted"))))
 
 
-;; Test 18: cycling type is accepted in the check
-(deftest activate-ability-cycling-type-accepted
-  (testing "activate-ability checks for #{:activated :cycling} ability types"
-    ;; The type check in activate-ability function is:
-    ;; (#{:activated :cycling} (:ability/type ability))
-    ;; Verify the set contains both types
-    (is (contains? #{:activated :cycling} :cycling)
-        ":cycling should be in the accepted ability types set")
-    (is (contains? #{:activated :cycling} :activated)
-        ":activated should be in the accepted ability types set")
-    (is (not (contains? #{:activated :cycling} :mana))
-        ":mana should NOT be in the non-mana ability check")))
-
-
-;; Test 19: zone check guards activation
+;; Test 18: zone check guards activation
 (deftest activate-ability-zone-check-guards-activation
   (testing "zone check is part of the guard condition in activate-ability"
     ;; This is verified by existing tests (e.g., test-activate-ability-wrong-zone)
