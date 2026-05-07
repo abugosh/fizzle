@@ -111,24 +111,24 @@
 
 
 (defn- mana-button
-  [object-id {:keys [ability-ref color amount] :as spec} tapped?]
+  [object-id {:keys [ability-ref color amount] :as spec} tapped? player-id]
   (let [symbol (get mana-symbols color (name color))
         label (apply str (repeat amount symbol))]
     [:button {:class (mana-button-class spec tapped?)
               :disabled tapped?
               :on-click #(rf/dispatch [::ability-events/activate-mana-ability
-                                       object-id color nil ability-ref])}
+                                       object-id color player-id ability-ref])}
      label]))
 
 
 (defn- ability-button
-  [object-id ability-index label tapped?]
+  [object-id ability-index label tapped? player-id]
   [:button {:class (str "py-0.5 px-2 m-0.5 border border-border rounded text-[11px] font-bold "
                         (if tapped?
                           "cursor-default bg-surface-dim text-border"
                           "cursor-pointer bg-ability-bg text-ability-text"))
             :disabled tapped?
-            :on-click #(rf/dispatch [::ability-events/activate-ability object-id ability-index])}
+            :on-click #(rf/dispatch [::ability-events/activate-ability object-id ability-index player-id])}
    label])
 
 
@@ -144,7 +144,8 @@
 (defn- permanent-view
   "Render a permanent card. Set show-buttons? false for opponent cards."
   ([obj] (permanent-view obj true))
-  ([obj show-buttons?]
+  ([obj show-buttons?] (permanent-view obj show-buttons? nil))
+  ([obj show-buttons? player-id]
    (let [card-name (get-in obj [:object/card :card/name])
          object-id (:object/id obj)
          tapped? (:object/tapped obj)
@@ -193,7 +194,7 @@
         [:div {:class "flex justify-center flex-wrap"}
          (for [[i spec] (map-indexed vector mana-buttons)]
            ^{:key i}
-           [mana-button object-id spec tapped?])])
+           [mana-button object-id spec tapped? player-id])])
       (when (and show-buttons? (seq activated-abilities))
         [:div {:class "flex justify-center flex-wrap mt-1"}
          (for [[idx ability] activated-abilities]
@@ -204,7 +205,7 @@
                                desc))
                            "Activate")]
              ^{:key idx}
-             [ability-button object-id idx label tapped?]))])])))
+             [ability-button object-id idx label tapped? player-id]))])])))
 
 
 (defn- empty-row-placeholder
@@ -216,14 +217,15 @@
 
 (defn- permanent-row
   "Render a row of permanents or an empty placeholder."
-  [objects label show-buttons?]
-  (if (seq objects)
-    [:div {:class "flex flex-wrap mb-2"}
-     (for [obj objects]
-       ^{:key (:object/id obj)}
-       [permanent-view obj show-buttons?])]
-    [:div {:class "mb-2"}
-     [empty-row-placeholder label]]))
+  ([objects label show-buttons?] (permanent-row objects label show-buttons? nil))
+  ([objects label show-buttons? player-id]
+   (if (seq objects)
+     [:div {:class "flex flex-wrap mb-2"}
+      (for [obj objects]
+        ^{:key (:object/id obj)}
+        [permanent-view obj show-buttons? player-id])]
+     [:div {:class "mb-2"}
+      [empty-row-placeholder label]])))
 
 
 (defn- stop-dot
@@ -293,11 +295,11 @@
     [:div {:class "mb-4"}
      ;; Opponent battlefield (top 3 rows)
      [:div {:class "text-text-label mb-1.5 text-xs"} "OPPONENT BATTLEFIELD"]
-     [permanent-row (:lands opponent-bf) "Lands" false]
-     [permanent-row (:other opponent-bf) "Other" false]
-     [permanent-row (:creatures opponent-bf) "Creatures" false]
+     [permanent-row (:lands opponent-bf) "Lands" true :player-2]
+     [permanent-row (:other opponent-bf) "Other" true :player-2]
+     [permanent-row (:creatures opponent-bf) "Creatures" true :player-2]
      ;; Player battlefield (bottom 3 rows)
      [:div {:class "text-text-label mb-1.5 text-xs"} "YOUR BATTLEFIELD"]
-     [permanent-row (:creatures player-bf) "Creatures" true]
-     [permanent-row (:other player-bf) "Other" true]
-     [permanent-row (:lands player-bf) "Lands" true]]))
+     [permanent-row (:creatures player-bf) "Creatures" true nil]
+     [permanent-row (:other player-bf) "Other" true nil]
+     [permanent-row (:lands player-bf) "Lands" true nil]]))
