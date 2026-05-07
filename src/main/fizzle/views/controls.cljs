@@ -1,7 +1,7 @@
 (ns fizzle.views.controls
   (:require
+    [fizzle.events.abilities :as ability-events]
     [fizzle.events.casting :as casting-events]
-    [fizzle.events.cycling :as cycling-events]
     [fizzle.events.lands :as lands-events]
     [fizzle.events.priority-flow :as priority-flow-events]
     [fizzle.events.scenario :as scenario-events]
@@ -36,7 +36,7 @@
   ([inline-component]
    (let [can-cast? @(rf/subscribe [::subs/can-cast?])
          can-play-land? @(rf/subscribe [::subs/can-play-land?])
-         can-cycle? @(rf/subscribe [::subs/can-cycle?])
+         cycling-ability-index @(rf/subscribe [::subs/cycling-ability-index])
          selected @(rf/subscribe [::subs/selected-card])
          card-info @(rf/subscribe [::subs/selected-card-info])
          stack @(rf/subscribe [::subs/stack])
@@ -79,9 +79,9 @@
           play-yield-label
           (when-let [hint (kbd/hint-for-action :normal :cast-and-yield)]
             [:span {:class "ml-1.5 text-xs text-text-muted opacity-70"} (str "[" hint "]")])]
-         (when can-cycle?
+         (when (some? cycling-ability-index)
            [:button {:class (btn-class true)
-                     :on-click #(rf/dispatch [::cycling-events/cycle-card selected])}
+                     :on-click #(rf/dispatch [::ability-events/activate-ability selected cycling-ability-index])}
             (str "Cycle " (:name card-info))
             (when-let [hint (kbd/hint-for-action :normal :cycle)]
               [:span {:class "ml-1.5 text-xs text-text-muted opacity-70"} (str "[" hint "]")])])

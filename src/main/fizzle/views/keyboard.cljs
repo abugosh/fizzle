@@ -24,8 +24,8 @@
     [clojure.string]
     [fizzle.db.game-state :as game-state]
     [fizzle.engine.sorting :as sorting]
+    [fizzle.events.abilities :as ability-events]
     [fizzle.events.casting :as casting-events]
-    [fizzle.events.cycling :as cycling-events]
     [fizzle.events.lands :as lands-events]
     [fizzle.events.priority-flow :as priority-flow-events]
     [fizzle.events.selection :as selection-events]
@@ -294,17 +294,17 @@
   "Resolve an action keyword to a re-frame dispatch vector, or nil if guard fails.
 
    app-state-map must contain:
-     :selected-card    — currently selected card object-id (or nil)
-     :can-cast?        — boolean, whether selected card can be cast
-     :can-play-land?   — boolean, whether selected card can be played as land
-     :can-cycle?       — boolean, whether selected card can be cycled
-     :stack            — current stack items (seq or nil)
-     :pending-selection — current pending selection map (or nil)
-     :selection-cards  — vec of candidate objects for flat-targeting (or nil)
+     :selected-card          — currently selected card object-id (or nil)
+     :can-cast?              — boolean, whether selected card can be cast
+     :can-play-land?         — boolean, whether selected card can be played as land
+     :cycling-ability-index  — integer index of the cycling ability (or nil if cannot cycle)
+     :stack                  — current stack items (seq or nil)
+     :pending-selection      — current pending selection map (or nil)
+     :selection-cards        — vec of candidate objects for flat-targeting (or nil)
 
    Returns a dispatch vector [event-kw & args], a {:dispatch-n [...]} map for
    multi-dispatch, or nil if the guard fails."
-  [action {:keys [selected-card can-cast? can-play-land? can-cycle? pending-selection selection-cards]}]
+  [action {:keys [selected-card can-cast? can-play-land? cycling-ability-index pending-selection selection-cards]}]
   (case action
     :cast
     (cond
@@ -328,9 +328,8 @@
     [::history-events/pop-entry]
 
     :cycle
-    (if can-cycle?
-      [::cycling-events/cycle-card selected-card]
-      nil)
+    (when (some? cycling-ability-index)
+      [::ability-events/activate-ability selected-card cycling-ability-index])
 
     ;; binary-choice / pick-mode: dispatch toggle + confirm for the Nth choice
     :choose-1
@@ -562,11 +561,11 @@
   ;; Use atoms to hold current subscription values so the handler closure
   ;; always reads the latest state without re-subscribing on every keypress.
   (let [pending-selection-ref (atom @(rf/subscribe [::subs/pending-selection]))
-        app-state-ref         (atom {:selected-card  @(rf/subscribe [::subs/selected-card])
-                                     :can-cast?       @(rf/subscribe [::subs/can-cast?])
-                                     :can-play-land?  @(rf/subscribe [::subs/can-play-land?])
-                                     :can-cycle?      @(rf/subscribe [::subs/can-cycle?])
-                                     :stack           @(rf/subscribe [::subs/stack])})
+        app-state-ref         (atom {:selected-card         @(rf/subscribe [::subs/selected-card])
+                                     :can-cast?              @(rf/subscribe [::subs/can-cast?])
+                                     :can-play-land?         @(rf/subscribe [::subs/can-play-land?])
+                                     :cycling-ability-index  @(rf/subscribe [::subs/cycling-ability-index])
+                                     :stack                  @(rf/subscribe [::subs/stack])})
         selection-cards-ref   (atom @(rf/subscribe [::subs/selection-cards]))
         ;; Chord prefix: keyboard-local state (not in app-db). Holds first key of an
         ;; in-progress chord sequence (e.g. "1"), nil when no chord is active.
@@ -574,19 +573,19 @@
         ;; Watch subscriptions and keep atoms up to date
         pending-sel-sub       (rf/subscribe [::subs/pending-selection])
         selected-card-sub     (rf/subscribe [::subs/selected-card])
-        can-cast-sub          (rf/subscribe [::subs/can-cast?])
-        can-play-land-sub     (rf/subscribe [::subs/can-play-land?])
-        can-cycle-sub         (rf/subscribe [::subs/can-cycle?])
-        stack-sub             (rf/subscribe [::subs/stack])
-        selection-cards-sub   (rf/subscribe [::subs/selection-cards])
+        can-cast-sub              (rf/subscribe [::subs/can-cast?])
+        can-play-land-sub         (rf/subscribe [::subs/can-play-land?])
+        cycling-ability-index-sub (rf/subscribe [::subs/cycling-ability-index])
+        stack-sub                 (rf/subscribe [::subs/stack])
+        selection-cards-sub       (rf/subscribe [::subs/selection-cards])
         update-state!         (fn []
                                 (reset! pending-selection-ref @pending-sel-sub)
                                 (reset! app-state-ref
-                                        {:selected-card @selected-card-sub
-                                         :can-cast?      @can-cast-sub
-                                         :can-play-land? @can-play-land-sub
-                                         :can-cycle?     @can-cycle-sub
-                                         :stack          @stack-sub})
+                                        {:selected-card        @selected-card-sub
+                                         :can-cast?             @can-cast-sub
+                                         :can-play-land?        @can-play-land-sub
+                                         :cycling-ability-index @cycling-ability-index-sub
+                                         :stack                 @stack-sub})
                                 (reset! selection-cards-ref @selection-cards-sub))
         handler               (fn [event]
                                 (update-state!)

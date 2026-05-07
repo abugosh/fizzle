@@ -5,7 +5,6 @@
     [fizzle.events.calculator :as calc-events]
     [fizzle.events.casting]
     [fizzle.events.cleanup]
-    [fizzle.events.cycling]
     [fizzle.events.db-effect :as db-effect]
     [fizzle.events.init]
     [fizzle.events.lands]

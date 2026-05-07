@@ -266,30 +266,25 @@
       :else "Activate mana ability")))
 
 
-(defn describe-cycle-card
-  "Describe a cycle-card event. Uses pre-game-db to look up the card name."
-  [object-id pre-game-db]
-  (if-let [card-name (get-card-name pre-game-db object-id)]
-    (str "Cycle " card-name)
-    "Cycle"))
-
-
 (defn describe-activate-ability
   "Describe an activate-ability event. Event args contain [_ object-id ability-index player-id].
-   Uses pre-game-db because source may be sacrificed as cost."
+   Uses pre-game-db because source may be sacrificed as cost.
+   Cycling abilities produce 'Cycle <name>' for clarity."
   [object-id ability-index pre-game-db]
   (if-let [card-name (get-card-name pre-game-db object-id)]
     (let [obj (try (queries/get-object pre-game-db object-id)
                    (catch :default _ nil))
-          abilities (get-in obj [:object/card :card/abilities])]
-      (if (> (count abilities) 1)
-        ;; Multi-ability: show description for disambiguation
-        (let [ability (nth abilities ability-index nil)
-              desc (:ability/description ability)]
-          (if desc
-            (str "Activate " card-name ": " desc)
-            (str "Activate " card-name)))
-        (str "Activate " card-name)))
+          abilities (get-in obj [:object/card :card/abilities])
+          ability (nth abilities ability-index nil)]
+      (if (= :cycling (:ability/type ability))
+        (str "Cycle " card-name)
+        (if (> (count abilities) 1)
+          ;; Multi-ability: show description for disambiguation
+          (let [desc (:ability/description ability)]
+            (if desc
+              (str "Activate " card-name ": " desc)
+              (str "Activate " card-name)))
+          (str "Activate " card-name))))
     "Activate ability"))
 
 
@@ -346,11 +341,6 @@
 
      :fizzle.events.lands/play-land
      (describe-play-land (first _args) game-db-after)
-
-     :fizzle.events.cycling/cycle-card
-     (if-let [card-name (get-card-name pre-game-db (first _args))]
-       (str "Cycle " card-name)
-       "Cycle")
 
      :fizzle.events.abilities/activate-mana-ability
      (describe-activate-mana (first _args) (second _args) pre-game-db)

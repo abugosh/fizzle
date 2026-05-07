@@ -3,6 +3,7 @@
     [datascript.core :as d]
     [fizzle.db.game-state :as game-state]
     [fizzle.db.queries :as queries]
+    [fizzle.engine.abilities :as engine-abilities]
     [fizzle.engine.creatures :as creatures]
     [fizzle.engine.priority :as priority]
     [fizzle.engine.rules :as rules]
@@ -103,13 +104,22 @@
       (rules/can-play-land? game-db (queries/get-human-player-id game-db) selected))))
 
 
+;; Returns the index of the :cycling ability in the selected card's :card/abilities
+;; vector if that ability can currently be activated, otherwise nil.
+;; Used by controls and keyboard to dispatch ::activate-ability for cycling.
 (rf/reg-sub
-  ::can-cycle?
+  ::cycling-ability-index
   :<- [::game-db]
   :<- [::selected-card]
   (fn [[game-db selected] _]
     (when (and game-db selected)
-      (rules/can-cycle? game-db (queries/get-human-player-id game-db) selected))))
+      (let [obj (queries/get-object game-db selected)
+            abilities (get-in obj [:object/card :card/abilities])]
+        (first (keep-indexed (fn [i ab]
+                               (when (and (= :cycling (:ability/type ab))
+                                          (engine-abilities/can-activate? game-db selected ab))
+                                 i))
+                             abilities))))))
 
 
 (rf/reg-sub

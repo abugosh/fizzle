@@ -22,8 +22,23 @@
    Pattern mirrors history/interceptor.cljs."
   (:require
     [fizzle.db.queries :as queries]
+    [fizzle.engine.abilities :as abilities]
     [fizzle.engine.rules :as rules]
     [re-frame.core :as rf]))
+
+
+(defn- can-cycle-via-ability?
+  "True if the object has a :cycling ability that can currently be activated.
+   Replaces the standalone can-cycle? predicate after cycling migrated to the
+   ability pipeline."
+  [game-db object-id]
+  (let [obj (queries/get-object game-db object-id)
+        abilities (get-in obj [:object/card :card/abilities])]
+    (boolean
+      (some (fn [ab]
+              (and (= :cycling (:ability/type ab))
+                   (abilities/can-activate? game-db object-id ab)))
+            abilities))))
 
 
 (defn- still-actionable?
@@ -35,7 +50,7 @@
     (or (and (rules/can-cast? game-db pid object-id)
              (not (rules/land-card? game-db object-id)))
         (rules/can-play-land? game-db pid object-id)
-        (rules/can-cycle? game-db pid object-id))))
+        (can-cycle-via-ability? game-db object-id))))
 
 
 (defn- reconcile-selected-card
@@ -43,7 +58,7 @@
    is no longer eligible for any user action. No-op if:
    - :game/selected-card is unset
    - :game/db is nil (non-game screens like setup/calculator)
-   - card is still actionable (can-cast?, can-play-land?, or can-cycle?)"
+   - card is still actionable (can-cast?, can-play-land?, or can-cycle-via-ability?)"
   [app-db]
   (let [object-id (:game/selected-card app-db)
         game-db   (:game/db app-db)]

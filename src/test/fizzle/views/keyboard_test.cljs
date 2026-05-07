@@ -9,8 +9,8 @@
      - normalize-key (via js mock event objects)"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
+    [fizzle.events.abilities :as ability-events]
     [fizzle.events.casting :as casting-events]
-    [fizzle.events.cycling :as cycling-events]
     [fizzle.events.lands :as lands-events]
     [fizzle.events.priority-flow :as priority-flow-events]
     [fizzle.events.selection :as selection-events]
@@ -237,12 +237,12 @@
 ;; D. Action dispatch guards
 
 (def ^:private base-state
-  {:selected-card   :card-1
-   :can-cast?       false
-   :can-play-land?  false
-   :can-cycle?      false
-   :stack           []
-   :pending-selection nil})
+  {:selected-card          :card-1
+   :can-cast?              false
+   :can-play-land?         false
+   :cycling-ability-index  nil
+   :stack                  []
+   :pending-selection      nil})
 
 
 (deftest action-dispatch-cast-nil-when-no-play-test
@@ -305,15 +305,15 @@
 
 
 (deftest action-dispatch-cycle-nil-when-cannot-cycle-test
-  (testing ":cycle returns nil when can-cycle? is false"
+  (testing ":cycle returns nil when cycling-ability-index is nil"
     (is (nil? (kb/action-dispatch :cycle base-state)))))
 
 
-(deftest action-dispatch-cycle-returns-cycle-card-when-can-cycle-test
-  (testing ":cycle returns cycle-card vector when can-cycle? is true"
-    (let [state (assoc base-state :can-cycle? true)
+(deftest action-dispatch-cycle-returns-activate-ability-when-cycling-index-present-test
+  (testing ":cycle returns activate-ability vector when cycling-ability-index is set"
+    (let [state (assoc base-state :cycling-ability-index 1)
           result (kb/action-dispatch :cycle state)]
-      (is (= [::cycling-events/cycle-card :card-1] result)))))
+      (is (= [::ability-events/activate-ability :card-1 1] result)))))
 
 
 (deftest action-dispatch-choose-1-binary-choice-action-mode-test
