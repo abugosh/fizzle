@@ -19,6 +19,7 @@
 (rf/reg-sub ::stack-collapsed (fn [db _] (:ui/stack-collapsed db)))
 (rf/reg-sub ::gy-collapsed (fn [db _] (:ui/gy-collapsed db)))
 (rf/reg-sub ::history-collapsed (fn [db _] (:ui/history-collapsed db)))
+(rf/reg-sub ::timer-start-ms (fn [db _] (:timer/start-ms db)))
 
 
 (rf/reg-sub

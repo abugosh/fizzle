@@ -129,7 +129,8 @@
 (rf/reg-event-db
   ::keep
   (fn [db _]
-    (keep-handler db)))
+    (-> (keep-handler db)
+        (assoc :timer/start-ms (js/Date.now)))))
 
 
 (rf/reg-event-db
@@ -141,4 +142,5 @@
 (rf/reg-event-db
   ::confirm-bottom
   (fn [db _]
-    (confirm-bottom-handler db)))
+    (-> (confirm-bottom-handler db)
+        (assoc :timer/start-ms (js/Date.now)))))

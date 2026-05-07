@@ -194,7 +194,8 @@
      :history/main          []
      :history/forks         {}
      :history/current-branch nil
-     :history/position      -1}))
+     :history/position      -1
+     :timer/start-ms        (js/Date.now)}))
 
 
 ;; === Extract current position from game state ===

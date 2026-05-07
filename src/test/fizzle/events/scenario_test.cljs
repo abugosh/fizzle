@@ -235,3 +235,21 @@
           result (scenario/set-random-draw-handler db-with-value [nil {:side :player :count nil}])]
       (is (nil? (get-in result [:scenario/editing :scenario/player :random-draw]))
           "random-draw should be removed when count is nil"))))
+
+
+;; === init-from-scenario ===
+
+(deftest test-init-from-scenario-returns-game-db
+  (testing "init-from-scenario returns a map with :game/db"
+    (let [result (scenario/init-from-scenario sample-scenario)]
+      (is (some? (:game/db result))
+          ":game/db should be present"))))
+
+
+(deftest test-init-from-scenario-includes-timer-start-ms
+  (testing "init-from-scenario includes :timer/start-ms in return map"
+    (let [result (scenario/init-from-scenario sample-scenario)]
+      (is (number? (:timer/start-ms result))
+          ":timer/start-ms should be a number")
+      (is (> (:timer/start-ms result) 0)
+          ":timer/start-ms should be positive"))))

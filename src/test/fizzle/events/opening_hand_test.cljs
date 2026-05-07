@@ -196,6 +196,15 @@
           "bottom-selection should be cleared"))))
 
 
+(deftest test-keep-preserves-timer-start-ms
+  (testing "keep preserves :timer/start-ms if already set"
+    (let [app-db (-> (create-opening-hand-app-db)
+                     (assoc :timer/start-ms 1000))
+          result (opening-hand/keep-handler app-db)]
+      (is (= 1000 (:timer/start-ms result))
+          ":timer/start-ms should be preserved"))))
+
+
 ;; === Toggle bottom selection tests ===
 
 (defn create-bottoming-app-db
@@ -320,3 +329,15 @@
           "Bottomed card should have a position")
       (is (> bottomed-pos max-other-pos)
           "Bottomed card position should be greater than all other library cards"))))
+
+
+(deftest test-confirm-bottom-preserves-timer-start-ms
+  (testing "confirm-bottom preserves :timer/start-ms if already set"
+    (let [app-db (-> (create-bottoming-app-db)
+                     (assoc :timer/start-ms 2000))
+          hand (hand-objects app-db)
+          obj-id (:object/id (first hand))
+          with-selected (assoc app-db :opening-hand/bottom-selection #{obj-id})
+          result (opening-hand/confirm-bottom-handler with-selected)]
+      (is (= 2000 (:timer/start-ms result))
+          ":timer/start-ms should be preserved"))))
