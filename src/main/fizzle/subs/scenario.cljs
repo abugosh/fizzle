@@ -234,3 +234,17 @@
   ::save-modal-title
   (fn [db _]
     (:scenario/save-modal-title db)))
+
+
+;; === Random draw subscriptions ===
+
+(rf/reg-sub
+  ::player-random-draw
+  :<- [::editing-player]
+  (fn [player _] (:random-draw player)))
+
+
+(rf/reg-sub
+  ::opponent-random-draw
+  :<- [::editing-opponent]
+  (fn [opponent _] (:random-draw opponent)))

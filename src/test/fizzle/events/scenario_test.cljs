@@ -170,3 +170,43 @@
     (.setItem js/localStorage "fizzle-scenarios" "{{{{{{{{{")
     (is (= {} (storage/load-scenarios))
         "corrupted data should return empty map, not crash")))
+
+
+;; === ::set-random-draw ===
+
+(deftest test-set-random-draw-stores-positive-count-for-player
+  (testing "set-random-draw stores positive count at :scenario/editing/:scenario/player/:random-draw"
+    (let [db (scenario/set-editing-handler empty-db [nil sample-scenario])
+          result (scenario/set-random-draw-handler db [nil {:side :player :count 5}])]
+      (is (= 5 (get-in result [:scenario/editing :scenario/player :random-draw]))
+          "player random-draw should be stored with positive count"))))
+
+
+(deftest test-set-random-draw-stores-positive-count-for-opponent
+  (testing "set-random-draw stores positive count for opponent side"
+    (let [db (scenario/set-editing-handler empty-db [nil sample-scenario])
+          result (scenario/set-random-draw-handler db [nil {:side :opponent :count 3}])]
+      (is (= 3 (get-in result [:scenario/editing :scenario/opponent :random-draw]))
+          "opponent random-draw should be stored with positive count"))))
+
+
+(deftest test-set-random-draw-with-zero-dissocs-key
+  (testing "set-random-draw with 0 dissocs the :random-draw key"
+    (let [db (scenario/set-editing-handler empty-db [nil sample-scenario])
+          ;; First set a random-draw value
+          db-with-value (scenario/set-random-draw-handler db [nil {:side :player :count 5}])
+          ;; Then clear it with 0
+          result (scenario/set-random-draw-handler db-with-value [nil {:side :player :count 0}])]
+      (is (nil? (get-in result [:scenario/editing :scenario/player :random-draw]))
+          "random-draw should be removed when count is 0"))))
+
+
+(deftest test-set-random-draw-with-nil-dissocs-key
+  (testing "set-random-draw with nil dissocs the :random-draw key"
+    (let [db (scenario/set-editing-handler empty-db [nil sample-scenario])
+          ;; First set a random-draw value
+          db-with-value (scenario/set-random-draw-handler db [nil {:side :player :count 5}])
+          ;; Then clear it with nil
+          result (scenario/set-random-draw-handler db-with-value [nil {:side :player :count nil}])]
+      (is (nil? (get-in result [:scenario/editing :scenario/player :random-draw]))
+          "random-draw should be removed when count is nil"))))

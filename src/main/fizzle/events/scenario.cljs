@@ -738,6 +738,16 @@
   (assoc-in db [:scenario/editing :scenario/phase] phase))
 
 
+(defn set-random-draw-handler
+  "Set random draw count for a player side.
+   {:side :player/:opponent :count int}"
+  [db [_ {:keys [side count]}]]
+  (let [sk (side-key side)]
+    (if (and count (pos? count))
+      (assoc-in db [:scenario/editing sk :random-draw] count)
+      (update-in db [:scenario/editing sk] dissoc :random-draw))))
+
+
 ;; === re-frame event registrations for game state config ===
 
 (rf/reg-event-db
@@ -758,6 +768,11 @@
 (rf/reg-event-db
   ::set-phase
   set-phase-handler)
+
+
+(rf/reg-event-db
+  ::set-random-draw
+  set-random-draw-handler)
 
 
 ;; === Save from game handlers ===
