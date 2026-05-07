@@ -58,6 +58,31 @@
           "scenario should be stored under its id"))))
 
 
+(deftest test-save-assigns-id-when-missing
+  (testing "save assigns a UUID when scenario has no :scenario/id (fizzle-1r9y)"
+    (let [no-id-scenario (dissoc sample-scenario :scenario/id)
+          result (scenario/save-handler empty-db [nil no-id-scenario])
+          library (:scenario/library result)
+          ids (keys library)]
+      (is (= 1 (count ids))
+          "should have exactly one entry")
+      (is (uuid? (first ids))
+          "key should be a UUID (not nil)"))))
+
+
+(deftest test-save-two-scenarios-without-ids-creates-two-entries
+  (testing "saving two scenarios without IDs creates distinct entries (fizzle-1r9y)"
+    (let [scenario-a (-> sample-scenario (dissoc :scenario/id) (assoc :scenario/title "A"))
+          scenario-b (-> sample-scenario (dissoc :scenario/id) (assoc :scenario/title "B"))
+          db1 (scenario/save-handler empty-db [nil scenario-a])
+          db2 (scenario/save-handler db1 [nil scenario-b])
+          library (:scenario/library db2)]
+      (is (= 2 (count library))
+          "library should have two distinct entries")
+      (is (= #{"A" "B"} (set (map :scenario/title (vals library))))
+          "both scenario titles should be present"))))
+
+
 (deftest test-save-overwrites-existing-scenario
   (testing "save replaces an existing scenario with the same id"
     (let [db (scenario/save-handler empty-db [nil sample-scenario])

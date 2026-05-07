@@ -347,10 +347,12 @@
 
 
 (defn save-handler
-  "Upsert scenario into :scenario/library. Uses :scenario/id as the key."
+  "Upsert scenario into :scenario/library. Uses :scenario/id as the key.
+   Assigns a fresh UUID when :scenario/id is missing."
   [db [_ scenario]]
-  (let [id (:scenario/id scenario)]
-    (assoc-in db [:scenario/library id] scenario)))
+  (let [id (or (:scenario/id scenario) (random-uuid))
+        scenario' (assoc scenario :scenario/id id)]
+    (assoc-in db [:scenario/library id] scenario')))
 
 
 (defn delete-handler

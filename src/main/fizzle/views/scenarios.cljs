@@ -170,8 +170,9 @@
 
 
 (defn- zone-column
-  "Display one zone (hand/graveyard/battlefield) with its cards."
-  [zone cards side]
+  "Display one zone (hand/graveyard/battlefield) with its cards.
+   extra-content is an optional hiccup form appended after the card list."
+  [zone cards side & [extra-content]]
   [:div {:class "flex-1 min-w-0"}
    [:div {:class "text-xs font-semibold uppercase text-text-label mb-1"}
     (str (get zone-labels zone) " (" (count cards) ")")]
@@ -183,7 +184,8 @@
           (fn [i card-id]
             ^{:key (str zone "-" i)}
             [zone-card-pill card-id zone side])
-          cards))])])
+          cards))])
+   (when extra-content extra-content)])
 
 
 (defn- pool-pill
@@ -293,20 +295,19 @@
                   (fn [id] (reset! selected-id id))])))]
           ;; Right: zone columns
           [:div {:class "flex-1 flex gap-2"}
-           (for [zone [:hand :graveyard :battlefield]]
-             ^{:key zone}
-             [zone-column zone (get zones zone []) side])]]
-         ;; Random draw input
-         [:div {:class "mt-2 flex items-center gap-2"}
-          [:label {:class "text-xs font-semibold text-text-label"} "Random cards to hand:"]
-          [:input {:type "number"
-                   :class "bg-surface-raised border border-border rounded px-2 py-1 text-xs text-text w-16"
-                   :min 0
-                   :value (or @(rf/subscribe [random-draw-sub]) 0)
-                   :on-change #(let [val (js/parseInt (.. % -target -value))]
-                                 (when (not (js/isNaN val))
-                                   (rf/dispatch [::scenario-events/set-random-draw
-                                                 {:side side :count (max 0 val)}])))}]]]))))
+           [zone-column :hand (get zones :hand []) side
+            [:div {:class "mt-2 flex items-center gap-1"}
+             [:label {:class "text-xs font-semibold text-text-label"} "Random:"]
+             [:input {:type "number"
+                      :class "bg-surface-raised border border-border rounded px-1 py-0.5 text-xs text-text w-12"
+                      :min 0
+                      :value (or @(rf/subscribe [random-draw-sub]) 0)
+                      :on-change #(let [val (js/parseInt (.. % -target -value))]
+                                    (when (not (js/isNaN val))
+                                      (rf/dispatch [::scenario-events/set-random-draw
+                                                    {:side side :count (max 0 val)}])))}]]]
+           [zone-column :graveyard (get zones :graveyard []) side]
+           [zone-column :battlefield (get zones :battlefield []) side]]]]))))
 
 
 ;; === Player side ===
