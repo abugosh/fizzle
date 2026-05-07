@@ -26,6 +26,7 @@
     [fizzle.cards.black.infernal-contract :as infernal-contract]
     [fizzle.cards.black.necrologia :as necrologia]
     [fizzle.cards.black.rain-of-filth :as rain-of-filth]
+    [fizzle.cards.black.street-wraith :as street-wraith]
     [fizzle.cards.black.vendetta :as vendetta]
     [fizzle.cards.blue.accumulated-knowledge :as accumulated-knowledge]
     [fizzle.cards.blue.annul :as annul]
@@ -176,7 +177,8 @@
        vendetta/card
        vision-charm/card
        infernal-contract/card
-       hoodwink/card]
+       hoodwink/card
+       street-wraith/card]
       ;; Cycle cards
       artifact-lands/cards
       basic-lands/cards
