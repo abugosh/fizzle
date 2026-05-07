@@ -5,8 +5,9 @@
    - share-position handler: extracts, encodes, produces clipboard call
    - restore-from-hash handler: decodes hash, restores game state
    - share-status subscription: tracks idle/copied/error state
-   - scenario->url: encodes scenario to shareable URL with title param
-   - restore-from-hash-handler with &t= title param"
+   - scenario->url: encodes scenario config to shareable #sc= URL with title param
+   - restore-from-hash-handler with &t= title param
+   - parse-scenario-url: handles #sc= and #s= prefixes"
   (:require
     [cljs.test :refer-macros [deftest testing is]]
     [clojure.string :as str]
@@ -31,10 +32,10 @@
 
 
 ;; ---------------------------------------------------------------------------
-;; A. restore-from-hash handler (pure function tests)
+;; A. restore-from-hash handler (pure function tests) — #s= position snapshots
 
 (deftest restore-from-hash-valid-test
-  (testing "restore-from-hash-handler replaces game state from valid hash"
+  (testing "restore-from-hash-handler replaces game state from valid #s= hash"
     (let [db       (-> (th/create-test-db {:life 13}) (th/add-opponent))
           [db' _]  (th/add-card-to-zone db :dark-ritual :hand :player-1)
           encoded  (-> db' extractor/extract encoder/encode-snapshot)
@@ -60,7 +61,7 @@
 
 
 (deftest restore-from-hash-returns-nil-on-wrong-prefix-test
-  (testing "restore-from-hash-handler returns nil when prefix is not #s="
+  (testing "restore-from-hash-handler returns nil when prefix is not recognized"
     (let [db       (-> (th/create-test-db) (th/add-opponent))
           encoded  (-> db extractor/extract encoder/encode-snapshot)
           result   (snap-events/restore-from-hash-handler (str "#x=" encoded))]
@@ -137,10 +138,10 @@
 
 
 ;; ---------------------------------------------------------------------------
-;; D. scenario->url: URL generation with title
+;; D. scenario->url: URL generation with #sc= format
 
-(deftest scenario->url-includes-snapshot-test
-  (testing "scenario->url produces URL with #s= fragment"
+(deftest scenario->url-includes-sc-fragment-test
+  (testing "scenario->url produces URL with #sc= fragment (not #s=)"
     (let [scenario {:scenario/title  "Test Combo"
                     :scenario/player {:deck      [{:card/id :dark-ritual :count 4}]
                                       :zones     {}
@@ -154,12 +155,34 @@
                     :scenario/phase  :main1}
           url (snap-events/scenario->url scenario "https://example.com/")]
       (is (string? url) "scenario->url should return a string")
-      (is (str/includes? url "#s=") "URL should contain #s= fragment")
+      (is (str/starts-with? (second (str/split url #"#")) "sc=")
+          "URL fragment should start with sc=")
       (is (str/includes? url "&t=") "URL should contain &t= fragment for title"))))
 
 
+(deftest scenario->url-does-not-include-s-prefix-test
+  (testing "scenario->url uses #sc= not #s= (scenario config, not position snapshot)"
+    (let [scenario {:scenario/title  "Storm Practice"
+                    :scenario/player {:deck      [{:card/id :dark-ritual :count 4}]
+                                      :zones     {}
+                                      :mana-pool {}
+                                      :life      20}
+                    :scenario/opponent {:archetype :goldfish
+                                        :deck      [{:card/id :swamp :count 40}]
+                                        :zones     {}
+                                        :mana-pool {}
+                                        :life      20}
+                    :scenario/phase  :main1}
+          url (snap-events/scenario->url scenario "https://example.com/")]
+      (is (string? url) "should return string")
+      (is (str/includes? url "#sc=")
+          "URL should use #sc= prefix")
+      (is (not (str/includes? url "#s="))
+          "URL should NOT use legacy #s= prefix"))))
+
+
 (deftest scenario->url-encodes-title-test
-  (testing "scenario->url base64url-encodes the title in &t= param"
+  (testing "scenario->url percent-encodes the title in &t= param"
     (let [scenario {:scenario/title  "Storm Practice"
                     :scenario/player {:deck      [{:card/id :dark-ritual :count 4}]
                                       :zones     {}
@@ -221,10 +244,61 @@
 
 
 ;; ---------------------------------------------------------------------------
-;; E. restore-from-hash-handler with &t= title param
+;; D2. scenario->url roundtrip and random-draw tests
+
+(def ^:private base-scenario
+  {:scenario/player   {:deck      [{:card/id :dark-ritual :count 4}]
+                       :zones     {}
+                       :mana-pool {}
+                       :life      20}
+   :scenario/opponent {:archetype :goldfish
+                       :deck      [{:card/id :swamp :count 40}]
+                       :zones     {}
+                       :mana-pool {}
+                       :life      20}
+   :scenario/phase    :main1})
+
+
+(deftest scenario->url-roundtrip-config-test
+  (testing "scenario config survives scenario->url → parse → decode round-trip"
+    (let [scenario (assoc base-scenario :scenario/title "Roundtrip")
+          url      (snap-events/scenario->url scenario "https://example.com/")
+          parsed   (snap-events/parse-scenario-url (str "#" (second (str/split url #"#"))))
+          decoded  (snap-events/decode-scenario-config (:encoded parsed))]
+      (is (= :scenario-config (:type parsed))
+          "parsed type should be :scenario-config")
+      (is (map? decoded)
+          "decoded result should be a map")
+      ;; :scenario/id is dissoc'd before encoding
+      (is (= (dissoc scenario :scenario/id) decoded)
+          "decoded config should match original scenario minus :scenario/id"))))
+
+
+(deftest scenario->url-with-random-draw-produces-sc-url-test
+  (testing "scenario->url with :random-draw produces valid #sc= URL"
+    (let [scenario (assoc base-scenario :scenario/draw :random-draw)
+          url      (snap-events/scenario->url scenario "https://example.com/")]
+      (is (string? url) "should return a string")
+      (is (str/includes? url "#sc=")
+          "URL should use #sc= prefix for random-draw scenario"))))
+
+
+(deftest scenario->url-title-preserved-in-roundtrip-test
+  (testing "title is preserved through #sc= encode/decode round-trip"
+    (let [scenario (assoc base-scenario :scenario/title "My Combo Practice")
+          url      (snap-events/scenario->url scenario "https://example.com/")
+          ;; Extract just the hash portion
+          hash     (str "#" (second (str/split url #"#")))
+          parsed   (snap-events/parse-scenario-url hash)]
+      (is (= "My Combo Practice" (:title parsed))
+          "title should survive the round-trip through URL encoding"))))
+
+
+;; ---------------------------------------------------------------------------
+;; E. restore-from-hash-handler with &t= title param — #s= snapshot format
 
 (deftest restore-from-hash-with-title-restores-game-test
-  (testing "restore-from-hash-handler with &t= param restores game state correctly"
+  (testing "restore-from-hash-handler with #s= &t= param restores game state correctly"
     (let [db       (-> (th/create-test-db {:life 15}) (th/add-opponent))
           [db' _]  (th/add-card-to-zone db :dark-ritual :hand :player-1)
           encoded  (-> db' extractor/extract encoder/encode-snapshot)
@@ -237,7 +311,7 @@
 
 
 (deftest restore-from-hash-backward-compat-no-title-test
-  (testing "restore-from-hash-handler with no &t= still works (backward compat)"
+  (testing "restore-from-hash-handler with #s= and no &t= still works (backward compat)"
     (let [db       (-> (th/create-test-db {:life 18}) (th/add-opponent))
           encoded  (-> db extractor/extract encoder/encode-snapshot)
           hash     (str "#s=" encoded)
@@ -258,31 +332,109 @@
 
 
 ;; ---------------------------------------------------------------------------
+;; E2. restore-from-hash-handler with #sc= scenario config format
+
+(deftest restore-from-hash-sc-prefix-produces-game-test
+  (testing "restore-from-hash-handler with #sc= URL produces valid game state"
+    (let [scenario (assoc base-scenario :scenario/title "SC Restore Test")
+          url      (snap-events/scenario->url scenario "https://example.com/")
+          hash     (str "#" (second (str/split url #"#")))
+          result   (snap-events/restore-from-hash-handler hash)]
+      (is (some? result)
+          "should produce a game state from #sc= URL")
+      (is (some? (:game/db result))
+          "game/db should be present after restore"))))
+
+
+(deftest restore-from-hash-sc-with-random-draw-produces-hand-test
+  (testing "restore-from-hash-handler with #sc= and :random-draw produces hand cards"
+    (let [scenario (-> base-scenario
+                       (assoc :scenario/draw :random-draw))
+          url      (snap-events/scenario->url scenario "https://example.com/")
+          hash     (str "#" (second (str/split url #"#")))
+          result   (snap-events/restore-from-hash-handler hash)]
+      (is (some? result)
+          "should produce a game state from #sc= :random-draw URL")
+      (is (some? (:game/db result))
+          "game/db should be present"))))
+
+
+(deftest restore-from-hash-sc-title-preserved-test
+  (testing "restore-from-hash-handler with #sc= preserves title in restored app-db"
+    (let [scenario (assoc base-scenario :scenario/title "Title Round-Trip")
+          url      (snap-events/scenario->url scenario "https://example.com/")
+          hash     (str "#" (second (str/split url #"#")))
+          result   (snap-events/restore-from-hash-handler hash)]
+      (is (= "Title Round-Trip" (:snapshot/restored-title result))
+          "restored title should match original scenario title"))))
+
+
+;; ---------------------------------------------------------------------------
 ;; F. parse-scenario-url: pure parsing helper
 
-(deftest parse-url-extracts-snapshot-and-title-test
-  (testing "parse-scenario-url extracts both encoded snapshot and title"
+(deftest parse-url-sc-extracts-encoded-and-title-test
+  (testing "parse-scenario-url extracts :encoded and :title for #sc= URLs"
+    (let [scenario (assoc base-scenario :scenario/title "Round-trip Title")
+          url      (snap-events/scenario->url scenario "https://example.com/")
+          hash     (str "#" (second (str/split url #"#")))
+          parsed   (snap-events/parse-scenario-url hash)]
+      (is (= :scenario-config (:type parsed))
+          "parsed :type should be :scenario-config")
+      (is (string? (:encoded parsed))
+          "parsed :encoded should be a string")
+      (is (= "Round-trip Title" (:title parsed))
+          "parsed :title should match original title"))))
+
+
+(deftest parse-url-sc-no-title-returns-nil-title-test
+  (testing "parse-scenario-url returns nil :title when &t= absent for #sc= URLs"
+    (let [scenario base-scenario
+          url      (snap-events/scenario->url scenario "https://example.com/")
+          hash     (str "#" (second (str/split url #"#")))
+          parsed   (snap-events/parse-scenario-url hash)]
+      (is (= :scenario-config (:type parsed))
+          "parsed :type should be :scenario-config")
+      (is (nil? (:title parsed))
+          "parsed :title should be nil when &t= absent"))))
+
+
+(deftest parse-url-s-prefix-returns-snapshot-type-test
+  (testing "parse-scenario-url returns {:type :snapshot ...} for #s= URLs"
     (let [db       (-> (th/create-test-db) (th/add-opponent))
           encoded  (-> db extractor/extract encoder/encode-snapshot)
-          title    "Round-trip Title"
+          title    "Snapshot Title"
           hash     (str "#s=" encoded "&t=" (js/encodeURIComponent title))
           parsed   (snap-events/parse-scenario-url hash)]
+      (is (= :snapshot (:type parsed))
+          "parsed :type should be :snapshot for #s= URL")
       (is (= encoded (:snapshot parsed))
           "parsed :snapshot should match encoded string")
       (is (= title (:title parsed))
           "parsed :title should match original title"))))
 
 
-(deftest parse-url-no-title-returns-nil-title-test
-  (testing "parse-scenario-url returns nil :title when &t= absent"
+(deftest parse-url-s-prefix-no-title-test
+  (testing "parse-scenario-url returns nil :title when &t= absent for #s= URLs"
     (let [db       (-> (th/create-test-db) (th/add-opponent))
           encoded  (-> db extractor/extract encoder/encode-snapshot)
           hash     (str "#s=" encoded)
           parsed   (snap-events/parse-scenario-url hash)]
+      (is (= :snapshot (:type parsed))
+          "parsed :type should be :snapshot")
       (is (= encoded (:snapshot parsed))
           "parsed :snapshot should match encoded string")
       (is (nil? (:title parsed))
           "parsed :title should be nil when &t= absent"))))
+
+
+(deftest parse-url-unknown-prefix-returns-nil-test
+  (testing "parse-scenario-url returns nil for unknown prefix"
+    (is (nil? (snap-events/parse-scenario-url "#x=foo"))
+        "should return nil for unknown prefix")
+    (is (nil? (snap-events/parse-scenario-url ""))
+        "should return nil for empty string")
+    (is (nil? (snap-events/parse-scenario-url nil))
+        "should return nil for nil input")))
 
 
 ;; ---------------------------------------------------------------------------

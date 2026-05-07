@@ -8,13 +8,16 @@
    Restore flow (called from core.cljs init):
      ::restore-from-hash → decode URL hash → restore game state → merge into app-db
 
-   Scenario URL format: #s=<base64url-snapshot>&t=<percent-encoded-title>
+   Scenario URL format: #sc=<base64url-edn-config>&t=<percent-encoded-title>
+     - #sc= prefix encodes EDN scenario config directly (fresh random draw on restore)
+     - #s= prefix encodes a full game-state snapshot (position share, exact state)
      - &t= is optional; absent when no title
      - title is encoded via js/encodeURIComponent for safe embedding
 
    Subscription:
      ::share-status → :idle | :copied | :error-too-large | :error-clipboard"
   (:require
+    [cljs.reader :as reader]
     [clojure.string :as str]
     [fizzle.events.scenario :as scenario-events]
     [fizzle.sharing.decoder :as decoder]
@@ -59,61 +62,98 @@
 
 
 (defn scenario->url
-  "Generate a shareable URL for a scenario map.
-   Returns a URL string of the form:
-     <base-url>#s=<encoded-snapshot>[&t=<percent-encoded-title>]
+  "Generate a shareable URL for a scenario config.
+   Encodes the scenario config as EDN (not a resolved game state) so that
+   restoring produces a fresh game with new random draws.
 
-   Returns nil if the game state cannot be encoded (e.g. state too large).
+   Returns a URL string of the form:
+     <base-url>#sc=<base64-edn-config>[&t=<percent-encoded-title>]
+
+   Returns nil on encoding failure.
 
    The title param is included only when :scenario/title is a non-blank string.
    Title is encoded via js/encodeURIComponent so all special chars (&, #, etc.)
    are safe in the URL hash."
   [scenario base-url]
-  (let [game-state  (scenario-events/init-from-scenario scenario)
-        game-db     (:game/db game-state)
-        app-db      {:game/db game-db}
-        url         (encode-for-share app-db base-url)]
-    (when url
-      (let [title (:scenario/title scenario)]
-        (if (and (string? title) (not (str/blank? title)))
-          (str url "&t=" (js/encodeURIComponent title))
-          url)))))
+  (try
+    (let [config  (dissoc scenario :scenario/id)
+          encoded (-> (pr-str config)
+                      js/encodeURIComponent
+                      js/unescape
+                      js/btoa)
+          url     (str base-url "#sc=" encoded)
+          title   (:scenario/title scenario)]
+      (if (and (string? title) (not (str/blank? title)))
+        (str url "&t=" (js/encodeURIComponent title))
+        url))
+    (catch :default _ nil)))
+
+
+(defn decode-scenario-config
+  "Decode a base64url-encoded scenario config string back to a Clojure map.
+   Returns nil on any decode/parse failure."
+  [encoded]
+  (try
+    (let [edn-str (-> encoded
+                      js/atob
+                      js/escape
+                      js/decodeURIComponent)]
+      (reader/read-string edn-str))
+    (catch :default _ nil)))
+
+
+(defn- parse-title-param
+  "Extract decoded title from param string like 't=My+Title', or nil."
+  [param]
+  (when (str/starts-with? param "t=")
+    (try
+      (js/decodeURIComponent (subs param 2))
+      (catch :default _ nil))))
 
 
 (defn parse-scenario-url
   "Pure function: parse a URL hash string into its component parts.
-   Returns a map with :snapshot (base64url string) and :title (string or nil).
 
-   Handles both formats:
-     #s=<encoded>              → {:snapshot <encoded> :title nil}
-     #s=<encoded>&t=<title>    → {:snapshot <encoded> :title <decoded-title>}
+   Handles two formats:
+     #sc=<encoded>              → {:type :scenario-config :encoded <encoded> :title nil}
+     #sc=<encoded>&t=<title>    → {:type :scenario-config :encoded <encoded> :title <decoded-title>}
+     #s=<encoded>               → {:type :snapshot :snapshot <encoded> :title nil}
+     #s=<encoded>&t=<title>     → {:type :snapshot :snapshot <encoded> :title <decoded-title>}
 
-   Returns nil if hash does not start with #s=."
+   Returns nil if hash does not start with a recognized prefix."
   [hash-str]
-  (when (and (string? hash-str)
-             (str/starts-with? hash-str hash-prefix))
-    (let [after-prefix (subs hash-str (count hash-prefix))
-          ;; Split on & to separate snapshot from title param
-          parts        (str/split after-prefix #"&" 2)
-          snapshot     (first parts)
-          title        (when (= 2 (count parts))
-                         (let [param (second parts)]
-                           (when (str/starts-with? param "t=")
-                             (try
-                               (js/decodeURIComponent (subs param 2))
-                               (catch :default _
-                                 nil)))))]
-      {:snapshot snapshot
-       :title    title})))
+  (when (string? hash-str)
+    (cond
+      (str/starts-with? hash-str "#sc=")
+      (let [after-prefix (subs hash-str 4)
+            parts        (str/split after-prefix #"&" 2)
+            encoded      (first parts)
+            title        (when (= 2 (count parts))
+                           (parse-title-param (second parts)))]
+        {:type    :scenario-config
+         :encoded encoded
+         :title   title})
+
+      (str/starts-with? hash-str hash-prefix)
+      (let [after-prefix (subs hash-str (count hash-prefix))
+            parts        (str/split after-prefix #"&" 2)
+            snapshot     (first parts)
+            title        (when (= 2 (count parts))
+                           (parse-title-param (second parts)))]
+        {:type     :snapshot
+         :snapshot snapshot
+         :title    title})
+
+      :else nil)))
 
 
 (defn restore-from-hash-handler
   "Pure function: restore game state from a URL hash string.
    Returns app-db map or nil if hash is absent/invalid/malformed.
 
-   Handles both URL formats:
-     #s=<base64url-encoded-snapshot>              (legacy / backward-compat)
-     #s=<base64url-encoded-snapshot>&t=<title>    (scenario URL with title)
+   Handles two URL formats:
+     #sc=<base64-edn-config>[&t=<title>]   — scenario config (fresh random draw)
+     #s=<base64url-encoded-snapshot>[&t=<title>]  — position share (exact state)
 
    When &t= param is present, the restored app-db includes
    :snapshot/restored-title with the decoded title string.
@@ -121,13 +161,21 @@
    Returns nil for caller to fall back to normal init."
   [hash-str]
   (when-let [parsed (parse-scenario-url hash-str)]
-    (let [encoded (:snapshot parsed)
-          decoded (decoder/decode-snapshot encoded)]
-      (when-not (:error decoded)
-        (let [restored (restorer/restore-game-state decoded)]
-          (if (:title parsed)
-            (assoc restored :snapshot/restored-title (:title parsed))
-            restored))))))
+    (case (:type parsed)
+      :scenario-config
+      (when-let [config (decode-scenario-config (:encoded parsed))]
+        (let [restored (scenario-events/init-from-scenario config)]
+          (cond-> restored
+            (:title parsed) (assoc :snapshot/restored-title (:title parsed)))))
+
+      :snapshot
+      (let [decoded (decoder/decode-snapshot (:snapshot parsed))]
+        (when-not (:error decoded)
+          (let [restored (restorer/restore-game-state decoded)]
+            (cond-> restored
+              (:title parsed) (assoc :snapshot/restored-title (:title parsed))))))
+
+      nil)))
 
 
 ;; ---------------------------------------------------------------------------
