@@ -190,12 +190,12 @@
 
 (defn- get-objects-in-zone
   "Query all objects in a given zone for a player.
-   Returns a vector of card-ids."
+   Returns a vector of card-ids (one per object, preserving duplicates)."
   [db player-id zone]
   (let [player-eid (d/q '[:find ?e . :in $ ?pid :where [?e :player/id ?pid]] db player-id)]
     (if player-eid
-      (into []
-            (d/q '[:find [?cid ...]
+      (mapv second
+            (d/q '[:find ?obj ?cid
                    :in $ ?owner ?zone
                    :where [?obj :object/zone ?zone]
                    [?obj :object/owner ?owner]
@@ -266,22 +266,24 @@
         player-eid (d/q '[:find ?e . :in $ ?pid :where [?e :player/id ?pid]] game-db player-id)
         opp-eid    (d/q '[:find ?e . :in $ ?pid :where [?e :player/id ?pid]] game-db opp-id)
         player-stack-items (if player-eid
-                             (d/q '[:find [?cid ...]
-                                    :in $ ?owner
-                                    :where [?obj :object/zone :stack]
-                                    [?obj :object/owner ?owner]
-                                    [?obj :object/card ?card]
-                                    [?card :card/id ?cid]]
-                                  game-db player-eid)
+                             (mapv second
+                                   (d/q '[:find ?obj ?cid
+                                          :in $ ?owner
+                                          :where [?obj :object/zone :stack]
+                                          [?obj :object/owner ?owner]
+                                          [?obj :object/card ?card]
+                                          [?card :card/id ?cid]]
+                                        game-db player-eid))
                              [])
         opp-stack-items (if opp-eid
-                          (d/q '[:find [?cid ...]
-                                 :in $ ?owner
-                                 :where [?obj :object/zone :stack]
-                                 [?obj :object/owner ?owner]
-                                 [?obj :object/card ?card]
-                                 [?card :card/id ?cid]]
-                               game-db opp-eid)
+                          (mapv second
+                                (d/q '[:find ?obj ?cid
+                                       :in $ ?owner
+                                       :where [?obj :object/zone :stack]
+                                       [?obj :object/owner ?owner]
+                                       [?obj :object/card ?card]
+                                       [?card :card/id ?cid]]
+                                     game-db opp-eid))
                           [])
         ;; Get library and exile cards for deck reconstruction
         player-library (get-objects-in-zone game-db player-id :library)

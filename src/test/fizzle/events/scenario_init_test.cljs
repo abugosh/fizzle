@@ -385,3 +385,49 @@
           "deck should include lotus-petal")
       (is (contains? card-ids :swamp)
           "deck should include swamp"))))
+
+
+;; === Regression: fizzle-scur — duplicate card-ids in same zone ===
+
+(def ^:private duplicate-hand-scenario
+  "Scenario with 2x Dark Ritual in hand to test deduplication bug."
+  {:scenario/id      #uuid "aaaaaaaa-0000-0000-0000-000000000020"
+   :scenario/title   "Duplicate Hand"
+   :scenario/player  {:deck        [{:card/id :dark-ritual :count 4}
+                                    {:card/id :swamp :count 2}]
+                      :zones       {:hand [:dark-ritual :dark-ritual]
+                                    :graveyard []
+                                    :battlefield []}
+                      :library-top []
+                      :mana-pool   {}
+                      :life        20}
+   :scenario/opponent {:archetype  :goldfish
+                       :deck       []
+                       :zones      {:hand [] :graveyard [] :battlefield []}
+                       :library-top []
+                       :mana-pool  {}
+                       :life       20}
+   :scenario/phase   :main1})
+
+
+(deftest test-extract-scenario-preserves-duplicate-cards-in-hand
+  (testing "extract-scenario-from-game returns all copies of a card in the same zone"
+    (let [app-db (scenario/init-from-scenario duplicate-hand-scenario)
+          game-db (:game/db app-db)
+          extracted (scenario/extract-scenario-from-game game-db "Duplicates")
+          hand (get-in extracted [:scenario/player :zones :hand])]
+      (is (= 2 (count hand))
+          "hand should contain 2 cards (not deduplicated)")
+      (is (= [:dark-ritual :dark-ritual] (sort hand))
+          "both copies of dark-ritual should be present"))))
+
+
+(deftest test-extract-scenario-preserves-duplicate-cards-in-deck-count
+  (testing "extract-scenario-from-game reconstructs correct card counts in deck"
+    (let [app-db (scenario/init-from-scenario duplicate-hand-scenario)
+          game-db (:game/db app-db)
+          extracted (scenario/extract-scenario-from-game game-db "Duplicates")
+          deck (get-in extracted [:scenario/player :deck])
+          dr-entry (first (filter #(= :dark-ritual (:card/id %)) deck))]
+      (is (= 4 (:count dr-entry))
+          "deck should show 4x Dark Ritual (all copies across all zones)"))))
