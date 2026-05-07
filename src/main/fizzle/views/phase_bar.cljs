@@ -3,6 +3,7 @@
     [fizzle.engine.rules :as rules]
     [fizzle.events.ui :as ui-events]
     [fizzle.subs.game :as subs]
+    [fizzle.views.timer :as timer]
     [re-frame.core :as rf]))
 
 
@@ -38,6 +39,7 @@
     [:div {:class "flex items-center gap-4 py-2.5 px-4 mb-4 bg-surface-raised border-b border-surface-dim"}
      [:span {:class "font-bold text-text text-sm"}
       (str "Turn " current-turn)]
+     [timer/timer-display]
      [:div {:class "flex items-center gap-1"}
       ;; Labels column
       [:div {:class "flex flex-col items-end mr-1"}

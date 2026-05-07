@@ -3,6 +3,7 @@
     [fizzle.events.ui :as ui-events]
     [fizzle.subs.game :as subs]
     [fizzle.views.modals :as modals]
+    [fizzle.views.timer :as timer]
     [re-frame.core :as rf]))
 
 
@@ -29,7 +30,8 @@
    Dismissable — game controls remain active after dismiss."
   []
   (let [show? @(rf/subscribe [::subs/show-game-over-modal?])
-        result @(rf/subscribe [::subs/game-result])]
+        result @(rf/subscribe [::subs/game-result])
+        start-ms @(rf/subscribe [::subs/timer-start-ms])]
     (when (and show? result)
       (let [{:keys [outcome turn condition storm-count
                     opponent-life opponent-library-size]} result
@@ -45,6 +47,7 @@
           (condition-text condition outcome)]
          ;; Stats
          [:div {:class "mb-5 text-left"}
+          (when start-ms [stat-row "Time" (timer/format-elapsed (- (js/Date.now) start-ms))])
           [stat-row "Turn" turn]
           [stat-row "Win Condition" (condition-text condition outcome)]
           [stat-row "Storm Count" storm-count]
