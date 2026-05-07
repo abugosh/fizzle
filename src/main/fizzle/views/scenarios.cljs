@@ -28,9 +28,11 @@
                                     (let [card-def (get cards/card-by-id cid)]
                                       (contains? (or (:card/types card-def) #{}) :land)))
                                   bf-ids))
+        random-draw (or (:random-draw player) 0)
         archetype  (or (:archetype opponent) :goldfish)
         opp-life   (or (:life opponent) 20)]
-    (str "Player: " deck-size " cards, " (count hand-ids) " in hand, " land-count " lands"
+    (str "Player: " deck-size " cards, " (count hand-ids)
+         (when (pos? random-draw) (str "+" random-draw)) " in hand, " land-count " lands"
          " | Opponent: " (name archetype) ", " opp-life " life")))
 
 
@@ -270,7 +272,7 @@
 (defn- zone-distribution-panel
   "Full zone distribution section for one side.
    Shows card pool on the left and hand/graveyard/battlefield columns on the right."
-  [side pool-sub zones-sub]
+  [side pool-sub zones-sub random-draw-sub]
   (let [selected-id (r/atom nil)]
     (fn []
       (let [pool  @(rf/subscribe [pool-sub])
@@ -293,7 +295,18 @@
           [:div {:class "flex-1 flex gap-2"}
            (for [zone [:hand :graveyard :battlefield]]
              ^{:key zone}
-             [zone-column zone (get zones zone []) side])]]]))))
+             [zone-column zone (get zones zone []) side])]]
+         ;; Random draw input
+         [:div {:class "mt-2 flex items-center gap-2"}
+          [:label {:class "text-xs font-semibold text-text-label"} "Random cards to hand:"]
+          [:input {:type "number"
+                   :class "bg-surface-raised border border-border rounded px-2 py-1 text-xs text-text w-16"
+                   :min 0
+                   :value (or @(rf/subscribe [random-draw-sub]) 0)
+                   :on-change #(let [val (js/parseInt (.. % -target -value))]
+                                 (when (not (js/isNaN val))
+                                   (rf/dispatch [::scenario-events/set-random-draw
+                                                 {:side side :count (max 0 val)}])))}]]]))))
 
 
 ;; === Player side ===
@@ -336,7 +349,8 @@
        [:<>
         [zone-distribution-panel :player
          ::subs-scenario/player-zone-pool
-         ::subs-scenario/player-zones]
+         ::subs-scenario/player-zones
+         ::subs-scenario/player-random-draw]
         [library-top-panel :player
          ::subs-scenario/player-library-top
          ::subs-scenario/player-unordered-pool]])]))
@@ -378,7 +392,8 @@
        [:<>
         [zone-distribution-panel :opponent
          ::subs-scenario/opponent-zone-pool
-         ::subs-scenario/opponent-zones]
+         ::subs-scenario/opponent-zones
+         ::subs-scenario/opponent-random-draw]
         [library-top-panel :opponent
          ::subs-scenario/opponent-library-top
          ::subs-scenario/opponent-unordered-pool]])]))
