@@ -6,6 +6,7 @@
     [fizzle.subs.game :as subs]
     [fizzle.views.card-styles :as card-styles]
     [fizzle.views.opponent :as opponent]
+    [fizzle.views.timer :as timer]
     [re-frame.core :as rf]))
 
 
@@ -270,6 +271,7 @@
      [:div {:class "flex items-center gap-3"}
       [:span {:class "font-bold text-text text-sm"}
        (str "Turn " current-turn)]
+      [timer/timer-display]
       [:div {:class "flex items-center gap-1"}
        ;; Labels column
        [:div {:class "flex flex-col items-end mr-1"}
