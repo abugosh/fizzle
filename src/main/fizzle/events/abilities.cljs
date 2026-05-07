@@ -299,9 +299,9 @@
 
 (rf/reg-event-db
   ::activate-ability
-  (fn [db [_ object-id ability-index]]
+  (fn [db [_ object-id ability-index player-id]]
     (let [game-db (:game/db db)
-          player-id (queries/get-human-player-id game-db)
+          player-id (or player-id (queries/get-human-player-id game-db))
           result (activate-ability game-db player-id object-id ability-index)
           base-db (cond-> (assoc db :game/db (:db result))
                     (:pending-selection result) (sel-spec/set-pending-selection (:pending-selection result)))]

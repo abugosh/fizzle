@@ -202,6 +202,45 @@
           "db must be unchanged when granted ability has unsatisfied :ability/condition"))))
 
 
+;; Test 4e: activate-ability event handler with explicit opponent player-id (ADR-037)
+(deftest activate-ability-event-with-explicit-opponent-player-id
+  (testing "::activate-ability dispatch with 3 args (explicit opponent player-id) activates opponent's ability"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          game-db' (h/add-opponent game-db {:bot-archetype :goldfish})
+          [game-db'' obj-id] (h/add-card-to-zone game-db' :polluted-delta :battlefield :player-2)
+          [game-db''' _] (h/add-cards-to-library game-db'' [:island :swamp] :player-2)
+          app-db' (assoc app-db :game/db game-db''')
+          ;; Dispatch with 3 args: object-id, ability-index, explicit player-id
+          result (dispatch-event app-db' [::abilities/activate-ability obj-id 0 :player-2])]
+      (is (seq (q/get-all-stack-items (:game/db result)))
+          "Stack should have the activated ability item when explicit player-id matches controller")
+      (let [stack-item (first (q/get-all-stack-items (:game/db result)))]
+        (is (= :activated-ability (:stack-item/type stack-item))
+            "Stack item type should be :activated-ability")
+        (is (= :player-2 (:stack-item/controller stack-item))
+            "Stack item controller should be :player-2 (the explicit player-id passed)")))))
+
+
+;; Test 4f: activate-ability event handler backward compatibility (2 args, no player-id)
+(deftest activate-ability-event-backward-compatible-without-player-id
+  (testing "::activate-ability dispatch with 2 args (no player-id) defaults to human player"
+    (let [app-db (setup-app-db)
+          game-db (:game/db app-db)
+          [game-db' obj-id] (h/add-card-to-zone game-db :polluted-delta :battlefield :player-1)
+          [game-db'' _] (h/add-cards-to-library game-db' [:island :swamp] :player-1)
+          app-db' (assoc app-db :game/db game-db'')
+          ;; Dispatch with 2 args only (no player-id) — should default to human player
+          result (dispatch-event app-db' [::abilities/activate-ability obj-id 0])]
+      (is (seq (q/get-all-stack-items (:game/db result)))
+          "Stack should have the activated ability item for human player (default)")
+      (let [stack-item (first (q/get-all-stack-items (:game/db result)))]
+        (is (= :activated-ability (:stack-item/type stack-item))
+            "Stack item type should be :activated-ability")
+        (is (= :player-1 (:stack-item/controller stack-item))
+            "Stack item controller should be :player-1 (human player, default)")))))
+
+
 ;; ============================================================
 ;; Unit Tests (direct function calls on pure functions)
 ;; ============================================================
@@ -227,6 +266,42 @@
           result (abilities/activate-ability db' :player-1 obj-id 0)]
       (is (= {:db db' :pending-selection nil} result)
           "Should return unchanged db when player is not the controller"))))
+
+
+;; Test 6a: activate-ability with explicit opponent player-id (ADR-037)
+(deftest activate-ability-with-explicit-opponent-player-id
+  (testing "activate-ability accepts optional player-id argument to activate opponent's ability"
+    (let [db (-> (h/create-test-db)
+                 (h/add-opponent {:bot-archetype :goldfish}))
+          [db' obj-id] (h/add-card-to-zone db :polluted-delta :battlefield :player-2)
+          ;; Add lands to library so tutor has targets
+          [db'' _] (h/add-cards-to-library db' [:island :swamp] :player-2)
+          ;; player-2 activates their own land by passing explicit player-id
+          result (abilities/activate-ability db'' :player-2 obj-id 0)]
+      (is (nil? (:pending-selection result))
+          "Fetchland with sacrifice-self goes to stack directly (not pending-selection)")
+      (let [stack-items (q/get-all-stack-items (:db result))]
+        (is (seq stack-items)
+            "Stack should have the activated ability item when explicit player-id matches controller")
+        (is (= :activated-ability (:stack-item/type (first stack-items)))
+            "Stack item type should be :activated-ability")))))
+
+
+;; Test 6b: backward compatibility without player-id argument
+(deftest activate-ability-backward-compatible-without-player-id
+  (testing "activate-ability defaults to human player when player-id argument is omitted"
+    (let [db (h/create-test-db)
+          [db' obj-id] (h/add-card-to-zone db :polluted-delta :battlefield :player-1)
+          [db'' _] (h/add-cards-to-library db' [:island :swamp] :player-1)
+          ;; Dispatch with only 2 args (no player-id) — should default to human player
+          result (abilities/activate-ability db'' :player-1 obj-id 0)]
+      (is (nil? (:pending-selection result))
+          "Activation should succeed without explicit player-id argument")
+      (let [stack-items (q/get-all-stack-items (:db result))]
+        (is (seq stack-items)
+            "Stack should have the activated ability item for human player (default)")
+        (is (= :activated-ability (:stack-item/type (first stack-items)))
+            "Stack item type should be :activated-ability")))))
 
 
 ;; Test 7: activate-ability in non-priority phase returns unchanged
