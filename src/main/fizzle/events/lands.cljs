@@ -47,8 +47,11 @@
                             (d/db-with [[:db/add player-eid :player/land-plays-left (dec land-plays)]]))
           obj-after (queries/get-object db-after-move object-id)
           card (:object/card obj-after)
+          obj-eid (queries/get-object-eid db-after-move object-id)
+          db-after-move (if (:card/enters-tapped card)
+                          (d/db-with db-after-move [[:db/add obj-eid :object/tapped true]])
+                          db-after-move)
           etb-effects (:card/etb-effects card)
-          ;; Triggers are embedded in the object at creation (build-object-tx) — no ETB registration needed.
           db-after-etb (if (seq etb-effects)
                          (reduce (fn [db' effect]
                                    (let [resolved-effect (if (= :self (:effect/target effect))
@@ -58,8 +61,6 @@
                                  db-after-move
                                  etb-effects)
                          db-after-move)]
-      ;; :land-entered is now dispatched from the zone-change-dispatch/move-to-zone chokepoint
-      ;; (called above via zone-change-dispatch/move-to-zone). No explicit dispatch needed here.
       db-after-etb)))
 
 

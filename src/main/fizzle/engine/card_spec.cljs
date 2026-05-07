@@ -614,6 +614,7 @@
 (s/def :card/additional-costs (s/coll-of ::additional-cost :kind vector?))
 (s/def :card/cast-restriction map?)
 (s/def :card/cycling ::mana-cost)
+(s/def :card/enters-tapped boolean?)
 (s/def :card/power int?)
 (s/def :card/toughness pos-int?)
 
@@ -653,7 +654,8 @@
                        :card/subtypes :card/supertypes :card/keywords
                        :card/additional-costs :card/cast-restriction
                        :card/static-abilities :card/power :card/toughness
-                       :card/state-triggers :card/cycling])
+                       :card/state-triggers :card/cycling
+                       :card/enters-tapped])
          creature-has-pt?))
 
 

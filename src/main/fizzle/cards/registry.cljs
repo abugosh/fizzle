@@ -71,6 +71,7 @@
     [fizzle.cards.lands.city-of-brass :as city-of-brass]
     [fizzle.cards.lands.city-of-traitors :as city-of-traitors]
     [fizzle.cards.lands.crystal-vein :as crystal-vein]
+    [fizzle.cards.lands.cycling-lands :as cycling-lands]
     [fizzle.cards.lands.fetch-lands :as fetch-lands]
     [fizzle.cards.lands.gemstone-mine :as gemstone-mine]
     [fizzle.cards.lands.pain-lands :as pain-lands]
@@ -178,5 +179,6 @@
       artifact-lands/cards
       basic-lands/cards
       pain-lands/cards
+      cycling-lands/cards
       fetch-lands/cards
       medallions/cards)))
