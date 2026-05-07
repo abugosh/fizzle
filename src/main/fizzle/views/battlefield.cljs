@@ -142,7 +142,7 @@
 
 
 (defn- permanent-view
-  "Render a permanent card. Set show-buttons? false for opponent cards."
+  "Render a permanent card with optional ability buttons."
   ([obj] (permanent-view obj true))
   ([obj show-buttons?] (permanent-view obj show-buttons? nil))
   ([obj show-buttons? player-id]
