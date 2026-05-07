@@ -17,8 +17,12 @@
    :card/power 1
    :card/toughness 1
    :card/keywords #{:flying}
-   :card/cycling {:colorless 2}
    :card/text "Flying. When this creature enters, untap up to two lands. Cycling {2}"
+   :card/abilities [{:ability/type :cycling
+                     :ability/zone :hand
+                     :ability/cost {:discard-self true :mana {:colorless 2}}
+                     :ability/effects [{:effect/type :draw :effect/amount 1}]
+                     :ability/description "Cycling {2}"}]
    :card/triggers [{:trigger/type :enters-battlefield
                     :trigger/effects [{:effect/type :untap-lands
                                        :effect/count 2}]

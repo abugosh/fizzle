@@ -16,12 +16,16 @@
    :card/colors #{}
    :card/types #{:land}
    :card/enters-tapped true
-   :card/cycling {:black 1}
    :card/text "This land enters tapped.\n{T}: Add {B}.\nCycling {B} ({B}, Discard this card: Draw a card.)"
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
                      :ability/effects [{:effect/type :add-mana
-                                        :effect/mana {:black 1}}]}]})
+                                        :effect/mana {:black 1}}]}
+                    {:ability/type :cycling
+                     :ability/zone :hand
+                     :ability/cost {:discard-self true :mana {:black 1}}
+                     :ability/effects [{:effect/type :draw :effect/amount 1}]
+                     :ability/description "Cycling {B}"}]})
 
 
 (def lonely-sandbar
@@ -32,12 +36,16 @@
    :card/colors #{}
    :card/types #{:land}
    :card/enters-tapped true
-   :card/cycling {:blue 1}
    :card/text "This land enters tapped.\n{T}: Add {U}.\nCycling {U} ({U}, Discard this card: Draw a card.)"
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
                      :ability/effects [{:effect/type :add-mana
-                                        :effect/mana {:blue 1}}]}]})
+                                        :effect/mana {:blue 1}}]}
+                    {:ability/type :cycling
+                     :ability/zone :hand
+                     :ability/cost {:discard-self true :mana {:blue 1}}
+                     :ability/effects [{:effect/type :draw :effect/amount 1}]
+                     :ability/description "Cycling {U}"}]})
 
 
 (def secluded-steppe
@@ -48,12 +56,16 @@
    :card/colors #{}
    :card/types #{:land}
    :card/enters-tapped true
-   :card/cycling {:white 1}
    :card/text "This land enters tapped.\n{T}: Add {W}.\nCycling {W} ({W}, Discard this card: Draw a card.)"
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
                      :ability/effects [{:effect/type :add-mana
-                                        :effect/mana {:white 1}}]}]})
+                                        :effect/mana {:white 1}}]}
+                    {:ability/type :cycling
+                     :ability/zone :hand
+                     :ability/cost {:discard-self true :mana {:white 1}}
+                     :ability/effects [{:effect/type :draw :effect/amount 1}]
+                     :ability/description "Cycling {W}"}]})
 
 
 (def forgotten-cave
@@ -64,12 +76,16 @@
    :card/colors #{}
    :card/types #{:land}
    :card/enters-tapped true
-   :card/cycling {:red 1}
    :card/text "This land enters tapped.\n{T}: Add {R}.\nCycling {R} ({R}, Discard this card: Draw a card.)"
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
                      :ability/effects [{:effect/type :add-mana
-                                        :effect/mana {:red 1}}]}]})
+                                        :effect/mana {:red 1}}]}
+                    {:ability/type :cycling
+                     :ability/zone :hand
+                     :ability/cost {:discard-self true :mana {:red 1}}
+                     :ability/effects [{:effect/type :draw :effect/amount 1}]
+                     :ability/description "Cycling {R}"}]})
 
 
 (def tranquil-thicket
@@ -80,12 +96,16 @@
    :card/colors #{}
    :card/types #{:land}
    :card/enters-tapped true
-   :card/cycling {:green 1}
    :card/text "This land enters tapped.\n{T}: Add {G}.\nCycling {G} ({G}, Discard this card: Draw a card.)"
    :card/abilities [{:ability/type :mana
                      :ability/cost {:tap true}
                      :ability/effects [{:effect/type :add-mana
-                                        :effect/mana {:green 1}}]}]})
+                                        :effect/mana {:green 1}}]}
+                    {:ability/type :cycling
+                     :ability/zone :hand
+                     :ability/cost {:discard-self true :mana {:green 1}}
+                     :ability/effects [{:effect/type :draw :effect/amount 1}]
+                     :ability/description "Cycling {G}"}]})
 
 
 (def cards

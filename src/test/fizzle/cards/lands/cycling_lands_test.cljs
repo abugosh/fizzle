@@ -25,7 +25,7 @@
     [fizzle.cards.lands.cycling-lands :as cycling-lands]
     [fizzle.db.queries :as q]
     [fizzle.engine.mana-activation :as engine-mana]
-    [fizzle.events.cycling :as cycling]
+    [fizzle.events.abilities :as abilities]
     [fizzle.events.lands :as lands]
     [fizzle.test-helpers :as th]))
 
@@ -62,14 +62,19 @@
       (is (nil? (:card/subtypes card)))
       (is (nil? (:card/supertypes card)))
       (is (true? (:card/enters-tapped card)))
-      (is (= {:black 1} (:card/cycling card)))
-      (is (= 1 (count (:card/abilities card))))
-      (is (= 1 (count (:card/abilities card))))
-      (let [ability (first (:card/abilities card))]
-        (is (= :mana (:ability/type ability)))
-        (is (= {:tap true} (:ability/cost ability)))
+      (is (nil? (:card/cycling card))
+          "No :card/cycling key after migration to :card/abilities")
+      (is (= 2 (count (:card/abilities card))))
+      (let [mana-ability (first (:card/abilities card))]
+        (is (= :mana (:ability/type mana-ability)))
+        (is (= {:tap true} (:ability/cost mana-ability)))
         (is (= [{:effect/type :add-mana :effect/mana {:black 1}}]
-               (:ability/effects ability)))))))
+               (:ability/effects mana-ability))))
+      (let [cycling-ability (second (:card/abilities card))]
+        (is (= :cycling (:ability/type cycling-ability)))
+        (is (= :hand (:ability/zone cycling-ability)))
+        (is (= {:discard-self true :mana {:black 1}} (:ability/cost cycling-ability)))
+        (is (= [{:effect/type :draw :effect/amount 1}] (:ability/effects cycling-ability)))))))
 
 
 ;; Oracle: "This land enters tapped. {T}: Add {U}. Cycling {U}"
@@ -85,13 +90,19 @@
       (is (nil? (:card/subtypes card)))
       (is (nil? (:card/supertypes card)))
       (is (true? (:card/enters-tapped card)))
-      (is (= {:blue 1} (:card/cycling card)))
-      (is (= 1 (count (:card/abilities card))))
-      (let [ability (first (:card/abilities card))]
-        (is (= :mana (:ability/type ability)))
-        (is (= {:tap true} (:ability/cost ability)))
+      (is (nil? (:card/cycling card))
+          "No :card/cycling key after migration to :card/abilities")
+      (is (= 2 (count (:card/abilities card))))
+      (let [mana-ability (first (:card/abilities card))]
+        (is (= :mana (:ability/type mana-ability)))
+        (is (= {:tap true} (:ability/cost mana-ability)))
         (is (= [{:effect/type :add-mana :effect/mana {:blue 1}}]
-               (:ability/effects ability)))))))
+               (:ability/effects mana-ability))))
+      (let [cycling-ability (second (:card/abilities card))]
+        (is (= :cycling (:ability/type cycling-ability)))
+        (is (= :hand (:ability/zone cycling-ability)))
+        (is (= {:discard-self true :mana {:blue 1}} (:ability/cost cycling-ability)))
+        (is (= [{:effect/type :draw :effect/amount 1}] (:ability/effects cycling-ability)))))))
 
 
 ;; Oracle: "This land enters tapped. {T}: Add {W}. Cycling {W}"
@@ -107,13 +118,19 @@
       (is (nil? (:card/subtypes card)))
       (is (nil? (:card/supertypes card)))
       (is (true? (:card/enters-tapped card)))
-      (is (= {:white 1} (:card/cycling card)))
-      (is (= 1 (count (:card/abilities card))))
-      (let [ability (first (:card/abilities card))]
-        (is (= :mana (:ability/type ability)))
-        (is (= {:tap true} (:ability/cost ability)))
+      (is (nil? (:card/cycling card))
+          "No :card/cycling key after migration to :card/abilities")
+      (is (= 2 (count (:card/abilities card))))
+      (let [mana-ability (first (:card/abilities card))]
+        (is (= :mana (:ability/type mana-ability)))
+        (is (= {:tap true} (:ability/cost mana-ability)))
         (is (= [{:effect/type :add-mana :effect/mana {:white 1}}]
-               (:ability/effects ability)))))))
+               (:ability/effects mana-ability))))
+      (let [cycling-ability (second (:card/abilities card))]
+        (is (= :cycling (:ability/type cycling-ability)))
+        (is (= :hand (:ability/zone cycling-ability)))
+        (is (= {:discard-self true :mana {:white 1}} (:ability/cost cycling-ability)))
+        (is (= [{:effect/type :draw :effect/amount 1}] (:ability/effects cycling-ability)))))))
 
 
 ;; Oracle: "This land enters tapped. {T}: Add {R}. Cycling {R}"
@@ -129,13 +146,19 @@
       (is (nil? (:card/subtypes card)))
       (is (nil? (:card/supertypes card)))
       (is (true? (:card/enters-tapped card)))
-      (is (= {:red 1} (:card/cycling card)))
-      (is (= 1 (count (:card/abilities card))))
-      (let [ability (first (:card/abilities card))]
-        (is (= :mana (:ability/type ability)))
-        (is (= {:tap true} (:ability/cost ability)))
+      (is (nil? (:card/cycling card))
+          "No :card/cycling key after migration to :card/abilities")
+      (is (= 2 (count (:card/abilities card))))
+      (let [mana-ability (first (:card/abilities card))]
+        (is (= :mana (:ability/type mana-ability)))
+        (is (= {:tap true} (:ability/cost mana-ability)))
         (is (= [{:effect/type :add-mana :effect/mana {:red 1}}]
-               (:ability/effects ability)))))))
+               (:ability/effects mana-ability))))
+      (let [cycling-ability (second (:card/abilities card))]
+        (is (= :cycling (:ability/type cycling-ability)))
+        (is (= :hand (:ability/zone cycling-ability)))
+        (is (= {:discard-self true :mana {:red 1}} (:ability/cost cycling-ability)))
+        (is (= [{:effect/type :draw :effect/amount 1}] (:ability/effects cycling-ability)))))))
 
 
 ;; Oracle: "This land enters tapped. {T}: Add {G}. Cycling {G}"
@@ -151,13 +174,19 @@
       (is (nil? (:card/subtypes card)))
       (is (nil? (:card/supertypes card)))
       (is (true? (:card/enters-tapped card)))
-      (is (= {:green 1} (:card/cycling card)))
-      (is (= 1 (count (:card/abilities card))))
-      (let [ability (first (:card/abilities card))]
-        (is (= :mana (:ability/type ability)))
-        (is (= {:tap true} (:ability/cost ability)))
+      (is (nil? (:card/cycling card))
+          "No :card/cycling key after migration to :card/abilities")
+      (is (= 2 (count (:card/abilities card))))
+      (let [mana-ability (first (:card/abilities card))]
+        (is (= :mana (:ability/type mana-ability)))
+        (is (= {:tap true} (:ability/cost mana-ability)))
         (is (= [{:effect/type :add-mana :effect/mana {:green 1}}]
-               (:ability/effects ability)))))))
+               (:ability/effects mana-ability))))
+      (let [cycling-ability (second (:card/abilities card))]
+        (is (= :cycling (:ability/type cycling-ability)))
+        (is (= :hand (:ability/zone cycling-ability)))
+        (is (= {:discard-self true :mana {:green 1}} (:ability/cost cycling-ability)))
+        (is (= [{:effect/type :draw :effect/amount 1}] (:ability/effects cycling-ability)))))))
 
 
 (deftest cycling-lands-cycle-completeness-test
@@ -210,6 +239,7 @@
 ;; =====================================================
 
 ;; Oracle: "Cycling {COLOR} ({COLOR}, Discard this card: Draw a card.)"
+;; New path: activate-ability (index 1) → resolve-top → draw
 (deftest cycling-lands-cycle-from-hand-test
   (doseq [{:keys [card-id color cycling-cost name]} cycling-land-specs]
     (testing (str "Cycling " name " from hand: pay cost, discard, draw 1")
@@ -217,14 +247,20 @@
             [db _] (th/add-cards-to-library db [:dark-ritual] :player-1)
             [db obj-id] (th/add-card-to-zone db card-id :hand :player-1)
             _ (is (= 1 (th/get-hand-count db :player-1)) "Precondition: 1 card in hand")
-            result (cycling/cycle-card db :player-1 obj-id)
+            ;; Cycling ability is at index 1 (after mana ability at index 0)
+            result (abilities/activate-ability db :player-1 obj-id 1)
+            _ (is (nil? (:pending-selection result))
+                  "Cycling colored lands: no mana allocation selection needed")
             db (:db result)]
+        ;; Cost paid at activation: card in graveyard, mana spent, stack item created
         (is (= :graveyard (:object/zone (q/get-object db obj-id)))
-            "Cycled card should be in graveyard")
-        (is (= 1 (th/get-hand-count db :player-1))
-            "Should have drawn 1 card (net 0: discarded 1, drew 1)")
+            "Cycled card should be in graveyard after activation")
         (is (= 0 (get (q/get-mana-pool db :player-1) color))
-            "Cycling cost should be paid")))))
+            "Cycling cost should be paid at activation")
+        ;; Resolve the stack item to draw
+        (let [{:keys [db]} (th/resolve-top db)]
+          (is (= 1 (th/get-hand-count db :player-1))
+              "Should have drawn 1 card after resolution"))))))
 
 
 ;; =====================================================
@@ -277,8 +313,10 @@
     (testing (str "Cannot cycle " name " without sufficient mana")
       (let [db (th/create-test-db)
             [db obj-id] (th/add-card-to-zone db card-id :hand :player-1)
-            result (cycling/cycle-card db :player-1 obj-id)
+            result (abilities/activate-ability db :player-1 obj-id 1)
             result-db (:db result)]
+        (is (nil? (:pending-selection result))
+            "No selection when activation fails")
         (is (= :hand (:object/zone (q/get-object result-db obj-id)))
             "Card should remain in hand when cycling fails")))))
 
@@ -288,8 +326,10 @@
     (testing (str "Cannot cycle " name " from battlefield")
       (let [db (th/create-test-db {:mana cycling-cost})
             [db obj-id] (th/add-card-to-zone db card-id :battlefield :player-1)
-            result (cycling/cycle-card db :player-1 obj-id)
+            result (abilities/activate-ability db :player-1 obj-id 1)
             result-db (:db result)]
+        (is (nil? (:pending-selection result))
+            "No selection when activation fails")
         (is (= :battlefield (:object/zone (q/get-object result-db obj-id)))
             "Card should remain on battlefield when cycling fails")))))
 
@@ -299,8 +339,10 @@
     (testing (str "Cannot cycle " name " from graveyard")
       (let [db (th/create-test-db {:mana cycling-cost})
             [db obj-id] (th/add-card-to-zone db card-id :graveyard :player-1)
-            result (cycling/cycle-card db :player-1 obj-id)
+            result (abilities/activate-ability db :player-1 obj-id 1)
             result-db (:db result)]
+        (is (nil? (:pending-selection result))
+            "No selection when activation fails")
         (is (= :graveyard (:object/zone (q/get-object result-db obj-id)))
             "Card should remain in graveyard when cycling fails")))))
 
@@ -316,12 +358,15 @@
     (let [db (th/create-test-db {:mana {:black 1}})
           [db obj-id] (th/add-card-to-zone db :barren-moor :hand :player-1)
           _ (is (= 1 (th/get-hand-count db :player-1)) "Precondition: 1 card in hand")
-          result (cycling/cycle-card db :player-1 obj-id)
+          ;; Activate cycling — card goes to graveyard, mana paid, stack item created
+          result (abilities/activate-ability db :player-1 obj-id 1)
           db (:db result)]
       (is (= :graveyard (:object/zone (q/get-object db obj-id)))
-          "Cycled card should be in graveyard")
-      (is (= 0 (th/get-hand-count db :player-1))
-          "Hand should be empty (discarded 1, drew 0 from empty library)"))))
+          "Cycled card should be in graveyard after activation")
+      ;; Resolve — no library card to draw
+      (let [{:keys [db]} (th/resolve-top db)]
+        (is (= 0 (th/get-hand-count db :player-1))
+            "Hand should be empty (discarded 1, drew 0 from empty library)")))))
 
 
 ;; Oracle: "This land enters tapped." — cannot tap for mana immediately after playing
@@ -345,7 +390,11 @@
           [db _] (th/add-cards-to-library db [:dark-ritual] :player-1)
           [db obj-id] (th/add-card-to-zone db :barren-moor :hand :player-1)
           _ (is (= 0 (q/get-storm-count db :player-1)) "Storm count should start at 0")
-          result (cycling/cycle-card db :player-1 obj-id)
+          result (abilities/activate-ability db :player-1 obj-id 1)
           db (:db result)]
       (is (= 0 (q/get-storm-count db :player-1))
-          "Storm count should remain 0 after cycling"))))
+          "Storm count should remain 0 after cycling activation")
+      ;; Also verify after resolution
+      (let [{:keys [db]} (th/resolve-top db)]
+        (is (= 0 (q/get-storm-count db :player-1))
+            "Storm count should remain 0 after cycling resolves")))))

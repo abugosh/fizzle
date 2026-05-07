@@ -17,5 +17,9 @@
    :card/power 3
    :card/toughness 6
    :card/keywords #{:vigilance}
-   :card/cycling {:colorless 1}
-   :card/text "Vigilance\nCycling {1} ({1}, Discard this card: Draw a card.)"})
+   :card/text "Vigilance\nCycling {1} ({1}, Discard this card: Draw a card.)"
+   :card/abilities [{:ability/type :cycling
+                     :ability/zone :hand
+                     :ability/cost {:discard-self true :mana {:colorless 1}}
+                     :ability/effects [{:effect/type :draw :effect/amount 1}]
+                     :ability/description "Cycling {1}"}]})

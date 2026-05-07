@@ -18,7 +18,7 @@
     [fizzle.cards.blue.cloud-of-faeries :as cloud-of-faeries]
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.cycling :as cycling]
+    [fizzle.events.abilities :as abilities]
     [fizzle.events.selection.untap]
     [fizzle.events.selection.zone-ops]
     [fizzle.test-helpers :as th]))
@@ -50,11 +50,24 @@
         "Toughness should be 1")
     (is (= #{:flying} (:card/keywords cloud-of-faeries/card))
         "Keywords should include :flying")
-    (is (= {:colorless 2} (:card/cycling cloud-of-faeries/card))
-        "Cycling cost should be {2}")
+    (is (nil? (:card/cycling cloud-of-faeries/card))
+        "No :card/cycling key after migration to :card/abilities")
     (is (= "Flying. When this creature enters, untap up to two lands. Cycling {2}"
            (:card/text cloud-of-faeries/card))
         "Card text should match oracle text"))
+
+  (testing "Cloud of Faeries has a cycling ability"
+    (let [abilities-list (:card/abilities cloud-of-faeries/card)]
+      (is (= 1 (count abilities-list)) "Should have 1 ability")
+      (let [cycling-ability (first abilities-list)]
+        (is (= :cycling (:ability/type cycling-ability))
+            "Ability should be :cycling")
+        (is (= :hand (:ability/zone cycling-ability))
+            "Cycling ability zone should be :hand")
+        (is (= {:discard-self true :mana {:colorless 2}} (:ability/cost cycling-ability))
+            "Cycling cost should be discard self + {2}")
+        (is (= [{:effect/type :draw :effect/amount 1}] (:ability/effects cycling-ability))
+            "Cycling effect should draw 1 card"))))
 
   (testing "Cloud of Faeries has ETB trigger"
     (let [triggers (:card/triggers cloud-of-faeries/card)]
@@ -236,32 +249,43 @@
 ;; F. Cycling Tests
 ;; =====================================================
 
+;; Oracle: "Cycling {2} ({2}, Discard this card: Draw a card.)"
+;; New path: activate-ability (index 0) → confirm mana allocation → resolve-top → draw
+;; The cycling ability has :colorless 2 cost — goes through mana allocation selection.
 (deftest test-cloud-of-faeries-cycling-from-hand
   (testing "Cycling Cloud of Faeries from hand: pay {2}, discard self, draw 1"
     (let [db (th/create-test-db {:mana {:colorless 2}})
           [db _] (th/add-cards-to-library db [:dark-ritual] :player-1)
           [db cf-id] (th/add-card-to-zone db :cloud-of-faeries :hand :player-1)
           _ (is (= 1 (th/get-hand-count db :player-1)) "Precondition: 1 card in hand")
-          result (cycling/cycle-card db :player-1 cf-id)
-          db (:db result)]
-      ;; Card should be in graveyard
-      (is (= :graveyard (:object/zone (q/get-object db cf-id)))
-          "Cycled card should be in graveyard")
-      ;; Should have drawn 1 card
-      (is (= 1 (th/get-hand-count db :player-1))
-          "Should have drawn 1 card (net 0: discarded 1, drew 1)")
-      ;; Mana should be spent
-      (is (= 0 (:colorless (q/get-mana-pool db :player-1)))
-          "Cycling cost should be paid"))))
+          ;; Cycling ability is at index 0 (only ability)
+          ;; Activation: pays :discard-self (card to graveyard), returns mana-alloc selection
+          result (abilities/activate-ability db :player-1 cf-id 0)
+          _ (is (some? (:pending-selection result))
+                "Cycling {2}: mana allocation selection expected")
+          db-after-discard (:db result)
+          alloc-sel (:pending-selection result)]
+      ;; Card should be in graveyard after paying discard-self cost
+      (is (= :graveyard (:object/zone (q/get-object db-after-discard cf-id)))
+          "Cycled card should be in graveyard after activation")
+      ;; Confirm mana allocation — allocate 2 colorless
+      (let [alloc-sel-with-alloc (assoc alloc-sel :selection/allocation {:colorless 2})
+            {:keys [db]} (th/confirm-selection db-after-discard alloc-sel-with-alloc #{})
+            {:keys [db]} (th/resolve-top db)]
+        (is (= 1 (th/get-hand-count db :player-1))
+            "Should have drawn 1 card (net 0: discarded 1, drew 1)")
+        (is (= 0 (:colorless (q/get-mana-pool db :player-1)))
+            "Cycling cost should be paid")))))
 
 
 (deftest test-cloud-of-faeries-cycling-cannot-cycle-without-mana
   (testing "Cannot cycle without sufficient mana"
     (let [db (th/create-test-db)
           [db cf-id] (th/add-card-to-zone db :cloud-of-faeries :hand :player-1)
-          result (cycling/cycle-card db :player-1 cf-id)
+          result (abilities/activate-ability db :player-1 cf-id 0)
           result-db (:db result)]
-      ;; Should fail gracefully — card remains in hand in result db
+      (is (nil? (:pending-selection result))
+          "No selection when activation fails")
       (is (= :hand (:object/zone (q/get-object result-db cf-id)))
           "Card should remain in hand when cycling fails"))))
 
@@ -270,8 +294,10 @@
   (testing "Cannot cycle from battlefield (must be in hand)"
     (let [db (th/create-test-db {:mana {:colorless 2}})
           [db cf-id] (th/add-card-to-zone db :cloud-of-faeries :battlefield :player-1)
-          result (cycling/cycle-card db :player-1 cf-id)
+          result (abilities/activate-ability db :player-1 cf-id 0)
           result-db (:db result)]
+      (is (nil? (:pending-selection result))
+          "No selection when activation fails")
       (is (= :battlefield (:object/zone (q/get-object result-db cf-id)))
           "Card should remain on battlefield when cycling fails"))))
 
@@ -280,19 +306,22 @@
   (testing "Cannot cycle from graveyard"
     (let [db (th/create-test-db {:mana {:colorless 2}})
           [db cf-id] (th/add-card-to-zone db :cloud-of-faeries :graveyard :player-1)
-          result (cycling/cycle-card db :player-1 cf-id)
+          result (abilities/activate-ability db :player-1 cf-id 0)
           result-db (:db result)]
+      (is (nil? (:pending-selection result))
+          "No selection when activation fails")
       (is (= :graveyard (:object/zone (q/get-object result-db cf-id)))
           "Card should remain in graveyard when cycling fails"))))
 
 
-(deftest test-cloud-of-faeries-cycling-works-for-any-cycling-card
-  (testing "cycle-card is generic: works for any card with :card/cycling"
-    ;; Cloud of Faeries has :card/cycling {:colorless 2}
-    ;; The cycling mechanism should not be hardcoded to Cloud of Faeries
-    (let [card cloud-of-faeries/card]
-      (is (= {:colorless 2} (:card/cycling card))
-          "Card should have :card/cycling {:colorless 2} for generic cycling to work"))))
+(deftest test-cloud-of-faeries-cycling-ability-data
+  (testing "Cloud of Faeries cycling ability is in :card/abilities at index 0"
+    (let [card cloud-of-faeries/card
+          cycling-ability (first (:card/abilities card))]
+      (is (= :cycling (:ability/type cycling-ability))
+          "Ability type should be :cycling")
+      (is (= {:discard-self true :mana {:colorless 2}} (:ability/cost cycling-ability))
+          "Cycling cost should be {:discard-self true :mana {:colorless 2}}"))))
 
 
 ;; =====================================================
@@ -304,8 +333,12 @@
     (let [db (th/create-test-db {:mana {:colorless 2}})
           ;; Empty library — no cards to draw
           [db cf-id] (th/add-card-to-zone db :cloud-of-faeries :hand :player-1)
-          result (cycling/cycle-card db :player-1 cf-id)
-          db (:db result)]
+          result (abilities/activate-ability db :player-1 cf-id 0)
+          db-after-discard (:db result)
+          alloc-sel (:pending-selection result)
+          alloc-sel-with-alloc (assoc alloc-sel :selection/allocation {:colorless 2})
+          {:keys [db]} (th/confirm-selection db-after-discard alloc-sel-with-alloc #{})
+          {:keys [db]} (th/resolve-top db)]
       ;; Card should be in graveyard even with empty library
       (is (= :graveyard (:object/zone (q/get-object db cf-id)))
           "Cycled card should be in graveyard even with empty library")

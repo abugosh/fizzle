@@ -18,7 +18,7 @@
     [fizzle.cards.white.imposing-vantasaur :as imposing-vantasaur]
     [fizzle.db.queries :as q]
     [fizzle.engine.rules :as rules]
-    [fizzle.events.cycling :as cycling]
+    [fizzle.events.abilities :as abilities]
     [fizzle.test-helpers :as th]))
 
 
@@ -41,14 +41,20 @@
       (is (= 3 (:card/power card)))
       (is (= 6 (:card/toughness card)))
       (is (= #{:vigilance} (:card/keywords card)))
-      (is (= {:colorless 1} (:card/cycling card)))
+      (is (nil? (:card/cycling card))
+          "No :card/cycling key after migration to :card/abilities")
       (is (= "Vigilance\nCycling {1} ({1}, Discard this card: Draw a card.)"
              (:card/text card)))))
 
-  (testing "Imposing Vantasaur has no spell effects, triggers, or abilities"
+  (testing "Imposing Vantasaur has a cycling ability but no spell effects or triggers"
     (is (nil? (:card/effects imposing-vantasaur/card)))
     (is (nil? (:card/triggers imposing-vantasaur/card)))
-    (is (nil? (:card/abilities imposing-vantasaur/card)))))
+    (is (= 1 (count (:card/abilities imposing-vantasaur/card))))
+    (let [cycling-ability (first (:card/abilities imposing-vantasaur/card))]
+      (is (= :cycling (:ability/type cycling-ability)))
+      (is (= :hand (:ability/zone cycling-ability)))
+      (is (= {:discard-self true :mana {:colorless 1}} (:ability/cost cycling-ability)))
+      (is (= [{:effect/type :draw :effect/amount 1}] (:ability/effects cycling-ability))))))
 
 
 ;; =====================================================
@@ -114,30 +120,51 @@
 ;; =====================================================
 
 ;; Oracle: "Cycling {1} ({1}, Discard this card: Draw a card.)"
+;; New path: activate-ability (index 0) → confirm mana allocation → resolve-top → draw
+;; The cycling ability has :colorless 1 cost — goes through mana allocation selection.
 (deftest imposing-vantasaur-cycle-from-hand-test
   (testing "Cycling from hand: pay {1}, discard self, draw 1"
     (let [db (th/create-test-db {:mana {:colorless 1}})
           [db _] (th/add-cards-to-library db [:dark-ritual] :player-1)
           [db obj-id] (th/add-card-to-zone db :imposing-vantasaur :hand :player-1)
           _ (is (= 1 (th/get-hand-count db :player-1)) "Precondition: 1 card in hand")
-          result (cycling/cycle-card db :player-1 obj-id)
-          db (:db result)]
-      (is (= :graveyard (:object/zone (q/get-object db obj-id)))
-          "Cycled card should be in graveyard")
-      (is (= 1 (th/get-hand-count db :player-1))
-          "Should have drawn 1 card (net 0: discarded 1, drew 1)")
-      (is (= 0 (:colorless (q/get-mana-pool db :player-1)))
-          "Cycling cost should be paid"))))
+          ;; Cycling ability is at index 0 (only ability)
+          ;; Activation: pays :discard-self (card to graveyard), returns mana-alloc selection
+          result (abilities/activate-ability db :player-1 obj-id 0)
+          _ (is (some? (:pending-selection result))
+                "Cycling {1}: mana allocation selection expected")
+          db-after-discard (:db result)
+          alloc-sel (:pending-selection result)]
+      ;; Card should be in graveyard after paying discard-self cost
+      (is (= :graveyard (:object/zone (q/get-object db-after-discard obj-id)))
+          "Card should be in graveyard after discard-self cost")
+      ;; Confirm mana allocation — use colorless 1 from pool
+      (let [alloc-sel-with-alloc (assoc alloc-sel :selection/allocation {:colorless 1})
+            {:keys [db]} (th/confirm-selection db-after-discard alloc-sel-with-alloc #{})
+            ;; Resolve the draw effect
+            {:keys [db]} (th/resolve-top db)]
+        (is (= 1 (th/get-hand-count db :player-1))
+            "Should have drawn 1 card (net 0: discarded 1, drew 1)")
+        (is (= 0 (:colorless (q/get-mana-pool db :player-1)))
+            "Cycling cost should be paid")))))
 
 
 (deftest imposing-vantasaur-cycle-with-colored-mana-test
   (testing "Cycling cost {1} can be paid with any color of mana"
-    (doseq [color [:white :blue :black :red :green]]
-      (let [db (th/create-test-db {:mana {color 1}})
+    (doseq [[color pool] [[:white {:white 1}]
+                          [:blue {:blue 1}]
+                          [:black {:black 1}]
+                          [:red {:red 1}]
+                          [:green {:green 1}]]]
+      (let [db (th/create-test-db {:mana pool})
             [db _] (th/add-cards-to-library db [:dark-ritual] :player-1)
             [db obj-id] (th/add-card-to-zone db :imposing-vantasaur :hand :player-1)
-            result (cycling/cycle-card db :player-1 obj-id)
-            db (:db result)]
+            result (abilities/activate-ability db :player-1 obj-id 0)
+            db-after-discard (:db result)
+            alloc-sel (:pending-selection result)
+            alloc-sel-with-alloc (assoc alloc-sel :selection/allocation {color 1})
+            {:keys [db]} (th/confirm-selection db-after-discard alloc-sel-with-alloc #{})
+            {:keys [db]} (th/resolve-top db)]
         (is (= :graveyard (:object/zone (q/get-object db obj-id)))
             (str "Should be able to cycle with " (name color) " mana"))))))
 
@@ -151,8 +178,10 @@
   (testing "Cannot cycle without sufficient mana"
     (let [db (th/create-test-db)
           [db obj-id] (th/add-card-to-zone db :imposing-vantasaur :hand :player-1)
-          result (cycling/cycle-card db :player-1 obj-id)
+          result (abilities/activate-ability db :player-1 obj-id 0)
           result-db (:db result)]
+      (is (nil? (:pending-selection result))
+          "No selection when activation fails")
       (is (= :hand (:object/zone (q/get-object result-db obj-id)))
           "Card should remain in hand when cycling fails"))))
 
@@ -161,8 +190,10 @@
   (testing "Cannot cycle from battlefield"
     (let [db (th/create-test-db {:mana {:colorless 1}})
           [db obj-id] (th/add-card-to-zone db :imposing-vantasaur :battlefield :player-1)
-          result (cycling/cycle-card db :player-1 obj-id)
+          result (abilities/activate-ability db :player-1 obj-id 0)
           result-db (:db result)]
+      (is (nil? (:pending-selection result))
+          "No selection when activation fails")
       (is (= :battlefield (:object/zone (q/get-object result-db obj-id)))
           "Card should remain on battlefield when cycling fails"))))
 
@@ -171,8 +202,10 @@
   (testing "Cannot cycle from graveyard"
     (let [db (th/create-test-db {:mana {:colorless 1}})
           [db obj-id] (th/add-card-to-zone db :imposing-vantasaur :graveyard :player-1)
-          result (cycling/cycle-card db :player-1 obj-id)
+          result (abilities/activate-ability db :player-1 obj-id 0)
           result-db (:db result)]
+      (is (nil? (:pending-selection result))
+          "No selection when activation fails")
       (is (= :graveyard (:object/zone (q/get-object result-db obj-id)))
           "Card should remain in graveyard when cycling fails"))))
 
@@ -188,8 +221,12 @@
     (let [db (th/create-test-db {:mana {:colorless 1}})
           [db obj-id] (th/add-card-to-zone db :imposing-vantasaur :hand :player-1)
           _ (is (= 1 (th/get-hand-count db :player-1)) "Precondition: 1 card in hand")
-          result (cycling/cycle-card db :player-1 obj-id)
-          db (:db result)]
+          result (abilities/activate-ability db :player-1 obj-id 0)
+          db-after-discard (:db result)
+          alloc-sel (:pending-selection result)
+          alloc-sel-with-alloc (assoc alloc-sel :selection/allocation {:colorless 1})
+          {:keys [db]} (th/confirm-selection db-after-discard alloc-sel-with-alloc #{})
+          {:keys [db]} (th/resolve-top db)]
       (is (= :graveyard (:object/zone (q/get-object db obj-id)))
           "Cycled card should be in graveyard")
       (is (= 0 (th/get-hand-count db :player-1))
@@ -203,7 +240,11 @@
           [db _] (th/add-cards-to-library db [:dark-ritual] :player-1)
           [db obj-id] (th/add-card-to-zone db :imposing-vantasaur :hand :player-1)
           _ (is (= 0 (q/get-storm-count db :player-1)) "Storm count should start at 0")
-          result (cycling/cycle-card db :player-1 obj-id)
-          db (:db result)]
+          result (abilities/activate-ability db :player-1 obj-id 0)
+          db-after-discard (:db result)
+          alloc-sel (:pending-selection result)
+          alloc-sel-with-alloc (assoc alloc-sel :selection/allocation {:colorless 1})
+          {:keys [db]} (th/confirm-selection db-after-discard alloc-sel-with-alloc #{})
+          {:keys [db]} (th/resolve-top db)]
       (is (= 0 (q/get-storm-count db :player-1))
           "Storm count should remain 0 after cycling"))))
