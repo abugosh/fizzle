@@ -451,7 +451,7 @@
           [:div {:class "w-10"}
            [:label {:class "text-text-label text-xs font-bold uppercase block mb-0.5"
                     :style {:font-size "0.65rem"}}
-            (subs (cljs.core/name color) 0 1)]
+            ({:white "W" :blue "U" :black "B" :red "R" :green "G" :colorless "C"} color)]
            [:input {:type "number"
                     :class "bg-surface-raised border border-border rounded px-1 py-0.5 text-xs text-text w-full"
                     :value (or (get-in editing [:scenario/player :mana-pool color]) 0)
@@ -467,7 +467,7 @@
           [:div {:class "w-10"}
            [:label {:class "text-text-label text-xs font-bold uppercase block mb-0.5"
                     :style {:font-size "0.65rem"}}
-            (subs (cljs.core/name color) 0 1)]
+            ({:white "W" :blue "U" :black "B" :red "R" :green "G" :colorless "C"} color)]
            [:input {:type "number"
                     :class "bg-surface-raised border border-border rounded px-1 py-0.5 text-xs text-text w-full"
                     :value (or (get-in editing [:scenario/opponent :mana-pool color]) 0)
