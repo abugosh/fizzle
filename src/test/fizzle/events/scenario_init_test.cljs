@@ -431,3 +431,203 @@
           dr-entry (first (filter #(= :dark-ritual (:card/id %)) deck))]
       (is (= 4 (:count dr-entry))
           "deck should show 4x Dark Ritual (all copies across all zones)"))))
+
+
+;; === :random-draw integration tests (fizzle-mb4k) ===
+
+(defn- count-objects-in-zone
+  [game-db player-id zone]
+  (count (d/q '[:find [?e ...]
+                :in $ ?pid ?zone
+                :where
+                [?p :player/id ?pid]
+                [?e :object/owner ?p]
+                [?e :object/zone ?zone]]
+              game-db player-id zone)))
+
+
+(def ^:private random-draw-zero-scenario
+  "Deck with 7 cards, no zones, no random-draw — all 7 go to library."
+  {:scenario/id      #uuid "aaaaaaaa-0000-0000-0000-000000000030"
+   :scenario/title   "Random Draw Zero"
+   :scenario/player  {:deck        [{:card/id :dark-ritual :count 4}
+                                    {:card/id :lotus-petal :count 3}]
+                      :zones       {:hand [] :graveyard [] :battlefield []}
+                      :library-top []
+                      :mana-pool   {}
+                      :life        20}
+   :scenario/opponent {:archetype  :goldfish
+                       :deck       []
+                       :zones      {:hand [] :graveyard [] :battlefield []}
+                       :library-top []
+                       :mana-pool  {}
+                       :life       20}
+   :scenario/phase   :main1})
+
+
+(def ^:private random-draw-three-scenario
+  "Deck with 7 cards, random-draw 3 — 3 go to hand, 4 stay in library."
+  {:scenario/id      #uuid "aaaaaaaa-0000-0000-0000-000000000031"
+   :scenario/title   "Random Draw Three"
+   :scenario/player  {:deck        [{:card/id :dark-ritual :count 4}
+                                    {:card/id :lotus-petal :count 3}]
+                      :zones       {:hand [] :graveyard [] :battlefield []}
+                      :library-top []
+                      :random-draw 3
+                      :mana-pool   {}
+                      :life        20}
+   :scenario/opponent {:archetype  :goldfish
+                       :deck       []
+                       :zones      {:hand [] :graveyard [] :battlefield []}
+                       :library-top []
+                       :mana-pool  {}
+                       :life       20}
+   :scenario/phase   :main1})
+
+
+(def ^:private random-draw-exceeds-pool-scenario
+  "Deck with 3 cards, random-draw 10 — draws all 3, no error."
+  {:scenario/id      #uuid "aaaaaaaa-0000-0000-0000-000000000032"
+   :scenario/title   "Random Draw Exceeds Pool"
+   :scenario/player  {:deck        [{:card/id :dark-ritual :count 3}]
+                      :zones       {:hand [] :graveyard [] :battlefield []}
+                      :library-top []
+                      :random-draw 10
+                      :mana-pool   {}
+                      :life        20}
+   :scenario/opponent {:archetype  :goldfish
+                       :deck       []
+                       :zones      {:hand [] :graveyard [] :battlefield []}
+                       :library-top []
+                       :mana-pool  {}
+                       :life       20}
+   :scenario/phase   :main1})
+
+
+(def ^:private random-draw-with-library-top-scenario
+  "Deck with 7 cards, library-top 2, random-draw 3 — library-top not in draw pool."
+  {:scenario/id      #uuid "aaaaaaaa-0000-0000-0000-000000000033"
+   :scenario/title   "Random Draw With Library Top"
+   :scenario/player  {:deck        [{:card/id :dark-ritual :count 4}
+                                    {:card/id :lotus-petal :count 3}]
+                      :zones       {:hand [] :graveyard [] :battlefield []}
+                      :library-top [:dark-ritual :lotus-petal]
+                      :random-draw 3
+                      :mana-pool   {}
+                      :life        20}
+   :scenario/opponent {:archetype  :goldfish
+                       :deck       []
+                       :zones      {:hand [] :graveyard [] :battlefield []}
+                       :library-top []
+                       :mana-pool  {}
+                       :life       20}
+   :scenario/phase   :main1})
+
+
+(def ^:private random-draw-with-zones-scenario
+  "Deck 7 cards, 2 in hand zone, random-draw 2 — zone cards not in random draw pool."
+  {:scenario/id      #uuid "aaaaaaaa-0000-0000-0000-000000000034"
+   :scenario/title   "Random Draw With Zones"
+   :scenario/player  {:deck        [{:card/id :dark-ritual :count 4}
+                                    {:card/id :lotus-petal :count 3}]
+                      :zones       {:hand [:dark-ritual :lotus-petal]
+                                    :graveyard []
+                                    :battlefield []}
+                      :library-top []
+                      :random-draw 2
+                      :mana-pool   {}
+                      :life        20}
+   :scenario/opponent {:archetype  :goldfish
+                       :deck       []
+                       :zones      {:hand [] :graveyard [] :battlefield []}
+                       :library-top []
+                       :mana-pool  {}
+                       :life       20}
+   :scenario/phase   :main1})
+
+
+(deftest test-random-draw-zero-leaves-library-unchanged
+  (testing "random-draw 0 (absent key): all deck cards go to library, hand is empty"
+    (let [app-db (scenario/init-from-scenario random-draw-zero-scenario)
+          game-db (:game/db app-db)]
+      (is (= 0 (count-objects-in-zone game-db :player-1 :hand))
+          "hand should be empty when random-draw is not set")
+      (is (= 7 (count-objects-in-zone game-db :player-1 :library))
+          "library should have all 7 cards"))))
+
+
+(deftest test-random-draw-three-puts-three-in-hand
+  (testing "random-draw 3: hand has 3 random cards, library has the remaining 4"
+    (let [app-db (scenario/init-from-scenario random-draw-three-scenario)
+          game-db (:game/db app-db)]
+      (is (= 3 (count-objects-in-zone game-db :player-1 :hand))
+          "hand should have exactly 3 randomly drawn cards")
+      (is (= 4 (count-objects-in-zone game-db :player-1 :library))
+          "library should have the remaining 4 cards"))))
+
+
+(deftest test-random-draw-total-cards-preserved
+  (testing "random-draw: total cards in hand + library equals total deck size"
+    (let [app-db (scenario/init-from-scenario random-draw-three-scenario)
+          game-db (:game/db app-db)
+          hand-count (count-objects-in-zone game-db :player-1 :hand)
+          library-count (count-objects-in-zone game-db :player-1 :library)]
+      (is (= 7 (+ hand-count library-count))
+          "total cards across hand and library should equal the full deck size"))))
+
+
+(deftest test-random-draw-exceeds-pool-draws-all-available
+  (testing "random-draw > pool size: draws all available cards, no error"
+    (let [app-db (scenario/init-from-scenario random-draw-exceeds-pool-scenario)
+          game-db (:game/db app-db)]
+      (is (= 3 (count-objects-in-zone game-db :player-1 :hand))
+          "hand should have all 3 cards when random-draw exceeds pool size")
+      (is (= 0 (count-objects-in-zone game-db :player-1 :library))
+          "library should be empty when all cards were drawn"))))
+
+
+(deftest test-random-draw-does-not-include-library-top-cards
+  (testing "random-draw pool excludes library-top cards; library starts with top-ids"
+    (let [app-db (scenario/init-from-scenario random-draw-with-library-top-scenario)
+          game-db (:game/db app-db)
+          hand-count (count-objects-in-zone game-db :player-1 :hand)
+          library-count (count-objects-in-zone game-db :player-1 :library)
+          library (q/get-objects-in-zone game-db :player-1 :library)
+          sorted-lib (sort-by :object/position library)
+          pos0-card (get-in (first sorted-lib) [:object/card :card/id])
+          pos1-card (get-in (second sorted-lib) [:object/card :card/id])]
+      ;; Deck=7, library-top=2, random-draw=3 draws from remaining 5
+      ;; hand=3 (random draw), library=4 (2 library-top + 2 rest)
+      (is (= 3 hand-count)
+          "hand should have 3 randomly drawn cards")
+      (is (= 4 library-count)
+          "library should have 4 cards (2 library-top + 2 remaining)")
+      (is (= :dark-ritual pos0-card)
+          "position-0 in library should be the first library-top card")
+      (is (= :lotus-petal pos1-card)
+          "position-1 in library should be the second library-top card"))))
+
+
+(deftest test-random-draw-does-not-include-zone-assigned-cards
+  (testing "random-draw pool excludes zone-assigned cards; zone cards appear in their zones"
+    (let [app-db (scenario/init-from-scenario random-draw-with-zones-scenario)
+          game-db (:game/db app-db)
+          hand-count (count-objects-in-zone game-db :player-1 :hand)
+          library-count (count-objects-in-zone game-db :player-1 :library)]
+      ;; Deck=7, zones hand=2, pool=5, random-draw=2 → hand total=4, library=3
+      (is (= 4 hand-count)
+          "hand should have 2 zone-assigned + 2 randomly drawn cards")
+      (is (= 3 library-count)
+          "library should have the 3 remaining cards"))))
+
+
+(deftest test-random-draw-cards-not-duplicated-in-library
+  (testing "cards drawn via random-draw do not also appear in library"
+    (let [app-db (scenario/init-from-scenario random-draw-three-scenario)
+          game-db (:game/db app-db)
+          hand (q/get-objects-in-zone game-db :player-1 :hand)
+          library (q/get-objects-in-zone game-db :player-1 :library)
+          hand-obj-ids (set (map :object/id hand))
+          lib-obj-ids (set (map :object/id library))]
+      (is (empty? (clojure.set/intersection hand-obj-ids lib-obj-ids))
+          "no object ID should appear in both hand and library"))))

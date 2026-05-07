@@ -67,14 +67,17 @@
 
 
 (defn- compute-library-card-ids
-  "Given the full deck card-ids, zone-assigned card-ids, and library-top card-ids,
-   return [ordered-top remaining-shuffled] where:
+  "Given the full deck card-ids, zone-assigned card-ids, library-top card-ids,
+   and a random-draw-count, return [ordered-top random-draw-ids remaining-shuffled] where:
    - ordered-top: first N library-top ids that are available in the remaining pool
-   - remaining-shuffled: the rest of the pool, shuffled, positioned after ordered-top
+   - random-draw-ids: random-draw-count cards taken from the shuffled remainder
+   - remaining-shuffled: the rest of the pool after random-draw, shuffled
 
    A card is 'available' for library-top if it is present in the remaining pool
-   (i.e. not assigned to a zone). We consume one copy per library-top entry."
-  [deck-ids zone-ids library-top-ids]
+   (i.e. not assigned to a zone). We consume one copy per library-top entry.
+   random-draw draws from the shuffled remainder after library-top is satisfied;
+   if fewer cards remain than requested, draws all available (no error)."
+  [deck-ids zone-ids library-top-ids random-draw-count]
   (let [;; Remove zone-assigned cards from deck to get remaining pool
         remaining (reduce
                     (fn [pool zone-card-id]
@@ -94,18 +97,23 @@
                                     [(conj tops lib-top-id)
                                      (into (subvec pool 0 idx) (subvec pool (inc idx)))])))
                               [[] (vec remaining)]
-                              library-top-ids)]
-    [top-ids (shuffle after-top)]))
+                              library-top-ids)
+        shuffled (shuffle after-top)
+        n (min (or random-draw-count 0) (count shuffled))
+        random-draw-ids (vec (take n shuffled))
+        rest-shuffled (vec (drop n shuffled))]
+    [top-ids random-draw-ids rest-shuffled]))
 
 
 (defn- init-player-side!
   "Build all objects for one player side:
    - zone objects (hand, graveyard, battlefield) in specified positions
+   - random-draw cards appended to hand from the shuffled remainder
    - library: library-top (positions 0..N-1) then shuffled remainder
 
    Returns nothing — side effects only (d/transact! calls)."
   [conn player-eid player-config]
-  (let [{:keys [deck zones library-top]} player-config
+  (let [{:keys [deck zones library-top random-draw]} player-config
         zone-map (or zones {})
         hand-ids (or (:hand zone-map) [])
         graveyard-ids (or (:graveyard zone-map) [])
@@ -113,10 +121,13 @@
         library-top-ids (or library-top [])
         all-zone-ids (concat hand-ids graveyard-ids battlefield-ids)
         deck-ids (expand-deck-card-ids deck)
-        [top-ids rest-shuffled] (compute-library-card-ids deck-ids all-zone-ids library-top-ids)
-        library-ids (concat top-ids rest-shuffled)]
+        [top-ids random-draw-ids rest-shuffled]
+        (compute-library-card-ids deck-ids all-zone-ids library-top-ids
+                                  (or random-draw 0))
+        library-ids (concat top-ids rest-shuffled)
+        all-hand-ids (concat hand-ids random-draw-ids)]
     ;; Transact each zone's objects
-    (build-zone-objects! conn player-eid :hand hand-ids 0)
+    (build-zone-objects! conn player-eid :hand all-hand-ids 0)
     (build-zone-objects! conn player-eid :graveyard graveyard-ids 0)
     (build-zone-objects! conn player-eid :battlefield battlefield-ids 0)
     ;; Transact library with correct ordering (top-ids first, then shuffled rest)
