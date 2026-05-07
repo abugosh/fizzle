@@ -504,7 +504,8 @@
                              "cursor-pointer bg-accent text-surface"
                              "cursor-default bg-btn-disabled-bg text-border opacity-50"))
                :disabled (not has-title?)
-               :on-click #(rf/dispatch [::scenario-events/save editing])}
+               :on-click #(do (rf/dispatch [::scenario-events/save editing])
+                              (rf/dispatch [::scenario-events/show-library]))}
       "Save"]
      [:button {:class (str "py-2 px-5 border border-border rounded font-bold text-sm "
                            (if has-deck?
