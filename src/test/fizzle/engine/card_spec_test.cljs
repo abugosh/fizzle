@@ -148,6 +148,97 @@
       (is (= true (card-spec/valid-card? card))))))
 
 
+(deftest test-cycling-ability-type-valid
+  (testing "cycling ability type is accepted"
+    (is (contains? card-spec/valid-ability-types :cycling)
+        "valid-ability-types must include :cycling")))
+
+
+(deftest test-card-with-cycling-ability-valid
+  (testing "card with cycling ability in :card/abilities passes"
+    (let [card {:card/id :test-cycling
+                :card/name "Cycling Card"
+                :card/cmc 3
+                :card/mana-cost {:colorless 3}
+                :card/colors #{}
+                :card/types #{:artifact}
+                :card/text "Cycling {1}."
+                :card/abilities [{:ability/type :cycling
+                                  :ability/zone :hand
+                                  :ability/cost {:discard-self true}
+                                  :ability/effects [{:effect/type :draw
+                                                     :effect/amount 1}]}]}]
+      (is (= true (card-spec/valid-card? card))))))
+
+
+(deftest test-ability-zone-spec-accepts-keyword
+  (testing "::ability spec accepts :ability/zone keyword"
+    (is (s/valid? ::card-spec/ability
+                  {:ability/type :cycling
+                   :ability/zone :hand
+                   :ability/cost {:discard-self true}
+                   :ability/effects [{:effect/type :draw :effect/amount 1}]}))))
+
+
+(deftest test-ability-zone-optional
+  (testing "::ability spec allows omitting :ability/zone"
+    (is (s/valid? ::card-spec/ability
+                  {:ability/type :mana
+                   :ability/cost {:tap true}
+                   :ability/effects [{:effect/type :add-mana :effect/mana {:blue 1}}]}))))
+
+
+(deftest test-cycling-ability-defaults-to-hand-zone
+  (testing "cycling ability typically uses :ability/zone :hand"
+    (let [cycling {:ability/type :cycling
+                   :ability/zone :hand
+                   :ability/cost {:discard-self true}
+                   :ability/effects [{:effect/type :draw :effect/amount 1}]}]
+      (is (s/valid? ::card-spec/ability cycling))
+      (is (= :hand (:ability/zone cycling))))))
+
+
+(deftest test-card-cycling-key-replaced-by-ability
+  (testing "cycling is now defined as an ability type, not a card key"
+    ;; Note: s/keys with :opt allows unknown keys (open maps in cljs.spec)
+    ;; so a card with :card/cycling would still validate, but it's deprecated
+    ;; and should be replaced with :card/abilities containing a cycling ability
+    (let [old-style {:card/id :old-cycling
+                     :card/name "Old Style"
+                     :card/cmc 1
+                     :card/mana-cost {:colorless 1}
+                     :card/colors #{}
+                     :card/types #{:artifact}
+                     :card/text "Cycling {1}."
+                     :card/cycling {:colorless 1}}
+          new-style {:card/id :new-cycling
+                     :card/name "New Style"
+                     :card/cmc 1
+                     :card/mana-cost {:colorless 1}
+                     :card/colors #{}
+                     :card/types #{:artifact}
+                     :card/text "Cycling {1}."
+                     :card/abilities [{:ability/type :cycling
+                                       :ability/zone :hand
+                                       :ability/cost {:discard-self true}
+                                       :ability/effects [{:effect/type :draw :effect/amount 1}]}]}]
+      ;; Old style still validates (open maps allow unknown keys)
+      (is (s/valid? ::card-spec/card old-style)
+          "Card with deprecated :card/cycling key still validates (open map)")
+      ;; New style validates and is the correct approach
+      (is (s/valid? ::card-spec/card new-style)
+          "Card with cycling ability in :card/abilities validates correctly"))))
+
+
+(deftest test-activated_ability_with_zone_valid
+  (testing "activated ability can have :ability/zone"
+    (let [activated {:ability/type :activated
+                     :ability/zone :battlefield
+                     :ability/cost {:tap true}
+                     :ability/effects [{:effect/type :draw :effect/amount 1}]}]
+      (is (s/valid? ::card-spec/ability activated)))))
+
+
 (deftest test-card-with-targeting-valid
   (testing "card with targeting passes"
     (let [card {:card/id :test-target

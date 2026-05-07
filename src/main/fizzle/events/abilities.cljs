@@ -253,7 +253,7 @@
 
 
 (defn activate-ability
-  "Activate a non-mana ability on a permanent (e.g., fetchlands).
+  "Activate a non-mana ability on a permanent (e.g., fetchlands, cycling).
    Pure function: (db, player-id, object-id, ability-index) -> {:db db :pending-selection nil}
 
    Arguments:
@@ -263,10 +263,14 @@
      ability-index - Index of the ability in :card/abilities
 
    Flow:
-     1. Find ability from card data
-     2. Check can-activate? via abilities module
-     3. If ability has targeting: pause for target selection (costs not paid yet)
-     4. If no targeting: Pay costs and add to stack immediately
+     1. Look up obj and player-eid
+     2. Check obj and player-eid exist
+     3. Look up ability from :card/abilities
+     4. Check ability exists and type is #{:activated :cycling}
+     5. Read expected zone: (:ability/zone ability :battlefield)
+     6. Check object is in expected zone
+     7. Check controller matches
+     8. Call can-activate? and activate-validated-ability
 
    The ability goes on the stack and effects execute on resolution.
    This allows opponents to respond (e.g., counter with Stifle).
@@ -284,14 +288,14 @@
       {:db db :pending-selection nil}
       (let [obj (queries/get-object db object-id)
             player-eid (queries/get-player-eid db player-id)]
-        (if-not (and obj
-                     player-eid
-                     (= (:object/zone obj) :battlefield)
-                     (= (:db/id (:object/controller obj)) player-eid))
+        (if-not (and obj player-eid)
           {:db db :pending-selection nil}
-          (let [ability (nth (:card/abilities (:object/card obj)) ability-index nil)]
+          (let [ability (nth (:card/abilities (:object/card obj)) ability-index nil)
+                expected-zone (or (:ability/zone ability) :battlefield)]
             (if-not (and ability
-                         (= :activated (:ability/type ability))
+                         (#{:activated :cycling} (:ability/type ability))
+                         (= (:object/zone obj) expected-zone)
+                         (= (:db/id (:object/controller obj)) player-eid)
                          (abilities/can-activate? db object-id ability))
               {:db db :pending-selection nil}
               (activate-validated-ability db player-id object-id ability-index ability))))))))
