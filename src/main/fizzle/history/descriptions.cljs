@@ -275,7 +275,7 @@
 
 
 (defn describe-activate-ability
-  "Describe an activate-ability event. Event args contain [_ object-id ability-index].
+  "Describe an activate-ability event. Event args contain [_ object-id ability-index player-id].
    Uses pre-game-db because source may be sacrificed as cost."
   [object-id ability-index pre-game-db]
   (if-let [card-name (get-card-name pre-game-db object-id)]

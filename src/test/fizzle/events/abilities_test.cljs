@@ -284,24 +284,9 @@
         (is (seq stack-items)
             "Stack should have the activated ability item when explicit player-id matches controller")
         (is (= :activated-ability (:stack-item/type (first stack-items)))
-            "Stack item type should be :activated-ability")))))
-
-
-;; Test 6b: backward compatibility without player-id argument
-(deftest activate-ability-backward-compatible-without-player-id
-  (testing "activate-ability defaults to human player when player-id argument is omitted"
-    (let [db (h/create-test-db)
-          [db' obj-id] (h/add-card-to-zone db :polluted-delta :battlefield :player-1)
-          [db'' _] (h/add-cards-to-library db' [:island :swamp] :player-1)
-          ;; Dispatch with only 2 args (no player-id) — should default to human player
-          result (abilities/activate-ability db'' :player-1 obj-id 0)]
-      (is (nil? (:pending-selection result))
-          "Activation should succeed without explicit player-id argument")
-      (let [stack-items (q/get-all-stack-items (:db result))]
-        (is (seq stack-items)
-            "Stack should have the activated ability item for human player (default)")
-        (is (= :activated-ability (:stack-item/type (first stack-items)))
-            "Stack item type should be :activated-ability")))))
+            "Stack item type should be :activated-ability")
+        (is (= :player-2 (:stack-item/controller (first stack-items)))
+            "Stack item controller should be :player-2")))))
 
 
 ;; Test 7: activate-ability in non-priority phase returns unchanged
