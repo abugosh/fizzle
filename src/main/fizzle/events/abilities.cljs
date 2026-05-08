@@ -146,8 +146,13 @@
                                               :stack-item/targets updated-chosen
                                               :stack-item/description (:ability/description ability)}
                                        pending-sacrifice-info (assoc :stack-item/sacrifice-info pending-sacrifice-info))
-                    db-with-item (stack/create-stack-item db-after-costs stack-item-attrs)]
-                {:db db-with-item
+                    db-with-item (stack/create-stack-item db-after-costs stack-item-attrs)
+                    db-final (if (= :cycling (:ability/type ability))
+                               (trigger-dispatch/dispatch-event
+                                 db-with-item
+                                 (game-events/card-cycled-event object-id player-id))
+                               db-with-item)]
+                {:db db-final
                  :pending-selection nil})
               {:db db :pending-selection nil}))))
       ;; No target selected - return unchanged (activation cancelled)

@@ -482,8 +482,13 @@
                                                    :stack-item/source object-id
                                                    :stack-item/effects effects-list
                                                    :stack-item/sacrifice-info sacrifice-info
-                                                   :stack-item/description (:ability/description ability)})]
-        {:db db-with-item})
+                                                   :stack-item/description (:ability/description ability)})
+            db-final (if (= :cycling (:ability/type ability))
+                       (trigger-dispatch/dispatch-event
+                         db-with-item
+                         (game-events/card-cycled-event object-id player-id))
+                       db-with-item)]
+        {:db db-final})
 
       :else
       (let [db-after-cast (rules/cast-spell-mode db-after-sacrifice player-id object-id mode)

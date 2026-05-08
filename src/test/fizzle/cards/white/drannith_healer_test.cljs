@@ -167,7 +167,7 @@
 
 ;; Helper: set up db with DH on battlefield, another cycling card in hand,
 ;; mana available for cycling.
-;; Returns {:db db :dh-id dh-id :cycle-card-id cycle-card-id}
+;; Returns {:db db :dh-id dh-id :cycle-id cycle-id}
 (defn- setup-dh-trigger-test
   "Cast DH, add another cycling card to hand with mana for cycling.
    The cycle card is Imposing Vantasaur ({5}{W} creature with cycling {1}).
