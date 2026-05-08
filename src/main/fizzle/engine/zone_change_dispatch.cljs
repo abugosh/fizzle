@@ -28,12 +28,21 @@
 
 
 (defn- dispatch-post-move-triggers
-  "Fire :zone-change and optionally :land-entered triggers after a zone move.
+  "Fire :zone-change and optionally :card-discarded and :land-entered triggers after a zone move.
    Returns updated db."
   [_db db-after-move object-id from-zone new-zone]
   (let [db-after-zone-change (trigger-dispatch/dispatch-event
                                db-after-move
-                               (events/zone-change-event object-id from-zone new-zone))]
+                               (events/zone-change-event object-id from-zone new-zone))
+        ;; Dispatch :card-discarded when a card is discarded (hand → graveyard)
+        db-after-discard (if (and (= from-zone :hand) (= new-zone :graveyard))
+                           (let [obj (q/get-object db-after-move object-id)
+                                 controller-eid (:db/id (:object/controller obj))
+                                 controller-id (q/get-player-id db-after-move controller-eid)]
+                             (trigger-dispatch/dispatch-event
+                               db-after-zone-change
+                               (events/card-discarded-event object-id controller-id)))
+                           db-after-zone-change)]
     ;; Additionally dispatch :land-entered when a land enters the battlefield.
     ;; Cannot use rules/land-card? here (circular dep: rules → zone-change-dispatch),
     ;; so we inline the land type check.
@@ -44,10 +53,10 @@
           (let [controller-eid (:db/id (:object/controller obj))
                 controller-id (q/get-player-id db-after-move controller-eid)]
             (trigger-dispatch/dispatch-event
-              db-after-zone-change
+              db-after-discard
               (events/land-entered-event object-id controller-id)))
-          db-after-zone-change))
-      db-after-zone-change)))
+          db-after-discard))
+      db-after-discard)))
 
 
 (defn move-to-zone
