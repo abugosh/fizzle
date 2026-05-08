@@ -46,7 +46,10 @@
 (defmethod effects/execute-effect-impl :deal-damage
   [db player-id effect object-id]
   (let [amount (effects/resolve-dynamic-value db player-id (get effect :effect/amount 0) object-id)
-        target (:effect/target effect)]
+        explicit-target (:effect/target effect)
+        target (if (= explicit-target :opponent)
+                 (q/get-opponent-id db player-id)
+                 explicit-target)]
     (if (<= amount 0)
       db
       (cond

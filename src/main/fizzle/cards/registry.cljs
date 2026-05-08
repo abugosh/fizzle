@@ -79,6 +79,7 @@
     [fizzle.cards.lands.wasteland :as wasteland]
     [fizzle.cards.multicolor.diabolic-vision :as diabolic-vision]
     [fizzle.cards.red.burning-wish :as burning-wish]
+    [fizzle.cards.red.drannith-stinger :as drannith-stinger]
     [fizzle.cards.red.fling :as fling]
     [fizzle.cards.red.goblin-welder :as goblin-welder]
     [fizzle.cards.red.lightning-bolt :as lightning-bolt]
@@ -142,6 +143,7 @@
        ray-of-revelation/card
        seal-of-cleansing/card
        burning-wish/card
+       drannith-stinger/card
        fling/card
        goblin-welder/card
        lightning-bolt/card
