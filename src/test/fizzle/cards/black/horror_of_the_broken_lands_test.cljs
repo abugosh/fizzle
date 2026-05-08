@@ -20,6 +20,7 @@
     [fizzle.engine.creatures :as creatures]
     [fizzle.engine.grants :as grants]
     [fizzle.engine.rules :as rules]
+    [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.events.abilities :as abilities]
     [fizzle.test-helpers :as th]))
 
@@ -203,7 +204,7 @@
           _ (is (= 4 (creatures/effective-toughness db horror-id)) "Precondition: base toughness 4")
           ;; Cycle Imposing Vantasaur (cycling {1} — generic, uses mana allocation)
           result (abilities/activate-ability db :player-1 cycle-id 0)
-          _ (is (some? (:pending-selection result)) "Cycling {1}: mana allocation expected")
+          _ (is (= :allocate-resource (:selection/mechanism (:pending-selection result))) "Cycling {1}: mana-allocation selection expected")
           db-after-discard (:db result)
           alloc-sel (:pending-selection result)
           alloc-sel-with-alloc (assoc alloc-sel :selection/allocation (th/auto-compute-mana-allocation alloc-sel))
@@ -224,22 +225,28 @@
           "Horror should be 5 toughness after +2/+1 trigger resolves"))))
 
 
-;; Oracle: "Whenever you cycle or discard another card" — "another card" means not Horror itself
-;; When Horror itself is cycled (discarded from hand), the :exclude-self filter prevents trigger.
+;; Oracle: "Whenever you cycle or discard another card" — Horror must be on battlefield to observe.
+;; When Horror itself is cycled from hand, it is never on the battlefield, so its triggers are
+;; never registered. No trigger fires because of the zone check (ADR-026), not :exclude-self.
+;;
+;; Note: :exclude-self is a defensive guard for a case unreachable in normal gameplay.
+;; Horror cannot simultaneously be on the battlefield (trigger observer) AND in hand
+;; (discardable via cycling). The :exclude-self filter would only matter if some exotic
+;; effect moved Horror mid-resolution, which is not a supported scenario.
 (deftest horror-of-the-broken-lands-no-trigger-on-self-cycle-test
-  (testing "Cycling Horror itself does not trigger its own ability (exclude-self)"
+  (testing "Cycling Horror itself does not trigger its own ability — Horror not on battlefield (zone check, ADR-026)"
     (let [db (th/create-test-db {:mana {:black 1}})
           [db _] (th/add-cards-to-library db [:dark-ritual] :player-1)
           [db horror-id] (th/add-card-to-zone db :horror-of-the-broken-lands :hand :player-1)
-          ;; Horror is in hand — NOT on battlefield, so no trigger observer anyway
+          ;; Horror is in hand — NOT on battlefield, so triggers are never registered.
           ;; Cycle Horror itself
           result (abilities/activate-ability db :player-1 horror-id 0)
           _ (is (nil? (:pending-selection result)) "Cycling {B}: no mana allocation selection")
           db (:db result)
-          ;; Only the cycling ability should be on stack — no self-trigger
+          ;; Only the cycling ability should be on stack — no trigger (Horror not on battlefield)
           stack-items (q/get-all-stack-items db)]
       (is (= 1 (count stack-items))
-          "Only the cycling ability on stack — no Horror trigger (exclude-self)")
+          "Only the cycling ability on stack — no Horror trigger (Horror not on battlefield, zone check)")
       (is (= :graveyard (:object/zone (q/get-object db horror-id)))
           "Horror should be in graveyard after self-cycle"))))
 
@@ -271,6 +278,37 @@
           "Only the cycling ability should be on stack — Horror trigger filtered for opponent")
       (is (= 4 (creatures/effective-power db horror-id))
           "Horror power should be unchanged — opponent cycled, not controller"))))
+
+
+;; Oracle: "Whenever you cycle or discard another card" — includes non-cycling discard paths
+;; Simulates LED activation, Careful Study, or cleanup discard (any hand→graveyard move).
+;; Verifies the :card-discarded dispatch in zone_change_dispatch fires the trigger.
+(deftest horror-of-the-broken-lands-trigger-on-non-cycling-discard-test
+  (testing "Non-cycling discard (hand→graveyard via move-to-zone) triggers Horror's +2/+1"
+    (let [db (th/create-test-db {:mana {:colorless 4 :black 1}})
+          [db _] (th/add-cards-to-library db [:dark-ritual] :player-1)
+          [db horror-id] (th/add-card-to-zone db :horror-of-the-broken-lands :hand :player-1)
+          db (th/cast-and-resolve db :player-1 horror-id)
+          ;; Add a card to hand to be discarded (any non-Horror card)
+          [db discard-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          _ (is (= :battlefield (:object/zone (q/get-object db horror-id)))
+                "Precondition: Horror on battlefield")
+          _ (is (= 4 (creatures/effective-power db horror-id)) "Precondition: base power 4")
+          _ (is (= 4 (creatures/effective-toughness db horror-id)) "Precondition: base toughness 4")
+          ;; Simulate non-cycling discard: move card from hand to graveyard directly
+          ;; (same path as LED activation, Careful Study, or cleanup discard)
+          db (zone-change-dispatch/move-to-zone-db db discard-id :graveyard)
+          _ (is (= :graveyard (:object/zone (q/get-object db discard-id)))
+                "Discarded card should be in graveyard")
+          ;; Horror trigger should be on stack
+          stack-items (q/get-all-stack-items db)
+          _ (is (= 1 (count stack-items)) "Horror trigger should be on stack after discard")
+          ;; Resolve the trigger
+          {:keys [db]} (th/resolve-top db)]
+      (is (= 6 (creatures/effective-power db horror-id))
+          "Horror should be 6 power after +2/+1 trigger resolves")
+      (is (= 5 (creatures/effective-toughness db horror-id))
+          "Horror should be 5 toughness after +2/+1 trigger resolves"))))
 
 
 ;; Oracle: "until end of turn" — grant should expire at cleanup

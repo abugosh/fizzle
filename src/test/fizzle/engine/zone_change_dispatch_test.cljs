@@ -502,3 +502,87 @@
           "Countered spell moves to :graveyard")
       (is (= 1 (count zone-change-triggers))
           "Zone-change trigger fires when spell is countered (routes through chokepoint)"))))
+
+
+;; =====================================================
+;; :card-discarded dispatch from move-to-zone chokepoint
+;; (hand → graveyard fires :card-discarded event)
+;; =====================================================
+
+(defn- add-card-to-hand-with-discard-trigger
+  "Add a dark-ritual card to hand with a :card-discarded trigger linked to a battlefield observer.
+   The observer (a separate fixture object) is placed on the battlefield to register the trigger.
+   Returns [db hand-id observer-eid]."
+  [db owner]
+  (let [[db hand-id] (th/add-card-to-zone db :dark-ritual :hand owner)
+        player-eid (q/get-player-eid db owner)
+        ;; Use a fresh temp-id for the observer entity (battlefield object)
+        observer-eid (d/tempid :db.part/user)
+        trigger-tx (trigger-db/create-trigger-tx
+                     {:trigger/event-type :card-discarded
+                      :trigger/controller player-eid
+                      :trigger/filter {}
+                      :trigger/uses-stack? true
+                      :trigger/effects [{:effect/type :draw :effect/amount 0}]})
+        db (d/db-with db trigger-tx)]
+    [db hand-id observer-eid]))
+
+
+(deftest card-discarded-fires-when-hand-card-moves-to-graveyard
+  (testing "move-to-zone hand→graveyard dispatches :card-discarded trigger to stack"
+    (let [db (th/create-test-db)
+          [db hand-id _] (add-card-to-hand-with-discard-trigger db :player-1)
+          stack-before (count (get-stack-items db))
+          ;; Move card from hand to graveyard — triggers :card-discarded dispatch
+          db-after (zone-change-dispatch/move-to-zone-db db hand-id :graveyard)
+          stack-after (get-stack-items db-after)
+          discard-triggers (filter #(= :card-discarded (:stack-item/type %)) stack-after)]
+      (is (= 0 stack-before) "Precondition: stack starts empty")
+      (is (= :graveyard (:object/zone (q/get-object db-after hand-id)))
+          "Card is in graveyard after move")
+      (is (= 1 (count discard-triggers))
+          ":card-discarded trigger fires exactly once on hand→graveyard move"))))
+
+
+(deftest card-discarded-does-not-fire-when-card-moves-library-to-graveyard
+  (testing "move-to-zone library→graveyard does NOT dispatch :card-discarded (mill, not discard)"
+    (let [db (th/create-test-db)
+          [db lib-id] (th/add-card-to-zone db :dark-ritual :library :player-1)
+          player-eid (q/get-player-eid db :player-1)
+          trigger-tx (trigger-db/create-trigger-tx
+                       {:trigger/event-type :card-discarded
+                        :trigger/controller player-eid
+                        :trigger/filter {}
+                        :trigger/uses-stack? true
+                        :trigger/effects [{:effect/type :draw :effect/amount 0}]})
+          db (d/db-with db trigger-tx)
+          stack-before (count (get-stack-items db))
+          ;; Move from library to graveyard (mill) — should NOT fire :card-discarded
+          db-after (zone-change-dispatch/move-to-zone-db db lib-id :graveyard)
+          stack-after (get-stack-items db-after)
+          discard-triggers (filter #(= :card-discarded (:stack-item/type %)) stack-after)]
+      (is (= 0 stack-before) "Precondition: stack starts empty")
+      (is (= 0 (count discard-triggers))
+          ":card-discarded must NOT fire for library→graveyard (mill is not a discard)"))))
+
+
+(deftest card-discarded-does-not-fire-when-card-moves-hand-to-exile
+  (testing "move-to-zone hand→exile does NOT dispatch :card-discarded (exile is not discard)"
+    (let [db (th/create-test-db)
+          [db hand-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          player-eid (q/get-player-eid db :player-1)
+          trigger-tx (trigger-db/create-trigger-tx
+                       {:trigger/event-type :card-discarded
+                        :trigger/controller player-eid
+                        :trigger/filter {}
+                        :trigger/uses-stack? true
+                        :trigger/effects [{:effect/type :draw :effect/amount 0}]})
+          db (d/db-with db trigger-tx)
+          stack-before (count (get-stack-items db))
+          ;; Move from hand to exile — should NOT fire :card-discarded
+          db-after (zone-change-dispatch/move-to-zone-db db hand-id :exile)
+          stack-after (get-stack-items db-after)
+          discard-triggers (filter #(= :card-discarded (:stack-item/type %)) stack-after)]
+      (is (= 0 stack-before) "Precondition: stack starts empty")
+      (is (= 0 (count discard-triggers))
+          ":card-discarded must NOT fire for hand→exile (exile is not a discard)"))))
