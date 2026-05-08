@@ -83,6 +83,13 @@
     0))
 
 
+(defmethod resolve-dynamic-impl :count-type-in-zone
+  [db player-id dynamic _object-id]
+  (let [zone (:dynamic/zone dynamic)
+        card-type (:dynamic/card-type dynamic)]
+    (count (q/query-zone-by-criteria db player-id zone {:match/types #{card-type}}))))
+
+
 (defmethod resolve-dynamic-impl :half-life-rounded-up
   [db player-id _dynamic _object-id]
   (let [life (q/get-life-total db player-id)]
@@ -97,6 +104,15 @@
     (integer? value) value
     (map? value) (resolve-dynamic-impl db player-id value object-id)
     :else 0))
+
+
+(defn resolve-mana-map
+  "Resolve a mana map whose values may be dynamic descriptors.
+   Static integer values pass through. Dynamic maps are resolved to integers."
+  [db player-id mana-map object-id]
+  (into {} (map (fn [[color amount]]
+                  [color (resolve-dynamic-value db player-id amount object-id)])
+                mana-map)))
 
 
 ;; === Effect Execution ===

@@ -8,8 +8,9 @@
 
 
 (defmethod effects/execute-effect-impl :add-mana
-  [db player-id effect _object-id]
-  (mana/add-mana db player-id (:effect/mana effect)))
+  [db player-id effect object-id]
+  (let [resolved (effects/resolve-mana-map db player-id (:effect/mana effect) object-id)]
+    (mana/add-mana db player-id resolved)))
 
 
 (defmethod effects/execute-effect-impl :peek-random-hand

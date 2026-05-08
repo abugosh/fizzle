@@ -27,6 +27,7 @@
     [fizzle.cards.black.infernal-contract :as infernal-contract]
     [fizzle.cards.black.necrologia :as necrologia]
     [fizzle.cards.black.rain-of-filth :as rain-of-filth]
+    [fizzle.cards.black.songs-of-the-damned :as songs-of-the-damned]
     [fizzle.cards.black.street-wraith :as street-wraith]
     [fizzle.cards.black.vendetta :as vendetta]
     [fizzle.cards.blue.accumulated-knowledge :as accumulated-knowledge]
@@ -186,7 +187,8 @@
        infernal-contract/card
        hoodwink/card
        street-wraith/card
-       horror-of-the-broken-lands/card]
+       horror-of-the-broken-lands/card
+       songs-of-the-damned/card]
       ;; Cycle cards
       artifact-lands/cards
       basic-lands/cards

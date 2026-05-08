@@ -79,7 +79,20 @@
 ;; === Effect Field Specs ===
 
 (s/def :effect/type valid-effect-types)
-(s/def :effect/mana ::mana-cost)
+
+
+(s/def :effect/mana
+  (s/and map?
+         (s/every-kv
+           (s/or :color valid-colors
+                 :colorless #{:colorless}
+                 :any #{:any}
+                 :x #{:x})
+           (s/or :amount nat-int?
+                 :x-flag boolean?
+                 :dynamic map?))))
+
+
 (s/def :effect/amount (s/or :int int? :keyword keyword? :dynamic map?))
 (s/def :effect/count (s/or :int int? :keyword keyword? :dynamic map?))
 (s/def :effect/target keyword?)
