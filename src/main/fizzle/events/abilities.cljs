@@ -3,11 +3,13 @@
     [datascript.core :as d]
     [fizzle.db.queries :as queries]
     [fizzle.engine.abilities :as abilities]
+    [fizzle.engine.events :as game-events]
     [fizzle.engine.mana-activation :as engine-mana]
     [fizzle.engine.priority :as priority]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
+    [fizzle.engine.trigger-dispatch :as trigger-dispatch]
     [fizzle.events.selection.core :as selection-core]
     [fizzle.events.selection.costs :as sel-costs]
     [fizzle.events.selection.mana-ability :as mana-ability]
@@ -157,13 +159,19 @@
    Returns {:db :pending-selection nil} or nil if costs can't be paid."
   [db player-id object-id ability]
   (when-let [db-after-costs (abilities/pay-all-costs db object-id (:ability/cost ability))]
-    {:db (stack/create-stack-item db-after-costs
-                                  {:stack-item/type :activated-ability
-                                   :stack-item/controller player-id
-                                   :stack-item/source object-id
-                                   :stack-item/effects (:ability/effects ability [])
-                                   :stack-item/description (:ability/description ability)})
-     :pending-selection nil}))
+    (let [db-with-item (stack/create-stack-item db-after-costs
+                                                {:stack-item/type :activated-ability
+                                                 :stack-item/controller player-id
+                                                 :stack-item/source object-id
+                                                 :stack-item/effects (:ability/effects ability [])
+                                                 :stack-item/description (:ability/description ability)})
+          db-final (if (= :cycling (:ability/type ability))
+                     (trigger-dispatch/dispatch-event
+                       db-with-item
+                       (game-events/card-cycled-event object-id player-id))
+                     db-with-item)]
+      {:db db-final
+       :pending-selection nil})))
 
 
 (defn- activate-ability-with-generic-mana

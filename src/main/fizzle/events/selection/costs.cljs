@@ -7,10 +7,12 @@
     [datascript.core :as d]
     [fizzle.db.queries :as queries]
     [fizzle.engine.creatures :as creatures]
+    [fizzle.engine.events :as game-events]
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
     [fizzle.engine.targeting :as targeting]
+    [fizzle.engine.trigger-dispatch :as trigger-dispatch]
     [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
     [fizzle.events.selection.core :as core]
     [fizzle.events.selection.mana-ability :as mana-ability]
@@ -716,8 +718,13 @@
                                                :stack-item/controller player-id
                                                :stack-item/source object-id
                                                :stack-item/effects effects-list
-                                               :stack-item/description (:ability/description ability)})]
-    {:db db-with-item}))
+                                               :stack-item/description (:ability/description ability)})
+        db-final (if (= :cycling (:ability/type ability))
+                   (trigger-dispatch/dispatch-event
+                     db-with-item
+                     (game-events/card-cycled-event object-id player-id))
+                   db-with-item)]
+    {:db db-final}))
 
 
 ;; =====================================================
