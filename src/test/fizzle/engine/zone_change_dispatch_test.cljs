@@ -510,14 +510,11 @@
 ;; =====================================================
 
 (defn- add-card-to-hand-with-discard-trigger
-  "Add a dark-ritual card to hand with a :card-discarded trigger linked to a battlefield observer.
-   The observer (a separate fixture object) is placed on the battlefield to register the trigger.
-   Returns [db hand-id observer-eid]."
+  "Add a dark-ritual card to hand and register a standalone :card-discarded trigger.
+   Returns [db hand-id]."
   [db owner]
   (let [[db hand-id] (th/add-card-to-zone db :dark-ritual :hand owner)
         player-eid (q/get-player-eid db owner)
-        ;; Use a fresh temp-id for the observer entity (battlefield object)
-        observer-eid (d/tempid :db.part/user)
         trigger-tx (trigger-db/create-trigger-tx
                      {:trigger/event-type :card-discarded
                       :trigger/controller player-eid
@@ -525,13 +522,13 @@
                       :trigger/uses-stack? true
                       :trigger/effects [{:effect/type :draw :effect/amount 0}]})
         db (d/db-with db trigger-tx)]
-    [db hand-id observer-eid]))
+    [db hand-id]))
 
 
 (deftest card-discarded-fires-when-hand-card-moves-to-graveyard
   (testing "move-to-zone hand→graveyard dispatches :card-discarded trigger to stack"
     (let [db (th/create-test-db)
-          [db hand-id _] (add-card-to-hand-with-discard-trigger db :player-1)
+          [db hand-id] (add-card-to-hand-with-discard-trigger db :player-1)
           stack-before (count (get-stack-items db))
           ;; Move card from hand to graveyard — triggers :card-discarded dispatch
           db-after (zone-change-dispatch/move-to-zone-db db hand-id :graveyard)
