@@ -415,7 +415,12 @@
     (is (s/valid? ::card-spec/effect {:effect/type :apply-pt-modifier
                                       :effect/target-ref :target-creature
                                       :effect/power -2
-                                      :effect/toughness -2}))))
+                                      :effect/toughness -2})))
+  (testing "apply-pt-modifier with :effect/target :self for triggered ability passes"
+    (is (s/valid? ::card-spec/effect {:effect/type :apply-pt-modifier
+                                      :effect/target :self
+                                      :effect/power 2
+                                      :effect/toughness 1}))))
 
 
 (deftest test-valid-grant-mana-ability

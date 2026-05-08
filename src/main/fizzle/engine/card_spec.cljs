@@ -51,7 +51,7 @@
 
 
 (def valid-trigger-types
-  #{:becomes-tapped :land-entered :creature-attacks :enters-battlefield :zone-change :card-cycled})
+  #{:becomes-tapped :land-entered :creature-attacks :enters-battlefield :zone-change :card-cycled :card-discarded})
 
 
 (def valid-restriction-types
@@ -305,8 +305,8 @@
 
 
 (defmethod effect-type-spec :apply-pt-modifier [_]
-  (s/keys :req [:effect/type :effect/target-ref :effect/power :effect/toughness]
-          :opt [:effect/condition]))
+  (s/keys :req [:effect/type :effect/power :effect/toughness]
+          :opt [:effect/target-ref :effect/target :effect/condition]))
 
 
 (defmethod effect-type-spec :lose-life-equal-to-toughness [_]
