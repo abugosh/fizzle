@@ -112,3 +112,18 @@
   {:event/type :card-cycled
    :event/object-id object-id
    :event/controller controller-id})
+
+
+(defn card-discarded-event
+  "Create a card-discarded event.
+
+   Arguments:
+     object-id     - ID of the discarded card
+     controller-id - ID of the card's controller
+
+   Returns:
+     Event map with :event/type :card-discarded"
+  [object-id controller-id]
+  {:event/type :card-discarded
+   :event/object-id object-id
+   :event/controller controller-id})

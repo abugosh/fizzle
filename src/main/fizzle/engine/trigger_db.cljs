@@ -18,6 +18,7 @@
 (defmethod trigger-type->event-type :enters-battlefield [_] :permanent-entered)
 (defmethod trigger-type->event-type :zone-change [_] :zone-change)
 (defmethod trigger-type->event-type :card-cycled [_] :card-cycled)
+(defmethod trigger-type->event-type :card-discarded [_] :card-discarded)
 (defmethod trigger-type->event-type :default [type] type)
 
 

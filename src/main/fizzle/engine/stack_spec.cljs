@@ -221,6 +221,16 @@
                 :stack-item/description]))
 
 
+;; :card-discarded — trigger from :card-discarded card triggers
+;; Fires when a card is discarded, filtered by :event/controller to the trigger owner.
+(defmethod stack-item-type-spec :card-discarded [_]
+  (s/keys :req [:stack-item/type
+                :stack-item/controller]
+          :opt [:stack-item/source
+                :stack-item/effects
+                :stack-item/description]))
+
+
 ;; :test — test-only sentinel type (used in turn_test to verify stack non-empty)
 (defmethod stack-item-type-spec :test [_]
   (s/keys :req [:stack-item/type

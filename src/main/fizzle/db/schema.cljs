@@ -102,7 +102,7 @@
    ;; === Trigger Entities (trigger registry in Datascript) ===
    ;; Triggers represent event-driven abilities stored as immutable DB values.
    ;; Component of source object -- auto-retracted when source is retracted (tokens).
-   :trigger/event-type     {}              ; Keyword: :permanent-tapped, :zone-change, :card-cycled, :phase-entered
+   :trigger/event-type     {}              ; Keyword: :permanent-tapped, :zone-change, :card-cycled, :card-discarded, :phase-entered
    :trigger/source         {:db/valueType :db.type/ref}  ; Ref to source object entity (nil for game-rule triggers)
    :trigger/controller     {:db/valueType :db.type/ref}  ; Ref to controlling player entity
    :trigger/filter         {}              ; EDN map: {:event/object-id :self}, {:event/phase :draw}, etc.
