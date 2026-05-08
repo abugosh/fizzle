@@ -22,6 +22,7 @@
     [fizzle.cards.black.crippling-fatigue :as crippling-fatigue]
     [fizzle.cards.black.dark-ritual :as dark-ritual]
     [fizzle.cards.black.duress :as duress]
+    [fizzle.cards.black.horror-of-the-broken-lands :as horror-of-the-broken-lands]
     [fizzle.cards.black.ill-gotten-gains :as ill-gotten-gains]
     [fizzle.cards.black.infernal-contract :as infernal-contract]
     [fizzle.cards.black.necrologia :as necrologia]
@@ -182,7 +183,8 @@
        vision-charm/card
        infernal-contract/card
        hoodwink/card
-       street-wraith/card]
+       street-wraith/card
+       horror-of-the-broken-lands/card]
       ;; Cycle cards
       artifact-lands/cards
       basic-lands/cards
