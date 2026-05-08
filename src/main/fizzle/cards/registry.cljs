@@ -79,6 +79,7 @@
     [fizzle.cards.lands.pain-lands :as pain-lands]
     [fizzle.cards.lands.wasteland :as wasteland]
     [fizzle.cards.multicolor.diabolic-vision :as diabolic-vision]
+    [fizzle.cards.multicolor.monstrous-carabid :as monstrous-carabid]
     [fizzle.cards.red.burning-wish :as burning-wish]
     [fizzle.cards.red.drannith-stinger :as drannith-stinger]
     [fizzle.cards.red.fling :as fling]
@@ -178,6 +179,7 @@
        nimble-mongoose/card
        xantid-swarm/card
        diabolic-vision/card
+       monstrous-carabid/card
        hurkyls-recall/card
        vendetta/card
        vision-charm/card
