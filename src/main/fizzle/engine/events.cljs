@@ -97,3 +97,18 @@
   {:event/type :creature-attacked
    :event/object-id object-id
    :event/controller controller-id})
+
+
+(defn card-cycled-event
+  "Create a card-cycled event.
+
+   Arguments:
+     object-id     - ID of the cycled card
+     controller-id - ID of the card's controller
+
+   Returns:
+     Event map with :event/type :card-cycled"
+  [object-id controller-id]
+  {:event/type :card-cycled
+   :event/object-id object-id
+   :event/controller controller-id})

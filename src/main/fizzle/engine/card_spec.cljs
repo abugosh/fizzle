@@ -51,7 +51,7 @@
 
 
 (def valid-trigger-types
-  #{:becomes-tapped :land-entered :creature-attacks :enters-battlefield :zone-change})
+  #{:becomes-tapped :land-entered :creature-attacks :enters-battlefield :zone-change :card-cycled})
 
 
 (def valid-restriction-types
