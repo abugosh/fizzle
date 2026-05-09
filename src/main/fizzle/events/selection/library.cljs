@@ -414,7 +414,7 @@
 
 
 (defn execute-peek-selection
-  "Execute peek selection - move selected to hand, rest to bottom of library.
+  "Execute peek selection - move selected to selected-zone, remainder to remainder-zone.
    Pure function: (db, selection) -> db
 
    Arguments:
@@ -428,40 +428,47 @@
        :selection/player-id - Player performing the peek
 
    Handles:
-     - Empty selection (fail-to-find): All candidates go to bottom
-     - Cards selected: Selected go to hand, rest go to bottom
-     - Remainder shuffling: If shuffle-remainder? true, randomize bottom order"
+     - Empty selection (fail-to-find): All candidates go to remainder-zone
+     - Cards selected: Selected go to selected-zone, rest go to remainder-zone
+     - Remainder shuffling: If shuffle-remainder? true, randomize remainder order (library-only)"
   [game-db selection]
   (let [selected (:selection/selected selection)
         candidates (:selection/candidates selection)
         remainder (set/difference candidates selected)
         selected-zone (or (:selection/selected-zone selection) :hand)
+        remainder-zone (or (:selection/remainder-zone selection) :bottom-of-library)
         player-id (:selection/player-id selection)
         shuffle-remainder? (:selection/shuffle-remainder? selection)
         ;; Move selected cards to hand
         db-after-selected (reduce (fn [d card-id]
                                     (zone-change-dispatch/move-to-zone-db d card-id selected-zone))
                                   game-db
-                                  selected)
-        ;; Get max position in library to put remainder at bottom
-        ;; Cards in library after removing selected ones
-        library-objs (queries/get-objects-in-zone db-after-selected player-id :library)
-        max-pos (if (seq library-objs)
-                  (apply max (map :object/position library-objs))
-                  -1)
-        ;; Order remainder cards (shuffle if requested, otherwise keep original order)
-        remainder-seq (if shuffle-remainder?
-                        (shuffle (seq remainder))
-                        (seq remainder))
-        ;; Assign new positions to remainder cards starting after max-pos
-        db-after-remainder (reduce-kv
-                             (fn [d idx card-id]
-                               (let [obj-eid (queries/get-object-eid d card-id)
-                                     new-pos (+ max-pos 1 idx)]
-                                 (d/db-with d [[:db/add obj-eid :object/position new-pos]])))
-                             db-after-selected
-                             (vec remainder-seq))]
-    db-after-remainder))
+                                  selected)]
+    ;; Handle remainder based on remainder-zone
+    (if (= remainder-zone :bottom-of-library)
+      ;; Legacy path: position cards at bottom of library
+      (let [library-objs (queries/get-objects-in-zone db-after-selected player-id :library)
+            max-pos (if (seq library-objs)
+                      (apply max (map :object/position library-objs))
+                      -1)
+            ;; Order remainder cards (shuffle if requested, otherwise keep original order)
+            remainder-seq (if shuffle-remainder?
+                            (shuffle (seq remainder))
+                            (seq remainder))
+            ;; Assign new positions to remainder cards starting after max-pos
+            db-after-remainder (reduce-kv
+                                 (fn [d idx card-id]
+                                   (let [obj-eid (queries/get-object-eid d card-id)
+                                         new-pos (+ max-pos 1 idx)]
+                                     (d/db-with d [[:db/add obj-eid :object/position new-pos]])))
+                                 db-after-selected
+                                 (vec remainder-seq))]
+        db-after-remainder)
+      ;; New path: move remainder to specified zone
+      (reduce (fn [d card-id]
+                (zone-change-dispatch/move-to-zone-db d card-id remainder-zone))
+              db-after-selected
+              remainder))))
 
 
 (defn execute-order-bottom-selection

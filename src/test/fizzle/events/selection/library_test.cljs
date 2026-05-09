@@ -1220,3 +1220,136 @@
           result-db (:game/db result)]
       (is (= :graveyard (:object/zone (q/get-object result-db spell-id)))
           "Portent (resolving spell) should be in graveyard after shuffle-and-confirm"))))
+
+
+;; =====================================================
+;; execute-peek-selection :remainder-zone support
+;; Tests for :remainder-zone parameter routing remainder cards to zones other than library
+;; =====================================================
+
+(deftest peek-and-select-remainder-zone-graveyard-moves-remainder-to-graveyard
+  (testing "execute-peek-selection with :remainder-zone :graveyard moves remainder to graveyard"
+    (let [db (setup-db {:library-count 1})
+          ;; Put 3 known cards at top of library (positions 0, 1, 2)
+          [db1 [card-a card-b card-c]] (th/add-cards-to-library db [:opt :sleight-of-hand :impulse] :player-1)
+          ;; Create a peek-and-select selection manually
+          selection {:selection/selected #{card-a}
+                     :selection/candidates #{card-a card-b card-c}
+                     :selection/selected-zone :hand
+                     :selection/remainder-zone :graveyard
+                     :selection/player-id :player-1
+                     :selection/shuffle-remainder? false}
+          result-db (lib/execute-peek-selection db1 selection)]
+      (is (= :hand (:object/zone (q/get-object result-db card-a)))
+          "Selected card-a should be in hand")
+      (is (= :graveyard (:object/zone (q/get-object result-db card-b)))
+          "Remainder card-b should be in graveyard (not library)")
+      (is (= :graveyard (:object/zone (q/get-object result-db card-c)))
+          "Remainder card-c should be in graveyard (not library)"))))
+
+
+(deftest peek-and-select-remainder-zone-bottom-of-library-preserves-existing-behavior
+  (testing "execute-peek-selection with :remainder-zone :bottom-of-library preserves existing behavior"
+    (let [db (setup-db {:library-count 2})
+          ;; Add 2 more cards to library
+          [db1 [card-a card-b]] (th/add-cards-to-library db [:opt :sleight-of-hand] :player-1)
+          selection {:selection/selected #{card-a}
+                     :selection/candidates #{card-a card-b}
+                     :selection/selected-zone :hand
+                     :selection/remainder-zone :bottom-of-library
+                     :selection/player-id :player-1
+                     :selection/shuffle-remainder? false}
+          result-db (lib/execute-peek-selection db1 selection)]
+      (is (= :hand (:object/zone (q/get-object result-db card-a)))
+          "Selected card should be in hand")
+      (is (= :library (:object/zone (q/get-object result-db card-b)))
+          "Remainder card should remain in library")
+      ;; Verify position: remainder should be at bottom (highest position)
+      (let [card-b-pos (:object/position (q/get-object result-db card-b))
+            all-lib (q/get-objects-in-zone result-db :player-1 :library)
+            max-pos (when (seq all-lib) (apply max (map :object/position all-lib)))]
+        (is (= card-b-pos max-pos)
+            "Remainder card should be at bottom of library (highest position)")))))
+
+
+(deftest peek-and-select-remainder-zone-absent-defaults-to-bottom-of-library
+  (testing "execute-peek-selection with no :remainder-zone defaults to :bottom-of-library"
+    (let [db (setup-db {:library-count 1})
+          [db1 [card-a card-b]] (th/add-cards-to-library db [:opt :sleight-of-hand] :player-1)
+          ;; Omit :remainder-zone — should default to :bottom-of-library
+          selection {:selection/selected #{card-a}
+                     :selection/candidates #{card-a card-b}
+                     :selection/selected-zone :hand
+                     :selection/player-id :player-1
+                     :selection/shuffle-remainder? false}
+          result-db (lib/execute-peek-selection db1 selection)]
+      (is (= :hand (:object/zone (q/get-object result-db card-a)))
+          "Selected card should be in hand")
+      (is (= :library (:object/zone (q/get-object result-db card-b)))
+          "Remainder should default to library (not graveyard)"))))
+
+
+(deftest peek-and-select-empty-remainder-no-op
+  (testing "execute-peek-selection with empty remainder (all selected) is a no-op for remainder"
+    (let [db (setup-db {:library-count 1})
+          [db1 [card-a card-b]] (th/add-cards-to-library db [:opt :sleight-of-hand] :player-1)
+          selection {:selection/selected #{card-a card-b}
+                     :selection/candidates #{card-a card-b}
+                     :selection/selected-zone :hand
+                     :selection/remainder-zone :graveyard
+                     :selection/player-id :player-1
+                     :selection/shuffle-remainder? false}
+          result-db (lib/execute-peek-selection db1 selection)
+          graveyard-count (count (q/get-objects-in-zone result-db :player-1 :graveyard))]
+      (is (= :hand (:object/zone (q/get-object result-db card-a)))
+          "card-a selected should be in hand")
+      (is (= :hand (:object/zone (q/get-object result-db card-b)))
+          "card-b selected should be in hand")
+      (is (= 0 graveyard-count)
+          "Graveyard should be empty when no remainder (reduce over empty seq is no-op)"))))
+
+
+(deftest peek-and-select-full-remainder-all-candidates-moved-to-remainder-zone
+  (testing "execute-peek-selection with full remainder (none selected) moves all to remainder-zone"
+    (let [db (setup-db {:library-count 1})
+          [db1 [card-a card-b card-c]] (th/add-cards-to-library db [:opt :sleight-of-hand :impulse] :player-1)
+          selection {:selection/selected #{}
+                     :selection/candidates #{card-a card-b card-c}
+                     :selection/selected-zone :hand
+                     :selection/remainder-zone :graveyard
+                     :selection/player-id :player-1
+                     :selection/shuffle-remainder? false}
+          result-db (lib/execute-peek-selection db1 selection)]
+      ;; All should be in graveyard (fail-to-find: select none)
+      (is (= :graveyard (:object/zone (q/get-object result-db card-a)))
+          "card-a remainder should be in graveyard on fail-to-find")
+      (is (= :graveyard (:object/zone (q/get-object result-db card-b)))
+          "card-b remainder should be in graveyard on fail-to-find")
+      (is (= :graveyard (:object/zone (q/get-object result-db card-c)))
+          "card-c remainder should be in graveyard on fail-to-find")
+      (let [graveyard-count (count (q/get-objects-in-zone result-db :player-1 :graveyard))]
+        (is (= 3 graveyard-count)
+            "All 3 remainder cards should be in graveyard")))))
+
+
+(deftest peek-and-select-remainder-zone-graveyard-via-confirm-selection
+  (testing "execute-peek-selection remainder-zone :graveyard via production path (th/confirm-selection)"
+    (let [db (setup-db {:library-count 3})
+          [db1 spell-id] (th/add-card-to-zone db :sleight-of-hand :stack :player-1)
+          ;; Create effect with :remainder-zone :graveyard
+          effect {:effect/type :peek-and-select
+                  :effect/count 2
+                  :effect/select-count 1
+                  :effect/selected-zone :hand
+                  :effect/remainder-zone :graveyard}
+          sel (sel-core/build-selection-for-effect db1 :player-1 spell-id effect [])
+          candidates (:selection/candidates sel)
+          pick-id (first candidates)
+          {:keys [db]} (th/confirm-selection db1 sel #{pick-id})]
+      (is (= :hand (:object/zone (q/get-object db pick-id)))
+          "Selected card should be in hand")
+      ;; Verify remainder cards are in graveyard (not library)
+      (let [other-ids (filter #(not= % pick-id) candidates)
+            zones (map #(:object/zone (q/get-object db %)) other-ids)]
+        (is (every? #{:graveyard} zones)
+            "Remainder cards should all be in graveyard via production path")))))
