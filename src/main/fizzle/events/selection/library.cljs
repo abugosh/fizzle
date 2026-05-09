@@ -439,11 +439,32 @@
         remainder-zone (or (:selection/remainder-zone selection) :bottom-of-library)
         player-id (:selection/player-id selection)
         shuffle-remainder? (:selection/shuffle-remainder? selection)
-        ;; Move selected cards to hand
-        db-after-selected (reduce (fn [d card-id]
-                                    (zone-change-dispatch/move-to-zone-db d card-id selected-zone))
-                                  game-db
-                                  selected)]
+        ;; Move selected cards to selected-zone
+        db-after-selected (if (= selected-zone :top-of-library)
+                            ;; :top-of-library = reposition within :library at position 0, 1, ...
+                            ;; Cards are already in :library (peeked from there); shift others down
+                            (let [selected-seq (vec selected)
+                                  non-selected (->> (queries/get-objects-in-zone game-db player-id :library)
+                                                    (remove #(contains? selected (:object/id %)))
+                                                    (sort-by :object/position))
+                                  offset (count selected-seq)
+                                  db-with-top (reduce-kv
+                                                (fn [d idx card-id]
+                                                  (let [obj-eid (queries/get-object-eid d card-id)]
+                                                    (d/db-with d [[:db/add obj-eid :object/position idx]])))
+                                                game-db
+                                                selected-seq)]
+                              (reduce
+                                (fn [d [idx lib-obj]]
+                                  (let [obj-eid (queries/get-object-eid d (:object/id lib-obj))]
+                                    (d/db-with d [[:db/add obj-eid :object/position (+ offset idx)]])))
+                                db-with-top
+                                (map-indexed vector non-selected)))
+                            ;; Normal path: move to specified zone
+                            (reduce (fn [d card-id]
+                                      (zone-change-dispatch/move-to-zone-db d card-id selected-zone))
+                                    game-db
+                                    selected))]
     ;; Handle remainder based on remainder-zone
     (if (= remainder-zone :bottom-of-library)
       ;; Legacy path: position cards at bottom of library

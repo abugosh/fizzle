@@ -187,10 +187,10 @@
           "Should have net +1 card in hand: -1 for casting, +2 drawn from remaining library")
       (is (= (- life-before 2) (q/get-life-total db :player-1))
           "Should have lost 2 life after bargained resolution")
-      ;; Verify: the 2 kept cards are in :top-of-library zone
+      ;; Verify: the 2 kept cards were placed on top of library, then drawn
       (doseq [kept-id top-two]
-        (is (= :top-of-library (th/get-object-zone db kept-id))
-            "Kept peeked cards should be in :top-of-library zone"))
+        (is (= :hand (th/get-object-zone db kept-id))
+            "Kept cards placed on top should be drawn into hand by draw-2"))
       ;; Verify: remainder 2 peeked cards went to graveyard
       (doseq [rem-id remainder-two]
         (is (= :graveyard (th/get-object-zone db rem-id))
@@ -283,10 +283,10 @@
             kept-ids (set (take keep-count lib-ids))
             remainder-ids (drop keep-count (take 4 lib-ids))
             {:keys [db]} (th/confirm-selection db selection kept-ids)]
-        ;; Kept cards are placed back on top of library (engine zone: :top-of-library)
+        ;; Kept cards placed on top of library, then drawn by draw-2
         (doseq [kept-id kept-ids]
-          (is (= :top-of-library (th/get-object-zone db kept-id))
-              (str "keep-count=" keep-count ": kept card should be in :top-of-library zone")))
+          (is (= :hand (th/get-object-zone db kept-id))
+              (str "keep-count=" keep-count ": kept card should be drawn into hand")))
         ;; Unchosen peeked cards should go to graveyard
         (doseq [rem-id remainder-ids]
           (is (= :graveyard (th/get-object-zone db rem-id))
@@ -319,8 +319,8 @@
       (let [all-lib-ids (set lib-ids)
             {:keys [db]} (th/confirm-selection db selection all-lib-ids)]
         (doseq [lib-id lib-ids]
-          (is (= :top-of-library (th/get-object-zone db lib-id))
-              "Both peeked cards should be in :top-of-library zone when kept"))))))
+          (is (= :hand (th/get-object-zone db lib-id))
+              "Both kept cards should be drawn into hand by draw-2"))))))
 
 
 ;; Oracle: bargain cost can be paid with an artifact — Lotus Petal is an artifact
