@@ -45,8 +45,18 @@
                         " selected for hand (rest go to graveyard)")
       :graveyard-return (str "Select up to " r " cards (" n " selected)")
       :exile-cost (str "Select blue cards to exile. X = " n " (select at least 1)")
-      :peek-and-select (str "Select up to " r " card(s) for your hand (" n " selected). "
-                            "Remaining cards go to bottom of library.")
+      :peek-and-select (let [sel-zone (or (:selection/selected-zone selection) :hand)
+                             rem-zone (or (:selection/remainder-zone selection) :bottom-of-library)
+                             sel-desc (case sel-zone
+                                        :hand "your hand"
+                                        :top-of-library "top of your library"
+                                        (name sel-zone))
+                             rem-desc (case rem-zone
+                                        :bottom-of-library "bottom of library"
+                                        :graveyard "your graveyard"
+                                        (name rem-zone))]
+                         (str "Select up to " r " card(s) for " sel-desc " (" n " selected). "
+                              "Remaining cards go to " rem-desc "."))
       :untap-lands (str "Select up to " r " lands (" n " selected)")
       (str n " / " r " selected"))))
 
