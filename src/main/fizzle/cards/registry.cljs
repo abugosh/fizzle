@@ -27,6 +27,7 @@
     [fizzle.cards.black.infernal-contract :as infernal-contract]
     [fizzle.cards.black.necrologia :as necrologia]
     [fizzle.cards.black.rain-of-filth :as rain-of-filth]
+    [fizzle.cards.black.rowans-grim-search :as rowans-grim-search]
     [fizzle.cards.black.songs-of-the-damned :as songs-of-the-damned]
     [fizzle.cards.black.street-wraith :as street-wraith]
     [fizzle.cards.black.vendetta :as vendetta]
@@ -110,6 +111,7 @@
        ill-gotten-gains/card
        necrologia/card
        rain-of-filth/card
+       rowans-grim-search/card
        accumulated-knowledge/card
        annul/card
        blue-elemental-blast/card

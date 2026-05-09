@@ -88,9 +88,9 @@
     ;; dark-ritual is first in registry → index 0
     (is (= 0 (card-index/encode :dark-ritual))
         ":dark-ritual is first in registry, should be index 0")
-    ;; brain-freeze is 13th entry (0-based index 12) in the individual cards list
-    (is (= 12 (card-index/encode :brain-freeze))
-        ":brain-freeze is at registry position 12")))
+    ;; brain-freeze is 14th entry (0-based index 13) in the individual cards list
+    (is (= 13 (card-index/encode :brain-freeze))
+        ":brain-freeze is at registry position 13")))
 
 
 (deftest card-index-ordering-matches-registry-test
