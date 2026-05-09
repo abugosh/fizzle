@@ -267,51 +267,63 @@
   "Check if an object's card matches the given criteria.
    All fields use OR logic within their category, AND logic between categories.
    Criteria map supports:
+     :match/or              - Vector of criteria maps; object matches if ANY criterion matches (recursive OR)
      :match/types           - Set of types, object must have ANY (OR - artifact OR enchantment)
      :match/not-types       - Set of types, object must NOT have ANY (exclusion filter)
      :match/colors          - Set of colors, object must have ANY (OR - blue OR white)
      :match/not-colors      - Set of colors, object must NOT have ANY (exclusion filter)
      :match/subtypes        - Set of subtypes, object must have ANY (OR - island OR swamp)
      :match/supertypes      - Set of supertypes, object must have ANY (OR - basic OR legendary)
-     :match/not-supertypes  - Set of supertypes, object must NOT have ANY (exclusion filter)"
+     :match/not-supertypes  - Set of supertypes, object must NOT have ANY (exclusion filter)
+     :match/is-token        - Boolean, object must be (true) or not be (false) a token"
   [obj criteria]
-  (let [card (:object/card obj)
-        card-types (set (or (:card/types card) #{}))
-        card-colors (set (or (:card/colors card) #{}))
-        card-subtypes (set (or (:card/subtypes card) #{}))
-        card-supertypes (set (or (:card/supertypes card) #{}))]
-    (and
-      ;; At least one required type (OR logic) - empty criteria = matches all
-      (or (empty? (get criteria :match/types #{}))
-          (some card-types (get criteria :match/types #{})))
-      ;; Exclusion: object must NOT have any type in the not-types set
-      (let [not-types (get criteria :match/not-types #{})]
-        (or (empty? not-types)
-            (empty? (set/intersection card-types not-types))))
-      ;; At least one required color (OR logic) - empty criteria = matches all
-      (or (empty? (get criteria :match/colors #{}))
-          (some card-colors (get criteria :match/colors #{})))
-      ;; Exclusion: object must NOT have any color in the not-colors set
-      (let [not-colors (get criteria :match/not-colors #{})]
-        (or (empty? not-colors)
-            (empty? (set/intersection card-colors not-colors))))
-      ;; At least one required subtype (OR logic)
-      (or (empty? (get criteria :match/subtypes #{}))
-          (some card-subtypes (get criteria :match/subtypes #{})))
-      ;; At least one required supertype (OR logic)
-      (or (empty? (get criteria :match/supertypes #{}))
-          (some card-supertypes (get criteria :match/supertypes #{})))
-      ;; Exclusion: object must NOT have any supertype in the not-supertypes set
-      (let [not-supertypes (get criteria :match/not-supertypes #{})]
-        (or (empty? not-supertypes)
-            (empty? (set/intersection card-supertypes not-supertypes))))
-      ;; Object's card must have at least one ability matching the required type
-      ;; :card/abilities is plain EDN (not Datascript components); use get-in + some.
-      ;; Absent criterion (nil) = no constraint.
-      (if-let [req-ability-type (:match/has-ability-type criteria)]
-        (boolean (some #(= req-ability-type (:ability/type %))
-                       (get-in obj [:object/card :card/abilities])))
-        true))))
+  ;; Check :match/or first (short-circuit if any branch matches)
+  (if-let [or-clauses (:match/or criteria)]
+    (boolean (some #(matches-criteria? obj %) or-clauses))
+    ;; Otherwise apply AND semantics across all other criteria
+    (let [card (:object/card obj)
+          card-types (set (or (:card/types card) #{}))
+          card-colors (set (or (:card/colors card) #{}))
+          card-subtypes (set (or (:card/subtypes card) #{}))
+          card-supertypes (set (or (:card/supertypes card) #{}))]
+      (and
+        ;; At least one required type (OR logic) - empty criteria = matches all
+        (or (empty? (get criteria :match/types #{}))
+            (some card-types (get criteria :match/types #{})))
+        ;; Exclusion: object must NOT have any type in the not-types set
+        (let [not-types (get criteria :match/not-types #{})]
+          (or (empty? not-types)
+              (empty? (set/intersection card-types not-types))))
+        ;; At least one required color (OR logic) - empty criteria = matches all
+        (or (empty? (get criteria :match/colors #{}))
+            (some card-colors (get criteria :match/colors #{})))
+        ;; Exclusion: object must NOT have any color in the not-colors set
+        (let [not-colors (get criteria :match/not-colors #{})]
+          (or (empty? not-colors)
+              (empty? (set/intersection card-colors not-colors))))
+        ;; At least one required subtype (OR logic)
+        (or (empty? (get criteria :match/subtypes #{}))
+            (some card-subtypes (get criteria :match/subtypes #{})))
+        ;; At least one required supertype (OR logic)
+        (or (empty? (get criteria :match/supertypes #{}))
+            (some card-supertypes (get criteria :match/supertypes #{})))
+        ;; Exclusion: object must NOT have any supertype in the not-supertypes set
+        (let [not-supertypes (get criteria :match/not-supertypes #{})]
+          (or (empty? not-supertypes)
+              (empty? (set/intersection card-supertypes not-supertypes))))
+        ;; Object's card must have at least one ability matching the required type
+        ;; :card/abilities is plain EDN (not Datascript components); use get-in + some.
+        ;; Absent criterion (nil) = no constraint.
+        (if-let [req-ability-type (:match/has-ability-type criteria)]
+          (boolean (some #(= req-ability-type (:ability/type %))
+                         (get-in obj [:object/card :card/abilities])))
+          true)
+        ;; Object must match token requirement (if present)
+        ;; :object/is-token is a boolean on the object entity.
+        ;; Absent criterion = no constraint.
+        (if (contains? criteria :match/is-token)
+          (= (:match/is-token criteria) (boolean (:object/is-token obj)))
+          true)))))
 
 
 (defn query-zone-by-criteria
