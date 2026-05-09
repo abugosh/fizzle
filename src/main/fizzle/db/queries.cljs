@@ -277,15 +277,15 @@
      :match/not-supertypes  - Set of supertypes, object must NOT have ANY (exclusion filter)
      :match/is-token        - Boolean, object must be (true) or not be (false) a token"
   [obj criteria]
-  ;; Check :match/or first (short-circuit if any branch matches)
-  (if-let [or-clauses (:match/or criteria)]
-    (boolean (some #(matches-criteria? obj %) or-clauses))
-    ;; Otherwise apply AND semantics across all other criteria
-    (let [card (:object/card obj)
-          card-types (set (or (:card/types card) #{}))
-          card-colors (set (or (:card/colors card) #{}))
-          card-subtypes (set (or (:card/subtypes card) #{}))
-          card-supertypes (set (or (:card/supertypes card) #{}))]
+  (let [card (:object/card obj)
+        card-types (set (or (:card/types card) #{}))
+        card-colors (set (or (:card/colors card) #{}))
+        card-subtypes (set (or (:card/subtypes card) #{}))
+        card-supertypes (set (or (:card/supertypes card) #{}))]
+    ;; Check :match/or (short-circuit if any branch matches)
+    (if (contains? criteria :match/or)
+      (boolean (some #(matches-criteria? obj %) (:match/or criteria)))
+      ;; Otherwise apply AND semantics across all other criteria
       (and
         ;; At least one required type (OR logic) - empty criteria = matches all
         (or (empty? (get criteria :match/types #{}))

@@ -1010,3 +1010,111 @@
           result (q/query-zone-by-criteria db'' :player-1 :hand {})]
       (is (= 2 (count result))
           "Empty criteria (no :match/has-ability-type) should match all objects"))))
+
+
+;; === :match/or tests ===
+
+(deftest matches-criteria-match-or-first-branch-matching-test
+  (testing ":match/or with first branch matching (artifact matches)"
+    ;; Catches: OR logic not implemented or broken
+    (let [db (th/create-test-db)
+          ;; The initial test-db has Dark Ritual in hand (instant, not artifact, not token)
+          ;; Add Lotus Petal (artifact) - should match first branch
+          [db' _] (th/add-card-to-zone db :lotus-petal :hand :player-1)
+          result (q/query-zone-by-criteria db' :player-1 :hand
+                                           {:match/or [{:match/types #{:artifact}}
+                                                       {:match/is-token true}]})]
+      (is (= 1 (count result))
+          "Only artifact should match first branch of OR")
+      (is (= "Lotus Petal" (get-in (first result) [:object/card :card/name]))
+          "Lotus Petal (artifact) should be returned"))))
+
+
+(deftest matches-criteria-match-or-second-branch-matching-test
+  (testing ":match/or with second branch matching (token matches)"
+    ;; Catches: OR logic not implemented or broken on second branch
+    (let [db (th/create-test-db)
+          ;; Add a token instant (we'll craft this manually via transact)
+          conn (d/conn-from-db db)
+          player-eid (q/get-player-eid db :player-1)
+          card-eid (d/q '[:find ?e .
+                          :in $ ?cid
+                          :where [?e :card/id ?cid]]
+                        db :dark-ritual)
+          token-obj-id (random-uuid)
+          _ (d/transact! conn [{:object/id token-obj-id
+                                :object/card card-eid
+                                :object/zone :hand
+                                :object/owner player-eid
+                                :object/controller player-eid
+                                :object/tapped false
+                                :object/is-token true}])
+          db' @conn
+          result (q/query-zone-by-criteria db' :player-1 :hand
+                                           {:match/or [{:match/types #{:artifact}}
+                                                       {:match/is-token true}]})]
+      (is (= 1 (count result))
+          "Token should match second branch of OR")
+      (is (true? (:object/is-token (first result)))
+          "Result should have :object/is-token true"))))
+
+
+(deftest matches-criteria-match-or-neither-branch-matching-test
+  (testing ":match/or with neither branch matching (non-artifact non-token fails)"
+    ;; Catches: accidental match when should fail
+    (let [db (th/create-test-db)
+          ;; Dark Ritual is an instant (not artifact, not token)
+          ;; Query with OR that requires artifact OR token - should not match
+          result (q/query-zone-by-criteria db :player-1 :hand
+                                           {:match/or [{:match/types #{:artifact}}
+                                                       {:match/is-token true}]})]
+      (is (= 0 (count result))
+          "Non-artifact non-token should not match either OR branch"))))
+
+
+(deftest matches-criteria-match-or-empty-vector-test
+  (testing ":match/or [] (empty OR) returns false"
+    ;; Catches: OR of nothing = no match (vacuous OR)
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :lotus-petal :hand :player-1)
+          result (q/query-zone-by-criteria db' :player-1 :hand {:match/or []})]
+      (is (= 0 (count result))
+          "Empty OR should match nothing"))))
+
+
+;; === :match/is-token tests ===
+
+(deftest matches-criteria-is-token-true-matches-token-test
+  (testing ":match/is-token true matches object with :object/is-token true"
+    ;; Catches: is-token criterion missing or inverted
+    (let [db (th/create-test-db)
+          conn (d/conn-from-db db)
+          player-eid (q/get-player-eid db :player-1)
+          card-eid (d/q '[:find ?e .
+                          :in $ ?cid
+                          :where [?e :card/id ?cid]]
+                        db :dark-ritual)
+          token-obj-id (random-uuid)
+          _ (d/transact! conn [{:object/id token-obj-id
+                                :object/card card-eid
+                                :object/zone :hand
+                                :object/owner player-eid
+                                :object/controller player-eid
+                                :object/tapped false
+                                :object/is-token true}])
+          db' @conn
+          result (q/query-zone-by-criteria db' :player-1 :hand {:match/is-token true})]
+      (is (= 1 (count result))
+          "Token object should match :match/is-token true")
+      (is (true? (:object/is-token (first result)))
+          "Result should have :object/is-token true"))))
+
+
+(deftest matches-criteria-is-token-true-does-not-match-non-token-test
+  (testing ":match/is-token true does not match object with :object/is-token false/nil"
+    ;; Catches: inverted logic
+    (let [db (th/create-test-db)
+          ;; Initial test-db has Dark Ritual in hand, which is not a token
+          result (q/query-zone-by-criteria db :player-1 :hand {:match/is-token true})]
+      (is (= 0 (count result))
+          "Non-token object should not match :match/is-token true"))))
