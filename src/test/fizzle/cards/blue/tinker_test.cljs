@@ -87,9 +87,11 @@
                 "Should show sacrifice-permanent-cost selection")
           _ (is (= #{petal-id} (set (:selection/valid-targets pending-sel)))
                 "Should offer Lotus Petal as sacrifice candidate")
-          ;; Confirm sacrifice of Lotus Petal — lifecycle is :finalized (no targeting on Tinker)
-          ;; Executor calls cast-spell-mode, which puts Tinker on stack
-          {:keys [db]} (th/confirm-selection (:game/db app-db) pending-sel #{petal-id})
+          ;; Confirm sacrifice of Lotus Petal → chains to mana allocation
+          {:keys [db selection]} (th/confirm-selection (:game/db app-db) pending-sel #{petal-id})
+          ;; Allocate generic mana → spell goes on stack
+          {:keys [db]} (th/confirm-selection db selection
+                                             (th/auto-compute-mana-allocation selection))
           ;; Tinker should now be on stack
           _ (is (= :stack (:object/zone (q/get-object db tinker-id)))
                 "Tinker should be on stack after sacrifice cost confirmed")
@@ -148,8 +150,11 @@
           storm-before (q/get-storm-count db :player-1)
           app-db (casting/cast-spell-handler {:game/db db} {:object-id tinker-id})
           pending-sel (:game/pending-selection app-db)
-          ;; Confirm sacrifice — executor casts Tinker (finalized lifecycle)
-          {:keys [db]} (th/confirm-selection (:game/db app-db) pending-sel #{petal-id})]
+          ;; Confirm sacrifice → mana allocation
+          {:keys [db selection]} (th/confirm-selection (:game/db app-db) pending-sel #{petal-id})
+          ;; Allocate generic mana → Tinker goes on stack
+          {:keys [db]} (th/confirm-selection db selection
+                                             (th/auto-compute-mana-allocation selection))]
       (is (= (inc storm-before) (q/get-storm-count db :player-1))
           "Storm count should increment after casting Tinker"))))
 
@@ -195,8 +200,11 @@
           [db tinker-id] (th/add-card-to-zone db :tinker :hand :player-1)
           app-db (casting/cast-spell-handler {:game/db db} {:object-id tinker-id})
           pending-sel (:game/pending-selection app-db)
-          ;; Confirm sacrifice — executor casts Tinker (finalized lifecycle)
-          {:keys [db]} (th/confirm-selection (:game/db app-db) pending-sel #{petal-id})
+          ;; Confirm sacrifice → mana allocation
+          {:keys [db selection]} (th/confirm-selection (:game/db app-db) pending-sel #{petal-id})
+          ;; Allocate generic mana → Tinker goes on stack
+          {:keys [db]} (th/confirm-selection db selection
+                                             (th/auto-compute-mana-allocation selection))
           ;; Resolve Tinker — tutor selection fires with no artifact candidates
           {:keys [db selection]} (th/resolve-top db)
           _ (is (= :tutor (:selection/domain selection)) "Should show tutor selection")
@@ -225,8 +233,11 @@
           [db tinker-id] (th/add-card-to-zone db :tinker :hand :player-1)
           app-db (casting/cast-spell-handler {:game/db db} {:object-id tinker-id})
           pending-sel (:game/pending-selection app-db)
-          ;; Confirm sacrifice — executor casts Tinker (finalized lifecycle)
-          {:keys [db]} (th/confirm-selection (:game/db app-db) pending-sel #{petal-id})
+          ;; Confirm sacrifice → mana allocation
+          {:keys [db selection]} (th/confirm-selection (:game/db app-db) pending-sel #{petal-id})
+          ;; Allocate generic mana → Tinker goes on stack
+          {:keys [db]} (th/confirm-selection db selection
+                                             (th/auto-compute-mana-allocation selection))
           ;; Resolve Tinker
           {:keys [db selection]} (th/resolve-top db)
           ;; LED should still be in library as candidate (Lotus Petal was sacrificed, not LED)
@@ -273,8 +284,8 @@
           sel (sel-costs/build-sacrifice-permanent-selection db :player-1 tinker-id primary sac-cost)]
       (is (= :sacrifice-cost (:selection/domain sel))
           "Selection type should be :sacrifice-permanent-cost")
-      (is (= :finalized (:selection/lifecycle sel))
-          "Lifecycle should be :finalized (Tinker has no targeting)")
+      (is (= :chaining (:selection/lifecycle sel))
+          "Lifecycle should be :chaining (chains to mana allocation for generic cost)")
       (is (= 1 (:selection/select-count sel))
           "Should select exactly 1 permanent")
       (is (= :exact (:selection/validation sel))

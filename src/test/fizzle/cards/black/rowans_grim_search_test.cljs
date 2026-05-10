@@ -165,11 +165,16 @@
           {:keys [db selection]} (th/confirm-selection db selection #{bargained-mode})
           _ (is (= :sacrifice-cost (:selection/domain selection))
                 "After bargained mode: sacrifice-cost selection expected")
-          ;; Step 3: confirm sacrifice of Lotus Petal → spell goes on stack (mana already in pool)
-          {:keys [db]} (th/confirm-selection db selection #{petal-id})
+          ;; Step 3: confirm sacrifice of Lotus Petal → mana allocation selection
+          {:keys [db selection]} (th/confirm-selection db selection #{petal-id})
           ;; Verify Lotus Petal was sacrificed
           _ (is (= :graveyard (th/get-object-zone db petal-id))
                 "Sacrificed artifact should be in graveyard")
+          _ (is (= :mana-allocation (:selection/domain selection))
+                "After sacrifice: mana allocation selection expected")
+          ;; Step 3b: allocate generic mana → spell goes on stack
+          {:keys [db]} (th/confirm-selection db selection
+                                             (th/auto-compute-mana-allocation selection))
           ;; Step 4: resolve → peek-and-select selection for top 4 cards
           {:keys [db selection]} (th/resolve-top db)
           _ (is (= :peek-and-select (:selection/domain selection))
@@ -275,8 +280,11 @@
             {:keys [db selection]} (th/cast-with-mode db :player-1 rgs-id)
             bargained-mode (first (filter #(= :bargained (:mode/id %)) (:selection/candidates selection)))
             {:keys [db selection]} (th/confirm-selection db selection #{bargained-mode})
-            ;; Sacrifice the artifact → spell goes on stack (mana already in pool, no alloc step)
-            {:keys [db]} (th/confirm-selection db selection #{petal-id})
+            ;; Sacrifice the artifact → mana allocation
+            {:keys [db selection]} (th/confirm-selection db selection #{petal-id})
+            ;; Allocate generic mana → spell goes on stack
+            {:keys [db]} (th/confirm-selection db selection
+                                               (th/auto-compute-mana-allocation selection))
             {:keys [db selection]} (th/resolve-top db)
             _ (is (= :peek-and-select (:selection/domain selection))
                   (str "keep-count=" keep-count ": should be peek-and-select selection"))
@@ -308,8 +316,11 @@
           {:keys [db selection]} (th/cast-with-mode db :player-1 rgs-id)
           bargained-mode (first (filter #(= :bargained (:mode/id %)) (:selection/candidates selection)))
           {:keys [db selection]} (th/confirm-selection db selection #{bargained-mode})
-          ;; Sacrifice the artifact → spell goes on stack (mana already in pool, no alloc step)
-          {:keys [db]} (th/confirm-selection db selection #{petal-id})
+          ;; Sacrifice the artifact → mana allocation
+          {:keys [db selection]} (th/confirm-selection db selection #{petal-id})
+          ;; Allocate generic mana → spell goes on stack
+          {:keys [db]} (th/confirm-selection db selection
+                                             (th/auto-compute-mana-allocation selection))
           {:keys [db selection]} (th/resolve-top db)]
       (is (= :peek-and-select (:selection/domain selection))
           "Should still produce peek-and-select with small library")

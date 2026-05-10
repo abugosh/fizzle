@@ -11,6 +11,7 @@
     [fizzle.engine.mana :as mana]
     [fizzle.engine.rules :as rules]
     [fizzle.engine.stack :as stack]
+    [fizzle.engine.static-abilities :as static-abilities]
     [fizzle.engine.targeting :as targeting]
     [fizzle.engine.trigger-dispatch :as trigger-dispatch]
     [fizzle.engine.zone-change-dispatch :as zone-change-dispatch]
@@ -258,10 +259,14 @@
          ability (:ability opts)
          ability-index (:ability-index opts)
          has-targeting? (if (= source-type :ability)
-                          ;; Ability targeting is handled separately after sacrifice confirmation
                           false
                           (let [obj (queries/get-object game-db object-id)]
-                            (seq (:card/targeting (:object/card obj)))))]
+                            (seq (:card/targeting (:object/card obj)))))
+         has-generic-cost? (when (and mode (not= source-type :ability))
+                             (let [effective-cost (static-abilities/get-effective-mana-cost
+                                                    game-db player-id object-id mode)]
+                               (has-generic-mana-cost? effective-cost)))
+         needs-chaining? (or has-targeting? has-generic-cost?)]
      (when (seq candidate-ids)
        (cond-> {:selection/zone      :battlefield
                 :selection/mechanism :pick-from-zone
@@ -279,8 +284,8 @@
          (= source-type :ability) (assoc :selection/source-type :ability
                                          :selection/ability ability
                                          :selection/ability-index ability-index)
-         (and (not= source-type :ability) has-targeting?) (assoc :selection/lifecycle :chaining)
-         (and (not= source-type :ability) (not has-targeting?)) (assoc :selection/lifecycle :finalized)
+         (and (not= source-type :ability) needs-chaining?) (assoc :selection/lifecycle :chaining)
+         (and (not= source-type :ability) (not needs-chaining?)) (assoc :selection/lifecycle :finalized)
          (and (= source-type :ability) (seq (:ability/targeting ability))) (assoc :selection/lifecycle :chaining)
          (and (= source-type :ability) (not (seq (:ability/targeting ability)))) (assoc :selection/lifecycle :finalized))))))
 
@@ -632,11 +637,9 @@
             targeting-reqs (if (seq mode-targeting)
                              mode-targeting
                              (:card/targeting (:object/card obj)))]
-        (when (seq targeting-reqs)
+        (if (seq targeting-reqs)
           (let [n (count targeting-reqs)
                 first-req (first targeting-reqs)
-                ;; Distinctness: enforced when two reqs share identical criteria
-                ;; and no req has :target/allow-duplicate true.
                 criteria-keys [:target/type :target/options :target/criteria]
                 any-shared? (when (> n 1)
                               (some (fn [[req-a req-b]]
@@ -661,12 +664,15 @@
                :selection/auto-confirm? (= 1 n)
                :selection/enforce-distinctness enforce-distinctness?
                :selection/card-source :valid-targets}
-              ;; Single-req legacy path: also set singular :selection/target-requirement
-              ;; so existing single-target confirm paths work unchanged.
               (= 1 n)
               (assoc :selection/target-requirement first-req
                      :selection/selected #{}
-                     :selection/auto-confirm? true))))))))
+                     :selection/auto-confirm? true)))
+          ;; No targeting — chain to mana allocation if generic cost exists
+          (let [effective-cost (static-abilities/get-effective-mana-cost
+                                 db player-id object-id mode)]
+            (when (has-generic-mana-cost? effective-cost)
+              (build-mana-allocation-selection db player-id object-id mode effective-cost))))))))
 
 
 (defn- find-stack-item-eid-for-object
