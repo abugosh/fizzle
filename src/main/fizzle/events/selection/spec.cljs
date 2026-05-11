@@ -5,7 +5,7 @@
    set-pending-selection is the sole writer — all callers use it.
 
    Multi-spec dispatches on :selection/mechanism (ADR-030, fizzle-8650 phase 4).
-   7 defmethods — one per mechanism — replace the previous 33 type-keyed defmethods. has been fully retired (ADR-030 complete).
+   8 defmethods — one per mechanism — replace the previous 33 type-keyed defmethods. has been fully retired (ADR-030 complete).
 
    Validation is dev-only via goog.DEBUG (dead-code eliminated in release).
    set-pending-selection uses validate-at-chokepoint! — throws when
@@ -30,7 +30,7 @@
 ;; has been fully retired.
 (s/def :selection/mechanism
   #{:pick-from-zone :reorder :accumulate :allocate-resource
-    :n-slot-targeting :pick-mode :binary-choice})
+    :n-slot-targeting :pick-mode :binary-choice :sequence-pick})
 
 
 (s/def :selection/domain keyword?)
@@ -66,6 +66,11 @@
 (s/def :selection/stack-item-eid int?)
 (s/def :selection/source-type keyword?)
 (s/def :selection/caster-id :game/player-id)
+(s/def :selection/source-name string?)
+(s/def :selection/source-object-id (s/or :kw keyword? :uuid uuid?))
+(s/def :selection/sequence vector?)
+(s/def :selection/max-picks pos-int?)
+(s/def :selection/target-ref-key keyword?)
 
 
 ;; =====================================================
@@ -88,7 +93,7 @@
 ;; =====================================================
 ;; Selection Multi-Spec — mechanism-keyed (ADR-030, fizzle-8650 phase 4)
 ;;
-;; Dispatches on :selection/mechanism (7 mechanisms).
+;; Dispatches on :selection/mechanism (8 mechanisms).
 ;; :selection/mechanism is :req in all methods (dispatch key).
 ;; has been fully retired (ADR-030 complete).
 ;;
@@ -304,6 +309,26 @@
                 :selection/replacement-entity-id
                 :selection/replacement-event
                 :selection/choices]))
+
+
+;; :sequence-pick — select cards from a sequence and reorder them.
+;; Covers: storm-object-sequence.
+(defmethod selection-type-spec :sequence-pick [_]
+  (s/keys :req [:selection/mechanism
+                :selection/domain
+                :selection/player-id
+                :selection/validation
+                :selection/auto-confirm?
+                :selection/lifecycle
+                :selection/sequence
+                :selection/valid-targets
+                :selection/max-picks]
+          :opt [:selection/source-object-id
+                :selection/source-name
+                :selection/target-ref-key
+                :selection/stack-item-eid
+                :selection/selected
+                :selection/description]))
 
 
 ;; =====================================================
@@ -682,6 +707,18 @@
     :selection/validation :always
     :selection/auto-confirm? false
     :selection/select-count 1
+    :selection/selected #{}}
+
+   :sequence-pick
+   {:selection/mechanism :sequence-pick
+    :selection/domain :storm-object-sequence
+    :selection/lifecycle :finalized
+    :selection/player-id :player-1
+    :selection/validation :always
+    :selection/auto-confirm? false
+    :selection/sequence []
+    :selection/valid-targets [:placeholder-target]
+    :selection/max-picks 1
     :selection/selected #{}}})
 
 
