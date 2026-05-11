@@ -597,3 +597,20 @@
         (->> all-items
              (filter #(contains? valid-eids (:db/id %)))
              (vec))))))
+
+
+;; Returns a map of object-uuid -> card-name for all valid-targets in a
+;; :storm-object-sequence selection. Used by the sequence-picker component to
+;; display card names without per-object subscriptions inside a loop.
+(rf/reg-sub
+  ::storm-object-sequence-target-names
+  :<- [::game-db]
+  :<- [::pending-selection]
+  (fn [[game-db selection] _]
+    (when (and game-db selection (= :storm-object-sequence (:selection/domain selection)))
+      (let [valid-targets (:selection/valid-targets selection)]
+        (into {}
+              (keep (fn [target-id]
+                      (when-let [obj (queries/get-object game-db target-id)]
+                        [target-id (get-in obj [:object/card :card/name])]))
+                    valid-targets))))))
