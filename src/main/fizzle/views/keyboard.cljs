@@ -15,6 +15,7 @@
      :accumulate       — :accumulate mechanism (W/S increment/decrement, Space confirm)
      :allocate-resource — :allocate-resource mechanism (1-5 color, Space confirm)
      :storm-split      — :accumulate mechanism + :storm-split domain (chord-based target allocation)
+     :storm-object-sequence — :sequence-pick mechanism + :storm-object-sequence domain (ordered target selection)
      :zone-pick        — :pick-from-zone mechanism (chord: pile 1-9, then card 1-9)
      :flat-targeting   — :n-slot-targeting mechanism (1-9 select candidate)
      :modal            — modal mechanisms (shortcuts suppressed)
@@ -33,6 +34,7 @@
     [fizzle.events.selection.storm :as storm-events]
     [fizzle.history.events :as history-events]
     [fizzle.subs.game :as subs]
+    [fizzle.views.selection.sequence-picker :as sequence-picker]
     [fizzle.views.selection.zone-pick :as zone-pick]
     [re-frame.core :as rf]))
 
@@ -106,6 +108,20 @@
    [:storm-split "2>Shift+S"] :storm-dec-2
    [:storm-split "Space"]     :confirm
 
+   ;; storm-object-sequence context: ordered target selection for storm copies
+   [:storm-object-sequence "1"]         :seq-pick-1
+   [:storm-object-sequence "2"]         :seq-pick-2
+   [:storm-object-sequence "3"]         :seq-pick-3
+   [:storm-object-sequence "4"]         :seq-pick-4
+   [:storm-object-sequence "5"]         :seq-pick-5
+   [:storm-object-sequence "6"]         :seq-pick-6
+   [:storm-object-sequence "7"]         :seq-pick-7
+   [:storm-object-sequence "8"]         :seq-pick-8
+   [:storm-object-sequence "9"]         :seq-pick-9
+   [:storm-object-sequence "Backspace"] :seq-undo
+   [:storm-object-sequence "u"]         :seq-undo
+   [:storm-object-sequence "Space"]     :confirm
+
    ;; zone-pick context: pick card(s) from zone
    ;; Number keys 1-9 → :chord-start (pile selection, wait for second key)
    ;; Second key selects card within pile via dynamic zone-pick-toggle-dispatch resolution
@@ -156,6 +172,7 @@
   "Derive keyboard context from pending-selection.
    nil → :normal (no active selection)
    Modal mechanisms (:reorder only) → :modal (suppressed)
+   :sequence-pick mechanism + :storm-object-sequence domain → :storm-object-sequence
    :pick-from-zone mechanism → :zone-pick
    :n-slot-targeting mechanism → :flat-targeting
    :accumulate mechanism + :storm-split domain → :storm-split (chord-based target allocation)
@@ -167,6 +184,10 @@
       (cond
         (contains? modal-mechanisms mechanism)
         :modal
+
+        (and (= mechanism :sequence-pick)
+             (= :storm-object-sequence (:selection/domain pending-selection)))
+        :storm-object-sequence
 
         (and (= mechanism :accumulate)
              (= :storm-split (:selection/domain pending-selection)))
@@ -226,6 +247,24 @@
                            :inc     1
                            :dec     -1)]
           [::storm-events/adjust-storm-split target-id delta])))))
+
+
+;; === Sequence picker helper ===
+
+(defn- pick-storm-sequence-target
+  "Dispatch a sequence picker action to pick the Nth target (0-indexed idx).
+   Returns [::sequence-picker/pick-storm-target target-uuid] or nil.
+
+   Guard: only dispatch if idx < count of valid-targets AND sequence < max-picks.
+   Returns nil if index is out of bounds or sequence is already full."
+  [pending-selection idx]
+  (when pending-selection
+    (let [valid-targets (:selection/valid-targets pending-selection)
+          sequence      (:selection/sequence pending-selection)
+          max-picks     (:selection/max-picks pending-selection)
+          target-uuid   (nth valid-targets idx nil)]
+      (when (and target-uuid (< (count sequence) max-picks))
+        [::sequence-picker/pick-storm-target target-uuid]))))
 
 
 ;; === Zone-pick chord helper ===
@@ -386,6 +425,18 @@
     :storm-clear-2   (storm-target-dispatch pending-selection 1 :clear)
     :storm-inc-2     (storm-target-dispatch pending-selection 1 :inc)
     :storm-dec-2     (storm-target-dispatch pending-selection 1 :dec)
+
+    ;; storm-object-sequence: ordered target selection for storm copies
+    :seq-pick-1 (pick-storm-sequence-target pending-selection 0)
+    :seq-pick-2 (pick-storm-sequence-target pending-selection 1)
+    :seq-pick-3 (pick-storm-sequence-target pending-selection 2)
+    :seq-pick-4 (pick-storm-sequence-target pending-selection 3)
+    :seq-pick-5 (pick-storm-sequence-target pending-selection 4)
+    :seq-pick-6 (pick-storm-sequence-target pending-selection 5)
+    :seq-pick-7 (pick-storm-sequence-target pending-selection 6)
+    :seq-pick-8 (pick-storm-sequence-target pending-selection 7)
+    :seq-pick-9 (pick-storm-sequence-target pending-selection 8)
+    :seq-undo [::sequence-picker/undo-storm-target]
 
     ;; flat-targeting: select the Nth candidate
     :select-1 (select-nth-candidate selection-cards pending-selection 0)
