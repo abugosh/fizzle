@@ -32,7 +32,8 @@
    [;; Mana ability: {T}: Add {C}
     {:ability/type :mana
      :ability/cost {:tap true}
-     :ability/produces {:colorless 1}}
+     :ability/effects [{:effect/type :add-mana
+                        :effect/mana {:colorless 1}}]}
 
     ;; Grandeur activated ability: discard another copy → reveal until instant/sorcery
     {:ability/type :activated
