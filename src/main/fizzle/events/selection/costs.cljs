@@ -196,42 +196,54 @@
 
    Arguments:
      game-db - Datascript game database
-     player-id - Player casting the spell
-     object-id - Spell being cast
-     mode - Casting mode with :discard-specific cost
-     discard-cost - The :discard-specific cost map
+     player-id - Player casting the spell or activating ability
+     object-id - Spell being cast or source permanent for ability
+     mode - Casting mode (nil for ability activations)
+     discard-cost - The :discard-specific cost map ({:cost/groups ... :cost/total ...})
+     opts - Optional map with :source-type :ability, :ability, :ability-index for ability path
 
    Returns selection state for choosing cards to discard."
-  [game-db player-id object-id mode discard-cost]
-  (let [groups (:cost/groups discard-cost)
-        total (:cost/total discard-cost)
-        hand (or (queries/get-objects-in-zone game-db player-id :hand) [])
-        ;; Exclude the spell being cast
-        candidates (filterv #(not= object-id (:object/id %)) hand)
-        candidate-ids (set (map :object/id candidates))
-        ;; Check if spell has targeting (determines lifecycle)
-        obj (queries/get-object game-db object-id)
-        has-targeting? (seq (:card/targeting (:object/card obj)))]
-    (when (seq candidate-ids)
-      (cond-> {:selection/zone      :hand
-               :selection/mechanism :pick-from-zone
-               :selection/domain    :discard-cost
-               :selection/card-source :hand
-               :selection/select-count total
-               :selection/selected #{}
-               :selection/player-id player-id
-               :selection/spell-id object-id
-               :selection/mode mode
-               :selection/discard-cost discard-cost
-               :selection/discard-groups groups
-               :selection/valid-targets (vec candidate-ids)
-               :selection/candidate-card-map (into {} (map (fn [obj']
-                                                             [(:object/id obj') (:object/card obj')]))
-                                                   candidates)
-               :selection/validation :exact
-               :selection/auto-confirm? false}
-        has-targeting? (assoc :selection/lifecycle :chaining)
-        (not has-targeting?) (assoc :selection/lifecycle :finalized)))))
+  ([game-db player-id object-id mode discard-cost]
+   (build-discard-specific-selection game-db player-id object-id mode discard-cost nil))
+  ([game-db player-id object-id mode discard-cost opts]
+   (let [groups (:cost/groups discard-cost)
+         total (:cost/total discard-cost)
+         hand (or (queries/get-objects-in-zone game-db player-id :hand) [])
+         ;; Exclude the source object from hand candidates
+         candidates (filterv #(not= object-id (:object/id %)) hand)
+         candidate-ids (set (map :object/id candidates))
+         ;; Determine source type and ability info from opts
+         source-type (:source-type opts)
+         ability (:ability opts)
+         ability-index (:ability-index opts)
+         ;; Check if spell/ability has targeting (determines lifecycle)
+         has-targeting? (if (= source-type :ability)
+                          (seq (:ability/targeting ability))
+                          (let [obj (queries/get-object game-db object-id)]
+                            (seq (:card/targeting (:object/card obj)))))]
+     (when (seq candidate-ids)
+       (cond-> {:selection/zone      :hand
+                :selection/mechanism :pick-from-zone
+                :selection/domain    :discard-cost
+                :selection/card-source :hand
+                :selection/select-count total
+                :selection/selected #{}
+                :selection/player-id player-id
+                :selection/spell-id object-id
+                :selection/mode mode
+                :selection/discard-cost discard-cost
+                :selection/discard-groups groups
+                :selection/valid-targets (vec candidate-ids)
+                :selection/candidate-card-map (into {} (map (fn [obj']
+                                                              [(:object/id obj') (:object/card obj')]))
+                                                    candidates)
+                :selection/validation :exact
+                :selection/auto-confirm? false}
+         (= source-type :ability) (assoc :selection/source-type :ability
+                                         :selection/ability ability
+                                         :selection/ability-index ability-index)
+         has-targeting? (assoc :selection/lifecycle :chaining)
+         (not has-targeting?) (assoc :selection/lifecycle :finalized))))))
 
 
 (defn build-sacrifice-permanent-selection
@@ -438,12 +450,32 @@
         player-id (:selection/player-id selection)
         object-id (:selection/spell-id selection)
         mode (:selection/mode selection)
+        source-type (:selection/source-type selection)
+        ability (:selection/ability selection)
         db-after-discard (reduce (fn [d card-id]
                                    (zone-change-dispatch/move-to-zone-db d card-id :graveyard))
                                  game-db
                                  selected)]
-    (if (= :chaining (:selection/lifecycle selection))
+    (cond
+      (= :chaining (:selection/lifecycle selection))
       {:db db-after-discard}
+
+      (= source-type :ability)
+      (let [effects-list (:ability/effects ability [])
+            db-with-item (stack/create-stack-item db-after-discard
+                                                  {:stack-item/type :activated-ability
+                                                   :stack-item/controller player-id
+                                                   :stack-item/source object-id
+                                                   :stack-item/effects effects-list
+                                                   :stack-item/description (:ability/description ability)})
+            db-final (if (= :cycling (:ability/type ability))
+                       (trigger-dispatch/dispatch-event
+                         db-with-item
+                         (game-events/card-cycled-event object-id player-id))
+                       db-with-item)]
+        {:db db-final})
+
+      :else
       {:db (rules/cast-spell-mode db-after-discard player-id object-id mode)})))
 
 

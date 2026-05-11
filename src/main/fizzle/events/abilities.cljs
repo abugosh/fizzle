@@ -210,6 +210,12 @@
   (contains? ability-cost :sacrifice-permanent))
 
 
+(defn- has-discard-specific-cost?
+  "Check if an ability cost map contains a :discard-specific entry."
+  [ability-cost]
+  (contains? ability-cost :discard-specific))
+
+
 (defn- activate-ability-with-sacrifice
   "Handle ability activation that requires a sacrifice-permanent cost.
    Pays non-sacrifice costs first, then enters sacrifice selection.
@@ -234,10 +240,37 @@
           {:db db :pending-selection nil})))))
 
 
+(defn- activate-ability-with-discard
+  "Handle ability activation that requires a discard-specific cost.
+   Pays non-discard costs first (tap, mana), then enters discard selection.
+   After discard confirmation, executor creates the stack item."
+  [db player-id object-id ability-index ability]
+  (let [ability-cost (:ability/cost ability)
+        discard-cost-config (:discard-specific ability-cost)
+        non-discard-costs (dissoc ability-cost :discard-specific)
+        db-after-non-discard (if (seq non-discard-costs)
+                               (abilities/pay-all-costs db object-id non-discard-costs)
+                               db)]
+    (if-not db-after-non-discard
+      {:db db :pending-selection nil}
+      (let [discard-cost {:cost/groups (:groups discard-cost-config)
+                          :cost/total  (:total discard-cost-config)}
+            sel (sel-costs/build-discard-specific-selection
+                  db-after-non-discard player-id object-id nil discard-cost
+                  {:source-type    :ability
+                   :ability        ability
+                   :ability-index  ability-index})]
+        (if sel
+          {:db db-after-non-discard :pending-selection sel}
+          {:db db :pending-selection nil})))))
+
+
 (defn- activate-validated-ability
   "Activate an ability that has passed validation checks.
-   Handles four paths: sacrifice cost, targeting, generic mana allocation, direct.
-   Sacrifice is checked FIRST because it is the interactive cost that chains to targeting."
+   Handles five paths: sacrifice cost, discard-specific cost, targeting,
+   generic mana allocation, direct.
+   Sacrifice and discard-specific are checked FIRST because they are
+   interactive costs that may chain to targeting."
   [db player-id object-id ability-index ability]
   (cond
     ;; Has sacrifice-permanent cost - pause for sacrifice selection.
@@ -245,7 +278,12 @@
     (has-sacrifice-permanent-cost? (:ability/cost ability))
     (activate-ability-with-sacrifice db player-id object-id ability-index ability)
 
-    ;; Has targeting (no sacrifice) - pause for target selection (don't pay costs yet)
+    ;; Has discard-specific cost - pause for discard selection.
+    ;; Discard chains to targeting (if any) after confirmation.
+    (has-discard-specific-cost? (:ability/cost ability))
+    (activate-ability-with-discard db player-id object-id ability-index ability)
+
+    ;; Has targeting (no sacrifice/discard) - pause for target selection (don't pay costs yet)
     (seq (targeting/get-targeting-requirements ability))
     {:db db
      :pending-selection (assoc (build-ability-target-selection
