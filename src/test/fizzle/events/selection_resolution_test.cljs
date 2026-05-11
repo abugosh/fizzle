@@ -32,7 +32,9 @@
    :discard-from-revealed-hand {:effect/type :discard-from-revealed-hand :effect/target :player-1}
    :chain-bounce {:effect/type :chain-bounce :effect/target :player-1}
    :untap-lands  {:effect/type :untap-lands :effect/count 3}
-   :change-land-types {:effect/type :change-land-types}})
+   :change-land-types {:effect/type :change-land-types}
+   :reveal-until {:effect/type :reveal-until
+                  :effect/criteria {:match/types #{:instant}}}})
 
 
 (deftest test-tagged-returns-cover-all-builder-dispatch-values

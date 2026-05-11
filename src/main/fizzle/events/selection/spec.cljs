@@ -71,6 +71,8 @@
 (s/def :selection/sequence vector?)
 (s/def :selection/max-picks pos-int?)
 (s/def :selection/target-ref-key keyword?)
+(s/def :selection/revealed-cards (s/or :vec vector? :set set?))
+(s/def :selection/remainder (s/or :vec vector? :set set?))
 
 
 ;; =====================================================
@@ -160,7 +162,9 @@
                 :selection/unless-pay-cost
                 :selection/pending-targets
                 :selection/cleanup?
-                :selection/stack-item-eid]))
+                :selection/stack-item-eid
+                :selection/revealed-cards
+                :selection/remainder]))
 
 
 ;; :reorder — sort/assign cards into ordered positions.
@@ -719,7 +723,21 @@
     :selection/sequence []
     :selection/valid-targets [:placeholder-target]
     :selection/max-picks 1
-    :selection/selected #{}}})
+    :selection/selected #{}}
+
+   :reveal-until
+   {:selection/mechanism :pick-from-zone
+    :selection/domain    :reveal-until
+    :selection/lifecycle :standard
+    :selection/player-id :player-1
+    :selection/selected  #{}
+    :selection/candidates #{:obj-1}
+    :selection/valid-targets #{:obj-1}
+    :selection/select-count 1
+    :selection/validation :exact
+    :selection/auto-confirm? false
+    :selection/revealed-cards [:obj-1]
+    :selection/remainder []}})
 
 
 (defn minimal-valid-selection

@@ -231,6 +231,130 @@
 
 
 ;; =====================================================
+;; Reveal-Until Selection (reveal cards until match found)
+;; =====================================================
+
+(defn build-reveal-until-selection
+  "Build pending selection state for a :reveal-until effect.
+   Reveals cards from library top until finding a card matching :effect/criteria.
+
+   Arguments:
+     game-db      - Datascript game database
+     player-id    - Player performing the reveal
+     object-id    - Spell-id for cleanup after selection confirmed
+     effect       - The :reveal-until effect map with :effect/criteria
+     effects-after - Remaining effects to execute after selection
+
+   Reveal logic:
+     - Iterates library cards from top (position 0) until a match is found.
+     - Match found: choices = all revealed card IDs (non-matches + match).
+                   valid-targets = #{match-id}, select-count = 1, validation = :exact.
+     - No match:   choices = all library card IDs.
+                   valid-targets = #{}, select-count = 0, validation = :at-most.
+
+   Returns nil if library is empty."
+  [game-db player-id object-id effect effects-after]
+  (let [criteria (:effect/criteria effect)
+        library-objs (->> (queries/get-objects-in-zone game-db player-id :library)
+                          (sort-by :object/position))]
+    (when (seq library-objs)
+      (let [[revealed-before match]
+            (loop [remaining library-objs
+                   acc []]
+              (if (empty? remaining)
+                [acc nil]
+                (let [obj (first remaining)]
+                  (if (queries/matches-criteria? obj criteria)
+                    [acc obj]
+                    (recur (rest remaining) (conj acc obj))))))]
+        (if match
+          (let [all-revealed (conj (mapv :object/id revealed-before) (:object/id match))
+                match-id (:object/id match)
+                non-match-ids (mapv :object/id revealed-before)]
+            {:selection/mechanism :pick-from-zone
+             :selection/domain    :reveal-until
+             :selection/lifecycle :standard
+             :selection/player-id player-id
+             :selection/spell-id  object-id
+             :selection/selected  #{}
+             :selection/candidates (set all-revealed)
+             :selection/valid-targets #{match-id}
+             :selection/select-count 1
+             :selection/validation :exact
+             :selection/auto-confirm? false
+             :selection/revealed-cards all-revealed
+             :selection/remainder non-match-ids
+             :selection/remaining-effects (vec effects-after)})
+          (let [all-ids (mapv :object/id library-objs)]
+            {:selection/mechanism :pick-from-zone
+             :selection/domain    :reveal-until
+             :selection/lifecycle :standard
+             :selection/player-id player-id
+             :selection/spell-id  object-id
+             :selection/selected  #{}
+             :selection/candidates (set all-ids)
+             :selection/valid-targets #{}
+             :selection/select-count 0
+             :selection/validation :at-most
+             :selection/auto-confirm? false
+             :selection/revealed-cards all-ids
+             :selection/remainder all-ids
+             :selection/remaining-effects (vec effects-after)}))))))
+
+
+(defn execute-reveal-until-selection
+  "Execute a reveal-until selection.
+   Pure function: (db, selection) -> db
+
+   Match found (select-count=1, selected has 1 card):
+     - Move match to hand.
+     - Randomize ONLY the non-match revealed cards and assign bottom positions.
+     - Non-revealed library cards retain their original positions.
+
+   No match (select-count=0, selected empty):
+     - Randomize ALL revealed cards and assign bottom positions."
+  [game-db selection]
+  (let [selected (:selection/selected selection)
+        remainder (:selection/remainder selection)
+        player-id (:selection/player-id selection)
+        match-id (first selected)]
+    (if (and match-id (seq selected))
+      (let [db-after-hand (zone-change-dispatch/move-to-zone-db game-db match-id :hand)
+            library-objs (queries/get-objects-in-zone db-after-hand player-id :library)
+            remainder-set (set remainder)
+            non-remainder-objs (remove #(contains? remainder-set (:object/id %)) library-objs)
+            max-pos (if (seq non-remainder-objs)
+                      (apply max (map :object/position non-remainder-objs))
+                      -1)
+            shuffled-remainder (shuffle (vec remainder))]
+        (reduce-kv
+          (fn [d idx card-id]
+            (let [obj-eid (queries/get-object-eid d card-id)
+                  new-pos (+ max-pos 1 idx)]
+              (if obj-eid
+                (d/db-with d [[:db/add obj-eid :object/position new-pos]])
+                d)))
+          db-after-hand
+          (vec shuffled-remainder)))
+      (let [library-objs (queries/get-objects-in-zone game-db player-id :library)
+            remainder-set (set remainder)
+            non-remainder-objs (remove #(contains? remainder-set (:object/id %)) library-objs)
+            max-pos (if (seq non-remainder-objs)
+                      (apply max (map :object/position non-remainder-objs))
+                      -1)
+            shuffled-remainder (shuffle (vec remainder))]
+        (reduce-kv
+          (fn [d idx card-id]
+            (let [obj-eid (queries/get-object-eid d card-id)
+                  new-pos (+ max-pos 1 idx)]
+              (if obj-eid
+                (d/db-with d [[:db/add obj-eid :object/position new-pos]])
+                d)))
+          game-db
+          (vec shuffled-remainder))))))
+
+
+;; =====================================================
 ;; Order-Bottom Selection (player-ordered bottom placement)
 ;; =====================================================
 
@@ -717,6 +841,11 @@
   (build-peek-and-reorder-selection db player-id object-id effect remaining))
 
 
+(defmethod core/build-selection-for-effect :reveal-until
+  [db player-id object-id effect remaining]
+  (build-reveal-until-selection db player-id object-id effect remaining))
+
+
 ;; =====================================================
 ;; Apply Domain Policy Defmethods (ADR-030)
 ;; =====================================================
@@ -811,6 +940,11 @@
         db-after-move (zone-change-dispatch/move-to-zone-db db-after-remaining spell-id :graveyard)
         db-final (spell-cleanup/remove-spell-stack-item db-after-move spell-id)]
     {:db db-final}))
+
+
+(defmethod core/apply-domain-policy :reveal-until
+  [game-db selection]
+  {:db (execute-reveal-until-selection game-db selection)})
 
 
 ;; =====================================================

@@ -39,3 +39,8 @@
 (defmethod effects/execute-effect-impl :discard-from-revealed-hand
   [db _player-id effect _object-id]
   {:db db :needs-selection effect})
+
+
+(defmethod effects/execute-effect-impl :reveal-until
+  [db _player-id effect _object-id]
+  {:db db :needs-selection effect})
