@@ -62,7 +62,9 @@
       ;; Builder-declared chains: selection stores chain-builder fn
       (derive :tutor :builder-declared-chain)
       (derive :peek-and-select :builder-declared-chain)
-      (derive :x-mana-cost :builder-declared-chain)))
+      (derive :x-mana-cost :builder-declared-chain)
+      ;; Sequence picking: select and reorder objects from a sequence
+      (derive :storm-object-sequence :sequence-pick)))
 
 
 ;; =====================================================
@@ -241,6 +243,11 @@
 
 
 (defmethod execute-confirmed-selection :binary-choice
+  [game-db selection]
+  (apply-domain-policy game-db selection))
+
+
+(defmethod execute-confirmed-selection :sequence-pick
   [game-db selection]
   (apply-domain-policy game-db selection))
 
