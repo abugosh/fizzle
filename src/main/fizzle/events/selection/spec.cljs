@@ -73,6 +73,7 @@
 (s/def :selection/target-ref-key keyword?)
 (s/def :selection/revealed-cards (s/or :vec vector? :set set?))
 (s/def :selection/remainder (s/or :vec vector? :set set?))
+(s/def :selection/found-zone keyword?)
 
 
 ;; =====================================================
@@ -164,7 +165,8 @@
                 :selection/cleanup?
                 :selection/stack-item-eid
                 :selection/revealed-cards
-                :selection/remainder]))
+                :selection/remainder
+                :selection/found-zone]))
 
 
 ;; :reorder — sort/assign cards into ordered positions.

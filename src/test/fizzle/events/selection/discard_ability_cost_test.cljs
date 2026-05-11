@@ -180,6 +180,39 @@
           "Lifecycle should be :chaining when ability has targeting"))))
 
 
+(deftest discard-cost-chains-to-targeting-when-ability-has-targeting-test
+  (testing "Confirming discard selection chains to targeting selection for ability with targeting"
+    (let [db              (th/create-test-db)
+          db              (th/add-opponent db)
+          [db art-id]     (add-discard-artifact-to-battlefield db :player-1 discard-ability-with-targeting)
+          [db card-id]    (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          ;; Step 1: activate ability — produces discard selection (lifecycle :chaining)
+          result          (abilities/activate-ability db :player-1 art-id 0)
+          discard-sel     (:pending-selection result)
+          ;; Step 2: confirm discard — chains to targeting selection
+          {:keys [db selection]} (th/confirm-selection (:db result) discard-sel #{card-id})]
+      ;; Discard moved card to graveyard
+      (is (= :graveyard (:object/zone (q/get-object db card-id)))
+          "Discarded card should be in graveyard after confirm")
+      ;; A targeting selection appeared as the next pending selection
+      (is (some? selection)
+          "Confirming discard should chain to a targeting selection")
+      (is (= :n-slot-targeting (:selection/mechanism selection))
+          "Chained selection should use :n-slot-targeting mechanism")
+      (is (= :ability-targeting (:selection/domain selection))
+          "Chained selection domain should be :ability-targeting")
+      ;; Step 3: confirm targeting with player-2 as target — creates stack item
+      (let [valid-targets (:selection/valid-targets selection)
+            target-id     (first (filter #{:player-2} valid-targets))
+            _             (is (some? target-id) "player-2 should be a valid target")
+            {:keys [db]}  (th/confirm-selection db selection #{target-id})
+            stack-items   (q/get-all-stack-items db)]
+        (is (seq stack-items)
+            "Stack should have an activated-ability item after targeting confirm")
+        (is (= :activated-ability (:stack-item/type (first stack-items)))
+            "Stack item type should be :activated-ability")))))
+
+
 ;; =====================================================
 ;; C. Confirm discard — no targeting path
 ;; =====================================================

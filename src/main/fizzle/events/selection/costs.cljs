@@ -707,6 +707,60 @@
               (build-mana-allocation-selection db player-id object-id mode effective-cost))))))))
 
 
+;; Override chain selection for :discard-cost to handle both spell and ability paths.
+;; For the ability path, build an ability-targeting selection.
+;; For the spell path, delegate to parent :pre-cast-cost-to-targeting behavior.
+(defmethod core/build-chain-selection :discard-cost
+  [db selection]
+  (let [source-type (:selection/source-type selection)]
+    (if (= source-type :ability)
+      ;; Ability path: build ability-targeting selection
+      (let [ability (:selection/ability selection)
+            player-id (:selection/player-id selection)
+            object-id (:selection/spell-id selection)
+            ability-index (:selection/ability-index selection)
+            targeting-reqs (targeting/get-targeting-requirements ability)]
+        (when (seq targeting-reqs)
+          (let [first-req (first targeting-reqs)
+                remaining-reqs (vec (rest targeting-reqs))]
+            {:selection/mechanism :n-slot-targeting
+             :selection/domain    :ability-targeting
+             :selection/lifecycle (if (seq remaining-reqs) :chaining :finalized)
+             :selection/player-id player-id
+             :selection/object-id object-id
+             :selection/ability-index ability-index
+             :selection/target-requirement first-req
+             :selection/chosen-targets {}
+             :selection/remaining-target-reqs remaining-reqs
+             :selection/valid-targets (targeting/find-valid-targets db player-id first-req)
+             :selection/selected #{}
+             :selection/select-count 1
+             :selection/validation :exact
+             :selection/auto-confirm? true
+             :selection/card-source :valid-targets})))
+      ;; Spell path: delegate to pre-cast-cost-to-targeting chain behavior
+      (let [object-id (:selection/spell-id selection)
+            player-id (:selection/player-id selection)
+            mode (:selection/mode selection)
+            obj (queries/get-object db object-id)
+            targeting-reqs (:card/targeting (:object/card obj))]
+        (when (seq targeting-reqs)
+          (let [first-req (first targeting-reqs)]
+            {:selection/mechanism :n-slot-targeting
+             :selection/domain    :cast-time-targeting
+             :selection/lifecycle :finalized
+             :selection/player-id player-id
+             :selection/object-id object-id
+             :selection/mode mode
+             :selection/target-requirement first-req
+             :selection/valid-targets (targeting/find-valid-targets db player-id first-req)
+             :selection/selected #{}
+             :selection/select-count 1
+             :selection/validation :exact
+             :selection/auto-confirm? true
+             :selection/card-source :valid-targets}))))))
+
+
 (defn- find-stack-item-eid-for-object
   "Find the stack-item EID that references the given object UUID.
    Returns nil if no stack item references this object."

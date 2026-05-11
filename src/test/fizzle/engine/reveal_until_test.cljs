@@ -243,7 +243,65 @@
 
 
 ;; =====================================================
-;; J. Execute — remaining-effects are preserved on selection
+;; J. Execute — non-revealed library cards retain their original positions
+;; =====================================================
+
+(deftest execute-reveal-until-non-revealed-positions-undisturbed
+  (testing "non-revealed cards at positions 2,3,4 retain their exact original positions"
+    (let [;; Library: [creature, instant, land, land, land]
+          ;; Reveal stops at instant (pos 1) — 3 lands at positions 2,3,4 are never revealed
+          [db obj-ids] (th/add-cards-to-library
+                         (th/create-test-db)
+                         [:nimble-mongoose :dark-ritual :island :island :island]
+                         :player-1)
+          [creature-id instant-id land-1-id land-2-id land-3-id] obj-ids
+          ;; Record original positions of the 3 unrevealed lands
+          land-positions-before (into {} (map (fn [obj]
+                                                [(:object/id obj) (:object/position obj)])
+                                              (filter #(contains? #{land-1-id land-2-id land-3-id}
+                                                                  (:object/id %))
+                                                      (q/get-objects-in-zone db :player-1 :library))))
+          ;; Simulate confirmed selection: only creature and instant were revealed
+          ;; instant (the match) is selected; creature goes to remainder (bottom)
+          selection {:selection/mechanism :pick-from-zone
+                     :selection/domain    :reveal-until
+                     :selection/lifecycle :standard
+                     :selection/player-id :player-1
+                     :selection/selected  #{instant-id}
+                     :selection/candidates #{creature-id instant-id}
+                     :selection/valid-targets #{instant-id}
+                     :selection/select-count 1
+                     :selection/validation :exact
+                     :selection/auto-confirm? false
+                     :selection/revealed-cards [creature-id instant-id]
+                     :selection/remainder [creature-id]
+                     :selection/found-zone :hand
+                     :selection/remaining-effects []}
+          result (selection-core/execute-confirmed-selection db selection)
+          db-after (:db result)
+          library-after (q/get-objects-in-zone db-after :player-1 :library)
+          pos-by-id (into {} (map (fn [obj] [(:object/id obj) (:object/position obj)])
+                                  library-after))]
+      ;; Instant moved to hand
+      (let [hand (q/get-objects-in-zone db-after :player-1 :hand)]
+        (is (= 1 (count hand)) "Exactly 1 card in hand (the instant)")
+        (is (= instant-id (:object/id (first hand))) "Instant is in hand"))
+      ;; 4 cards remain in library (creature at bottom + 3 lands at original positions)
+      (is (= 4 (count library-after)) "4 cards remain in library")
+      ;; Creature is at bottom (position > all original land positions)
+      (let [creature-pos (get pos-by-id creature-id)
+            max-land-pos (apply max (vals land-positions-before))]
+        (is (some? creature-pos) "Creature is in library")
+        (is (> creature-pos max-land-pos) "Creature is at bottom (after the 3 lands)"))
+      ;; The 3 lands retain their EXACT original positions
+      (doseq [land-id [land-1-id land-2-id land-3-id]]
+        (is (= (get land-positions-before land-id)
+               (get pos-by-id land-id))
+            (str "Land " land-id " retains its original position"))))))
+
+
+;; =====================================================
+;; K. Execute — remaining-effects are preserved on selection
 ;; =====================================================
 
 (deftest build-reveal-until-preserves-remaining-effects

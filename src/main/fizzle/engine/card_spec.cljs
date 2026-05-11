@@ -124,6 +124,11 @@
 (s/def :effect/shuffle-remainder? boolean?)
 
 
+;; reveal-until field specs
+(s/def :effect/found-zone keyword?)
+(s/def :effect/remainder keyword?)
+
+
 (s/def :effect/condition
   (s/keys :req [:condition/type]
           :opt [:condition/target :condition/counter-type]))

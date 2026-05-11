@@ -255,6 +255,7 @@
    Returns nil if library is empty."
   [game-db player-id object-id effect effects-after]
   (let [criteria (:effect/criteria effect)
+        found-zone (or (:effect/found-zone effect) :hand)
         library-objs (->> (queries/get-objects-in-zone game-db player-id :library)
                           (sort-by :object/position))]
     (when (seq library-objs)
@@ -284,6 +285,7 @@
              :selection/auto-confirm? false
              :selection/revealed-cards all-revealed
              :selection/remainder non-match-ids
+             :selection/found-zone found-zone
              :selection/remaining-effects (vec effects-after)})
           (let [all-ids (mapv :object/id library-objs)]
             {:selection/mechanism :pick-from-zone
@@ -299,6 +301,7 @@
              :selection/auto-confirm? false
              :selection/revealed-cards all-ids
              :selection/remainder all-ids
+             :selection/found-zone found-zone
              :selection/remaining-effects (vec effects-after)}))))))
 
 
@@ -317,9 +320,10 @@
   (let [selected (:selection/selected selection)
         remainder (:selection/remainder selection)
         player-id (:selection/player-id selection)
+        found-zone (or (:selection/found-zone selection) :hand)
         match-id (first selected)]
     (if (and match-id (seq selected))
-      (let [db-after-hand (zone-change-dispatch/move-to-zone-db game-db match-id :hand)
+      (let [db-after-hand (zone-change-dispatch/move-to-zone-db game-db match-id found-zone)
             library-objs (queries/get-objects-in-zone db-after-hand player-id :library)
             remainder-set (set remainder)
             non-remainder-objs (remove #(contains? remainder-set (:object/id %)) library-objs)
