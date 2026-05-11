@@ -176,7 +176,9 @@
           ;; Resolve storm trigger (creates 1 copy)
           storm-result (th/resolve-top db-cast)
           storm-sel (:selection storm-result)
-          confirm-result (th/confirm-selection (:db storm-result) storm-sel
+          ;; For object-targeting storm, provide sequence of targets for copies
+          confirm-result (th/confirm-selection (:db storm-result)
+                                               (assoc storm-sel :selection/sequence [c1-id])
                                                (:selection/selected storm-sel))
           db-copies (:db confirm-result)
           ;; Find copy on stack

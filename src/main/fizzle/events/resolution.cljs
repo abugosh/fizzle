@@ -11,6 +11,7 @@
     [fizzle.events.selection.replacement :as sel-replacement]
     [fizzle.events.selection.spec :as sel-spec]
     [fizzle.events.selection.storm :as sel-storm]
+    [fizzle.events.selection.storm-objects :as sel-storm-objects]
     [re-frame.core :as rf]))
 
 
@@ -112,9 +113,17 @@
             result (engine-resolution/resolve-stack-item game-db top)]
         (cond
           (:needs-storm-split result)
-          (if-let [sel (sel-storm/build-storm-split-selection game-db controller top)]
-            {:db game-db :pending-selection sel}
-            {:db (stack/remove-stack-item game-db (:db/id top))})
+          (let [source-id (:stack-item/source top)
+                source-obj (queries/get-object game-db source-id)
+                card (:object/card source-obj)
+                first-targeting-req (first (:card/targeting card))
+                target-type (:target/type first-targeting-req)
+                sel (if (= :object target-type)
+                      (sel-storm-objects/build-storm-object-sequence-selection game-db controller top)
+                      (sel-storm/build-storm-split-selection game-db controller top))]
+            (if sel
+              {:db game-db :pending-selection sel}
+              {:db (stack/remove-stack-item game-db (:db/id top))}))
 
           (:needs-attackers result)
           (let [eligible (:eligible-attackers result)
