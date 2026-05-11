@@ -23,7 +23,8 @@
     :peek-random-hand :grant-mana-ability :create-token :apply-pt-modifier
     :welder-swap :untap-lands :tap-all :untap-all
     :lose-life-equal-to-toughness :phase-out :change-land-types
-    :shuffle-from-graveyard-to-library :deal-damage-each-creature})
+    :shuffle-from-graveyard-to-library :deal-damage-each-creature
+    :reveal-until})
 
 
 (def valid-cost-types
@@ -31,7 +32,7 @@
 
 
 (def valid-ability-cost-keys
-  #{:tap :sacrifice-self :remove-counter :discard-hand :mana})
+  #{:tap :sacrifice-self :remove-counter :discard-hand :mana :discard-specific})
 
 
 (def valid-condition-types
@@ -352,6 +353,11 @@
           :opt [:effect/target :effect/condition]))
 
 
+(defmethod effect-type-spec :reveal-until [_]
+  (s/keys :req [:effect/type :effect/criteria :effect/found-zone :effect/remainder]
+          :opt [:effect/condition]))
+
+
 ;; Runtime-only types: never appear in card definitions but must have defmethods
 ;; for s/exercise and completeness
 
@@ -419,7 +425,10 @@
    :lose-life             {:effect/type :lose-life :effect/amount 3}
    :gain-life             {:effect/type :gain-life :effect/amount 3}
    :shuffle-from-graveyard-to-library
-   {:effect/type :shuffle-from-graveyard-to-library :effect/count 3 :effect/selection :player}})
+   {:effect/type :shuffle-from-graveyard-to-library :effect/count 3 :effect/selection :player}
+   :reveal-until
+   {:effect/type :reveal-until :effect/criteria {:match/types #{:land}}
+    :effect/found-zone :hand :effect/remainder :bottom}})
 
 
 (defn minimal-valid-effect
