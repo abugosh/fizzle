@@ -173,9 +173,14 @@
           [db rtg-id] (th/add-card-to-zone db :reaping-the-graves :hand :player-1)
           db (mana/add-mana db :player-1 {:colorless 2 :black 1})
           db-cast (th/cast-with-target db :player-1 rtg-id c1-id)
-          ;; Resolve storm trigger (creates 1 copy)
+          ;; Resolve storm trigger (creates 1 copy) — produces :storm-object-sequence selection
           storm-result (th/resolve-top db-cast)
           storm-sel (:selection storm-result)
+          ;; Verify the new storm-object-sequence production path
+          _ (is (= :sequence-pick (:selection/mechanism storm-sel))
+                "Storm trigger should produce :sequence-pick mechanism")
+          _ (is (= :storm-object-sequence (:selection/domain storm-sel))
+                "Storm trigger should produce :storm-object-sequence domain")
           ;; For object-targeting storm, provide sequence of targets for copies
           confirm-result (th/confirm-selection (:db storm-result)
                                                (assoc storm-sel :selection/sequence [c1-id])
@@ -191,6 +196,55 @@
             db-resolved (:db (th/resolve-top db-copy-resolved))]
         (is (= :hand (:object/zone (q/get-object db-resolved c1-id)))
             "Target creature should be in hand")))))
+
+
+;; Ordering: sequence order determines which copy resolves first (top of stack = first).
+;; First-in-sequence picks get put on top (LIFO reversal in apply-domain-policy).
+(deftest reaping-the-graves-storm-copy-ordering-test
+  (testing "First creature in sequence resolves first (is on top of stack)"
+    (let [db (-> (th/create-test-db {:mana {:black 1}})
+                 (th/add-opponent))
+          ;; Put two distinct creatures in graveyard
+          [db [creature-a-id creature-b-id]] (th/add-cards-to-graveyard
+                                               db [:cloud-of-faeries :goblin-welder]
+                                               :player-1)
+          ;; Cast 2 rituals to get storm count = 2
+          [db dr1-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          db (th/cast-and-resolve db :player-1 dr1-id)
+          [db dr2-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          db (th/cast-and-resolve db :player-1 dr2-id)
+          _ (is (= 2 (q/get-storm-count db :player-1))
+                "Precondition: storm count is 2")
+          ;; Cast Reaping targeting creature-a (original)
+          [db rtg-id] (th/add-card-to-zone db :reaping-the-graves :hand :player-1)
+          db (mana/add-mana db :player-1 {:colorless 2 :black 1})
+          db-cast (th/cast-with-target db :player-1 rtg-id creature-a-id)
+          ;; Resolve storm trigger (creates 2 copies) — produces :storm-object-sequence selection
+          storm-result (th/resolve-top db-cast)
+          storm-sel (:selection storm-result)
+          _ (is (= :sequence-pick (:selection/mechanism storm-sel))
+                "Mechanism should be :sequence-pick")
+          _ (is (= :storm-object-sequence (:selection/domain storm-sel))
+                "Domain should be :storm-object-sequence")
+          _ (is (= 2 (:selection/max-picks storm-sel))
+                "max-picks should be 2 (min of 2 copies and 2 valid targets)")
+          ;; Pick creature-B first, creature-A second
+          ;; creature-B should end up on top of stack and resolve first
+          confirm-result (th/confirm-selection (:db storm-result)
+                                               (assoc storm-sel :selection/sequence
+                                                      [creature-b-id creature-a-id])
+                                               (:selection/selected storm-sel))
+          db-copies (:db confirm-result)
+          stack-objects (q/get-objects-in-zone db-copies :player-1 :stack)
+          copies (filter :object/is-copy stack-objects)]
+      (is (= 2 (count copies))
+          "Should have 2 storm copies on stack")
+      ;; Resolve top copy (creature-B) — verify creature-B is returned to hand
+      (let [db-after-first-copy (:db (th/resolve-top db-copies))]
+        (is (= :hand (:object/zone (q/get-object db-after-first-copy creature-b-id)))
+            "creature-B (first in sequence = top of stack) should be in hand after first copy resolves")
+        (is (= :graveyard (:object/zone (q/get-object db-after-first-copy creature-a-id)))
+            "creature-A (second in sequence) should still be in graveyard")))))
 
 
 ;; === G. Edge Cases ===
