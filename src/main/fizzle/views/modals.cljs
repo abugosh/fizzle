@@ -10,6 +10,7 @@
     [fizzle.views.selection.common :as common]
     [fizzle.views.selection.custom :as custom]
     [fizzle.views.selection.reorder :as reorder]
+    [fizzle.views.selection.sequence-picker :as sequence-picker]
     [fizzle.views.selection.zone-pick :as zone-pick]
     [re-frame.core :as rf]))
 
@@ -117,6 +118,10 @@
 
 (defmethod render-selection :binary-choice [s _]
   [:inline [binary-choice-view/binary-choice-view s]])
+
+
+(defmethod render-selection :sequence-pick [_selection]
+  [:inline [sequence-picker/storm-object-sequence-view _selection]])
 
 
 (defmethod render-selection :default [s c] [:modal [zone-pick/zone-pick-modal s c]])
