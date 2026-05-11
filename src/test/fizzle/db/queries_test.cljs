@@ -1118,3 +1118,75 @@
           result (q/query-zone-by-criteria db :player-1 :hand {:match/is-token true})]
       (is (= 0 (count result))
           "Non-token object should not match :match/is-token true"))))
+
+
+;; === :match/card-ids tests ===
+
+(deftest matches-criteria-card-ids-single-id-matches-test
+  (testing ":match/card-ids #{:dark-ritual} matches object with :card/id :dark-ritual"
+    ;; Catches: basic single-id membership check not working
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          result (q/query-zone-by-criteria db' :player-1 :hand {:match/card-ids #{:dark-ritual}})]
+      (is (= 1 (count result))
+          "Dark Ritual should match :match/card-ids #{:dark-ritual}")
+      (is (= "Dark Ritual" (get-in (first result) [:object/card :card/name]))
+          "Returned object should be Dark Ritual"))))
+
+
+(deftest matches-criteria-card-ids-set-matches-either-test
+  (testing ":match/card-ids #{:dark-ritual :cabal-ritual} matches either card"
+    ;; Catches: set membership not using OR semantics within the set
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          [db'' _] (th/add-card-to-zone db' :cabal-ritual :hand :player-1)
+          result (q/query-zone-by-criteria db'' :player-1 :hand
+                                           {:match/card-ids #{:dark-ritual :cabal-ritual}})]
+      (is (= 2 (count result))
+          "Both Dark Ritual and Cabal Ritual should match"))))
+
+
+(deftest matches-criteria-card-ids-no-match-test
+  (testing ":match/card-ids #{:dark-ritual} does NOT match object with :card/id :lotus-petal"
+    ;; Catches: missing membership check — all objects pass through
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :lotus-petal :hand :player-1)
+          result (q/query-zone-by-criteria db' :player-1 :hand {:match/card-ids #{:dark-ritual}})]
+      (is (= 0 (count result))
+          "Lotus Petal should NOT match :match/card-ids #{:dark-ritual}"))))
+
+
+(deftest matches-criteria-card-ids-empty-set-matches-all-test
+  (testing ":match/card-ids #{} is vacuous truth — matches any object"
+    ;; Catches: empty set being treated as 'match nothing' instead of 'no constraint'
+    ;; Consistent with :match/types #{}, :match/colors #{}, etc.
+    (let [db (th/create-test-db)
+          [db' _] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          [db'' _] (th/add-card-to-zone db' :lotus-petal :hand :player-1)
+          result (q/query-zone-by-criteria db'' :player-1 :hand {:match/card-ids #{}})]
+      (is (= 2 (count result))
+          "Empty :match/card-ids set should match all objects (vacuous truth)"))))
+
+
+(deftest matches-criteria-card-ids-nil-card-id-returns-false-test
+  (testing ":match/card-ids #{:dark-ritual} returns false for object with nil :card/id"
+    ;; Catches: nil propagation — (contains? #{:dark-ritual} nil) correctly returns false
+    (let [db (th/create-test-db)
+          conn (d/conn-from-db db)
+          player-eid (q/get-player-eid db :player-1)
+          ;; Create a card entity without :card/id
+          _ (d/transact! conn [{:db/id -1
+                                :card/name "No-ID Card"
+                                :card/types [:instant]
+                                :card/colors [:black]
+                                :card/mana-cost {:black 1}}
+                               {:object/id (random-uuid)
+                                :object/card -1
+                                :object/zone :hand
+                                :object/owner player-eid
+                                :object/controller player-eid
+                                :object/tapped false}])
+          db' @conn
+          result (q/query-zone-by-criteria db' :player-1 :hand {:match/card-ids #{:dark-ritual}})]
+      (is (= 0 (count result))
+          "Object with nil :card/id should NOT match a non-empty :match/card-ids set"))))

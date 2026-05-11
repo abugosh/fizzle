@@ -275,7 +275,8 @@
      :match/subtypes        - Set of subtypes, object must have ANY (OR - island OR swamp)
      :match/supertypes      - Set of supertypes, object must have ANY (OR - basic OR legendary)
      :match/not-supertypes  - Set of supertypes, object must NOT have ANY (exclusion filter)
-     :match/is-token        - Boolean, object must be (true) or not be (false) a token"
+     :match/is-token        - Boolean, object must be (true) or not be (false) a token
+     :match/card-ids        - Set of card IDs, object's :card/id must be in the set"
   [obj criteria]
   (let [card (:object/card obj)
         card-types (set (or (:card/types card) #{}))
@@ -323,7 +324,11 @@
         ;; Absent criterion = no constraint.
         (if (contains? criteria :match/is-token)
           (= (:match/is-token criteria) (boolean (:object/is-token obj)))
-          true)))))
+          true)
+        ;; Object's card ID must be in the allowed set (if present)
+        ;; Empty set = vacuous truth (matches all), absent criterion = no constraint.
+        (or (empty? (get criteria :match/card-ids #{}))
+            (contains? (get criteria :match/card-ids #{}) (:card/id card)))))))
 
 
 (defn query-zone-by-criteria
