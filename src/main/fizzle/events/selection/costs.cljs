@@ -216,6 +216,20 @@
          source-type (:source-type opts)
          ability (:ability opts)
          ability-index (:ability-index opts)
+         ;; Compute valid-targets: if any group has no criteria, all candidates
+         ;; are valid (e.g., Foil's "any card" group). If all groups have criteria,
+         ;; only candidates matching at least one group's criteria are selectable.
+         has-unconstrained-group? (some #(nil? (:criteria %)) groups)
+         valid-target-ids (if has-unconstrained-group?
+                            candidate-ids
+                            (into #{}
+                                  (comp (mapcat (fn [group]
+                                                  (let [criteria (:criteria group)]
+                                                    (->> candidates
+                                                         (filter #(queries/matches-criteria? % criteria))
+                                                         (map :object/id)))))
+                                        (distinct))
+                                  groups))
          ;; Check if spell/ability has targeting (determines lifecycle)
          has-targeting? (if (= source-type :ability)
                           (seq (:ability/targeting ability))
@@ -233,7 +247,7 @@
                 :selection/mode mode
                 :selection/discard-cost discard-cost
                 :selection/discard-groups groups
-                :selection/valid-targets (vec candidate-ids)
+                :selection/valid-targets (vec valid-target-ids)
                 :selection/candidate-card-map (into {} (map (fn [obj']
                                                               [(:object/id obj') (:object/card obj')]))
                                                     candidates)

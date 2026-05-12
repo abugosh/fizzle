@@ -275,6 +275,7 @@
             {:selection/mechanism :pick-from-zone
              :selection/domain    :reveal-until
              :selection/lifecycle :standard
+             :selection/card-source :candidates
              :selection/player-id player-id
              :selection/spell-id  object-id
              :selection/selected  #{}
@@ -291,6 +292,7 @@
             {:selection/mechanism :pick-from-zone
              :selection/domain    :reveal-until
              :selection/lifecycle :standard
+             :selection/card-source :candidates
              :selection/player-id player-id
              :selection/spell-id  object-id
              :selection/selected  #{}

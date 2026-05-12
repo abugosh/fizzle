@@ -26,6 +26,7 @@
                      :border-color "gy-flashback-border" :empty-text "No cards to peek"
                      :confirm-extra-class "bg-gy-flashback-border"}
    :discard-cost {:title "Select cards to discard"}
+   :reveal-until {:title "Revealed cards" :empty-text "Library is empty"}
    :untap-lands {:title "Select lands to untap" :empty-text "No tapped lands"}})
 
 
@@ -110,7 +111,7 @@
         config (get domain-config sel-domain {})
         valid? @(rf/subscribe [::subs/selection-valid?])
         valid-targets (some-> (:selection/valid-targets selection) set)
-        has-reveal? (#{:revealed-hand-discard :discard-cost} sel-domain)
+        has-reveal? (#{:revealed-hand-discard :discard-cost :reveal-until} sel-domain)
         always-good? (#{:graveyard-return :exile-cost :peek-and-select} sel-domain)]
     [:div {:class common/overlay-class}
      [:div {:class (common/container-class
