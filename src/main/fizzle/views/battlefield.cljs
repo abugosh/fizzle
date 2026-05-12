@@ -206,7 +206,9 @@
                                desc))
                            "Activate")]
              ^{:key idx}
-             [ability-button object-id idx label tapped? player-id]))])])))
+             [ability-button object-id idx label
+              (and tapped? (:tap (:ability/cost ability)))
+              player-id]))])])))
 
 
 (defn- empty-row-placeholder
