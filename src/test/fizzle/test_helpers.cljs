@@ -406,11 +406,30 @@
    (standard, finalized, chaining) based on builder-declared metadata.
    Returns {:db db} or {:db db :selection sel} if chaining.
 
+   For :allocation-complete (mana-allocation) selections, selected-items may be
+   passed as the allocation map directly — e.g. (auto-compute-mana-allocation sel).
+   The helper normalizes the selection: copies the map into :selection/allocation
+   and recomputes :selection/generic-remaining so validation passes.
+   Pass #{} when the allocation is already set in the selection map.
+
    Throws ex-info when the selection fails validation — catches incorrect
    selected-items (wrong count, items not in candidates, nil validation type)
    before they silently pass through."
   [db selection selected-items]
-  (let [sel (assoc selection :selection/selected selected-items)]
+  (let [;; For mana-allocation selections: if selected-items is an allocation map,
+        ;; install it into :selection/allocation and recompute generic-remaining.
+        sel (if (= :allocation-complete (:selection/validation selection))
+              (let [sel-with-alloc (if (map? selected-items)
+                                     (assoc selection :selection/allocation selected-items)
+                                     selection)
+                    alloc (or (:selection/allocation sel-with-alloc) {})
+                    generic-total (or (:selection/generic-total sel-with-alloc) 0)
+                    allocated (reduce + 0 (vals alloc))
+                    new-remaining (max 0 (- generic-total allocated))]
+                (-> sel-with-alloc
+                    (assoc :selection/selected selected-items)
+                    (assoc :selection/generic-remaining new-remaining)))
+              (assoc selection :selection/selected selected-items))]
     (when-not (validation/validate-selection sel)
       (throw (ex-info "confirm-selection: validation failed"
                       {:selected selected-items

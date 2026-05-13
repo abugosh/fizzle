@@ -59,6 +59,7 @@
      :at-least-one — count(selected) >= 1
      :always       — always valid
      :exact-or-zero — 0 or exact (tutor fail-to-find)
+     :allocation-complete — generic-remaining == 0 (mana allocation fully assigned)
      nil           — reject (safe default for unset builders)"
   [selection]
   (let [selected (:selection/selected selection)
@@ -80,6 +81,7 @@
                        :always true
                        :exact-or-zero (or (zero? count-selected)
                                           (= count-selected select-count))
+                       :allocation-complete (zero? (or (:selection/generic-remaining selection) 0))
                        ;; nil or unknown: reject (safe default)
                        false)
         ;; Discard group validation (when present)

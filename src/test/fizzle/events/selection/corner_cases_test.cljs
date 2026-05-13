@@ -301,8 +301,8 @@
 ;; validation :always) calls confirm-spell-mana-allocation regardless of
 ;; generic-remaining. The spell is cast with the partial allocation.
 
-(deftest test-mana-allocation-confirm-with-generic-remaining-casts-spell
-  (testing "mana-allocation confirm with generic-remaining > 0 still casts the spell"
+(deftest test-mana-allocation-confirm-with-generic-remaining-rejected
+  (testing "mana-allocation confirm with generic-remaining > 0 is rejected (allocation incomplete)"
     (let [db (th/create-test-db)
           ;; Add dark-ritual to hand (any card works — the mode defines the cost)
           db (mana/add-mana db :player-1 {:black 3})
@@ -317,21 +317,21 @@
           selection (costs/build-mana-allocation-selection
                       db :player-1 spell-id mode {:colorless 2 :black 1})
           _ (assert selection "build-mana-allocation-selection must return non-nil for generic > 0")
-          ;; Override to simulate partially-filled allocation: generic-remaining still 2
+          ;; Simulate partially-filled allocation: generic-remaining still 2, allocation empty
           selection (assoc selection
                            :selection/generic-remaining 2
                            :selection/allocation {})
           app-db {:game/db db :game/pending-selection selection}
           result (core/confirm-selection-impl app-db)]
 
-      ;; :always validation passes — confirm-selection-impl should not reject
+      ;; :allocation-complete validation rejects when generic-remaining > 0
       (is (map? result)
-          "confirm-selection-impl must return a map (not crash) with generic-remaining > 0")
+          "confirm-selection-impl must return a map (not crash) even when rejecting")
 
-      ;; The executor (confirm-spell-mana-allocation) calls cast-spell-mode-with-allocation
-      ;; without rechecking generic-remaining. Spell is moved from hand to stack.
-      (is (= :stack (th/get-object-zone (:game/db result) spell-id))
-          "Spell should be on stack after mana-allocation confirm (partial allocation allowed)"))))
+      ;; Bug fix fizzle-7aig: with :allocation-complete validation, confirm-selection-impl
+      ;; returns app-db unchanged when generic-remaining > 0. Spell stays in hand.
+      (is (= :hand (th/get-object-zone (:game/db result) spell-id))
+          "Spell should remain in hand when mana allocation is incomplete (generic-remaining > 0)"))))
 
 
 ;; =====================================================

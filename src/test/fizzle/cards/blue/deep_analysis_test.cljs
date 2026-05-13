@@ -490,9 +490,8 @@
                 "chained selection domain must be :mana-allocation")
 
           ;; === Step 3: Confirm mana allocation ===
-          ;; Auto-confirm? true — player has 1 colorless in pool, auto-allocate
-          ;; Pass empty allocation to use production auto-confirm path
-          {:keys [db]} (th/confirm-selection db selection #{})
+          ;; Auto-confirm? true — player has 1 colorless in pool. Compute and confirm allocation.
+          {:keys [db]} (th/confirm-selection db selection (th/auto-compute-mana-allocation selection))
 
           ;; Chain-trace assertion 5: spell is on stack after mana allocation completes
           spell-obj (q/get-object db obj-id)

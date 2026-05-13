@@ -378,7 +378,7 @@
                 :selection/original-remaining-pool remaining-pool
                 :selection/colored-cost colored-cost
                 :selection/original-cost resolved-mana-cost
-                :selection/validation :always
+                :selection/validation :allocation-complete
                 :selection/auto-confirm? true}))))}))
 
 
@@ -442,7 +442,7 @@
          :selection/original-remaining-pool remaining-pool
          :selection/colored-cost colored-cost
          :selection/original-cost resolved-cost
-         :selection/validation :always
+         :selection/validation :allocation-complete
          :selection/auto-confirm? true}))))
 
 

@@ -34,7 +34,7 @@
 
 
 (s/def :selection/domain keyword?)
-(s/def :selection/validation #{:exact :at-most :at-least-one :exact-or-zero :always})
+(s/def :selection/validation #{:exact :at-most :at-least-one :exact-or-zero :always :allocation-complete})
 (s/def :selection/player-id :game/player-id)
 
 
@@ -438,7 +438,7 @@
     :selection/domain    :mana-allocation
     :selection/lifecycle :finalized
     :selection/player-id :player-1
-    :selection/validation :always
+    :selection/validation :allocation-complete
     :selection/auto-confirm? true
     :selection/generic-remaining 2
     :selection/generic-total 2
