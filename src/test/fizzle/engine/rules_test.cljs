@@ -1600,6 +1600,15 @@
           "Dark Ritual in graveyard: no available actions => false"))))
 
 
+(deftest any-action-available-flashback-in-graveyard-returns-true
+  (testing "any-action-available? returns true for flashback card in graveyard (can-cast? handles flashback modes)"
+    ;; Deep Analysis has flashback {1}{U}{U} — castable from graveyard with enough mana
+    (let [db (th/create-test-db {:mana {:blue 2 :colorless 1}})
+          [db obj-id] (th/add-card-to-zone db :deep-analysis :graveyard :player-1)]
+      (is (true? (rules/any-action-available? db :player-1 obj-id))
+          "Deep Analysis in graveyard with flashback mana: can-cast? true => any-action-available? true"))))
+
+
 ;; =====================================================
 ;; D. build-mana-allocation-selection :selection/validation field test
 ;; =====================================================

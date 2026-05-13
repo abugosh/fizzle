@@ -4,7 +4,7 @@ Date: 2026-05-07
 
 ## Status
 
-Proposed
+Accepted (amended by ADR-042: zone check scope clarified — cost types remain zone-agnostic, `can-activate?` gains zone check as policy composition layer)
 
 ## Context
 

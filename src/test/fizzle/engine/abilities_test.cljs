@@ -5,7 +5,6 @@
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
     [fizzle.engine.abilities :as abilities]
-    [fizzle.engine.mana :as mana]
     [fizzle.test-helpers :as th]))
 
 

@@ -241,7 +241,7 @@ Every card must have a dedicated test file (`src/test/fizzle/cards/<card>_test.c
 - `cast-mode-with-target` — modal+targeted spells: composes `cast-with-mode` + `confirm-selection` × 2 (mode + target), with optional auto-confirm of chained mana-allocation for colorless-cost spells (migrated to production path in fizzle-x6ew)
 - `cast-and-yield` — cast + resolve, captures post-resolve selection for spells that produce selections after resolution (e.g. ETB replacements); added in fizzle-y63h
 - `resolve-top` — resolve top stack item, returns `{:db}` or `{:db :selection}`
-- `confirm-selection` — confirm interactive selection, returns `{:db}` or chains to next selection
+- `confirm-selection` — confirm interactive selection, returns `{:db}` or chains to next selection; for `:allocation-complete` (mana-allocation) selections, accepts an allocation map as `selected-items` and normalizes `:selection/allocation` + `:selection/generic-remaining` (extended in fizzle-0fb3)
 - `auto-compute-mana-allocation` — compute allocation for mana-allocation selections (promoted to public in fizzle-0y27 for cycling tests with colorless costs)
 
 ### Spec chokepoint enforcement

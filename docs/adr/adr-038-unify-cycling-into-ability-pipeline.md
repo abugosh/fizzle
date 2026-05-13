@@ -4,7 +4,7 @@ Date: 2026-05-07
 
 ## Status
 
-Proposed
+Accepted (implementation complete: cycling uses ability pipeline via :ability/type :cycling)
 
 ## Context
 
