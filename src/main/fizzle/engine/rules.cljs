@@ -7,6 +7,7 @@
     [clojure.string :as str]
     [datascript.core :as d]
     [fizzle.db.queries :as q]
+    [fizzle.engine.abilities :as abilities]
     [fizzle.engine.conditions :as conditions]
     [fizzle.engine.costs :as costs]
     [fizzle.engine.effects :as effects]
@@ -596,3 +597,27 @@
            (land-card? db object-id)
            (#{:main1 :main2} phase)
            (q/stack-empty? db)))))
+
+
+(defn has-activatable-cycling?
+  "True if the object has a :cycling ability that can currently be activated.
+   Delegates to abilities/can-activate? which checks zone, conditions, and costs."
+  [db object-id]
+  (let [obj (q/get-object db object-id)
+        card-abilities (get-in obj [:object/card :card/abilities])]
+    (boolean
+      (some (fn [ab]
+              (and (= :cycling (:ability/type ab))
+                   (abilities/can-activate? db object-id ab)))
+            card-abilities))))
+
+
+(defn any-action-available?
+  "True if the player can take any action with this card: cast (non-land),
+   play land, or activate a cycling ability. Single source of truth for card
+   actionability — used by both UI button gating and selection clearing."
+  [db player-id object-id]
+  (or (and (can-cast? db player-id object-id)
+           (not (land-card? db object-id)))
+      (can-play-land? db player-id object-id)
+      (has-activatable-cycling? db object-id)))
