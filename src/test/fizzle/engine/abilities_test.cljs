@@ -4,7 +4,9 @@
     [datascript.core :as d]
     [fizzle.db.init :refer [init-game-state]]
     [fizzle.db.queries :as q]
-    [fizzle.engine.abilities :as abilities]))
+    [fizzle.engine.abilities :as abilities]
+    [fizzle.engine.mana :as mana]
+    [fizzle.test-helpers :as th]))
 
 
 ;; === Test helpers ===
@@ -242,3 +244,64 @@
       ;; 2-arity: (db, object-id, ability) - should resolve controller internally
       (is (true? (abilities/can-activate? db object-id ability))
           "2-arity should resolve controller and check threshold"))))
+
+
+;; =====================================================
+;; Zone-aware can-activate? tests (ADR-039 fix)
+;; =====================================================
+
+;; Cycling ability (Cloud of Faeries): :ability/zone :hand
+;; Cost: {:discard-self true :mana {:colorless 2}}
+
+(def cycling-ability
+  "Cycling ability matching Cloud of Faeries: must be in :hand, costs 2 colorless."
+  {:ability/type :cycling
+   :ability/zone :hand
+   :ability/cost {:discard-self true :mana {:colorless 2}}
+   :ability/effects [{:effect/type :draw :effect/amount 1}]
+   :ability/description "Cycling {2}"})
+
+
+(deftest can-activate-cycling-card-in-hand-returns-true
+  (testing "can-activate? returns true for cycling ability when card is in hand with payable costs"
+    (let [db (th/create-test-db {:mana {:colorless 2}})
+          [db obj-id] (th/add-card-to-zone db :cloud-of-faeries :hand :player-1)]
+      ;; Get the actual cycling ability from the card object
+      (let [obj (q/get-object db obj-id)
+            actual-cycling-ab (first (filter #(= :cycling (:ability/type %))
+                                             (get-in obj [:object/card :card/abilities])))]
+        (is (true? (abilities/can-activate? db obj-id actual-cycling-ab))
+            "Cycling ability should be activatable when card is in hand with 2 mana available")))))
+
+
+(deftest can-activate-cycling-card-in-graveyard-returns-false
+  (testing "can-activate? returns false for cycling ability when card is in graveyard"
+    (let [db (th/create-test-db {:mana {:colorless 2}})
+          [db obj-id] (th/add-card-to-zone db :cloud-of-faeries :graveyard :player-1)]
+      ;; Cloud of Faeries cycling requires :hand zone per :ability/zone
+      (let [obj (q/get-object db obj-id)
+            actual-cycling-ab (first (filter #(= :cycling (:ability/type %))
+                                             (get-in obj [:object/card :card/abilities])))]
+        (is (false? (abilities/can-activate? db obj-id actual-cycling-ab))
+            "Cycling ability requires :hand zone — card in graveyard must return false")))))
+
+
+(deftest can-activate-battlefield-ability-on-battlefield-returns-true
+  (testing "can-activate? returns true for tap ability (no :ability/zone) when permanent is on battlefield"
+    ;; Default :ability/zone is :battlefield when absent
+    (let [[db object-id] (add-permanent (init-game-state) :player-1)
+          tap-ability {:ability/cost {:tap true}
+                       :ability/effects [{:effect/type :add-mana :effect/mana {:black 1}}]}]
+      (is (true? (abilities/can-activate? db object-id tap-ability))
+          "Tap ability with default :battlefield zone should be activatable on battlefield"))))
+
+
+(deftest can-activate-battlefield-ability-in-hand-returns-false
+  (testing "can-activate? returns false for tap ability (no :ability/zone) when object is in hand"
+    ;; The ability defaults to :battlefield zone, but we place the card in :hand
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          tap-ability {:ability/cost {:tap true}
+                       :ability/effects [{:effect/type :add-mana :effect/mana {:black 1}}]}]
+      (is (false? (abilities/can-activate? db obj-id tap-ability))
+          "Tap ability defaults to :battlefield zone — object in :hand must return false"))))

@@ -12,6 +12,7 @@
     [fizzle.engine.spec-util :as spec-util]
     [fizzle.engine.triggers]
     [fizzle.engine.zones :as zones]
+    [fizzle.events.selection.costs :as sel-costs]
     [fizzle.test-helpers :as th]))
 
 
@@ -1546,3 +1547,71 @@
           ids (map :mode/id all-modes)]
       (is (= (count ids) (count (distinct ids)))
           "All :mode/id values must be distinct"))))
+
+
+;; =====================================================
+;; any-action-available? tests
+;; =====================================================
+
+(deftest any-action-available-castable-spell-in-hand-returns-true
+  (testing "any-action-available? returns true for castable non-land spell in hand"
+    (let [db (th/create-test-db {:mana {:black 1}})
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)]
+      (is (true? (rules/any-action-available? db :player-1 obj-id))
+          "Dark Ritual in hand with 1 black mana: can-cast? true => any-action-available? true"))))
+
+
+(deftest any-action-available-playable-land-in-hand-returns-true
+  (testing "any-action-available? returns true for playable land in hand"
+    ;; create-test-db gives 1 land play by default
+    (let [db (th/create-test-db)
+          [db obj-id] (th/add-card-to-zone db :gemstone-mine :hand :player-1)]
+      (is (true? (rules/any-action-available? db :player-1 obj-id))
+          "Gemstone Mine in hand with land plays available: can-play-land? true => any-action-available? true"))))
+
+
+(deftest any-action-available-cycling-in-hand-payable-returns-true
+  (testing "any-action-available? returns true for cycling card in hand with payable cycling cost"
+    ;; Cloud of Faeries cycling cost: {:discard-self true :mana {:colorless 2}}
+    ;; Needs 2 colorless mana and the card in :hand zone
+    (let [db (th/create-test-db {:mana {:colorless 2}})
+          [db obj-id] (th/add-card-to-zone db :cloud-of-faeries :hand :player-1)]
+      (is (true? (rules/any-action-available? db :player-1 obj-id))
+          "Cloud of Faeries in hand with 2 mana: has-activatable-cycling? true => any-action-available? true"))))
+
+
+(deftest any-action-available-cycling-in-graveyard-returns-false
+  (testing "any-action-available? returns false for cycling card in graveyard"
+    ;; Cycling requires :ability/zone :hand — graveyard placement makes it unavailable
+    ;; Cloud of Faeries has no flashback, so cannot be cast from graveyard either
+    (let [db (th/create-test-db {:mana {:colorless 2}})
+          [db obj-id] (th/add-card-to-zone db :cloud-of-faeries :graveyard :player-1)]
+      (is (false? (rules/any-action-available? db :player-1 obj-id))
+          "Cloud of Faeries in graveyard: cycling zone mismatch, no flashback => false"))))
+
+
+(deftest any-action-available-non-flashback-in-graveyard-returns-false
+  (testing "any-action-available? returns false for non-flashback, non-cycling card in graveyard"
+    ;; Dark Ritual: no cycling, no flashback, not a land
+    ;; In graveyard: can-cast? false, can-play-land? false, has-activatable-cycling? false
+    (let [db (th/create-test-db {:mana {:black 1}})
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :graveyard :player-1)]
+      (is (false? (rules/any-action-available? db :player-1 obj-id))
+          "Dark Ritual in graveyard: no available actions => false"))))
+
+
+;; =====================================================
+;; D. build-mana-allocation-selection :selection/validation field test
+;; =====================================================
+
+(deftest build-mana-allocation-selection-has-allocation-complete-validation
+  (testing "build-mana-allocation-selection returns selection with :allocation-complete validation"
+    (let [db (th/create-test-db {:mana {:colorless 3}})
+          [db obj-id] (th/add-card-to-zone db :dark-ritual :hand :player-1)
+          ;; Build a mode with generic cost to trigger mana-allocation selection
+          mode {:mode/id :primary :mode/zone :hand :mode/mana-cost {:colorless 2}}
+          resolved-cost {:colorless 2}
+          sel (sel-costs/build-mana-allocation-selection
+                db :player-1 obj-id mode resolved-cost)]
+      (is (= :allocation-complete (:selection/validation sel))
+          "build-mana-allocation-selection must set :selection/validation to :allocation-complete"))))
