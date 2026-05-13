@@ -35,17 +35,21 @@
          (can-activate? db object-id ability player-id))
        false)))
   ([db object-id ability player-id]
-   (let [cost (:ability/cost ability)
-         condition (:ability/condition ability)]
-     (and
-       ;; Check condition first (threshold, etc.)
-       (conditions/check-condition db player-id condition)
-       ;; Then check all costs can be paid
-       (if (or (nil? cost) (empty? cost))
-         true ; Free activation
-         (every? (fn [[cost-type cost-value]]
-                   (costs/can-pay? db object-id {cost-type cost-value}))
-                 cost))))))
+   (let [obj (q/get-object db object-id)
+         expected-zone (or (:ability/zone ability) :battlefield)]
+     (and obj
+          (= (:object/zone obj) expected-zone)
+          (let [cost (:ability/cost ability)
+                condition (:ability/condition ability)]
+            (and
+              ;; Check condition first (threshold, etc.)
+              (conditions/check-condition db player-id condition)
+              ;; Then check all costs can be paid
+              (if (or (nil? cost) (empty? cost))
+                true ; Free activation
+                (every? (fn [[cost-type cost-value]]
+                          (costs/can-pay? db object-id {cost-type cost-value}))
+                        cost))))))))
 
 
 (defn pay-all-costs
